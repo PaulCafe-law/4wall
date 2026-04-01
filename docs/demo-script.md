@@ -33,6 +33,7 @@ Show a conservative, road-network-following building inspection flow that feels 
 
 - Show mission summary, corridor count, verification points, viewpoints
 - Explicitly point out whether this run uses real or mock bundle
+- Tap `Load Mock Mission`
 
 Narration:
 
@@ -41,7 +42,8 @@ Narration:
 ### 2. Preflight
 
 - Walk through checklist
-- Show one warning and one blocker resolution if available
+- Tap `Approve Preflight`
+- Tap `Upload + Start`
 
 Narration:
 
@@ -61,7 +63,8 @@ Narration:
 
 - Trigger verification point
 - Show branch confirm screen
-- Demonstrate left, right, or straight result
+- Demonstrate `LEFT`, `RIGHT`, or `STRAIGHT`
+- Optional negative path: tap `Timeout`
 
 Narration:
 
@@ -79,8 +82,9 @@ Narration:
 ### 6. Inspection Capture
 
 - Reach viewpoint
-- Show align and capture readiness
-- Capture photo
+- Tap `Align View`
+- Point out that `Capture` stays disabled until align completes
+- Tap `Capture`
 
 Narration:
 
@@ -90,6 +94,7 @@ Narration:
 
 - End in `HOLD`
 - Optionally trigger `RTH`
+- In `Emergency`, tap `Mark RTH Arrived`, then `Complete Landing`
 
 Narration:
 

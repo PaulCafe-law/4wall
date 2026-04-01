@@ -11,7 +11,8 @@ data class EmergencyUiState(
     val reason: String,
     val mode: EmergencyMode = EmergencyMode.INFO,
     val nextStep: String = "Monitor system state",
-    val holdEnabled: Boolean = true,
-    val rthEnabled: Boolean = true,
-    val takeoverEnabled: Boolean = true
+    val primaryActionLabel: String = "Complete Landing",
+    val secondaryActionLabel: String = "Abort Manual",
+    val completeLandingEnabled: Boolean = false,
+    val abortManualEnabled: Boolean = false
 )

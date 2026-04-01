@@ -69,12 +69,46 @@ Emergency / Hold / RTH
 ```text
 Mission Setup
   -> load mock or planned mission
-  -> Preflight Checklist
+  -> open Preflight Checklist without auto-approving it
+  -> approve checklist
   -> In-Flight Main
      -> Branch Confirm when verification point reached
      -> Inspection Capture when viewpoint reached
      -> Emergency screen whenever HOLD / RTH / takeover state is active
 ```
+
+## Implemented Demo Controls
+
+- Mission Setup:
+  - `Load Mock Mission`
+  - `Demo Replay`
+  - `Open Preflight Checklist`
+- Preflight Checklist:
+  - `Approve Preflight`
+  - `Upload + Start`
+- In-Flight Main:
+  - `Replay`
+  - `Branch Confirm`
+  - `Obstacle Warn`
+  - `Hard Stop`
+  - `Clear`
+  - `Approach Inspection Viewpoint`
+- Branch Confirm:
+  - `LEFT`
+  - `STRAIGHT`
+  - `RIGHT`
+  - `Timeout`
+  - `Hold`
+  - `Takeover`
+- Inspection Capture:
+  - `Align View`
+  - `Capture` only after align succeeds
+  - `Hold`
+- Emergency:
+  - primary action changes by state:
+    - `Mark RTH Arrived`
+    - `Complete Landing`
+  - `Abort Manual` only during manual override
 
 ## Interaction State Coverage
 
@@ -124,7 +158,7 @@ Demo mode adds:
 - inject obstacle warn / hard stop
 - replay mission progress timeline
 
-Demo controls live only in Mission Setup and a debug drawer, never mixed into emergency controls.
+Demo controls live in screen-local action clusters, while the emergency rail remains globally visible and separate.
 
 ## What Already Exists
 
