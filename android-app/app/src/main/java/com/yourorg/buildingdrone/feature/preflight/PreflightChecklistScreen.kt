@@ -23,12 +23,12 @@ fun PreflightChecklistScreen(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Preflight Checklist", style = MaterialTheme.typography.headlineSmall)
+                Text("飛前檢查", style = MaterialTheme.typography.headlineSmall)
                 state.warning?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
                 if (state.blockers.isEmpty()) {
-                    Text("No blocking items.")
+                    Text("目前沒有阻擋項目。")
                 } else {
-                    state.blockers.forEach { blocker -> Text("Blocker: $blocker") }
+                    state.blockers.forEach { blocker -> Text("阻擋項目：$blocker") }
                 }
             }
         }
@@ -36,21 +36,21 @@ fun PreflightChecklistScreen(
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(item.label, style = MaterialTheme.typography.titleMedium)
-                    Text(if (item.passed) "PASS" else "CHECK", style = MaterialTheme.typography.bodySmall)
+                    Text(if (item.passed) "通過" else "待確認", style = MaterialTheme.typography.bodySmall)
                     Text(item.detail, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = onApprove, modifier = Modifier.weight(1f)) {
-                Text("Approve Preflight")
+                Text("通過飛前檢查")
             }
             FilledTonalButton(
                 onClick = onUploadMission,
                 modifier = Modifier.weight(1f),
                 enabled = state.readyToUpload || state.blockers.isEmpty()
             ) {
-                Text("Upload + Start")
+                Text("上傳並開始")
             }
         }
     }

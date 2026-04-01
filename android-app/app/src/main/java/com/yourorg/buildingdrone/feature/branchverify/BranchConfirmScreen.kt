@@ -32,7 +32,7 @@ fun BranchConfirmScreen(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Branch Confirm", style = MaterialTheme.typography.headlineSmall)
+                Text("岔路確認", style = MaterialTheme.typography.headlineSmall)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -40,22 +40,22 @@ fun BranchConfirmScreen(
                         .background(Color(0xFF1B2328)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("Mock camera frame", color = Color.White)
+                    Text("模擬相機畫面", color = Color.White)
                 }
                 Text(state.confidenceLabel, style = MaterialTheme.typography.titleMedium)
-                Text("Countdown: ${state.countdownSeconds}s", style = MaterialTheme.typography.bodyMedium)
+                Text("倒數：${state.countdownSeconds} 秒", style = MaterialTheme.typography.bodyMedium)
                 state.reason?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = onChooseLeft, modifier = Modifier.weight(1f)) { Text("LEFT") }
-            FilledTonalButton(onClick = onChooseStraight, modifier = Modifier.weight(1f)) { Text("STRAIGHT") }
-            FilledTonalButton(onClick = onChooseRight, modifier = Modifier.weight(1f)) { Text("RIGHT") }
+            FilledTonalButton(onClick = onChooseLeft, modifier = Modifier.weight(1f)) { Text("左轉") }
+            FilledTonalButton(onClick = onChooseStraight, modifier = Modifier.weight(1f)) { Text("直行") }
+            FilledTonalButton(onClick = onChooseRight, modifier = Modifier.weight(1f)) { Text("右轉") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onTimeout, modifier = Modifier.weight(1f)) { Text("Timeout") }
-            OutlinedButton(onClick = onHold, modifier = Modifier.weight(1f)) { Text("Hold") }
-            OutlinedButton(onClick = onTakeover, modifier = Modifier.weight(1f)) { Text("Takeover") }
+            OutlinedButton(onClick = onTimeout, modifier = Modifier.weight(1f)) { Text("逾時") }
+            OutlinedButton(onClick = onHold, modifier = Modifier.weight(1f)) { Text("懸停") }
+            OutlinedButton(onClick = onTakeover, modifier = Modifier.weight(1f)) { Text("接管") }
         }
     }
 }

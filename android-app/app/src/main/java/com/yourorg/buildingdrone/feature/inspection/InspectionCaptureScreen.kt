@@ -24,7 +24,7 @@ fun InspectionCaptureScreen(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Inspection Capture", style = MaterialTheme.typography.headlineSmall)
+                Text("巡檢拍攝", style = MaterialTheme.typography.headlineSmall)
                 Text(state.viewpointLabel, style = MaterialTheme.typography.titleMedium)
                 Text(state.alignmentStatus, style = MaterialTheme.typography.bodyLarge)
                 state.reason?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
@@ -32,9 +32,9 @@ fun InspectionCaptureScreen(
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Framing Checklist", style = MaterialTheme.typography.titleMedium)
+                Text("取景檢查清單", style = MaterialTheme.typography.titleMedium)
                 if (state.framingHints.isEmpty()) {
-                    Text("No framing hints yet.")
+                    Text("目前還沒有取景提示。")
                 } else {
                     state.framingHints.forEach { hint -> Text(hint) }
                 }
@@ -46,16 +46,16 @@ fun InspectionCaptureScreen(
                 modifier = Modifier.weight(1f),
                 enabled = !state.captureEnabled
             ) {
-                Text("Align View")
+                Text("對齊視角")
             }
             FilledTonalButton(
                 onClick = onCapture,
                 modifier = Modifier.weight(1f),
                 enabled = state.captureEnabled
             ) {
-                Text("Capture")
+                Text("拍攝")
             }
-            OutlinedButton(onClick = onHold, modifier = Modifier.weight(1f)) { Text("Hold") }
+            OutlinedButton(onClick = onHold, modifier = Modifier.weight(1f)) { Text("懸停") }
         }
     }
 }

@@ -38,16 +38,16 @@ fun EmergencyScreen(
                     .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Emergency / Hold / RTH", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+                Text("緊急狀態 / 懸停 / 返航", style = MaterialTheme.typography.headlineSmall, color = Color.White)
                 Text(state.reason, style = MaterialTheme.typography.titleLarge, color = Color.White)
                 Text(state.nextStep, style = MaterialTheme.typography.bodyLarge, color = Color.White)
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Operator action", style = MaterialTheme.typography.titleMedium)
-                Text("Reason and next step are always explicit. No hidden fallback behavior.")
-                Text("Buttons in the bottom rail remain the primary controls throughout the mission.")
+                Text("操作員動作", style = MaterialTheme.typography.titleMedium)
+                Text("原因與下一步都必須明確顯示，不能有隱藏的備援行為。")
+                Text("底部控制列的按鈕在整個任務過程中都維持為主要控制入口。")
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -65,7 +65,7 @@ class FlightReducerTest {
         val next = reducer.reduce(state, FlightEventType.BRANCH_VERIFY_TIMEOUT)
 
         assertEquals(FlightStage.HOLD, next.stage)
-        assertEquals("Branch verification timeout", next.holdReason)
+        assertEquals("岔路驗證逾時", next.holdReason)
     }
 
     @Test
@@ -82,7 +82,7 @@ class FlightReducerTest {
         )
 
         assertEquals(FlightStage.HOLD, next.stage)
-        assertEquals("Frame stream dropped", next.holdReason)
+        assertEquals("影像串流中斷", next.holdReason)
     }
 
     @Test
@@ -119,7 +119,7 @@ class FlightReducerTest {
         )
 
         assertEquals(FlightStage.HOLD, next.stage)
-        assertEquals("Capture complete, awaiting operator decision", next.holdReason)
+        assertEquals("拍攝完成，等待操作員決策", next.holdReason)
     }
 
     @Test

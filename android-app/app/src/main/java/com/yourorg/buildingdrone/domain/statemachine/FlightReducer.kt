@@ -390,7 +390,7 @@ class FlightReducer(
                 target = if (context.hasRemainingViewpoints) FlightStage.TRANSIT else FlightStage.HOLD,
                 event = event,
                 context = context,
-                reason = if (context.hasRemainingViewpoints) null else "Capture complete, awaiting operator decision"
+                reason = if (context.hasRemainingViewpoints) null else "拍攝完成，等待操作員決策"
             )
         }
         if (current.stage == FlightStage.RTH && context.rthArrived) {
@@ -443,14 +443,14 @@ class FlightReducer(
         context: TransitionContext
     ): String {
         return when {
-            event == FlightEventType.BRANCH_VERIFY_TIMEOUT -> "Branch verification timeout"
-            event == FlightEventType.BRANCH_VERIFY_UNKNOWN -> "Branch verification unknown"
-            event == FlightEventType.OBSTACLE_HARD_STOP -> "Obstacle hard stop"
-            event == FlightEventType.CORRIDOR_DEVIATION_HARD -> "Corridor deviation hard limit"
-            event == FlightEventType.GPS_LOST -> "GPS lost"
-            event == FlightEventType.APP_HEALTH_BAD || !context.appHealthy -> "App health degraded"
-            !context.frameStreamHealthy -> "Frame stream dropped"
-            else -> "Hold engaged"
+            event == FlightEventType.BRANCH_VERIFY_TIMEOUT -> "岔路驗證逾時"
+            event == FlightEventType.BRANCH_VERIFY_UNKNOWN -> "岔路驗證結果不明"
+            event == FlightEventType.OBSTACLE_HARD_STOP -> "障礙物硬停"
+            event == FlightEventType.CORRIDOR_DEVIATION_HARD -> "超出走廊硬限制"
+            event == FlightEventType.GPS_LOST -> "GPS 訊號遺失"
+            event == FlightEventType.APP_HEALTH_BAD || !context.appHealthy -> "應用程式健康狀態異常"
+            !context.frameStreamHealthy -> "影像串流中斷"
+            else -> "已進入懸停"
         }
     }
 }

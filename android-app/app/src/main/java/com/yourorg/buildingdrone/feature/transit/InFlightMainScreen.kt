@@ -28,18 +28,18 @@ fun InFlightMainScreen(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("In-Flight Main", style = MaterialTheme.typography.headlineSmall)
+                Text("飛行中主畫面", style = MaterialTheme.typography.headlineSmall)
                 Text(state.stateLabel, style = MaterialTheme.typography.titleMedium)
                 Text(state.progressLabel, style = MaterialTheme.typography.bodyLarge)
-                LinearProgressIndicator(progress = { if (state.stateLabel == "COMPLETED") 1f else 0.58f }, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = { if (state.isCompleted) 1f else 0.58f }, modifier = Modifier.fillMaxWidth())
                 state.partialWarning?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                state.riskReason?.let { Text("Risk: $it", style = MaterialTheme.typography.bodyMedium) }
-                Text("Next: ${state.nextStep}", style = MaterialTheme.typography.bodyMedium)
+                state.riskReason?.let { Text("風險：$it", style = MaterialTheme.typography.bodyMedium) }
+                Text("下一步：${state.nextStep}", style = MaterialTheme.typography.bodyMedium)
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Telemetry Strip", style = MaterialTheme.typography.titleMedium)
+                Text("遙測摘要", style = MaterialTheme.typography.titleMedium)
                 state.telemetry.forEach { field ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(field.label)
@@ -49,16 +49,16 @@ fun InFlightMainScreen(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onReplayTelemetry, modifier = Modifier.weight(1f)) { Text("Replay") }
-            OutlinedButton(onClick = onTriggerBranch, modifier = Modifier.weight(1f)) { Text("Branch Confirm") }
+            OutlinedButton(onClick = onReplayTelemetry, modifier = Modifier.weight(1f)) { Text("回放") }
+            OutlinedButton(onClick = onTriggerBranch, modifier = Modifier.weight(1f)) { Text("岔路確認") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onTriggerObstacleWarn, modifier = Modifier.weight(1f)) { Text("Obstacle Warn") }
-            OutlinedButton(onClick = onTriggerObstacleHardStop, modifier = Modifier.weight(1f)) { Text("Hard Stop") }
-            OutlinedButton(onClick = onClearObstacle, modifier = Modifier.weight(1f)) { Text("Clear") }
+            OutlinedButton(onClick = onTriggerObstacleWarn, modifier = Modifier.weight(1f)) { Text("障礙警示") }
+            OutlinedButton(onClick = onTriggerObstacleHardStop, modifier = Modifier.weight(1f)) { Text("硬停") }
+            OutlinedButton(onClick = onClearObstacle, modifier = Modifier.weight(1f)) { Text("清除") }
         }
         FilledTonalButton(onClick = onApproachInspection, modifier = Modifier.fillMaxWidth()) {
-            Text("Approach Inspection Viewpoint")
+            Text("進入巡檢視點")
         }
     }
 }

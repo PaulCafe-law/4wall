@@ -73,7 +73,7 @@ fun ConsoleHomeScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 ConsoleHeader(
-                    stage = demoCoordinator.flightState.stage.name,
+                    stage = demoCoordinator.currentStageLabel,
                     reason = demoCoordinator.emergency.reason,
                     nextStep = demoCoordinator.emergency.nextStep
                 )
@@ -147,10 +147,10 @@ private fun ConsoleHeader(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Building Route Assistant", style = MaterialTheme.typography.headlineSmall)
-            Text("Stage: $stage", style = MaterialTheme.typography.titleMedium)
+            Text("建築路線助理", style = MaterialTheme.typography.headlineSmall)
+            Text("階段：$stage", style = MaterialTheme.typography.titleMedium)
             Text(reason, style = MaterialTheme.typography.bodyLarge)
-            Text("Next: $nextStep", style = MaterialTheme.typography.bodyMedium)
+            Text("下一步：$nextStep", style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -200,19 +200,19 @@ private fun EmergencyActionRail(
                 modifier = Modifier.weight(1f),
                 onClick = onHold
             ) {
-                Text("HOLD")
+                Text("懸停")
             }
             FilledTonalButton(
                 modifier = Modifier.weight(1f),
                 onClick = onRth
             ) {
-                Text("RTH")
+                Text("返航")
             }
             FilledTonalButton(
                 modifier = Modifier.weight(1f),
                 onClick = onTakeover
             ) {
-                Text("TAKEOVER")
+                Text("接管")
             }
         }
     }

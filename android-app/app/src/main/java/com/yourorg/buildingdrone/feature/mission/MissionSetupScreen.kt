@@ -24,17 +24,17 @@ fun MissionSetupScreen(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Mission Setup", style = MaterialTheme.typography.headlineSmall)
+                Text("任務設定", style = MaterialTheme.typography.headlineSmall)
                 Text(state.missionLabel, style = MaterialTheme.typography.titleMedium)
-                Text("Artifact status: ${state.artifactStatus}", style = MaterialTheme.typography.bodyMedium)
+                Text("任務產物狀態：${state.artifactStatus}", style = MaterialTheme.typography.bodyMedium)
                 state.warning?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Mission Summary", style = MaterialTheme.typography.titleMedium)
+                Text("任務摘要", style = MaterialTheme.typography.titleMedium)
                 if (state.summary.isEmpty()) {
-                    Text("No mission summary yet. Load mock mission bundle first.")
+                    Text("目前還沒有任務摘要。請先載入模擬任務包。")
                 } else {
                     state.summary.forEach { line -> Text(line) }
                 }
@@ -42,10 +42,10 @@ fun MissionSetupScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(onClick = onLoadMockMission, modifier = Modifier.weight(1f)) {
-                Text("Load Mock Mission")
+                Text("載入模擬任務")
             }
             OutlinedButton(onClick = onReplay, modifier = Modifier.weight(1f)) {
-                Text("Demo Replay")
+                Text("展示回放")
             }
         }
         FilledTonalButton(
@@ -53,7 +53,7 @@ fun MissionSetupScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = state.bundleLoaded
         ) {
-            Text("Open Preflight Checklist")
+            Text("開啟飛前檢查")
         }
     }
 }

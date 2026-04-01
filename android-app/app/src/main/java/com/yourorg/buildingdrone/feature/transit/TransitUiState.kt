@@ -11,9 +11,10 @@ data class TransitUiState(
     val stateLabel: String,
     val emergencyVisible: Boolean,
     val status: ScreenDataState = ScreenDataState.EMPTY,
-    val progressLabel: String = "Awaiting mission start",
+    val progressLabel: String = "等待任務開始",
     val telemetry: List<TelemetryField> = emptyList(),
     val riskReason: String? = null,
-    val nextStep: String = "Load a mission bundle and upload mission",
-    val partialWarning: String? = null
+    val nextStep: String = "先載入任務包，再上傳任務",
+    val partialWarning: String? = null,
+    val isCompleted: Boolean = false
 )

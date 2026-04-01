@@ -5,7 +5,7 @@ import com.yourorg.buildingdrone.ui.ScreenDataState
 data class BranchVerifyUiState(
     val availableOptions: List<String>,
     val status: ScreenDataState = ScreenDataState.EMPTY,
-    val confidenceLabel: String = "Confidence pending",
+    val confidenceLabel: String = "等待信心值",
     val countdownSeconds: Int = 0,
     val reason: String? = null
 )

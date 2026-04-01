@@ -37,7 +37,7 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
         assertFalse(coordinator.preflight.readyToUpload)
-        assertEquals("Preflight cannot be approved before mission load.", coordinator.preflight.warning)
+        assertEquals("尚未載入任務前，不能通過飛前檢查。", coordinator.preflight.warning)
     }
 
     @Test
@@ -52,7 +52,7 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(ConsoleScreen.INSPECTION, coordinator.activeScreen)
         assertEquals(FlightStage.APPROACH_VIEWPOINT, coordinator.flightState.stage)
-        assertEquals("Align viewpoint before capture", coordinator.inspection.reason)
+        assertEquals("拍攝前請先完成視角對位", coordinator.inspection.reason)
         assertFalse(coordinator.inspection.captureEnabled)
     }
 
@@ -65,8 +65,8 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(ConsoleScreen.IN_FLIGHT, coordinator.activeScreen)
         assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
-        assertEquals("Upload is blocked until the checklist is approved.", coordinator.preflight.warning)
-        assertEquals("Branch confirm is only available during in-flight transit.", coordinator.transit.partialWarning)
+        assertEquals("在檢查表通過前，禁止上傳任務。", coordinator.preflight.warning)
+        assertEquals("只有在飛行中巡航階段才能觸發岔路確認。", coordinator.transit.partialWarning)
     }
 
     @Test
