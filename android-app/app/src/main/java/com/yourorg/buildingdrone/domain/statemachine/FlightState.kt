@@ -1,5 +1,17 @@
 package com.yourorg.buildingdrone.domain.statemachine
 
+/*
+State machine reference
+=======================
+IDLE -> PRECHECK -> MISSION_READY -> TAKEOFF -> TRANSIT
+TRANSIT -> BRANCH_VERIFY -> TRANSIT
+TRANSIT -> LOCAL_AVOID -> TRANSIT
+TRANSIT -> APPROACH_VIEWPOINT -> VIEW_ALIGN -> CAPTURE
+Any uncertain branch -> HOLD
+Battery critical -> RTH -> LANDING -> COMPLETED
+User takeover -> MANUAL_OVERRIDE -> COMPLETED | ABORTED
+*/
+
 enum class FlightStage {
     IDLE,
     PRECHECK,
@@ -52,6 +64,8 @@ data class FlightState(
     val missionUploaded: Boolean = false,
     val lastEvent: FlightEventType? = null,
     val holdReason: String? = null,
+    val lastAutonomousStage: FlightStage? = null,
+    val statusNote: String? = null,
     val demoMode: Boolean = true
 )
 
@@ -60,7 +74,15 @@ data class TransitionContext(
     val missionUploaded: Boolean = false,
     val frameStreamHealthy: Boolean = true,
     val appHealthy: Boolean = true,
-    val batteryCritical: Boolean = false
+    val batteryCritical: Boolean = false,
+    val takeoffComplete: Boolean = false,
+    val obstacleCleared: Boolean = false,
+    val captureComplete: Boolean = false,
+    val hasRemainingViewpoints: Boolean = false,
+    val rthArrived: Boolean = false,
+    val landingComplete: Boolean = false,
+    val manualOverrideComplete: Boolean = false,
+    val manualOverrideAborted: Boolean = false
 )
 
 interface TransitionGuard {
@@ -80,15 +102,22 @@ class DefaultTransitionGuard : TransitionGuard {
         context: TransitionContext
     ): Boolean {
         return when (to) {
+            FlightStage.PRECHECK -> from.stage == FlightStage.IDLE
             FlightStage.MISSION_READY -> context.missionBundleLoaded || from.missionBundleLoaded
-            FlightStage.TAKEOFF -> context.missionUploaded || from.missionUploaded
-            FlightStage.TRANSIT,
-            FlightStage.BRANCH_VERIFY,
-            FlightStage.LOCAL_AVOID,
-            FlightStage.APPROACH_VIEWPOINT,
-            FlightStage.VIEW_ALIGN,
-            FlightStage.CAPTURE -> from.missionUploaded || context.missionUploaded
-            else -> true
+            FlightStage.TAKEOFF -> (context.missionUploaded || from.missionUploaded) && (from.missionBundleLoaded || context.missionBundleLoaded)
+            FlightStage.TRANSIT -> from.missionUploaded || context.missionUploaded
+            FlightStage.BRANCH_VERIFY -> from.missionUploaded || context.missionUploaded
+            FlightStage.LOCAL_AVOID -> from.missionUploaded || context.missionUploaded
+            FlightStage.APPROACH_VIEWPOINT -> from.missionUploaded || context.missionUploaded
+            FlightStage.VIEW_ALIGN -> from.stage == FlightStage.APPROACH_VIEWPOINT
+            FlightStage.CAPTURE -> from.stage == FlightStage.VIEW_ALIGN
+            FlightStage.HOLD -> true
+            FlightStage.MANUAL_OVERRIDE -> true
+            FlightStage.RTH -> true
+            FlightStage.LANDING -> from.stage == FlightStage.RTH || context.rthArrived
+            FlightStage.COMPLETED -> from.stage == FlightStage.LANDING || (from.stage == FlightStage.MANUAL_OVERRIDE && context.manualOverrideComplete)
+            FlightStage.ABORTED -> from.stage == FlightStage.MANUAL_OVERRIDE && context.manualOverrideAborted
+            FlightStage.IDLE -> true
         }
     }
 }

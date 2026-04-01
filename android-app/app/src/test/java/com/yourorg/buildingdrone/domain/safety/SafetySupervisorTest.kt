@@ -25,4 +25,26 @@ class SafetySupervisorTest {
             supervisor.evaluate(FlightEventType.BRANCH_VERIFY_TIMEOUT, SafetySnapshot())
         )
     }
+
+    @Test
+    fun frameStreamDrop_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.OBSTACLE_WARN,
+                SafetySnapshot(frameStreamHealthy = false)
+            )
+        )
+    }
+
+    @Test
+    fun appHealthBad_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.OBSTACLE_WARN,
+                SafetySnapshot(appHealthy = false)
+            )
+        )
+    }
 }
