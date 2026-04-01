@@ -1,0 +1,29 @@
+# Android / Gradle
+.gradle/
+**/build/
+local.properties
+captures/
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python / FastAPI
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Logs and temp
+*.log
+tmp/
+
+# Project-local automation outputs
+.gstack/

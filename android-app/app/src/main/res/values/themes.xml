@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.BuildingDrone" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:statusBarColor">#101315</item>
+        <item name="android:navigationBarColor">#101315</item>
+    </style>
+</resources>
