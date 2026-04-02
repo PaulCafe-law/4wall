@@ -1,6 +1,6 @@
 from app.dto import MissionPlanRequestDto
 from app.providers import MockRouteProvider, OsmOsrmRouteProvider
-from tests.test_dto import valid_request_payload
+from tests.helpers import valid_request_payload
 
 
 class FakeResponse:
@@ -30,7 +30,7 @@ def test_mock_route_provider_returns_demo_path() -> None:
 
     route = provider.plan_route(request)
 
-    assert len(route.points) == 4
+    assert len(route.points) == 5
     assert route.points[0].lat == request.origin.lat
 
 

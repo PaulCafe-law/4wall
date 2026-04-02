@@ -1,7 +1,7 @@
 from app.corridor import CorridorGenerator, approx_distance_m, densify_polyline
 from app.dto import GeoPointDto, MissionPlanRequestDto
 from app.providers import MockRouteProvider
-from tests.test_dto import valid_request_payload
+from tests.helpers import valid_request_payload
 
 
 def test_densify_polyline_adds_intermediate_points_for_long_segments() -> None:
@@ -17,17 +17,17 @@ def test_densify_polyline_adds_intermediate_points_for_long_segments() -> None:
     assert densified[-1] == polyline[-1]
 
 
-def test_corridor_generator_outputs_required_artifacts() -> None:
+def test_corridor_generator_outputs_route_and_viewpoint_metadata() -> None:
     request = MissionPlanRequestDto(**valid_request_payload())
     route = MockRouteProvider().plan_route(request)
 
     plan = CorridorGenerator().generate(request=request, route_path=route, mission_id="msn_test_001")
 
-    assert plan.response.missionId == "msn_test_001"
-    assert plan.response.missionBundle.corridorSegments[0].halfWidthM == 8.0
-    assert len(plan.response.missionBundle.verificationPoints) == 1
-    assert len(plan.response.missionBundle.inspectionViewpoints) == 1
-    assert plan.mission_meta.segments == 1
+    assert plan.mission_bundle.missionId == "msn_test_001"
+    assert plan.mission_bundle.corridorSegments[0].halfWidthMeters == 8.0
+    assert len(plan.mission_bundle.verificationPoints) == 2
+    assert len(plan.mission_bundle.inspectionViewpoints) == 1
+    assert plan.mission_meta.corridorHalfWidthM == 8.0
 
 
 def test_approx_distance_is_positive_for_distinct_points() -> None:

@@ -8,12 +8,12 @@ from app.dto import (
     CorridorSegmentDto,
     GeoPointDto,
     InspectionViewpointDto,
+    MissionArtifactDescriptorDto,
     MissionArtifactsDto,
     MissionBundleDto,
     MissionFailsafeDto,
     MissionMetaDto,
     MissionPlanRequestDto,
-    MissionPlanResponseDto,
     VerificationPointDto,
 )
 from app.providers import RoutePath
@@ -21,70 +21,78 @@ from app.providers import RoutePath
 
 @dataclass(frozen=True)
 class CorridorPlan:
-    response: MissionPlanResponseDto
+    bundle_version: str
+    mission_bundle: MissionBundleDto
     mission_meta: MissionMetaDto
 
 
 class CorridorGenerator:
+    def __init__(self, *, densify_spacing_m: float = 10.0) -> None:
+        self.densify_spacing_m = densify_spacing_m
+
     def generate(self, request: MissionPlanRequestDto, route_path: RoutePath, mission_id: str) -> CorridorPlan:
-        densified = densify_polyline(route_path.points, max_spacing_m=10.0)
-        half_width = min(
-            request.corridorPolicy.defaultHalfWidthM,
-            request.corridorPolicy.maxHalfWidthM,
-        )
-
-        segments = [
-            CorridorSegmentDto(
-                segmentId="seg-001",
-                polyline=densified,
-                halfWidthM=half_width,
-                suggestedAltitudeM=request.flightProfile.defaultAltitudeM,
-                suggestedSpeedMps=request.flightProfile.defaultSpeedMps,
-            )
-        ]
-
+        densified = densify_polyline(route_path.points, max_spacing_m=self.densify_spacing_m)
+        half_width = min(request.corridorPolicy.defaultHalfWidthM, request.corridorPolicy.maxHalfWidthM)
         verification_points = build_verification_points(densified, request)
         inspection_viewpoints = [
             InspectionViewpointDto(
                 inspectionViewpointId=viewpoint.viewpointId,
-                lat=viewpoint.lat,
-                lng=viewpoint.lng,
-                yawDeg=viewpoint.yawDeg,
+                location=GeoPointDto(lat=viewpoint.lat, lng=viewpoint.lng),
+                yawDegrees=viewpoint.yawDeg,
                 captureMode="photo_burst",
                 label=viewpoint.label,
             )
             for viewpoint in request.inspectionIntent.viewpoints
         ]
-
         failsafe = MissionFailsafeDto()
-        bundle = MissionBundleDto(
+        bundle_version = "1.1.0"
+        mission_bundle = MissionBundleDto(
             missionId=mission_id,
             routeMode="road_network_following",
-            defaultAltitudeM=request.flightProfile.defaultAltitudeM,
-            defaultSpeedMps=request.flightProfile.defaultSpeedMps,
-            corridorSegments=segments,
+            defaultAltitudeMeters=request.flightProfile.defaultAltitudeM,
+            defaultSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
+            corridorSegments=[
+                CorridorSegmentDto(
+                    segmentId="seg-001",
+                    polyline=densified,
+                    halfWidthMeters=half_width,
+                    suggestedAltitudeMeters=request.flightProfile.defaultAltitudeM,
+                    suggestedSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
+                )
+            ],
             verificationPoints=verification_points,
             inspectionViewpoints=inspection_viewpoints,
             failsafe=failsafe,
         )
-        artifacts = MissionArtifactsDto(
-            missionKmzUrl=f"/v1/missions/{mission_id}/artifacts/mission.kmz",
-            missionMetaUrl=f"/v1/missions/{mission_id}/artifacts/mission_meta.json",
+        placeholder_descriptor = MissionArtifactDescriptorDto(
+            downloadUrl="pending",
+            version=1,
+            checksumSha256="pending",
+            contentType="application/octet-stream",
+            sizeBytes=0,
+            cacheControl="private, max-age=300",
         )
-        meta = MissionMetaDto(
+        mission_meta = MissionMetaDto(
             missionId=mission_id,
+            bundleVersion=bundle_version,
             generatedAt=datetime.now(timezone.utc),
-            segments=len(segments),
+            segments=1,
             verificationPoints=len(verification_points),
             inspectionViewpoints=len(inspection_viewpoints),
+            corridorHalfWidthM=half_width,
+            suggestedAltitudeM=request.flightProfile.defaultAltitudeM,
+            suggestedSpeedMps=request.flightProfile.defaultSpeedMps,
             safetyDefaults=failsafe,
+            artifacts=MissionArtifactsDto(
+                missionKmz=placeholder_descriptor,
+                missionMeta=placeholder_descriptor,
+            ),
         )
-        response = MissionPlanResponseDto(
-            missionId=mission_id,
-            missionBundle=bundle,
-            artifacts=artifacts,
+        return CorridorPlan(
+            bundle_version=bundle_version,
+            mission_bundle=mission_bundle,
+            mission_meta=mission_meta,
         )
-        return CorridorPlan(response=response, mission_meta=meta)
 
 
 def build_verification_points(
@@ -94,14 +102,20 @@ def build_verification_points(
     if len(polyline) < 3:
         return []
     midpoint = polyline[len(polyline) // 2]
+    final_approach = polyline[max(len(polyline) - 3, 0)]
     return [
         VerificationPointDto(
             verificationPointId="vp-branch-001",
-            lat=midpoint.lat,
-            lng=midpoint.lng,
+            location=GeoPointDto(lat=midpoint.lat, lng=midpoint.lng),
             expectedOptions=["STRAIGHT"],
-            timeoutMs=2500,
-        )
+            timeoutMillis=2500,
+        ),
+        VerificationPointDto(
+            verificationPointId="vp-final-001",
+            location=GeoPointDto(lat=final_approach.lat, lng=final_approach.lng),
+            expectedOptions=["STRAIGHT"],
+            timeoutMillis=max(int(request.corridorPolicy.branchConfirmRadiusM * 100), 1500),
+        ),
     ]
 
 

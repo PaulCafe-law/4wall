@@ -70,24 +70,22 @@ class MissionPlanRequestDto(BaseModel):
 class CorridorSegmentDto(BaseModel):
     segmentId: str
     polyline: list[GeoPointDto]
-    halfWidthM: float
-    suggestedAltitudeM: float
-    suggestedSpeedMps: float
+    halfWidthMeters: float
+    suggestedAltitudeMeters: float
+    suggestedSpeedMetersPerSecond: float
 
 
 class VerificationPointDto(BaseModel):
     verificationPointId: str
-    lat: float
-    lng: float
+    location: GeoPointDto
     expectedOptions: list[Literal["LEFT", "RIGHT", "STRAIGHT"]]
-    timeoutMs: int = Field(gt=0)
+    timeoutMillis: int = Field(gt=0)
 
 
 class InspectionViewpointDto(BaseModel):
     inspectionViewpointId: str
-    lat: float
-    lng: float
-    yawDeg: float
+    location: GeoPointDto
+    yawDegrees: float
     captureMode: str
     label: str
 
@@ -101,17 +99,26 @@ class MissionFailsafeDto(BaseModel):
 class MissionBundleDto(BaseModel):
     missionId: str
     routeMode: Literal["road_network_following"]
-    defaultAltitudeM: float
-    defaultSpeedMps: float
+    defaultAltitudeMeters: float
+    defaultSpeedMetersPerSecond: float
     corridorSegments: list[CorridorSegmentDto]
     verificationPoints: list[VerificationPointDto]
     inspectionViewpoints: list[InspectionViewpointDto]
     failsafe: MissionFailsafeDto = Field(default_factory=MissionFailsafeDto)
 
 
+class MissionArtifactDescriptorDto(BaseModel):
+    downloadUrl: str
+    version: int = Field(ge=1)
+    checksumSha256: str = Field(min_length=1)
+    contentType: str = Field(min_length=1)
+    sizeBytes: int = Field(ge=0)
+    cacheControl: str = Field(min_length=1)
+
+
 class MissionArtifactsDto(BaseModel):
-    missionKmzUrl: str
-    missionMetaUrl: str
+    missionKmz: MissionArtifactDescriptorDto
+    missionMeta: MissionArtifactDescriptorDto
 
 
 class MissionPlanResponseDto(BaseModel):
@@ -128,19 +135,23 @@ class MissionMetaDto(BaseModel):
     segments: int
     verificationPoints: int
     inspectionViewpoints: int
+    corridorHalfWidthM: float
+    suggestedAltitudeM: float
+    suggestedSpeedMps: float
     safetyDefaults: MissionFailsafeDto
+    artifacts: MissionArtifactsDto
 
 
 class FlightEventDto(BaseModel):
     eventId: str = Field(min_length=1)
-    missionId: str = Field(min_length=1)
     type: str = Field(min_length=1)
     timestamp: datetime
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class FlightEventsRequestDto(BaseModel):
-    events: list[FlightEventDto]
+    missionId: str = Field(min_length=1)
+    events: list[FlightEventDto] = Field(min_length=1)
 
 
 class FlightEventsAcceptedDto(BaseModel):
@@ -155,13 +166,37 @@ class TelemetrySampleDto(BaseModel):
     altitudeM: float
     groundSpeedMps: float = Field(ge=0)
     batteryPct: int = Field(ge=0, le=100)
-    flightState: str
+    flightState: str = Field(min_length=1)
     corridorDeviationM: float = Field(ge=0)
 
 
 class TelemetryBatchRequestDto(BaseModel):
-    samples: list[TelemetrySampleDto]
+    missionId: str = Field(min_length=1)
+    samples: list[TelemetrySampleDto] = Field(min_length=1)
 
 
 class TelemetryBatchAcceptedDto(BaseModel):
     accepted: int
+
+
+class LoginRequestDto(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=8)
+
+
+class AuthRefreshRequestDto(BaseModel):
+    refreshToken: str = Field(min_length=1)
+
+
+class OperatorDto(BaseModel):
+    operatorId: str
+    username: str
+    displayName: str
+
+
+class TokenPairDto(BaseModel):
+    accessToken: str
+    refreshToken: str
+    tokenType: Literal["bearer"] = "bearer"
+    expiresInSeconds: int = Field(gt=0)
+    operator: OperatorDto

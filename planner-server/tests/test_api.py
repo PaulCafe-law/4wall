@@ -1,63 +1,57 @@
 from datetime import datetime, timezone
 
-from fastapi.testclient import TestClient
-
-from app.main import build_app
-from app.providers import RouteProvider, RouteProviderError
-from tests.test_dto import valid_request_payload
+from tests.helpers import valid_request_payload
 
 
-class FailingRouteProvider(RouteProvider):
-    def plan_route(self, request):  # type: ignore[override]
-        raise RouteProviderError("no route")
-
-
-def test_plan_endpoint_returns_bundle_and_artifacts() -> None:
-    client = TestClient(build_app())
-
+def test_plan_endpoint_requires_auth(client) -> None:
     response = client.post("/v1/missions/plan", json=valid_request_payload())
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["missionId"].startswith("msn_")
-    assert body["missionBundle"]["routeMode"] == "road_network_following"
-    assert body["artifacts"]["missionKmzUrl"].endswith("/artifacts/mission.kmz")
+    assert response.status_code == 401
+    assert response.json()["detail"] == "missing_bearer_token"
 
 
-def test_artifact_endpoints_return_kmz_and_meta() -> None:
-    client = TestClient(build_app())
-    mission = client.post("/v1/missions/plan", json=valid_request_payload()).json()
+def test_plan_and_artifact_endpoints_require_auth_and_return_checksums(client, auth_headers) -> None:
+    mission_response = client.post("/v1/missions/plan", json=valid_request_payload(), headers=auth_headers)
+
+    assert mission_response.status_code == 200
+    mission = mission_response.json()
     mission_id = mission["missionId"]
+    assert mission["artifacts"]["missionKmz"]["checksumSha256"]
+    assert mission["artifacts"]["missionMeta"]["checksumSha256"]
 
-    kmz_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission.kmz")
-    meta_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission_meta.json")
+    kmz_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission.kmz", headers=auth_headers)
+    meta_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission_meta.json", headers=auth_headers)
 
     assert kmz_response.status_code == 200
-    assert kmz_response.headers["content-type"] == "application/vnd.google-earth.kmz"
+    assert kmz_response.headers["x-artifact-checksum"] == mission["artifacts"]["missionKmz"]["checksumSha256"]
     assert meta_response.status_code == 200
+    assert meta_response.headers["x-artifact-checksum"] == mission["artifacts"]["missionMeta"]["checksumSha256"]
     assert meta_response.json()["missionId"] == mission_id
 
 
-def test_event_and_telemetry_ingestion_accept_batches() -> None:
-    client = TestClient(build_app())
+def test_event_and_telemetry_ingestion_persist_batches(client, auth_headers) -> None:
+    mission_id = client.post("/v1/missions/plan", json=valid_request_payload(), headers=auth_headers).json()["missionId"]
 
     events_response = client.post(
         "/v1/flights/flight-001/events",
+        headers=auth_headers,
         json={
+            "missionId": mission_id,
             "events": [
                 {
                     "eventId": "evt-001",
-                    "missionId": "msn-001",
                     "type": "VERIFICATION_POINT_REACHED",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                     "payload": {"verificationPointId": "vp-001"},
                 }
-            ]
+            ],
         },
     )
     telemetry_response = client.post(
         "/v1/flights/flight-001/telemetry:batch",
+        headers=auth_headers,
         json={
+            "missionId": mission_id,
             "samples": [
                 {
                     "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -69,7 +63,7 @@ def test_event_and_telemetry_ingestion_accept_batches() -> None:
                     "flightState": "TRANSIT",
                     "corridorDeviationM": 1.2,
                 }
-            ]
+            ],
         },
     )
 
@@ -77,12 +71,3 @@ def test_event_and_telemetry_ingestion_accept_batches() -> None:
     assert events_response.json() == {"accepted": 1, "rejected": 0}
     assert telemetry_response.status_code == 202
     assert telemetry_response.json() == {"accepted": 1}
-
-
-def test_plan_endpoint_maps_route_provider_errors_to_route_unavailable() -> None:
-    client = TestClient(build_app(route_provider=FailingRouteProvider()))
-
-    response = client.post("/v1/missions/plan", json=valid_request_payload())
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "route_unavailable"

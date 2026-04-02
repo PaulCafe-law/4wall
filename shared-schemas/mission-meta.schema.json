@@ -6,29 +6,55 @@
   "required": [
     "missionId",
     "bundleVersion",
-    "artifactVersion",
-    "checksum",
+    "generatedAt",
     "segments",
     "verificationPoints",
     "inspectionViewpoints",
-    "safetyDefaults"
+    "corridorHalfWidthM",
+    "suggestedAltitudeM",
+    "suggestedSpeedMps",
+    "safetyDefaults",
+    "artifacts"
   ],
   "properties": {
     "missionId": { "type": "string", "minLength": 1 },
     "bundleVersion": { "type": "string", "minLength": 1 },
-    "artifactVersion": { "type": "integer", "minimum": 1 },
-    "checksum": { "type": "string", "minLength": 1 },
     "generatedAt": { "type": "string" },
     "segments": { "type": "integer", "minimum": 0 },
     "verificationPoints": { "type": "integer", "minimum": 0 },
     "inspectionViewpoints": { "type": "integer", "minimum": 0 },
+    "corridorHalfWidthM": { "type": "number", "exclusiveMinimum": 0 },
+    "suggestedAltitudeM": { "type": "number", "exclusiveMinimum": 0 },
+    "suggestedSpeedMps": { "type": "number", "exclusiveMinimum": 0 },
     "safetyDefaults": {
       "type": "object",
-      "required": ["semanticTimeout", "batteryCritical", "frameDrop"],
+      "required": ["onSemanticTimeout", "onBatteryCritical", "onFrameDrop"],
       "properties": {
-        "semanticTimeout": { "type": "string" },
-        "batteryCritical": { "type": "string" },
-        "frameDrop": { "type": "string" }
+        "onSemanticTimeout": { "type": "string" },
+        "onBatteryCritical": { "type": "string" },
+        "onFrameDrop": { "type": "string" }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "required": ["missionKmz", "missionMeta"],
+      "properties": {
+        "missionKmz": { "$ref": "#/$defs/artifactDescriptor" },
+        "missionMeta": { "$ref": "#/$defs/artifactDescriptor" }
+      }
+    }
+  },
+  "$defs": {
+    "artifactDescriptor": {
+      "type": "object",
+      "required": ["downloadUrl", "version", "checksumSha256", "contentType", "sizeBytes", "cacheControl"],
+      "properties": {
+        "downloadUrl": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "checksumSha256": { "type": "string", "minLength": 1 },
+        "contentType": { "type": "string", "minLength": 1 },
+        "sizeBytes": { "type": "integer", "minimum": 0 },
+        "cacheControl": { "type": "string", "minLength": 1 }
       }
     }
   }

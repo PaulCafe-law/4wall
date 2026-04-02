@@ -41,12 +41,17 @@ class MockRouteProvider(RouteProvider):
             lat=midpoint.lat + 0.00015,
             lng=midpoint.lng + 0.00012,
         )
-        return RoutePath(points=[origin, midpoint, branch_hint, target])
+        safety_buffer = GeoPointDto(
+            lat=target.lat - 0.00010,
+            lng=target.lng - 0.00008,
+        )
+        return RoutePath(points=[origin, midpoint, branch_hint, safety_buffer, target])
 
 
 class OsmOsrmRouteProvider(RouteProvider):
     def __init__(
         self,
+        *,
         base_url: str = "https://router.project-osrm.org",
         profile: str = "driving",
         client: SupportsGet | None = None,
@@ -65,6 +70,7 @@ class OsmOsrmRouteProvider(RouteProvider):
                 "overview": "full",
                 "geometries": "geojson",
                 "steps": "true",
+                "continue_straight": "true",
             },
         )
         response.raise_for_status()
@@ -79,5 +85,4 @@ class OsmOsrmRouteProvider(RouteProvider):
         if not coordinates_list:
             raise RouteProviderError("OSRM returned empty geometry")
 
-        points = [GeoPointDto(lat=lat, lng=lng) for lng, lat in coordinates_list]
-        return RoutePath(points=points)
+        return RoutePath(points=[GeoPointDto(lat=lat, lng=lng) for lng, lat in coordinates_list])

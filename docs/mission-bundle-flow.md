@@ -26,6 +26,7 @@ Make mission artifacts a verifiable contract between planner-server and Android 
 - Both artifacts must exist.
 - Both artifacts must match the mission/version pair.
 - Checksum mismatch invalidates the bundle.
+- Expected checksums come from the authenticated plan response and artifact response headers.
 - Unknown major schema versions are rejected.
 - Partial download never replaces the previously valid bundle.
 

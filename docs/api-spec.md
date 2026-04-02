@@ -2,37 +2,27 @@
 
 ## Design Rules
 
-- Server plans missions and serves artifacts. It does not fly the aircraft.
-- Android remains safe without server round-trips during active flight.
-- Artifact endpoints are authenticated in the beta baseline.
-- All contracts are versioned and shared-schema driven.
+- Server plans routes, generates corridor artifacts, persists records, and serves authenticated downloads.
+- Android remains outside the server control loop once the bundle is downloaded and verified.
+- Artifact downloads use authenticated endpoints in beta. No signed URLs in this release.
+- `mission.kmz` and `mission_meta.json` are versioned artifacts with checksum headers.
 
 ## Base Path
 
 `/v1`
 
-## Authentication Model
+## Authentication
 
-Beta baseline:
+All endpoints except `/healthz`, `/v1/auth/login`, and `/v1/auth/refresh` require:
 
-- operator login with access token + refresh token
-- bearer auth for mission planning, artifact fetch, event upload, and telemetry upload
-- no signed URLs in the first beta
-
-## Common Headers
-
-- `Authorization: Bearer <token>`
-- `X-Request-Id: <uuid>`
-- `Content-Type: application/json`
-
-## Auth Endpoints
+`Authorization: Bearer <accessToken>`
 
 ### POST /v1/auth/login
 
 ```json
 {
-  "username": "operator-a",
-  "password": "secret"
+  "username": "pilot",
+  "password": "pilot-dev-only"
 }
 ```
 
@@ -40,8 +30,13 @@ Beta baseline:
 {
   "accessToken": "jwt-access",
   "refreshToken": "jwt-refresh",
-  "tokenType": "Bearer",
-  "expiresInSeconds": 900
+  "tokenType": "bearer",
+  "expiresInSeconds": 900,
+  "operator": {
+    "operatorId": "op_123",
+    "username": "pilot",
+    "displayName": "Test Pilot"
+  }
 }
 ```
 
@@ -53,18 +48,15 @@ Beta baseline:
 }
 ```
 
-```json
-{
-  "accessToken": "jwt-access-2",
-  "refreshToken": "jwt-refresh-2",
-  "tokenType": "Bearer",
-  "expiresInSeconds": 900
-}
-```
+Returns the same shape as login and rotates the refresh token.
+
+### GET /v1/auth/me
+
+Returns the authenticated operator profile.
 
 ## POST /v1/missions/plan
 
-Creates a mission plan, persists mission records, and returns artifact references.
+Creates a mission, persists mission and artifact records, writes artifacts to storage, and returns the mission bundle plus authenticated artifact references.
 
 ### Request
 
@@ -106,75 +98,142 @@ Creates a mission plan, persists mission records, and returns artifact reference
 }
 ```
 
-### 201 Response
+### 200 Response
 
 ```json
 {
   "missionId": "msn_20260402_001",
-  "bundleVersion": "1.0.0",
+  "bundleVersion": "1.1.0",
+  "missionBundle": {
+    "missionId": "msn_20260402_001",
+    "routeMode": "road_network_following",
+    "defaultAltitudeMeters": 35.0,
+    "defaultSpeedMetersPerSecond": 4.0,
+    "corridorSegments": [
+      {
+        "segmentId": "seg-001",
+        "polyline": [
+          { "lat": 25.03391, "lng": 121.56452 },
+          { "lat": 25.03441, "lng": 121.56501 }
+        ],
+        "halfWidthMeters": 8.0,
+        "suggestedAltitudeMeters": 35.0,
+        "suggestedSpeedMetersPerSecond": 4.0
+      }
+    ],
+    "verificationPoints": [
+      {
+        "verificationPointId": "vp-branch-001",
+        "location": { "lat": 25.03412, "lng": 121.56472 },
+        "expectedOptions": ["STRAIGHT"],
+        "timeoutMillis": 2500
+      }
+    ],
+    "inspectionViewpoints": [
+      {
+        "inspectionViewpointId": "vp-01",
+        "location": { "lat": 25.03441, "lng": 121.56501 },
+        "yawDegrees": 225.0,
+        "captureMode": "photo_burst",
+        "label": "north-east-facade"
+      }
+    ],
+    "failsafe": {
+      "onSemanticTimeout": "HOLD",
+      "onBatteryCritical": "RTH",
+      "onFrameDrop": "HOLD"
+    }
+  },
   "artifacts": {
-    "missionKmzPath": "/v1/missions/msn_20260402_001/artifacts/mission.kmz",
-    "missionMetaPath": "/v1/missions/msn_20260402_001/artifacts/mission_meta.json",
-    "checksum": "sha256:abc123",
-    "artifactVersion": 1
+    "missionKmz": {
+      "downloadUrl": "/v1/missions/msn_20260402_001/artifacts/mission.kmz",
+      "version": 1,
+      "checksumSha256": "abc123",
+      "contentType": "application/vnd.google-earth.kmz",
+      "sizeBytes": 2048,
+      "cacheControl": "private, max-age=300"
+    },
+    "missionMeta": {
+      "downloadUrl": "/v1/missions/msn_20260402_001/artifacts/mission_meta.json",
+      "version": 1,
+      "checksumSha256": "def456",
+      "contentType": "application/json",
+      "sizeBytes": 1536,
+      "cacheControl": "private, max-age=300"
+    }
   }
 }
 ```
-
-### Validation Rules
-
-- `routingMode` must be `road_network_following`
-- altitude and speed must remain inside the Android safety envelope
-- viewpoint list must be non-empty
 
 ## GET /v1/missions/{missionId}/artifacts/mission.kmz
 
 Returns the authenticated KMZ artifact.
 
-### 200 Response
+### Headers
 
 - `Content-Type: application/vnd.google-earth.kmz`
-- `Cache-Control` set according to artifact versioning policy
-- `ETag` or checksum header included
+- `Cache-Control: private, max-age=300`
+- `ETag: <checksum>`
+- `X-Artifact-Version: 1`
+- `X-Artifact-Checksum: <checksum>`
 
 ## GET /v1/missions/{missionId}/artifacts/mission_meta.json
 
-Returns the authenticated mission metadata artifact.
+Returns mission metadata JSON. The response body carries route/corridor metadata and artifact references; the response headers carry the authoritative checksum for the metadata file itself.
 
-### 200 Response
+### Response body
 
 ```json
 {
   "missionId": "msn_20260402_001",
-  "bundleVersion": "1.0.0",
-  "artifactVersion": 1,
-  "generatedAt": "2026-04-02T02:00:00Z",
-  "checksum": "sha256:abc123",
-  "segments": 12,
-  "verificationPoints": 3,
-  "inspectionViewpoints": 2,
+  "bundleVersion": "1.1.0",
+  "generatedAt": "2026-04-02T07:20:00Z",
+  "segments": 1,
+  "verificationPoints": 2,
+  "inspectionViewpoints": 1,
+  "corridorHalfWidthM": 8.0,
+  "suggestedAltitudeM": 35.0,
+  "suggestedSpeedMps": 4.0,
   "safetyDefaults": {
-    "semanticTimeout": "HOLD",
-    "batteryCritical": "RTH",
-    "frameDrop": "HOLD"
+    "onSemanticTimeout": "HOLD",
+    "onBatteryCritical": "RTH",
+    "onFrameDrop": "HOLD"
+  },
+  "artifacts": {
+    "missionKmz": {
+      "downloadUrl": "/v1/missions/msn_20260402_001/artifacts/mission.kmz",
+      "version": 1,
+      "checksumSha256": "abc123",
+      "contentType": "application/vnd.google-earth.kmz",
+      "sizeBytes": 2048,
+      "cacheControl": "private, max-age=300"
+    },
+    "missionMeta": {
+      "downloadUrl": "/v1/missions/msn_20260402_001/artifacts/mission_meta.json",
+      "version": 1,
+      "checksumSha256": "published-via-header",
+      "contentType": "application/json",
+      "sizeBytes": 1536,
+      "cacheControl": "private, max-age=300"
+    }
   }
 }
 ```
 
 ## POST /v1/flights/{flightId}/events
 
-Uploads discrete flight events. These never participate in real-time control.
+Uploads discrete flight events. These are persisted for replay and incident review only.
 
 ### Request
 
 ```json
 {
+  "missionId": "msn_20260402_001",
   "events": [
     {
       "eventId": "evt-001",
-      "missionId": "msn_20260402_001",
       "type": "VERIFICATION_POINT_REACHED",
-      "timestamp": "2026-04-02T02:10:31Z",
+      "timestamp": "2026-04-02T07:25:31Z",
       "payload": {
         "verificationPointId": "vp-branch-001"
       }
@@ -194,15 +253,16 @@ Uploads discrete flight events. These never participate in real-time control.
 
 ## POST /v1/flights/{flightId}/telemetry:batch
 
-Uploads telemetry for replay, incident review, and support tooling.
+Uploads telemetry batches for replay, support, and blackbox-style reconstruction.
 
 ### Request
 
 ```json
 {
+  "missionId": "msn_20260402_001",
   "samples": [
     {
-      "timestamp": "2026-04-02T02:10:30Z",
+      "timestamp": "2026-04-02T07:25:30Z",
       "lat": 25.03410,
       "lng": 121.56470,
       "altitudeM": 34.6,
@@ -219,13 +279,6 @@ Uploads telemetry for replay, incident review, and support tooling.
 
 ```json
 {
-  "accepted": 42
+  "accepted": 1
 }
 ```
-
-## Contract Stability
-
-- Breaking shared-schema changes require a version bump.
-- Android must reject unknown major versions.
-- Artifact checksum mismatch invalidates the bundle.
-- Additive optional fields are allowed.
