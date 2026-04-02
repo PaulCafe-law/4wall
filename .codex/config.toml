@@ -1,0 +1,31 @@
+[project]
+name = "4wall"
+branch_prefix = "codex/"
+review_required = true
+docs_first = true
+
+[git]
+auto_stage = false
+auto_commit = false
+push_after_ship = true
+allow_force_push = false
+allow_destructive_reset = false
+
+[safety]
+default_mode = "conservative"
+require_investigate_for_bugs = true
+hold_on_uncertainty = true
+server_in_flight_loop = false
+allow_virtual_stick_corridor_following = false
+
+[boundaries]
+stage0 = ["docs/", "AGENTS.md", ".codex/config.toml", ".agents/skills/gstack/review/"]
+sprint1 = ["android-app/", "shared-schemas/", "docs/"]
+sprint2 = ["planner-server/", "shared-schemas/", "docs/", ".github/"]
+sprint3 = ["android-app/", "planner-server/", "shared-schemas/", "docs/"]
+sprint4 = ["android-app/", "docs/"]
+
+[release]
+deploy_target = "Render"
+artifact_protection = "authenticated_endpoints"
+beta_channel = "internal"

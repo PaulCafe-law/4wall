@@ -1,10 +1,10 @@
 # Flight State Machine
 
-## Design Intent
+## Intent
 
-The reducer is the single source of truth for autonomous mission progression. Conservative behavior wins over mission progress.
+The reducer is the single source of truth for mission progression and safety escalation. Mission progress never outranks safety.
 
-## States
+## Core Stages
 
 - `IDLE`
 - `PRECHECK`
@@ -23,40 +23,63 @@ The reducer is the single source of truth for autonomous mission progression. Co
 - `COMPLETED`
 - `ABORTED`
 
-## Events
+## Inputs
+
+### Mission / Artifact
 
 - `MISSION_SELECTED`
 - `MISSION_BUNDLE_DOWNLOADED`
+- `MISSION_BUNDLE_VERIFIED`
+- `MISSION_BUNDLE_INVALID`
 - `MISSION_UPLOADED`
+
+### Flight Progress
+
 - `PREFLIGHT_OK`
-- `CORRIDOR_DEVIATION_WARN`
-- `CORRIDOR_DEVIATION_HARD`
 - `VERIFICATION_POINT_REACHED`
 - `INSPECTION_ZONE_REACHED`
+- `VIEW_ALIGN_OK`
+- `VIEW_ALIGN_TIMEOUT`
+
+### Safety / Health
+
+- `CORRIDOR_DEVIATION_WARN`
+- `CORRIDOR_DEVIATION_HARD`
 - `OBSTACLE_WARN`
 - `OBSTACLE_HARD_STOP`
+- `FRAME_STREAM_DROPPED`
+- `SEMANTIC_TIMEOUT`
+- `BATTERY_CRITICAL`
+- `GPS_LOST`
+- `DEVICE_HEALTH_BLOCKING`
+- `APP_HEALTH_BAD`
+
+### Operator
+
+- `USER_HOLD_REQUESTED`
+- `USER_RTH_REQUESTED`
+- `USER_TAKEOVER_REQUESTED`
+- `USER_RESUME_REQUESTED`
 - `BRANCH_VERIFY_LEFT`
 - `BRANCH_VERIFY_RIGHT`
 - `BRANCH_VERIFY_STRAIGHT`
 - `BRANCH_VERIFY_UNKNOWN`
 - `BRANCH_VERIFY_TIMEOUT`
-- `VIEW_ALIGN_OK`
-- `VIEW_ALIGN_TIMEOUT`
-- `USER_HOLD_REQUESTED`
-- `USER_RTH_REQUESTED`
-- `USER_TAKEOVER_REQUESTED`
-- `BATTERY_CRITICAL`
-- `GPS_LOST`
-- `APP_HEALTH_BAD`
 
-## Conservative Rules
+## Preflight Gate Policy
 
-- Semantic timeout -> `HOLD`
-- Frame stream dropped -> `HOLD`
-- Battery critical -> `RTH`
-- Manual override -> `MANUAL_OVERRIDE`
-- Hard corridor deviation -> `HOLD`
-- Hard obstacle -> `HOLD`
+`PREFLIGHT_OK` is emitted only when all required gates are green:
+
+- aircraft connected
+- RC connected
+- camera stream available
+- device storage above minimum threshold
+- device health has no blocking issue
+- fly-safe has no blocking issue
+- GPS status at or above threshold
+- mission bundle downloaded and verified
+
+The preflight policy is reducer-backed domain logic, not UI booleans.
 
 ## Primary Transition Diagram
 
@@ -66,7 +89,9 @@ IDLE
 
 PRECHECK
   -> MISSION_BUNDLE_DOWNLOADED -> PRECHECK
+  -> MISSION_BUNDLE_VERIFIED -> PRECHECK
   -> PREFLIGHT_OK -> MISSION_READY
+  -> MISSION_BUNDLE_INVALID -> PRECHECK
   -> USER_TAKEOVER_REQUESTED -> MANUAL_OVERRIDE
 
 MISSION_READY
@@ -74,30 +99,26 @@ MISSION_READY
   -> USER_HOLD_REQUESTED -> HOLD
 
 TAKEOFF
-  -> INSPECTION_ZONE_REACHED -> APPROACH_VIEWPOINT
-  -> VERIFICATION_POINT_REACHED -> BRANCH_VERIFY
-  -> CORRIDOR_DEVIATION_HARD -> HOLD
+  -> takeoff complete -> TRANSIT
   -> BATTERY_CRITICAL -> RTH
   -> USER_TAKEOVER_REQUESTED -> MANUAL_OVERRIDE
-  -> otherwise -> TRANSIT
 
 TRANSIT
   -> VERIFICATION_POINT_REACHED -> BRANCH_VERIFY
   -> INSPECTION_ZONE_REACHED -> APPROACH_VIEWPOINT
   -> OBSTACLE_WARN -> LOCAL_AVOID
-  -> OBSTACLE_HARD_STOP -> HOLD
-  -> CORRIDOR_DEVIATION_HARD -> HOLD
+  -> any uncertainty / blocker -> HOLD
   -> BATTERY_CRITICAL -> RTH
   -> USER_HOLD_REQUESTED -> HOLD
   -> USER_RTH_REQUESTED -> RTH
   -> USER_TAKEOVER_REQUESTED -> MANUAL_OVERRIDE
 
 BRANCH_VERIFY
-  -> BRANCH_VERIFY_LEFT -> TRANSIT
-  -> BRANCH_VERIFY_RIGHT -> TRANSIT
-  -> BRANCH_VERIFY_STRAIGHT -> TRANSIT
+  -> BRANCH_VERIFY_LEFT/RIGHT/STRAIGHT -> TRANSIT
   -> BRANCH_VERIFY_UNKNOWN -> HOLD
   -> BRANCH_VERIFY_TIMEOUT -> HOLD
+  -> FRAME_STREAM_DROPPED -> HOLD
+  -> SEMANTIC_TIMEOUT -> HOLD
 
 LOCAL_AVOID
   -> obstacle cleared -> TRANSIT
@@ -105,18 +126,22 @@ LOCAL_AVOID
   -> BATTERY_CRITICAL -> RTH
 
 APPROACH_VIEWPOINT
-  -> VIEW_ALIGN_OK -> CAPTURE
+  -> VIEW_ALIGN_OK -> VIEW_ALIGN
   -> VIEW_ALIGN_TIMEOUT -> HOLD
   -> USER_TAKEOVER_REQUESTED -> MANUAL_OVERRIDE
 
+VIEW_ALIGN
+  -> capture ready -> CAPTURE
+  -> uncertainty -> HOLD
+
 CAPTURE
   -> next viewpoint -> TRANSIT
-  -> no more viewpoints -> HOLD
+  -> no remaining viewpoint -> HOLD
 
 HOLD
+  -> USER_RESUME_REQUESTED -> previous autonomous stage if guards pass
   -> USER_RTH_REQUESTED -> RTH
   -> USER_TAKEOVER_REQUESTED -> MANUAL_OVERRIDE
-  -> operator resume allowed -> TRANSIT or APPROACH_VIEWPOINT
 
 RTH
   -> arrival -> LANDING
@@ -129,46 +154,67 @@ MANUAL_OVERRIDE
   -> operator aborts -> ABORTED
 ```
 
-## Transition Guard Principles
+## Conservative Rules
 
-- Reducer never emits movement intent unless mission, aircraft, and safety preconditions are satisfied
-- Guards own resumability checks from `HOLD`
-- Branch verification can only resume to the mission branch that is explicitly confirmed
-- `RTH` is terminal for autonomy in demo mode
+- Semantic uncertainty or timeout -> `HOLD`
+- Frame stream dropped during confirm or alignment -> `HOLD`
+- Hard obstacle -> `HOLD`
+- Hard corridor deviation -> `HOLD`
+- GPS lost -> `HOLD`
+- Battery critical -> `RTH`
+- Manual override request -> `MANUAL_OVERRIDE`
 
-## Output Policy
+## HOLD Semantics
 
-Reducer outputs are limited to:
+HOLD is the default uncertainty sink. Once in HOLD, the product only allows:
 
-- mission execution commands
-- virtual stick micro-adjust commands
-- UI intents
-- safety escalation intents
+- `Resume`
+- `RTH`
+- `Takeover`
 
-Local avoider outputs are limited to:
+The UI must always show:
 
-- `SLOW_DOWN`
-- `HOLD`
-- `NUDGE_LEFT`
-- `NUDGE_RIGHT`
+- why the aircraft stopped
+- what the operator can do next
+
+## Virtual Stick Guardrails
+
+Virtual stick is only legal in:
+
+- `LOCAL_AVOID`
+- `APPROACH_VIEWPOINT`
+- `VIEW_ALIGN`
+- explicit operator-approved micro-adjust window
+
+It is forbidden in:
+
+- `TAKEOFF`
+- `TRANSIT`
+- `RTH`
+- `LANDING`
 
 ## Failure Modes
 
-| Trigger | Detection | State Impact | User Impact |
+| Trigger | Detection | State Impact | Operator Impact |
 |---|---|---|---|
-| Semantic timeout | mobile model deadline exceeded | `HOLD` | operator sees branch confirm timeout |
-| Frame drop | camera stream health bad | `HOLD` | operator sees sensor degraded |
-| GPS lost | telemetry / DJI state | `HOLD` then possible `RTH` inhibit notice | operator told autonomy degraded |
-| Battery critical | telemetry threshold | `RTH` | operator sees forced return |
-| App health bad | watchdog | `HOLD` or `ABORTED` based on phase | operator told app unsafe |
+| Semantic timeout | model deadline exceeded | `HOLD` | sees timeout + next step |
+| Frame stream dropped | camera stream health bad | `HOLD` | sees sensor degraded |
+| GPS lost | DJI state / telemetry | `HOLD` | sees navigation degraded |
+| Battery critical | telemetry threshold | `RTH` | sees forced return |
+| App health bad | watchdog | `HOLD` or `ABORTED` | sees app unsafe |
+| Device health blocking | DJI diagnostic | preflight blocked or `HOLD` | sees specific blocker |
 
-## Reducer ASCII Test Targets
+## Test Targets
 
 ```text
 Happy path:
 IDLE -> PRECHECK -> MISSION_READY -> TAKEOFF -> TRANSIT
 -> BRANCH_VERIFY -> TRANSIT -> APPROACH_VIEWPOINT -> VIEW_ALIGN
 -> CAPTURE -> HOLD -> RTH -> LANDING -> COMPLETED
+
+Artifact gate:
+IDLE -> PRECHECK -> MISSION_BUNDLE_INVALID -> PRECHECK
+TAKEOFF not allowed
 
 Conservative path:
 TRANSIT -> BRANCH_VERIFY -> BRANCH_VERIFY_TIMEOUT -> HOLD
