@@ -4,40 +4,70 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.yourorg.buildingdrone.data.MissionBundle
+import com.yourorg.buildingdrone.domain.safety.PreflightEvaluation
+import com.yourorg.buildingdrone.domain.safety.PreflightGateId
 import com.yourorg.buildingdrone.domain.statemachine.FlightEventType
 import com.yourorg.buildingdrone.domain.statemachine.FlightReducer
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
 import com.yourorg.buildingdrone.domain.statemachine.FlightState
 import com.yourorg.buildingdrone.domain.statemachine.TransitionContext
+import com.yourorg.buildingdrone.domain.statemachine.toDisplayLabel
 import com.yourorg.buildingdrone.feature.branchverify.BranchVerifyUiState
 import com.yourorg.buildingdrone.feature.emergency.EmergencyMode
 import com.yourorg.buildingdrone.feature.emergency.EmergencyUiState
 import com.yourorg.buildingdrone.feature.inspection.InspectionCaptureUiState
 import com.yourorg.buildingdrone.feature.mission.MissionSetupUiState
-import com.yourorg.buildingdrone.feature.preflight.PreflightChecklistItem
+import com.yourorg.buildingdrone.feature.preflight.PreflightChecklistItem as UiPreflightChecklistItem
 import com.yourorg.buildingdrone.feature.preflight.PreflightUiState
 import com.yourorg.buildingdrone.feature.transit.TelemetryField
 import com.yourorg.buildingdrone.feature.transit.TransitUiState
 import com.yourorg.buildingdrone.ui.ScreenDataState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 enum class ConsoleScreen(val label: String) {
     MISSION_SETUP("任務設定"),
-    PREFLIGHT("飛前檢查"),
+    PREFLIGHT("Preflight"),
     IN_FLIGHT("飛行中"),
-    BRANCH_CONFIRM("岔路確認"),
-    INSPECTION("巡檢拍攝"),
-    EMERGENCY("緊急狀態")
+    BRANCH_CONFIRM("分支確認"),
+    INSPECTION("檢視點拍攝"),
+    EMERGENCY("緊急處置")
 }
 
+sealed interface MissionLoadActionResult {
+    data class Success(
+        val bundle: MissionBundle,
+        val statusMessage: String,
+        val authStatus: String? = null
+    ) : MissionLoadActionResult
+
+    data class Failure(
+        val message: String
+    ) : MissionLoadActionResult
+}
+
+data class NetworkSyncStatus(
+    val authValid: Boolean = true,
+    val pendingEventUploads: Int = 0,
+    val pendingTelemetryUploads: Int = 0,
+    val statusNote: String? = null
+)
+
 class DemoMissionCoordinator(
-    private val reducer: FlightReducer
+    private val reducer: FlightReducer,
+    private val runtimeMode: RuntimeMode = RuntimeMode.DEMO,
+    private val scope: CoroutineScope? = null,
+    private val missionLoader: (suspend () -> MissionLoadActionResult)? = null,
+    private val preflightEvaluator: (() -> PreflightEvaluation)? = null,
+    private val syncReporter: (suspend (FlightState) -> NetworkSyncStatus)? = null,
+    private val telemetryReporter: (suspend (TransitUiState) -> NetworkSyncStatus)? = null
 ) {
     val currentStageLabel: String
         get() = flightState.stage.toDisplayLabel()
 
     var missionBundle by mutableStateOf<MissionBundle?>(null)
         private set
-    var flightState by mutableStateOf(FlightState())
+    var flightState by mutableStateOf(FlightState(demoMode = runtimeMode == RuntimeMode.DEMO))
         private set
     var activeScreen by mutableStateOf(ConsoleScreen.MISSION_SETUP)
         private set
@@ -45,24 +75,18 @@ class DemoMissionCoordinator(
     var missionSetup by mutableStateOf(
         MissionSetupUiState(
             bundleLoaded = false,
-            demoMode = true,
-            status = ScreenDataState.EMPTY,
-            missionLabel = "尚未載入任務",
-            artifactStatus = "尚未附加模擬任務包"
+            demoMode = runtimeMode == RuntimeMode.DEMO
         )
     )
         private set
 
     var preflight by mutableStateOf(
         PreflightUiState(
-            blockers = listOf("尚未載入任務"),
+            blockers = listOf("尚未建立 preflight 狀態"),
             readyToUpload = false,
-            checklist = listOf(
-                PreflightChecklistItem("飛機連線", false, "等待載入展示任務"),
-                PreflightChecklistItem("任務包", false, "尚未載入"),
-                PreflightChecklistItem("安全策略", true, "已啟用保守預設")
-            ),
-            warning = "目前為展示模式"
+            checklist = emptyList(),
+            warning = "先載入 mission bundle，再檢查飛安 gate。",
+            modeLabel = runtimeMode.name.lowercase()
         )
     )
         private set
@@ -72,56 +96,68 @@ class DemoMissionCoordinator(
             stateLabel = "待命",
             emergencyVisible = true,
             status = ScreenDataState.EMPTY,
-            telemetry = defaultTelemetry("等待任務")
+            telemetry = defaultTelemetry("尚未起飛")
         )
     )
         private set
 
     var branchVerify by mutableStateOf(
         BranchVerifyUiState(
-            availableOptions = listOf("左轉", "右轉", "直行"),
-            status = ScreenDataState.EMPTY
+            availableOptions = listOf("LEFT", "RIGHT", "STRAIGHT")
         )
     )
         private set
 
     var inspection by mutableStateOf(
         InspectionCaptureUiState(
-            viewpointLabel = "東北側立面",
-            captureStatus = ScreenDataState.EMPTY
+            viewpointLabel = "等待進入 inspection viewpoint"
         )
     )
         private set
 
     var emergency by mutableStateOf(
         EmergencyUiState(
-            reason = "目前沒有啟用中的保護動作",
+            reason = "目前沒有 blocking emergency。",
             mode = EmergencyMode.INFO,
-            nextStep = "先載入任務，再開始展示流程"
+            nextStep = "載入任務後開始 preflight。"
         )
     )
         private set
 
-    fun attachBundle(bundle: MissionBundle?) {
+    private var latestPreflightEvaluation: PreflightEvaluation? = null
+
+    fun attachBundle(bundle: MissionBundle?, statusMessage: String? = null, authStatus: String? = missionSetup.authStatus) {
         missionBundle = bundle
         missionSetup = missionSetup.copy(
             bundleLoaded = bundle != null,
-            status = if (bundle == null) ScreenDataState.EMPTY else ScreenDataState.PARTIAL,
-            missionLabel = bundle?.missionId ?: "尚未載入任務",
-            artifactStatus = if (bundle == null) {
-                "尚未附加模擬任務包"
-            } else {
-                "已附加任務中繼資料與本地展示任務包"
+            status = when {
+                bundle == null -> ScreenDataState.EMPTY
+                bundle.isVerified() -> ScreenDataState.SUCCESS
+                else -> ScreenDataState.PARTIAL
+            },
+            missionLabel = bundle?.missionId ?: "尚未下載任務",
+            artifactStatus = when {
+                bundle == null -> "mission.kmz / mission_meta.json 尚未可用"
+                bundle.isVerified() -> "mission.kmz / mission_meta.json 已驗證"
+                else -> "mission bundle 未通過驗證"
             },
             summary = bundle?.let {
                 listOf(
-                    "${it.corridorSegments.size} 個走廊區段",
-                    "${it.verificationPoints.size} 個驗證點",
-                    "${it.inspectionViewpoints.size} 個巡檢視點",
-                    "安全策略：${failsafeActionLabel(it.failsafe.onSemanticTimeout)}/${failsafeActionLabel(it.failsafe.onBatteryCritical)}"
+                    "走廊段數：${it.corridorSegments.size}",
+                    "分支驗證點：${it.verificationPoints.size}",
+                    "Inspection viewpoints：${it.inspectionViewpoints.size}",
+                    "預設高度 / 速度：${it.defaultAltitudeMeters}m / ${it.defaultSpeedMetersPerSecond}mps",
+                    "Failsafe：${it.failsafe.onSemanticTimeout} / ${it.failsafe.onBatteryCritical}"
                 )
-            } ?: emptyList()
+            } ?: emptyList(),
+            warning = statusMessage,
+            authStatus = authStatus,
+            loadActionLabel = if (runtimeMode == RuntimeMode.DEMO) "載入 Demo 任務" else "登入並下載任務"
         )
+    }
+
+    fun updateAuthStatus(message: String?) {
+        missionSetup = missionSetup.copy(authStatus = message)
     }
 
     fun selectScreen(screen: ConsoleScreen) {
@@ -132,72 +168,128 @@ class DemoMissionCoordinator(
         if (missionBundle == null) {
             missionSetup = missionSetup.copy(
                 status = ScreenDataState.ERROR,
-                warning = "請先載入任務包，再開啟飛前檢查"
+                warning = "尚未載入 mission bundle，無法進入 preflight。"
             )
             return
         }
         activeScreen = ConsoleScreen.PREFLIGHT
+        if (runtimeMode == RuntimeMode.DEMO) {
+            presentDemoPreflight()
+            return
+        }
+        val evaluation = preflightEvaluator?.invoke()
+        if (evaluation != null) {
+            applyPreflightEvaluation(evaluation)
+        }
     }
 
     fun loadMockMission() {
+        if (missionLoader != null) {
+            val launchScope = scope
+            if (launchScope == null) {
+                missionSetup = missionSetup.copy(
+                    status = ScreenDataState.ERROR,
+                    warning = "Mission loader 尚未綁定 coroutine scope。"
+                )
+                return
+            }
+            missionSetup = missionSetup.copy(
+                status = ScreenDataState.LOADING,
+                warning = "正在向 planner-server 下載 mission bundle…"
+            )
+            launchScope.launch {
+                when (val result = missionLoader.invoke()) {
+                    is MissionLoadActionResult.Success -> {
+                        attachBundle(result.bundle, result.statusMessage, result.authStatus)
+                        loadPreparedMission()
+                    }
+
+                    is MissionLoadActionResult.Failure -> {
+                        missionSetup = missionSetup.copy(
+                            status = ScreenDataState.ERROR,
+                            warning = result.message
+                        )
+                    }
+                }
+            }
+            return
+        }
+
         if (missionBundle == null) {
             missionSetup = missionSetup.copy(
                 status = ScreenDataState.ERROR,
-                warning = "本地容器中找不到模擬任務包"
+                warning = "目前沒有可載入的本地任務。"
             )
             return
         }
+        loadPreparedMission()
+    }
+
+    private fun loadPreparedMission() {
         applyEvent(FlightEventType.MISSION_SELECTED)
         applyEvent(FlightEventType.MISSION_BUNDLE_DOWNLOADED, TransitionContext(missionBundleLoaded = true))
         applyEvent(
             FlightEventType.MISSION_BUNDLE_VERIFIED,
             TransitionContext(
                 missionBundleLoaded = true,
-                missionBundleVerified = true
+                missionBundleVerified = missionBundle?.isVerified() == true
             )
         )
         missionSetup = missionSetup.copy(
-            bundleLoaded = true,
-            status = ScreenDataState.SUCCESS,
-            warning = "模擬任務已在本機載入，伺服器不在飛行控制迴圈內。"
+            bundleLoaded = missionBundle != null,
+            status = if (missionBundle?.isVerified() == true) ScreenDataState.SUCCESS else ScreenDataState.ERROR,
+            warning = if (missionBundle?.isVerified() == true) {
+                "Mission bundle 已驗證，可進入 preflight。"
+            } else {
+                "Mission bundle 驗證失敗，禁止起飛。"
+            }
         )
-        preflight = preflight.copy(
-            blockers = listOf("起飛前請先上傳任務"),
-            readyToUpload = false,
-            checklist = listOf(
-                PreflightChecklistItem("飛機連線", true, "已接上展示用飛機"),
-                PreflightChecklistItem("任務包", true, "已載入模擬任務"),
-                PreflightChecklistItem("安全策略", true, "已啟用懸停 / 返航保守預設")
-            ),
-            warning = "飛行關鍵迴圈仍留在裝置端"
-        )
-        activeScreen = ConsoleScreen.PREFLIGHT
+        if (missionBundle?.isVerified() == true) {
+            openPreflightChecklist()
+        }
     }
 
     fun approvePreflight() {
         if (!isInStage(FlightStage.PRECHECK)) {
             preflight = preflight.copy(
-                blockers = listOf("請先在任務設定頁載入任務"),
+                blockers = listOf("Flight stage 不是 PRECHECK"),
                 readyToUpload = false,
-                warning = "尚未載入任務前，不能通過飛前檢查。"
+                warning = "只有在 PRECHECK 階段才能核准 preflight。"
             )
             activeScreen = ConsoleScreen.PREFLIGHT
             return
         }
-        applyEvent(FlightEventType.PREFLIGHT_OK, TransitionContext(missionBundleLoaded = true))
+
+        val evaluation = latestPreflightEvaluation
+        if (evaluation != null && !evaluation.canTakeoff) {
+            applyPreflightEvaluation(evaluation)
+            preflight = preflight.copy(
+                warning = "仍有 blocking gate，禁止 TAKEOFF。"
+            )
+            return
+        }
+
+        applyEvent(
+            FlightEventType.PREFLIGHT_OK,
+            TransitionContext(
+                missionBundleLoaded = true,
+                missionBundleVerified = missionBundle?.isVerified() == true,
+                preflightReady = true
+            )
+        )
         preflight = preflight.copy(
             blockers = emptyList(),
             readyToUpload = true,
-            warning = "可以上傳航點任務"
+            warning = "Preflight 通過，可以上傳 mission 到 aircraft。"
         )
     }
 
     fun uploadAndStartMission() {
         if (!isInStage(FlightStage.MISSION_READY) || !preflight.readyToUpload) {
             preflight = preflight.copy(
-                blockers = listOf("上傳前請先完成飛前檢查"),
+                blockers = listOf("尚未完成 preflight 或 mission bundle 驗證"),
                 readyToUpload = false,
-                warning = "在檢查表通過前，禁止上傳任務。"
+                warning = "目前不允許上傳 mission。"
             )
             activeScreen = ConsoleScreen.PREFLIGHT
             return
@@ -206,6 +298,7 @@ class DemoMissionCoordinator(
             FlightEventType.MISSION_UPLOADED,
             TransitionContext(
                 missionBundleLoaded = true,
+                missionBundleVerified = missionBundle?.isVerified() == true,
                 missionUploaded = true,
                 takeoffComplete = true
             )
@@ -216,17 +309,18 @@ class DemoMissionCoordinator(
     fun replayTelemetry() {
         transit = transit.copy(
             status = ScreenDataState.PARTIAL,
-            progressLabel = "展示回放進行中",
+            progressLabel = "重播遙測中",
             telemetry = listOf(
-                TelemetryField("經緯度", "25.03410, 121.56470"),
+                TelemetryField("位置", "25.03410, 121.56470"),
                 TelemetryField("高度", "34.6 m"),
                 TelemetryField("速度", "3.8 m/s"),
                 TelemetryField("電量", "78%"),
-                TelemetryField("偏移", "1.2 m")
+                TelemetryField("走廊偏移", "1.2 m")
             ),
-            partialWarning = "目前顯示的是模擬遙測，不是真機狀態",
-            nextStep = "可觸發岔路確認或巡檢進場"
+            partialWarning = "此資料為本地重播，用於檢查 upload backlog 與 UI 判讀。",
+            nextStep = "確認 telemetry backlog 狀態，再回到飛行主畫面。"
         )
+        publishTelemetry()
         activeScreen = ConsoleScreen.IN_FLIGHT
     }
 
@@ -234,7 +328,7 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.TRANSIT, FlightStage.LOCAL_AVOID)) {
             transit = transit.copy(
                 status = ScreenDataState.ERROR,
-                partialWarning = "只有在飛行中巡航階段才能觸發岔路確認。"
+                partialWarning = "目前 stage 不允許進入 branch confirm。"
             )
             activeScreen = ConsoleScreen.IN_FLIGHT
             return
@@ -242,9 +336,9 @@ class DemoMissionCoordinator(
         applyEvent(FlightEventType.VERIFICATION_POINT_REACHED, TransitionContext(missionUploaded = true))
         branchVerify = branchVerify.copy(
             status = ScreenDataState.PARTIAL,
-            confidenceLabel = "信心值 0.74",
+            confidenceLabel = "模型信心：0.74",
             countdownSeconds = 3,
-            reason = "前方道路分岔，請確認允許的前進方向。"
+            reason = "模型需要操作員確認道路分支方向。"
         )
         activeScreen = ConsoleScreen.BRANCH_CONFIRM
     }
@@ -253,7 +347,7 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.BRANCH_VERIFY)) {
             branchVerify = branchVerify.copy(
                 status = ScreenDataState.ERROR,
-                reason = "只有在岔路驗證啟動時才能確認方向。"
+                reason = "目前不在 branch verify 階段。"
             )
             activeScreen = ConsoleScreen.BRANCH_CONFIRM
             return
@@ -266,9 +360,9 @@ class DemoMissionCoordinator(
         applyEvent(event, TransitionContext(missionUploaded = true))
         branchVerify = branchVerify.copy(
             status = ScreenDataState.SUCCESS,
-            confidenceLabel = "已確認：${branchOptionLabel(option)}",
+            confidenceLabel = "操作員已確認：$option",
             countdownSeconds = 0,
-            reason = "已依照確認方向恢復任務"
+            reason = "分支確認完成，恢復主航段。"
         )
         activeScreen = ConsoleScreen.IN_FLIGHT
     }
@@ -277,7 +371,7 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.BRANCH_VERIFY)) {
             branchVerify = branchVerify.copy(
                 status = ScreenDataState.ERROR,
-                reason = "只有在岔路驗證期間才能觸發逾時。"
+                reason = "目前不在 branch verify 階段。"
             )
             activeScreen = ConsoleScreen.BRANCH_CONFIRM
             return
@@ -287,7 +381,7 @@ class DemoMissionCoordinator(
             status = ScreenDataState.ERROR,
             confidenceLabel = "已逾時",
             countdownSeconds = 0,
-            reason = "語意判定逾時，飛機已懸停。"
+            reason = "Branch confirm timeout，系統已進入 HOLD。"
         )
         activeScreen = ConsoleScreen.EMERGENCY
     }
@@ -296,7 +390,7 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.TRANSIT, FlightStage.LOCAL_AVOID)) {
             transit = transit.copy(
                 status = ScreenDataState.ERROR,
-                partialWarning = "只有在走廊巡航期間才能觸發障礙警示。"
+                partialWarning = "目前 stage 不允許觸發 obstacle warning。"
             )
             activeScreen = ConsoleScreen.IN_FLIGHT
             return
@@ -304,9 +398,9 @@ class DemoMissionCoordinator(
         applyEvent(FlightEventType.OBSTACLE_WARN, TransitionContext(missionUploaded = true))
         transit = transit.copy(
             status = ScreenDataState.PARTIAL,
-            riskReason = "附近有障礙物。本地避障只允許減速或小幅偏移。",
-            nextStep = "清除障礙，或升級為懸停",
-            partialWarning = "目前啟用受限自主模式"
+            riskReason = "Local avoider 建議先減速，必要時 HOLD。",
+            nextStep = "確認障礙是否解除，或直接切換 HOLD / RTH / TAKEOVER。",
+            partialWarning = "此階段只允許低速短時本地微調，不允許以 virtual stick 取代主航段。"
         )
     }
 
@@ -314,7 +408,7 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.TRANSIT, FlightStage.LOCAL_AVOID, FlightStage.BRANCH_VERIFY)) {
             transit = transit.copy(
                 status = ScreenDataState.ERROR,
-                partialWarning = "只有在進行中的飛行階段才能觸發硬停。"
+                partialWarning = "目前 stage 不允許觸發 hard stop。"
             )
             activeScreen = ConsoleScreen.IN_FLIGHT
             return
@@ -327,17 +421,20 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.LOCAL_AVOID)) {
             transit = transit.copy(
                 status = ScreenDataState.ERROR,
-                partialWarning = "目前沒有待清除的障礙事件。"
+                partialWarning = "目前不在 LOCAL_AVOID，無法標記 obstacle cleared。"
             )
             activeScreen = ConsoleScreen.IN_FLIGHT
             return
         }
-        applyEvent(FlightEventType.OBSTACLE_WARN, TransitionContext(missionUploaded = true, obstacleCleared = true))
+        applyEvent(
+            FlightEventType.OBSTACLE_WARN,
+            TransitionContext(missionUploaded = true, obstacleCleared = true)
+        )
         transit = transit.copy(
             status = ScreenDataState.SUCCESS,
             riskReason = null,
             partialWarning = null,
-            nextStep = "繼續任務"
+            nextStep = "障礙已解除，恢復主航段。"
         )
         activeScreen = ConsoleScreen.IN_FLIGHT
     }
@@ -346,7 +443,7 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.TRANSIT, FlightStage.LOCAL_AVOID)) {
             transit = transit.copy(
                 status = ScreenDataState.ERROR,
-                partialWarning = "只有在巡航階段才能進入巡檢進場。"
+                partialWarning = "目前 stage 不允許進入 inspection approach。"
             )
             activeScreen = ConsoleScreen.IN_FLIGHT
             return
@@ -354,9 +451,9 @@ class DemoMissionCoordinator(
         applyEvent(FlightEventType.INSPECTION_ZONE_REACHED, TransitionContext(missionUploaded = true))
         inspection = inspection.copy(
             captureStatus = ScreenDataState.PARTIAL,
-            alignmentStatus = "正在接近視點",
-            framingHints = listOf("將立面邊緣置中", "保持 12 公尺觀測距離", "偏航 225 度"),
-            reason = "僅允許低速進場",
+            alignmentStatus = "已接近 viewpoint，等待對齊",
+            framingHints = listOf("建築外牆置中", "距離外牆約 12m", "Yaw 約 225 度"),
+            reason = "進入 inspection approach。",
             captureEnabled = false
         )
         activeScreen = ConsoleScreen.INSPECTION
@@ -366,7 +463,7 @@ class DemoMissionCoordinator(
         if (!isInStage(FlightStage.APPROACH_VIEWPOINT, FlightStage.VIEW_ALIGN)) {
             inspection = inspection.copy(
                 captureStatus = ScreenDataState.ERROR,
-                reason = "請先進入巡檢進場階段，再進行對位。",
+                reason = "目前不在可對齊畫面階段。",
                 captureEnabled = false
             )
             activeScreen = ConsoleScreen.INSPECTION
@@ -375,8 +472,8 @@ class DemoMissionCoordinator(
         applyEvent(FlightEventType.VIEW_ALIGN_OK, TransitionContext(missionUploaded = true))
         inspection = inspection.copy(
             captureStatus = ScreenDataState.PARTIAL,
-            alignmentStatus = "畫面已對齊，可以拍攝",
-            reason = "已達成穩定懸停",
+            alignmentStatus = "視角已對齊，可以拍攝",
+            reason = "允許開始 capture。",
             captureEnabled = flightState.stage == FlightStage.VIEW_ALIGN
         )
     }
@@ -385,19 +482,18 @@ class DemoMissionCoordinator(
         if (flightState.stage != FlightStage.VIEW_ALIGN) {
             inspection = inspection.copy(
                 captureStatus = ScreenDataState.PARTIAL,
-                reason = "拍攝前請先完成視角對位",
+                reason = "必須先完成 Align View 才能 Capture。",
                 captureEnabled = false
             )
             return
         }
-        val stateAfterCapture = if (flightState.stage == FlightStage.VIEW_ALIGN) {
-            reducer.reduce(flightState, FlightEventType.VIEW_ALIGN_OK, TransitionContext(missionUploaded = true))
-        } else {
-            flightState
-        }
-        flightState = stateAfterCapture
+        val captureStage = reducer.reduce(
+            flightState,
+            FlightEventType.VIEW_ALIGN_OK,
+            TransitionContext(missionUploaded = true)
+        )
         flightState = reducer.reduce(
-            stateAfterCapture,
+            captureStage,
             FlightEventType.VIEW_ALIGN_OK,
             TransitionContext(
                 missionUploaded = true,
@@ -408,10 +504,11 @@ class DemoMissionCoordinator(
         inspection = inspection.copy(
             captureStatus = ScreenDataState.SUCCESS,
             alignmentStatus = "拍攝完成",
-            reason = "飛機已切換為懸停",
+            reason = "等待操作員決定 Resume / RTH / Takeover。",
             captureEnabled = false
         )
         syncFromFlightState()
+        publishFlightState()
         activeScreen = ConsoleScreen.EMERGENCY
     }
 
@@ -447,12 +544,104 @@ class DemoMissionCoordinator(
         activeScreen = ConsoleScreen.EMERGENCY
     }
 
+    private fun presentDemoPreflight() {
+        latestPreflightEvaluation = null
+        preflight = preflight.copy(
+            blockers = listOf("等待操作員核准"),
+            readyToUpload = false,
+            checklist = listOf(
+                UiPreflightChecklistItem("Aircraft / RC 連線", true, "Demo mode 預設已通過"),
+                UiPreflightChecklistItem("Mission bundle 驗證", missionBundle?.isVerified() == true, "已使用本地 verified bundle"),
+                UiPreflightChecklistItem("Device storage", true, "Demo mode 儲存空間充足")
+            ),
+            warning = "Demo mode 仍需操作員手動核准 preflight。",
+            modeLabel = "demo"
+        )
+    }
+
+    private fun applyPreflightEvaluation(evaluation: PreflightEvaluation) {
+        latestPreflightEvaluation = evaluation
+        preflight = preflight.copy(
+            blockers = evaluation.blockers.map { it.detail },
+            readyToUpload = evaluation.canTakeoff,
+            checklist = evaluation.gates.map { gate ->
+                UiPreflightChecklistItem(
+                    label = gateLabel(gate.gateId),
+                    passed = gate.passed,
+                    detail = gate.detail
+                )
+            },
+            warning = if (evaluation.canTakeoff) {
+                "所有 gate 通過，可以核准 preflight。"
+            } else {
+                "仍有 blocking gate，禁止 TAKEOFF。"
+            },
+            modeLabel = runtimeMode.name.lowercase()
+        )
+    }
+
     private fun applyEvent(event: FlightEventType, context: TransitionContext = TransitionContext()) {
         flightState = reducer.reduce(flightState, event, context)
+        syncFromFlightState()
+        publishFlightState()
+    }
+
+    private fun publishFlightState() {
+        val reporter = syncReporter ?: return
+        val launchScope = scope ?: return
+        val snapshot = flightState
+        if (snapshot.lastEvent in setOf(
+                FlightEventType.AUTH_EXPIRED,
+                FlightEventType.AUTH_REFRESHED,
+                FlightEventType.UPLOAD_BACKLOG_UPDATED
+            )
+        ) {
+            return
+        }
+        launchScope.launch {
+            applyNetworkSyncStatus(reporter.invoke(snapshot))
+        }
+    }
+
+    private fun publishTelemetry() {
+        val reporter = telemetryReporter ?: return
+        val launchScope = scope ?: return
+        val transitSnapshot = transit
+        launchScope.launch {
+            applyNetworkSyncStatus(reporter.invoke(transitSnapshot))
+        }
+    }
+
+    private fun applyNetworkSyncStatus(status: NetworkSyncStatus) {
+        val authEvent = if (status.authValid) FlightEventType.AUTH_REFRESHED else FlightEventType.AUTH_EXPIRED
+        flightState = reducer.reduce(
+            flightState,
+            authEvent,
+            TransitionContext(
+                authValid = status.authValid,
+                pendingEventUploads = status.pendingEventUploads,
+                pendingTelemetryUploads = status.pendingTelemetryUploads
+            )
+        )
+        flightState = reducer.reduce(
+            flightState,
+            FlightEventType.UPLOAD_BACKLOG_UPDATED,
+            TransitionContext(
+                authValid = status.authValid,
+                pendingEventUploads = status.pendingEventUploads,
+                pendingTelemetryUploads = status.pendingTelemetryUploads
+            )
+        ).copy(statusNote = status.statusNote ?: flightState.statusNote)
         syncFromFlightState()
     }
 
     private fun syncFromFlightState() {
+        val backlogText = when {
+            flightState.pendingEventUploads + flightState.pendingTelemetryUploads == 0 -> null
+            else -> "待補送 uploads：events ${flightState.pendingEventUploads} / telemetry ${flightState.pendingTelemetryUploads}"
+        }
+        val uploadNote = flightState.statusNote
+
         transit = transit.copy(
             stateLabel = flightState.stage.toDisplayLabel(),
             emergencyVisible = true,
@@ -468,150 +657,139 @@ class DemoMissionCoordinator(
             isCompleted = flightState.stage == FlightStage.COMPLETED,
             progressLabel = when (flightState.stage) {
                 FlightStage.IDLE -> "等待任務"
-                FlightStage.TRANSIT -> "任務走廊巡航中"
-                FlightStage.BRANCH_VERIFY -> "等待岔路確認"
-                FlightStage.LOCAL_AVOID -> "本地避障中"
-                FlightStage.APPROACH_VIEWPOINT -> "正在接近巡檢視點"
-                FlightStage.VIEW_ALIGN -> "正在對齊視角"
-                FlightStage.CAPTURE -> "拍攝流程進行中"
-                FlightStage.HOLD -> "飛機已懸停"
-                FlightStage.RTH -> "正在返航"
-                FlightStage.LANDING -> "正在降落"
+                FlightStage.TRANSIT -> "沿道路走廊前進中"
+                FlightStage.BRANCH_VERIFY -> "等待 branch confirm"
+                FlightStage.LOCAL_AVOID -> "執行低速本地避讓"
+                FlightStage.APPROACH_VIEWPOINT -> "接近 inspection viewpoint"
+                FlightStage.VIEW_ALIGN -> "等待視角對齊"
+                FlightStage.CAPTURE -> "執行拍攝"
+                FlightStage.HOLD -> "已進入 HOLD"
+                FlightStage.RTH -> "執行 Return-To-Home"
+                FlightStage.LANDING -> "降落中"
                 FlightStage.COMPLETED -> "任務完成"
-                FlightStage.MANUAL_OVERRIDE -> "操作員已接管"
-                FlightStage.ABORTED -> "任務已中止"
-                else -> "任務已就緒"
+                FlightStage.MANUAL_OVERRIDE -> "人工接管中"
+                FlightStage.ABORTED -> "任務中止"
+                else -> "任務進行中"
             },
             telemetry = defaultTelemetry(flightState.stage.toDisplayLabel()),
             riskReason = flightState.holdReason,
             nextStep = when (flightState.stage) {
-                FlightStage.IDLE -> "載入任務包"
-                FlightStage.PRECHECK -> "完成飛前檢查"
-                FlightStage.MISSION_READY -> "上傳任務"
-                FlightStage.TRANSIT -> "監看走廊狀態與事件觸發"
-                FlightStage.HOLD -> "選擇返航或人工接管"
-                FlightStage.RTH -> "等待降落完成"
-                FlightStage.MANUAL_OVERRIDE -> "由飛手手動操控"
-                FlightStage.COMPLETED -> "重設下一輪展示"
-                FlightStage.ABORTED -> "必要時重新載入任務"
-                else -> "繼續流程"
+                FlightStage.IDLE -> "先載入 mission bundle。"
+                FlightStage.PRECHECK -> "檢查 preflight gates。"
+                FlightStage.MISSION_READY -> "上傳 mission 並準備起飛。"
+                FlightStage.TRANSIT -> "監看 branch confirm、obstacle 與 failsafe。"
+                FlightStage.HOLD -> "只允許 Resume / RTH / Takeover。"
+                FlightStage.RTH -> "確認航機返航與降落狀態。"
+                FlightStage.MANUAL_OVERRIDE -> "操作員負責安全接管。"
+                FlightStage.COMPLETED -> "匯出 logs 並檢查 backlog。"
+                FlightStage.ABORTED -> "確認現場安全後結束任務。"
+                else -> "持續監看飛行狀態。"
+            },
+            partialWarning = backlogText ?: uploadNote
+        )
+
+        missionSetup = missionSetup.copy(
+            authStatus = missionSetup.authStatus ?: if (runtimeMode == RuntimeMode.DEMO) "Demo mode 不需要登入" else null,
+            warning = when {
+                missionBundle == null -> missionSetup.warning
+                backlogText != null -> backlogText
+                else -> missionSetup.warning
             }
         )
 
         emergency = when (flightState.stage) {
             FlightStage.HOLD -> EmergencyUiState(
-                reason = flightState.holdReason ?: "飛機已懸停",
+                reason = flightState.holdReason ?: "系統已進入 HOLD。",
                 mode = EmergencyMode.HOLD,
-                nextStep = "系統刻意不提供自動恢復，請選擇返航或人工接管。",
-                primaryActionLabel = "目前不可降落",
-                secondaryActionLabel = "中止手動模式",
+                nextStep = "確認停住原因後，只能選 Resume / RTH / Takeover。",
+                primaryActionLabel = "完成降落",
+                secondaryActionLabel = "中止任務",
                 completeLandingEnabled = false,
                 abortManualEnabled = false
             )
 
             FlightStage.RTH -> EmergencyUiState(
-                reason = "返航進行中",
+                reason = "已觸發 Return-To-Home。",
                 mode = EmergencyMode.RTH,
-                nextStep = "飛機回到返航點後，請標記為已抵達。",
-                primaryActionLabel = "標記已返航",
-                secondaryActionLabel = "中止手動模式",
+                nextStep = "持續監看返航路徑與降落條件。",
+                primaryActionLabel = "確認已到達降落",
+                secondaryActionLabel = "中止任務",
                 completeLandingEnabled = true,
                 abortManualEnabled = false
             )
 
             FlightStage.MANUAL_OVERRIDE -> EmergencyUiState(
-                reason = "人工接管啟用中",
+                reason = "操作員已接管控制。",
                 mode = EmergencyMode.TAKEOVER,
-                nextStep = "目前由飛手接管，可手動結束或中止任務。",
-                primaryActionLabel = "目前不可降落",
-                secondaryActionLabel = "中止手動模式",
+                nextStep = "以人工方式處理當前風險，再決定是否中止任務。",
+                primaryActionLabel = "完成降落",
+                secondaryActionLabel = "中止任務",
                 completeLandingEnabled = false,
                 abortManualEnabled = true
             )
 
             FlightStage.LANDING -> EmergencyUiState(
-                reason = "降落進行中",
+                reason = "降落中。",
                 mode = EmergencyMode.RTH,
-                nextStep = "請保持降落區淨空，確認後完成降落。",
-                primaryActionLabel = "完成降落",
-                secondaryActionLabel = "中止手動模式",
+                nextStep = "確認航機已安全落地。",
+                primaryActionLabel = "確認已落地",
+                secondaryActionLabel = "中止任務",
                 completeLandingEnabled = true,
                 abortManualEnabled = false
             )
 
             FlightStage.COMPLETED -> EmergencyUiState(
-                reason = "任務已安全完成",
+                reason = "任務已完成。",
                 mode = EmergencyMode.INFO,
-                nextStep = "如需再次展示，請重新載入任務。",
-                primaryActionLabel = "降落已完成",
-                secondaryActionLabel = "中止手動模式",
+                nextStep = "檢查 upload backlog 與黑盒日誌。",
+                primaryActionLabel = "完成降落",
+                secondaryActionLabel = "中止任務",
                 completeLandingEnabled = false,
                 abortManualEnabled = false
             )
 
             FlightStage.ABORTED -> EmergencyUiState(
-                reason = "任務已中止",
+                reason = "任務已中止。",
                 mode = EmergencyMode.TAKEOVER,
-                nextStep = "再次執行前，請先檢查中止原因。",
-                primaryActionLabel = "目前不可降落",
-                secondaryActionLabel = "手動模式已中止",
+                nextStep = "確認現場安全，保留 incident logs。",
+                primaryActionLabel = "完成降落",
+                secondaryActionLabel = "任務已中止",
                 completeLandingEnabled = false,
                 abortManualEnabled = false
             )
 
             else -> EmergencyUiState(
-                reason = "目前沒有啟用中的保護動作",
+                reason = "目前沒有 blocking emergency。",
                 mode = EmergencyMode.INFO,
-                nextStep = "請隨時注意底部的懸停 / 返航 / 接管控制列。",
-                primaryActionLabel = "目前不可降落",
-                secondaryActionLabel = "中止手動模式",
+                nextStep = "保持單手可操作，必要時立即使用 HOLD / RTH / TAKEOVER。",
+                primaryActionLabel = "完成降落",
+                secondaryActionLabel = "中止任務",
                 completeLandingEnabled = false,
                 abortManualEnabled = false
             )
         }
     }
 
-    companion object {
-        private fun defaultTelemetry(stage: String): List<TelemetryField> = listOf(
-            TelemetryField("階段", stage),
-            TelemetryField("高度", "35.0 m"),
-            TelemetryField("速度", "0.0-4.0 m/s"),
-            TelemetryField("電量", "78%"),
-            TelemetryField("策略", "不確定先懸停")
-        )
+    private fun gateLabel(gateId: PreflightGateId): String = when (gateId) {
+        PreflightGateId.AIRCRAFT_CONNECTED -> "Aircraft 連線"
+        PreflightGateId.REMOTE_CONTROLLER_CONNECTED -> "RC 連線"
+        PreflightGateId.CAMERA_STREAM -> "Camera stream"
+        PreflightGateId.STORAGE -> "裝置儲存空間"
+        PreflightGateId.DEVICE_HEALTH -> "Device health"
+        PreflightGateId.FLY_ZONE -> "Fly zone / 飛安"
+        PreflightGateId.GPS -> "GPS / 定位"
+        PreflightGateId.MISSION_BUNDLE -> "Mission bundle 完整性"
     }
 
     private fun isInStage(vararg expected: FlightStage): Boolean = flightState.stage in expected
 
-    private fun failsafeActionLabel(value: String): String = when (value) {
-        "HOLD" -> "懸停"
-        "RTH" -> "返航"
-        else -> value
-    }
-
-    private fun branchOptionLabel(option: String): String = when (option) {
-        "LEFT" -> "左轉"
-        "RIGHT" -> "右轉"
-        "STRAIGHT" -> "直行"
-        else -> option
-    }
-
-    private fun FlightStage.toDisplayLabel(): String = when (this) {
-        FlightStage.IDLE -> "待命"
-        FlightStage.PRECHECK -> "飛前檢查"
-        FlightStage.MISSION_READY -> "任務就緒"
-        FlightStage.TAKEOFF -> "起飛"
-        FlightStage.TRANSIT -> "巡航"
-        FlightStage.BRANCH_VERIFY -> "岔路驗證"
-        FlightStage.LOCAL_AVOID -> "本地避障"
-        FlightStage.APPROACH_VIEWPOINT -> "巡檢進場"
-        FlightStage.VIEW_ALIGN -> "視角對位"
-        FlightStage.CAPTURE -> "拍攝"
-        FlightStage.HOLD -> "懸停"
-        FlightStage.MANUAL_OVERRIDE -> "人工接管"
-        FlightStage.RTH -> "返航"
-        FlightStage.LANDING -> "降落"
-        FlightStage.COMPLETED -> "完成"
-        FlightStage.ABORTED -> "中止"
+    private companion object {
+        fun defaultTelemetry(stage: String): List<TelemetryField> = listOf(
+            TelemetryField("階段", stage),
+            TelemetryField("高度", "35.0 m"),
+            TelemetryField("速度", "0.0-4.0 m/s"),
+            TelemetryField("電量", "78%"),
+            TelemetryField("資料來源", "本地安全迴圈")
+        )
     }
 }

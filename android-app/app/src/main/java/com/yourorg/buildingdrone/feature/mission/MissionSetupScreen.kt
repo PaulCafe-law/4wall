@@ -23,18 +23,25 @@ fun MissionSetupScreen(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text("任務設定", style = MaterialTheme.typography.headlineSmall)
                 Text(state.missionLabel, style = MaterialTheme.typography.titleMedium)
-                Text("任務產物狀態：${state.artifactStatus}", style = MaterialTheme.typography.bodyMedium)
+                Text("Artifacts 狀態：${state.artifactStatus}", style = MaterialTheme.typography.bodyMedium)
+                state.authStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 state.warning?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
                 Text("任務摘要", style = MaterialTheme.typography.titleMedium)
                 if (state.summary.isEmpty()) {
-                    Text("目前還沒有任務摘要。請先載入模擬任務包。")
+                    Text("目前尚未載入任務 bundle。")
                 } else {
                     state.summary.forEach { line -> Text(line) }
                 }
@@ -42,10 +49,10 @@ fun MissionSetupScreen(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(onClick = onLoadMockMission, modifier = Modifier.weight(1f)) {
-                Text("載入模擬任務")
+                Text(state.loadActionLabel)
             }
             OutlinedButton(onClick = onReplay, modifier = Modifier.weight(1f)) {
-                Text("展示回放")
+                Text("重播遙測")
             }
         }
         FilledTonalButton(
@@ -53,7 +60,7 @@ fun MissionSetupScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = state.bundleLoaded
         ) {
-            Text("開啟飛前檢查")
+            Text("前往 Preflight Checklist")
         }
     }
 }

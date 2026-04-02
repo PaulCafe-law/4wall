@@ -144,4 +144,44 @@ class FlightReducerTest {
         assertEquals(FlightStage.COMPLETED, completed.stage)
         assertNull(completed.holdReason)
     }
+
+    @Test
+    fun authExpiry_doesNotChangeFlightStage() {
+        val state = FlightState(stage = FlightStage.TRANSIT, missionUploaded = true, authValid = true)
+
+        val next = reducer.reduce(
+            state = state,
+            event = FlightEventType.AUTH_EXPIRED,
+            context = TransitionContext(
+                authValid = false,
+                pendingEventUploads = 2,
+                pendingTelemetryUploads = 1
+            )
+        )
+
+        assertEquals(FlightStage.TRANSIT, next.stage)
+        assertFalse(next.authValid)
+        assertEquals(2, next.pendingEventUploads)
+        assertEquals(1, next.pendingTelemetryUploads)
+    }
+
+    @Test
+    fun backlogUpdate_updatesPendingCountsWithoutBreakingFlight() {
+        val state = FlightState(stage = FlightStage.TRANSIT, missionUploaded = true)
+
+        val next = reducer.reduce(
+            state = state,
+            event = FlightEventType.UPLOAD_BACKLOG_UPDATED,
+            context = TransitionContext(
+                authValid = true,
+                pendingEventUploads = 3,
+                pendingTelemetryUploads = 2
+            )
+        )
+
+        assertEquals(FlightStage.TRANSIT, next.stage)
+        assertEquals(3, next.pendingEventUploads)
+        assertEquals(2, next.pendingTelemetryUploads)
+        assertEquals("Uploads are queued locally and will retry later.", next.statusNote)
+    }
 }

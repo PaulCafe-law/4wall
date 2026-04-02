@@ -14,7 +14,7 @@ data class TransitUiState(
     val progressLabel: String = "等待任務開始",
     val telemetry: List<TelemetryField> = emptyList(),
     val riskReason: String? = null,
-    val nextStep: String = "先載入任務包，再上傳任務",
+    val nextStep: String = "確認 preflight 後開始任務。",
     val partialWarning: String? = null,
     val isCompleted: Boolean = false
 )

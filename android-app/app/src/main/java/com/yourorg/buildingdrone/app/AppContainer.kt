@@ -7,6 +7,7 @@ import com.yourorg.buildingdrone.data.InMemoryFlightLogRepository
 import com.yourorg.buildingdrone.data.MissionBundle
 import com.yourorg.buildingdrone.data.MissionRepository
 import com.yourorg.buildingdrone.data.StaticDeviceStorageRepository
+import com.yourorg.buildingdrone.data.auth.OperatorAuthRepository
 import com.yourorg.buildingdrone.data.demoMissionBundle
 import com.yourorg.buildingdrone.dji.FakeCameraStreamAdapter
 import com.yourorg.buildingdrone.dji.FakeHardwareStatusProvider
@@ -31,6 +32,7 @@ import com.yourorg.buildingdrone.domain.safety.PreflightGatePolicy
 import com.yourorg.buildingdrone.domain.safety.PreflightSnapshot
 import com.yourorg.buildingdrone.domain.statemachine.DefaultTransitionGuard
 import com.yourorg.buildingdrone.domain.statemachine.FlightReducer
+import com.yourorg.buildingdrone.data.upload.FlightUploadRepository
 
 enum class RuntimeMode {
     DEMO,
@@ -49,6 +51,8 @@ class AppContainer(
     val cameraStreamAdapter: CameraStreamAdapter,
     val perceptionAdapter: PerceptionAdapter,
     val simulatorAdapter: SimulatorAdapter,
+    val operatorAuthRepository: OperatorAuthRepository? = null,
+    val flightUploadRepository: FlightUploadRepository? = null,
     val minimumStorageBytes: Long = 256L * 1024L * 1024L,
     private val preflightGatePolicy: PreflightGatePolicy = DefaultPreflightGatePolicy()
 ) {

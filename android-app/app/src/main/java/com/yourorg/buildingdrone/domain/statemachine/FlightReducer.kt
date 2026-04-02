@@ -13,6 +13,41 @@ class FlightReducer(
         event: FlightEventType,
         context: TransitionContext = TransitionContext()
     ): FlightState {
+        if (event == FlightEventType.AUTH_EXPIRED) {
+            return state.copy(
+                authValid = false,
+                pendingEventUploads = context.pendingEventUploads ?: state.pendingEventUploads,
+                pendingTelemetryUploads = context.pendingTelemetryUploads ?: state.pendingTelemetryUploads,
+                lastEvent = event,
+                statusNote = "Server authentication expired. New server-dependent actions are blocked."
+            )
+        }
+
+        if (event == FlightEventType.AUTH_REFRESHED) {
+            return state.copy(
+                authValid = true,
+                pendingEventUploads = context.pendingEventUploads ?: state.pendingEventUploads,
+                pendingTelemetryUploads = context.pendingTelemetryUploads ?: state.pendingTelemetryUploads,
+                lastEvent = event,
+                statusNote = "Server authentication refreshed."
+            )
+        }
+
+        if (event == FlightEventType.UPLOAD_BACKLOG_UPDATED) {
+            val pendingEvents = context.pendingEventUploads ?: state.pendingEventUploads
+            val pendingTelemetry = context.pendingTelemetryUploads ?: state.pendingTelemetryUploads
+            return state.copy(
+                authValid = context.authValid ?: state.authValid,
+                pendingEventUploads = pendingEvents,
+                pendingTelemetryUploads = pendingTelemetry,
+                lastEvent = event,
+                statusNote = when {
+                    pendingEvents + pendingTelemetry == 0 -> "Flight uploads are caught up."
+                    else -> "Uploads are queued locally and will retry later."
+                }
+            )
+        }
+
         val safetyDecision = safetySupervisor.evaluate(
             event = event,
             snapshot = SafetySnapshot(
@@ -472,6 +507,9 @@ class FlightReducer(
             missionBundleVerified = missionBundleVerified || context.missionBundleVerified,
             preflightReady = preflightReady || context.preflightReady,
             missionUploaded = missionUploaded || context.missionUploaded,
+            authValid = context.authValid ?: authValid,
+            pendingEventUploads = context.pendingEventUploads ?: pendingEventUploads,
+            pendingTelemetryUploads = context.pendingTelemetryUploads ?: pendingTelemetryUploads,
             lastEvent = event,
             holdReason = if (target == FlightStage.HOLD || target == FlightStage.ABORTED) reason else null,
             lastAutonomousStage = when (target) {

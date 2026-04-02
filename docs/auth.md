@@ -20,6 +20,8 @@ The beta backend uses local operator accounts with JWT access and refresh tokens
 - refresh token TTL defaults to 7 days
 - refresh rotation revokes the previous refresh token record
 - inactive operators are rejected even with a structurally valid token
+- Android prod mode restores the last local session when available and attempts refresh before authenticated requests
+- auth expiry blocks new server-dependent operations, but must not interrupt already safe local flight execution
 
 ## Bootstrap Operator
 

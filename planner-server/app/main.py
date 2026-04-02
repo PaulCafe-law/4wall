@@ -213,13 +213,13 @@ def build_app(
         response.headers["X-Artifact-Checksum"] = artifact.checksum_sha256
         return Response(content=payload, media_type=artifact.content_type, headers=response.headers)
 
-    @app.get("/v1/missions/{mission_id}/artifacts/mission_meta.json", response_model=MissionMetaDto)
+    @app.get("/v1/missions/{mission_id}/artifacts/mission_meta.json")
     def get_mission_meta(
         mission_id: str,
         response: Response,
         _: OperatorAccount = Depends(get_current_operator),
         session: Session = Depends(get_session),
-    ) -> MissionMetaDto:
+    ) -> Response:
         artifact = _get_artifact(session, mission_id, "mission_meta.json")
         payload = artifact_service.read(artifact.storage_key)
         if payload is None:
@@ -228,7 +228,7 @@ def build_app(
         response.headers["ETag"] = artifact.checksum_sha256
         response.headers["X-Artifact-Version"] = str(artifact.version)
         response.headers["X-Artifact-Checksum"] = artifact.checksum_sha256
-        return MissionMetaDto.model_validate_json(payload)
+        return Response(content=payload, media_type=artifact.content_type, headers=response.headers)
 
     @app.post("/v1/flights/{flight_id}/events", response_model=FlightEventsAcceptedDto, status_code=202)
     def ingest_events(

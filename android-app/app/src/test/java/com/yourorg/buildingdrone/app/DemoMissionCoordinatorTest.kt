@@ -37,7 +37,7 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
         assertFalse(coordinator.preflight.readyToUpload)
-        assertEquals("尚未載入任務前，不能通過飛前檢查。", coordinator.preflight.warning)
+        assertEquals("只有在 PRECHECK 階段才能核准 preflight。", coordinator.preflight.warning)
     }
 
     @Test
@@ -52,7 +52,7 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(ConsoleScreen.INSPECTION, coordinator.activeScreen)
         assertEquals(FlightStage.APPROACH_VIEWPOINT, coordinator.flightState.stage)
-        assertEquals("拍攝前請先完成視角對位", coordinator.inspection.reason)
+        assertEquals("必須先完成 Align View 才能 Capture。", coordinator.inspection.reason)
         assertFalse(coordinator.inspection.captureEnabled)
     }
 
@@ -65,8 +65,8 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(ConsoleScreen.IN_FLIGHT, coordinator.activeScreen)
         assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
-        assertEquals("在檢查表通過前，禁止上傳任務。", coordinator.preflight.warning)
-        assertEquals("只有在飛行中巡航階段才能觸發岔路確認。", coordinator.transit.partialWarning)
+        assertEquals("目前不允許上傳 mission。", coordinator.preflight.warning)
+        assertEquals("目前 stage 不允許進入 branch confirm。", coordinator.transit.partialWarning)
     }
 
     @Test

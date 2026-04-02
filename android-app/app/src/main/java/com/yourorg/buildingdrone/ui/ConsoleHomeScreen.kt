@@ -1,6 +1,7 @@
 package com.yourorg.buildingdrone.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -147,9 +147,9 @@ private fun ConsoleHeader(
             modifier = Modifier.padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("建築路線助理", style = MaterialTheme.typography.headlineSmall)
-            Text("階段：$stage", style = MaterialTheme.typography.titleMedium)
-            Text(reason, style = MaterialTheme.typography.bodyLarge)
+            Text("Mini 4 Pro Building Route Assistant", style = MaterialTheme.typography.headlineSmall)
+            Text("目前階段：$stage", style = MaterialTheme.typography.titleMedium)
+            Text("為什麼停住 / 風險：$reason", style = MaterialTheme.typography.bodyLarge)
             Text("下一步：$nextStep", style = MaterialTheme.typography.bodyMedium)
         }
     }
@@ -200,19 +200,19 @@ private fun EmergencyActionRail(
                 modifier = Modifier.weight(1f),
                 onClick = onHold
             ) {
-                Text("懸停")
+                Text("HOLD")
             }
             FilledTonalButton(
                 modifier = Modifier.weight(1f),
                 onClick = onRth
             ) {
-                Text("返航")
+                Text("RTH")
             }
             FilledTonalButton(
                 modifier = Modifier.weight(1f),
                 onClick = onTakeover
             ) {
-                Text("接管")
+                Text("TAKEOVER")
             }
         }
     }

@@ -6,7 +6,9 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 interface MissionRepository {
-    suspend fun loadMissionBundle(): MissionBundle
+    suspend fun loadMissionBundle(): MissionBundle?
+    suspend fun loadActiveFlightContext(): ActiveFlightContext? = null
+    suspend fun syncMissionBundle(): MissionSyncResult = MissionSyncResult.Failure("Mission sync unavailable")
 }
 
 interface FlightLogRepository {
@@ -76,6 +78,24 @@ fun seedMissionBundle(
             missionKmzChecksumVerified = true
         )
     )
+}
+
+data class ActiveFlightContext(
+    val missionId: String,
+    val flightId: String
+)
+
+sealed interface MissionSyncResult {
+    data class Success(
+        val bundle: MissionBundle,
+        val flightContext: ActiveFlightContext,
+        val statusMessage: String,
+        val reusedCache: Boolean
+    ) : MissionSyncResult
+
+    data class Failure(
+        val message: String
+    ) : MissionSyncResult
 }
 
 private fun buildMissionMetaJson(bundle: MissionBundle): String {
