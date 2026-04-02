@@ -2,19 +2,13 @@
 
 ## Design Direction
 
-This app is an operator console, not a generic SaaS dashboard.
+This app is a pilot console for field operations. It is not a dashboard.
 
-Design choices:
-
-- Primary tone: field operations, calm but urgent when needed
-- Visual hierarchy: mission progress first, safety actions second, diagnostics third
-- Typography: `IBM Plex Sans` for UI, `IBM Plex Mono` for telemetry and codes
-- Color roles:
-  - safe: deep green
-  - caution: amber
-  - emergency: signal red
-  - neutral surfaces: graphite / warm gray
-- Buttons for `HOLD`, `RTH`, `TAKEOVER` stay fixed and oversized in all in-flight screens
+- Portrait phone is the primary target.
+- One-hand use matters more than dense telemetry.
+- Mission progress is prominent, but emergency controls always outrank progress UI.
+- `HOLD`, `RTH`, and `TAKEOVER` stay visible as fixed, oversized actions on in-flight screens.
+- Every HOLD surface must explain `why it stopped` and `what to do next` above the fold.
 
 ## Screen Set
 
@@ -23,156 +17,107 @@ Design choices:
 - In-Flight Main
 - Branch Confirm
 - Inspection Capture
-- Emergency / Hold / RTH
+- Emergency / Hold / RTH / Takeover
 
 ## Information Architecture
 
 ```text
 Mission Setup
-  1. Mission source
-  2. Mission summary
-  3. Artifact readiness
-  4. Demo mode controls
+  1. mode badge (demo / prod)
+  2. mission source and operator session
+  3. artifact readiness
+  4. mission summary
+  5. continue CTA
 
 Preflight Checklist
-  1. Aircraft + controller + app health
-  2. Mission validity
-  3. Safety gate results
-  4. Arm / upload CTA
+  1. aircraft / RC / stream / GPS readiness
+  2. mission artifact validity
+  3. health and fly-safe blockers
+  4. upload / start CTA
 
 In-Flight Main
-  1. State banner
-  2. Emergency controls
-  3. Mission progress
-  4. Corridor / branch / obstacle cards
-  5. Telemetry strip
+  1. state banner
+  2. emergency rail
+  3. mission progress
+  4. corridor / obstacle / branch cards
+  5. telemetry strip
 
 Branch Confirm
-  1. Live frame
-  2. Candidate branch choices
-  3. Timeout / confidence
-  4. Hold / takeover CTA
+  1. live frame
+  2. branch choices
+  3. timeout and confidence
+  4. manual override / hold actions
 
 Inspection Capture
-  1. Framing overlay
-  2. Capture readiness
-  3. Current viewpoint checklist
+  1. viewpoint label
+  2. framing and alignment state
+  3. capture readiness
+  4. hold action
 
-Emergency / Hold / RTH
-  1. Active reason
-  2. Required operator action
-  3. RTH / takeover / dismiss unavailable states
+Emergency / Hold / RTH / Takeover
+  1. active reason
+  2. next step
+  3. resume / RTH / takeover
 ```
 
 ## Mission Flow
 
 ```text
 Mission Setup
-  -> load mock or planned mission
-  -> open Preflight Checklist without auto-approving it
-  -> approve checklist
+  -> authenticate and load mission
+  -> verify artifacts
+  -> Preflight Checklist
+  -> Upload + Start
   -> In-Flight Main
-     -> Branch Confirm when verification point reached
-     -> Inspection Capture when viewpoint reached
-     -> Emergency screen whenever HOLD / RTH / takeover state is active
+     -> Branch Confirm at verification point
+     -> Inspection Capture at viewpoint
+     -> Emergency screen on HOLD / RTH / TAKEOVER paths
 ```
 
-## Implemented Demo Controls
+## Screen State Coverage
 
-- Mission Setup:
-  - `Load Mock Mission`
-  - `Demo Replay`
-  - `Open Preflight Checklist`
-- Preflight Checklist:
-  - `Approve Preflight`
-  - `Upload + Start`
-- In-Flight Main:
-  - `Replay`
-  - `Branch Confirm`
-  - `Obstacle Warn`
-  - `Hard Stop`
-  - `Clear`
-  - `Approach Inspection Viewpoint`
-- Branch Confirm:
-  - `LEFT`
-  - `STRAIGHT`
-  - `RIGHT`
-  - `Timeout`
-  - `Hold`
-  - `Takeover`
-- Inspection Capture:
-  - `Align View`
-  - `Capture` only after align succeeds
-  - `Hold`
-- Emergency:
-  - primary action changes by state:
-    - `Mark RTH Arrived`
-    - `Complete Landing`
-  - `Abort Manual` only during manual override
-
-## Interaction State Coverage
-
-| Feature | Loading | Empty | Error | Success | Partial |
+| Screen | Loading | Empty | Error | Success | Partial |
 |---|---|---|---|---|---|
-| Mission Setup | fetching bundle spinner + disabled CTA | no mission loaded illustration + load mock action | download failed with retry | mission summary and continue CTA | bundle loaded but artifact missing |
-| Preflight Checklist | checklist probes running | no aircraft connected | failed check with exact reason | all checks green, upload enabled | some non-blocking warnings |
-| In-Flight Main | telemetry connecting | no live telemetry yet | stream degraded or adapter error | live mission progress | stale telemetry, last updated timestamp shown |
-| Branch Confirm | model analyzing frame | no frame available | timeout / unknown result | explicit left/right/straight confirmation | frame available but low confidence |
-| Inspection Capture | alignment settling | no viewpoint data | capture failed | capture confirmed | partial framing alignment |
-| Emergency Screen | fail-safe action pending | n/a | action unavailable | hold / rth / takeover active and visible | RTH requested but blocked by condition |
+| Mission Setup | downloading artifacts, CTA disabled | no mission selected | auth failure or bundle download failure | bundle verified, ready for preflight | mission present but artifact incomplete |
+| Preflight Checklist | probes running | no aircraft / RC | blocking gate failed with reason | all gates green, upload enabled | non-blocking warnings remain |
+| In-Flight Main | telemetry connecting | no live telemetry yet | stream or adapter degraded | live mission progress | stale telemetry with last-updated time |
+| Branch Confirm | frame analysis running | no frame | timeout or unknown result | explicit branch confirmed | frame available but low confidence |
+| Inspection Capture | alignment settling | no viewpoint data | capture or camera failure | capture confirmed | alignment partial, capture blocked |
+| Emergency | transition pending | n/a | requested action blocked | HOLD / RTH / TAKEOVER active and actionable | resume available but waiting for operator |
 
-## User Journey And Emotional Arc
+## Human Factors Rules
 
-| Step | User Does | User Feels | UI Must Do |
-|---|---|---|---|
-| 1 | Loads mission | cautious | show exactly what will fly and what is mock |
-| 2 | Runs preflight | focused | surface blockers fast, no hidden checks |
-| 3 | Starts mission | alert | keep emergency actions anchored and obvious |
-| 4 | Sees branch confirm | high attention | simplify to one choice, one timer, one fallback |
-| 5 | Reaches capture | relief | show framing confidence and capture status clearly |
-| 6 | Sees hold or RTH | urgency | explain reason and next action in one screen |
+- Emergency actions never hide behind overflow menus.
+- Branch confirm always supports human override.
+- Timeout fallback is explicit, not silent.
+- The UI never implies it is safe to resume without passing reducer guards.
+- Demo mode is clearly labeled so it cannot be mistaken for real hardware state.
 
-## Responsive Rules
+## Demo And Prod
 
-- Portrait phone is primary layout
-- Tablets keep same priority order, but telemetry can move to side rail
-- No hidden emergency controls behind overflow menus
-- Minimum touch target size is 44dp
-- Landscape mode keeps video and emergency controls visible together
+### Demo
 
-## Accessibility Rules
+- load mock mission
+- inject telemetry and obstacle events
+- replay reducer scenarios
 
-- Screen reader labels for every mission state, risk badge, and emergency button
-- Red state is never color-only, always paired with explicit text reason
-- Important state transitions trigger accessibility announcement
-- Timers show both countdown number and text state
-- Demo mode badges are explicit to prevent operator confusion
+### Prod
 
-## Demo Mode Design
+- show hardware connection state
+- show preflight blockers sourced from policy
+- hide demo injection affordances
 
-Demo mode adds:
-
-- load mock mission bundle
-- start mock telemetry
-- inject branch verify result
-- inject obstacle warn / hard stop
-- replay mission progress timeline
-
-Demo controls live in screen-local action clusters, while the emergency rail remains globally visible and separate.
-
-## What Already Exists
-
-No existing design system or app UI exists in this repo. The first implementation should establish reusable patterns:
+## Reusable Patterns
 
 - state banner
-- emergency action rail
+- emergency rail
 - telemetry strip
-- risk reason card
+- reason card
 - checklist row
+- artifact readiness card
 
 ## Not In Scope
 
-- map-heavy route editing on device
-- post-flight analytics dashboard
-- multi-mission operations center
-- consumer-grade ornamental marketing UI
+- route editing on device
+- fleet dashboard
+- ornamental marketing UI
