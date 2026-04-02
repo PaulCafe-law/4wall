@@ -84,7 +84,7 @@ class FlightReducerTest {
         val next = reducer.reduce(state, FlightEventType.BRANCH_VERIFY_TIMEOUT)
 
         assertEquals(FlightStage.HOLD, next.stage)
-        assertEquals("Branch confirmation timed out", next.holdReason)
+        assertEquals("Branch confirm 逾時", next.holdReason)
     }
 
     @Test
@@ -101,7 +101,7 @@ class FlightReducerTest {
         )
 
         assertEquals(FlightStage.HOLD, next.stage)
-        assertEquals("Camera frame stream is unavailable", next.holdReason)
+        assertEquals("相機 frame stream 已中斷", next.holdReason)
     }
 
     @Test
@@ -111,6 +111,40 @@ class FlightReducerTest {
         val next = reducer.reduce(state, FlightEventType.BATTERY_CRITICAL)
 
         assertEquals(FlightStage.RTH, next.stage)
+    }
+
+    @Test
+    fun gpsWeak_holdsConservatively() {
+        val state = FlightState(stage = FlightStage.TRANSIT, missionUploaded = true)
+
+        val next = reducer.reduce(
+            state = state,
+            event = FlightEventType.GPS_WEAK,
+            context = TransitionContext(
+                missionUploaded = true,
+                gpsWeak = true
+            )
+        )
+
+        assertEquals(FlightStage.HOLD, next.stage)
+        assertEquals("GPS 訊號偏弱，先停住等待", next.holdReason)
+    }
+
+    @Test
+    fun rcSignalLost_holdsConservatively() {
+        val state = FlightState(stage = FlightStage.TRANSIT, missionUploaded = true)
+
+        val next = reducer.reduce(
+            state = state,
+            event = FlightEventType.RC_SIGNAL_LOST,
+            context = TransitionContext(
+                missionUploaded = true,
+                rcSignalHealthy = false
+            )
+        )
+
+        assertEquals(FlightStage.HOLD, next.stage)
+        assertEquals("遙控訊號中斷", next.holdReason)
     }
 
     @Test
@@ -182,6 +216,6 @@ class FlightReducerTest {
         assertEquals(FlightStage.TRANSIT, next.stage)
         assertEquals(3, next.pendingEventUploads)
         assertEquals(2, next.pendingTelemetryUploads)
-        assertEquals("Uploads are queued locally and will retry later.", next.statusNote)
+        assertEquals("上傳已先記錄在本機，稍後會自動重試。", next.statusNote)
     }
 }

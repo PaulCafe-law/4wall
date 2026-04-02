@@ -57,7 +57,8 @@ Inspection Capture
 Emergency / Hold / RTH / Takeover
   1. active reason
   2. next step
-  3. resume / RTH / takeover
+  3. stage-specific primary action (`Resume` / `Confirm RTH` / `Confirm Landing`)
+  4. bottom rail `HOLD / RTH / TAKEOVER`
 ```
 
 ## Mission Flow
@@ -92,6 +93,7 @@ Mission Setup
 - Timeout fallback is explicit, not silent.
 - The UI never implies it is safe to resume without passing reducer guards.
 - Demo mode is clearly labeled so it cannot be mistaken for real hardware state.
+- `HOLD` must expose `why stopped` and `next step` above the fold before any telemetry detail.
 
 ## Demo And Prod
 

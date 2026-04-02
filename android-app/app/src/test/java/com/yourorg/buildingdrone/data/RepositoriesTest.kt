@@ -27,6 +27,22 @@ class RepositoriesTest {
     }
 
     @Test
+    fun fileFlightLogRepository_persistsJsonLines() = runTest {
+        val root = createTempDirectory(prefix = "blackbox-log").toFile()
+        val repository = FileFlightLogRepository(root)
+
+        repository.append("{\"event\":\"MISSION_SELECTED\"}")
+        repository.append("{\"event\":\"MISSION_UPLOADED\"}")
+
+        assertEquals(
+            listOf("{\"event\":\"MISSION_SELECTED\"}", "{\"event\":\"MISSION_UPLOADED\"}"),
+            repository.readAll()
+        )
+
+        root.deleteRecursively()
+    }
+
+    @Test
     fun seedMissionBundle_writesLocalArtifacts() {
         val root = createTempDirectory(prefix = "mission-seed").toFile()
 

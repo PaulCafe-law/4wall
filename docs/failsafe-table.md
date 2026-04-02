@@ -10,7 +10,10 @@
 | Corridor deviation warn | tracker | remain in state with warning | continue monitoring | `Leaving corridor margin.` |
 | Corridor deviation hard | tracker | `HOLD` | operator assess / RTH | `Corridor exceeded. Hold engaged.` |
 | Battery critical | telemetry | `RTH` | `LANDING` | `Battery critical. Returning home.` |
+| GPS weak | DJI telemetry | `HOLD` | wait for recovery or end segment | `GPS weak. Holding for operator decision.` |
 | GPS lost | DJI telemetry | `HOLD` and inhibit autonomy progression | operator takeover or recover | `Position source degraded.` |
+| RC signal degraded | DJI telemetry | `HOLD` | restore link or terminate segment | `RC signal degraded. Hold engaged.` |
+| RC signal lost | DJI telemetry | `HOLD` | restore link, then operator decides next step | `RC signal lost. Holding.` |
 | App health bad | watchdog | `HOLD` or `ABORTED` if unsafe | takeover | `App health degraded. Manual control advised.` |
 | User hold requested | operator | `HOLD` | resume / RTH / takeover | `Hold requested by operator.` |
 | User RTH requested | operator | `RTH` | `LANDING` | `Return-to-home requested.` |
@@ -22,3 +25,4 @@
 - `RTH` is reserved for critical energy state or explicit operator command
 - No automatic recovery from `MANUAL_OVERRIDE`
 - No server dependency exists in this table
+- Every `HOLD` path must produce a blackbox entry and incident export

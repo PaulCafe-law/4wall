@@ -19,7 +19,7 @@ class FlightReducer(
                 pendingEventUploads = context.pendingEventUploads ?: state.pendingEventUploads,
                 pendingTelemetryUploads = context.pendingTelemetryUploads ?: state.pendingTelemetryUploads,
                 lastEvent = event,
-                statusNote = "Server authentication expired. New server-dependent actions are blocked."
+                statusNote = "伺服器驗證已過期，新的 server 依賴操作會被阻擋。"
             )
         }
 
@@ -29,7 +29,7 @@ class FlightReducer(
                 pendingEventUploads = context.pendingEventUploads ?: state.pendingEventUploads,
                 pendingTelemetryUploads = context.pendingTelemetryUploads ?: state.pendingTelemetryUploads,
                 lastEvent = event,
-                statusNote = "Server authentication refreshed."
+                statusNote = "伺服器驗證已更新。"
             )
         }
 
@@ -42,8 +42,8 @@ class FlightReducer(
                 pendingTelemetryUploads = pendingTelemetry,
                 lastEvent = event,
                 statusNote = when {
-                    pendingEvents + pendingTelemetry == 0 -> "Flight uploads are caught up."
-                    else -> "Uploads are queued locally and will retry later."
+                    pendingEvents + pendingTelemetry == 0 -> "飛行上傳 backlog 已清空。"
+                    else -> "上傳已先記錄在本機，稍後會自動重試。"
                 }
             )
         }
@@ -55,6 +55,8 @@ class FlightReducer(
                 frameStreamHealthy = context.frameStreamHealthy,
                 appHealthy = context.appHealthy,
                 gpsHealthy = context.gpsReady,
+                gpsWeak = context.gpsWeak,
+                rcSignalHealthy = context.rcSignalHealthy,
                 deviceHealthBlocking = context.deviceHealthBlocking
             )
         )
@@ -64,7 +66,7 @@ class FlightReducer(
                 target = FlightStage.MANUAL_OVERRIDE,
                 event = event,
                 context = context,
-                reason = "Manual takeover requested"
+                reason = "已要求人工接管"
             )
         }
 
@@ -76,7 +78,7 @@ class FlightReducer(
                 target = FlightStage.RTH,
                 event = event,
                 context = context,
-                reason = "Return-to-home engaged"
+                reason = "已要求返航"
             ).advanceTransientStages(event, context)
         }
 
@@ -122,7 +124,7 @@ class FlightReducer(
             target = FlightStage.PRECHECK,
             event = event,
             context = context,
-            note = "Mission selected"
+            note = "已選擇任務"
         )
 
         else -> state.copy(lastEvent = event)
@@ -136,21 +138,21 @@ class FlightReducer(
         FlightEventType.MISSION_BUNDLE_DOWNLOADED -> state.copy(
             missionBundleLoaded = true,
             lastEvent = event,
-            statusNote = "Mission bundle downloaded"
+            statusNote = "Mission bundle 已下載"
         )
 
         FlightEventType.MISSION_BUNDLE_VERIFIED -> state.copy(
             missionBundleLoaded = true,
             missionBundleVerified = true,
             lastEvent = event,
-            statusNote = "Mission bundle verified"
+            statusNote = "Mission bundle 已驗證"
         )
 
         FlightEventType.MISSION_BUNDLE_INVALID -> state.copy(
             missionBundleLoaded = true,
             missionBundleVerified = false,
             lastEvent = event,
-            statusNote = "Mission bundle invalid"
+            statusNote = "Mission bundle 驗證失敗"
         )
 
         FlightEventType.PREFLIGHT_OK -> state.toStage(
@@ -161,7 +163,7 @@ class FlightReducer(
                 missionBundleVerified = context.missionBundleVerified || state.missionBundleVerified,
                 preflightReady = true
             ),
-            note = "Preflight passed"
+            note = "Preflight 已通過"
         ).let { next ->
             if (next.stage == FlightStage.MISSION_READY) {
                 next.copy(preflightReady = true)
@@ -185,7 +187,7 @@ class FlightReducer(
                 missionUploaded = true,
                 preflightReady = context.preflightReady || state.preflightReady
             ),
-            note = "Mission uploaded"
+            note = "任務已上傳"
         ).copy(missionUploaded = true)
 
         else -> state.copy(lastEvent = event)
@@ -200,21 +202,21 @@ class FlightReducer(
             target = FlightStage.BRANCH_VERIFY,
             event = event,
             context = context,
-            note = "Verification point reached"
+            note = "到達 verification point"
         )
 
         FlightEventType.INSPECTION_ZONE_REACHED -> state.toStage(
             target = FlightStage.APPROACH_VIEWPOINT,
             event = event,
             context = context,
-            note = "Inspection zone reached"
+            note = "到達 inspection zone"
         )
 
         FlightEventType.OBSTACLE_WARN -> state.toStage(
             target = FlightStage.LOCAL_AVOID,
             event = event,
             context = context,
-            note = "Local avoidance entered"
+            note = "進入 local avoid"
         )
 
         else -> state.copy(lastEvent = event)
@@ -229,26 +231,26 @@ class FlightReducer(
             target = FlightStage.BRANCH_VERIFY,
             event = event,
             context = context,
-            note = "Branch verification started"
+            note = "開始 branch confirm"
         )
 
         FlightEventType.INSPECTION_ZONE_REACHED -> state.toStage(
             target = FlightStage.APPROACH_VIEWPOINT,
             event = event,
             context = context,
-            note = "Inspection approach started"
+            note = "開始接近 inspection viewpoint"
         )
 
         FlightEventType.OBSTACLE_WARN -> state.toStage(
             target = FlightStage.LOCAL_AVOID,
             event = event,
             context = context,
-            note = "Local avoid active"
+            note = "local avoid 啟用中"
         )
 
         FlightEventType.CORRIDOR_DEVIATION_WARN -> state.copy(
             lastEvent = event,
-            statusNote = "Corridor deviation warning"
+            statusNote = "走廊偏離警告"
         )
 
         else -> state.copy(lastEvent = event)
@@ -265,7 +267,7 @@ class FlightReducer(
             target = FlightStage.TRANSIT,
             event = event,
             context = context,
-            note = "Branch confirmed"
+            note = "Branch 已確認"
         )
 
         FlightEventType.BRANCH_VERIFY_UNKNOWN,
@@ -290,21 +292,21 @@ class FlightReducer(
             target = FlightStage.TRANSIT,
             event = event,
             context = context,
-            note = "Obstacle cleared, resuming transit"
+            note = "障礙已解除，恢復主航段"
         )
 
         event == FlightEventType.VERIFICATION_POINT_REACHED -> state.toStage(
             target = FlightStage.BRANCH_VERIFY,
             event = event,
             context = context,
-            note = "Avoid complete at verification point"
+            note = "在 verification point 結束避障"
         )
 
         event == FlightEventType.INSPECTION_ZONE_REACHED -> state.toStage(
             target = FlightStage.APPROACH_VIEWPOINT,
             event = event,
             context = context,
-            note = "Avoid complete at inspection zone"
+            note = "在 inspection zone 結束避障"
         )
 
         else -> state.copy(lastEvent = event)
@@ -319,7 +321,7 @@ class FlightReducer(
             target = FlightStage.VIEW_ALIGN,
             event = event,
             context = context,
-            note = "View alignment entered"
+            note = "進入對正畫面階段"
         )
 
         FlightEventType.VIEW_ALIGN_TIMEOUT,
@@ -342,7 +344,7 @@ class FlightReducer(
             target = FlightStage.CAPTURE,
             event = event,
             context = context,
-            note = "Capture started"
+            note = "開始 Capture"
         )
 
         FlightEventType.VIEW_ALIGN_TIMEOUT,
@@ -365,14 +367,14 @@ class FlightReducer(
             target = FlightStage.TRANSIT,
             event = event,
             context = context,
-            note = "Capture complete, continuing to next viewpoint"
+            note = "Capture 完成，繼續下一個 viewpoint"
         )
 
         context.captureComplete -> state.toStage(
             target = FlightStage.HOLD,
             event = event,
             context = context,
-            reason = "Capture complete, awaiting operator decision"
+            reason = "Capture 完成，等待操作員決策"
         )
 
         else -> state.copy(lastEvent = event)
@@ -388,14 +390,14 @@ class FlightReducer(
             target = FlightStage.RTH,
             event = event,
             context = context,
-            reason = "Return-to-home requested from hold"
+            reason = "在 HOLD 中要求 RTH"
         )
 
         FlightEventType.USER_TAKEOVER_REQUESTED -> state.toStage(
             target = FlightStage.MANUAL_OVERRIDE,
             event = event,
             context = context,
-            reason = "Manual takeover from hold"
+            reason = "在 HOLD 中切換人工接管"
         )
 
         else -> state.copy(lastEvent = event)
@@ -410,14 +412,14 @@ class FlightReducer(
             target = FlightStage.ABORTED,
             event = event,
             context = context,
-            reason = "Mission aborted in manual override"
+            reason = "人工接管期間中止任務"
         )
 
         context.manualOverrideComplete -> state.toStage(
             target = FlightStage.COMPLETED,
             event = event,
             context = context,
-            note = "Manual override completed"
+            note = "人工接管完成"
         )
 
         else -> state.copy(lastEvent = event)
@@ -432,7 +434,7 @@ class FlightReducer(
             target = FlightStage.LANDING,
             event = event,
             context = context,
-            note = "RTH arrived, landing"
+            note = "RTH 抵達，開始降落"
         )
     } else {
         state.copy(lastEvent = event)
@@ -447,7 +449,7 @@ class FlightReducer(
             target = FlightStage.COMPLETED,
             event = event,
             context = context,
-            note = "Landing complete"
+            note = "降落完成"
         )
     } else {
         state.copy(lastEvent = event)
@@ -460,19 +462,19 @@ class FlightReducer(
         var current = this
 
         if (current.stage == FlightStage.TAKEOFF && context.takeoffComplete) {
-            current = current.toStage(FlightStage.TRANSIT, event, context, note = "Takeoff complete, entering transit")
+            current = current.toStage(FlightStage.TRANSIT, event, context, note = "起飛完成，進入主航段")
         }
         if (current.stage == FlightStage.RTH && context.rthArrived) {
-            current = current.toStage(FlightStage.LANDING, event, context, note = "RTH arrived")
+            current = current.toStage(FlightStage.LANDING, event, context, note = "RTH 已抵達")
         }
         if (current.stage == FlightStage.LANDING && context.landingComplete) {
-            current = current.toStage(FlightStage.COMPLETED, event, context, note = "Mission complete")
+            current = current.toStage(FlightStage.COMPLETED, event, context, note = "任務完成")
         }
         if (current.stage == FlightStage.MANUAL_OVERRIDE && context.manualOverrideAborted) {
-            current = current.toStage(FlightStage.ABORTED, event, context, reason = "Manual abort")
+            current = current.toStage(FlightStage.ABORTED, event, context, reason = "人工接管後中止任務")
         }
         if (current.stage == FlightStage.MANUAL_OVERRIDE && context.manualOverrideComplete) {
-            current = current.toStage(FlightStage.COMPLETED, event, context, note = "Manual flight completed")
+            current = current.toStage(FlightStage.COMPLETED, event, context, note = "人工飛行完成")
         }
 
         return current
@@ -487,7 +489,7 @@ class FlightReducer(
             target = target,
             event = event,
             context = context,
-            note = "Operator resumed autonomous flow"
+            note = "操作員恢復自主流程"
         )
     }
 
@@ -530,35 +532,38 @@ class FlightReducer(
         context: TransitionContext
     ): String {
         return when {
-            event == FlightEventType.BRANCH_VERIFY_TIMEOUT -> "Branch confirmation timed out"
-            event == FlightEventType.BRANCH_VERIFY_UNKNOWN -> "Branch confirmation is uncertain"
-            event == FlightEventType.OBSTACLE_HARD_STOP -> "Obstacle requires a hard stop"
-            event == FlightEventType.CORRIDOR_DEVIATION_HARD -> "Aircraft left the corridor envelope"
-            event == FlightEventType.GPS_LOST || !context.gpsReady -> "GPS is below the safe threshold"
-            event == FlightEventType.APP_HEALTH_BAD || !context.appHealthy -> "App health is not safe for autonomy"
-            event == FlightEventType.FRAME_STREAM_DROPPED || !context.frameStreamHealthy -> "Camera frame stream is unavailable"
-            event == FlightEventType.SEMANTIC_TIMEOUT -> "Semantic verification timed out"
-            event == FlightEventType.DEVICE_HEALTH_BLOCKING || context.deviceHealthBlocking -> "Device health is blocking flight"
-            else -> "Aircraft is holding for operator input"
+            event == FlightEventType.BRANCH_VERIFY_TIMEOUT -> "Branch confirm 逾時"
+            event == FlightEventType.BRANCH_VERIFY_UNKNOWN -> "Branch confirm 不確定"
+            event == FlightEventType.OBSTACLE_HARD_STOP -> "前方障礙需要立即硬停"
+            event == FlightEventType.CORRIDOR_DEVIATION_HARD -> "已超出安全走廊包絡"
+            event == FlightEventType.GPS_WEAK || context.gpsWeak -> "GPS 訊號偏弱，先停住等待"
+            event == FlightEventType.GPS_LOST || !context.gpsReady -> "GPS 不足以支撐安全自主飛行"
+            event == FlightEventType.RC_SIGNAL_DEGRADED -> "遙控訊號不穩定"
+            event == FlightEventType.RC_SIGNAL_LOST || !context.rcSignalHealthy -> "遙控訊號中斷"
+            event == FlightEventType.APP_HEALTH_BAD || !context.appHealthy -> "App health 不適合繼續自主飛行"
+            event == FlightEventType.FRAME_STREAM_DROPPED || !context.frameStreamHealthy -> "相機 frame stream 已中斷"
+            event == FlightEventType.SEMANTIC_TIMEOUT -> "語義確認逾時"
+            event == FlightEventType.DEVICE_HEALTH_BLOCKING || context.deviceHealthBlocking -> "裝置健康狀態阻擋飛行"
+            else -> "等待操作員決策"
         }
     }
 }
 
 fun FlightStage.toDisplayLabel(): String = when (this) {
-    FlightStage.IDLE -> "Idle"
+    FlightStage.IDLE -> "待命"
     FlightStage.PRECHECK -> "Preflight"
-    FlightStage.MISSION_READY -> "Mission Ready"
-    FlightStage.TAKEOFF -> "Takeoff"
-    FlightStage.TRANSIT -> "Transit"
+    FlightStage.MISSION_READY -> "任務待上傳"
+    FlightStage.TAKEOFF -> "起飛"
+    FlightStage.TRANSIT -> "主航段"
     FlightStage.BRANCH_VERIFY -> "Branch Confirm"
-    FlightStage.LOCAL_AVOID -> "Local Avoid"
-    FlightStage.APPROACH_VIEWPOINT -> "Approach"
-    FlightStage.VIEW_ALIGN -> "Align View"
+    FlightStage.LOCAL_AVOID -> "局部避障"
+    FlightStage.APPROACH_VIEWPOINT -> "接近 Viewpoint"
+    FlightStage.VIEW_ALIGN -> "對正畫面"
     FlightStage.CAPTURE -> "Capture"
-    FlightStage.HOLD -> "Hold"
-    FlightStage.MANUAL_OVERRIDE -> "Takeover"
-    FlightStage.RTH -> "RTH"
-    FlightStage.LANDING -> "Landing"
-    FlightStage.COMPLETED -> "Completed"
-    FlightStage.ABORTED -> "Aborted"
+    FlightStage.HOLD -> "停住等待"
+    FlightStage.MANUAL_OVERRIDE -> "人工接管"
+    FlightStage.RTH -> "返航"
+    FlightStage.LANDING -> "降落"
+    FlightStage.COMPLETED -> "已完成"
+    FlightStage.ABORTED -> "已中止"
 }

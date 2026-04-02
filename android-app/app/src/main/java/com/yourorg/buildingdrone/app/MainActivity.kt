@@ -10,11 +10,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.yourorg.buildingdrone.data.ActiveFlightContext
+import com.yourorg.buildingdrone.data.BlackboxRecorder
 import com.yourorg.buildingdrone.data.MissionBundle
 import com.yourorg.buildingdrone.data.MissionSyncResult
 import com.yourorg.buildingdrone.data.network.TelemetrySampleWire
 import com.yourorg.buildingdrone.data.upload.UploadBacklogSnapshot
+import com.yourorg.buildingdrone.dji.HardwareSnapshot
+import com.yourorg.buildingdrone.dji.PerceptionSnapshot
+import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.domain.statemachine.FlightEventType
+import com.yourorg.buildingdrone.domain.statemachine.FlightStage
 import com.yourorg.buildingdrone.feature.auth.OperatorLoginScreen
 import com.yourorg.buildingdrone.feature.transit.TransitUiState
 import com.yourorg.buildingdrone.ui.BuildingDroneTheme
@@ -37,6 +42,13 @@ class MainActivity : ComponentActivity() {
             var activeFlightContext by remember { mutableStateOf<ActiveFlightContext?>(null) }
             var lastUploadedEventKey by remember { mutableStateOf<String?>(null) }
             var attachedBundle by remember { mutableStateOf<MissionBundle?>(null) }
+            var lastIncidentExportKey by remember { mutableStateOf<String?>(null) }
+            val blackboxRecorder = remember(container) {
+                BlackboxRecorder(
+                    repository = container.flightLogRepository,
+                    exportDirectory = application.filesDir.resolve("incident-exports")
+                )
+            }
 
             val coordinator = remember(container, scope) {
                 DemoMissionCoordinator(
@@ -47,7 +59,7 @@ class MainActivity : ComponentActivity() {
                         val session = container.operatorAuthRepository?.currentSession()
                         if (container.runtimeMode == RuntimeMode.PROD && session == null) {
                             return@missionLoader MissionLoadActionResult.Failure(
-                                "請先登入 operator account，再下載 mission bundle。"
+                                "請先登入 operator account，才能同步 mission bundle。"
                             )
                         }
                         when (val result = container.missionRepository.syncMissionBundle()) {
@@ -57,7 +69,7 @@ class MainActivity : ComponentActivity() {
                                 MissionLoadActionResult.Success(
                                     bundle = result.bundle,
                                     statusMessage = result.statusMessage,
-                                    authStatus = session?.let { "已登入：${it.displayName} (${it.username})" }
+                                    authStatus = session?.let { "已登入: ${it.displayName} (${it.username})" }
                                 )
                             }
 
@@ -127,17 +139,70 @@ class MainActivity : ComponentActivity() {
                 coordinator.attachBundle(
                     bundle = cachedBundle,
                     statusMessage = if (cachedBundle != null) {
-                        "已從本地 cache 載入先前驗證成功的 mission bundle。"
+                        "已從本機 cache 載入並重新驗證 mission bundle。"
                     } else {
                         null
                     },
-                    authStatus = restoredSession?.let { "已登入：${it.displayName} (${it.username})" }
+                    authStatus = restoredSession?.let { "已登入: ${it.displayName} (${it.username})" }
                         ?: if (container.runtimeMode == RuntimeMode.DEMO) {
-                            "Demo mode 不需要登入"
+                            "Demo mode 不需要 operator token"
                         } else {
                             "尚未登入 operator account"
                         }
                 )
+            }
+
+            LaunchedEffect(
+                coordinator.flightState.stage,
+                coordinator.flightState.lastEvent,
+                coordinator.flightState.holdReason,
+                activeFlightContext,
+                attachedBundle
+            ) {
+                val state = coordinator.flightState
+                val missionId = activeFlightContext?.missionId ?: attachedBundle?.missionId
+                val flightId = activeFlightContext?.flightId
+                blackboxRecorder.record(
+                    missionId = missionId,
+                    flightId = flightId,
+                    state = state,
+                    hardwareSnapshot = safeHardwareSnapshot(container),
+                    perceptionSnapshot = safePerceptionSnapshot(container),
+                    simulatorStatus = safeSimulatorStatus(container)
+                )
+
+                val exportKey = if (state.stage in setOf(
+                        FlightStage.HOLD,
+                        FlightStage.RTH,
+                        FlightStage.MANUAL_OVERRIDE,
+                        FlightStage.ABORTED,
+                        FlightStage.COMPLETED
+                    ) && state.lastEvent !in setOf(
+                        FlightEventType.AUTH_EXPIRED,
+                        FlightEventType.AUTH_REFRESHED,
+                        FlightEventType.UPLOAD_BACKLOG_UPDATED
+                    )
+                ) {
+                    listOf(
+                        missionId ?: "no-mission",
+                        flightId ?: "no-flight",
+                        state.stage.name,
+                        state.lastEvent?.name ?: "no-event",
+                        state.holdReason ?: "no-reason"
+                    ).joinToString("|")
+                } else {
+                    null
+                }
+
+                if (exportKey != null && exportKey != lastIncidentExportKey) {
+                    blackboxRecorder.exportIncident(
+                        missionId = missionId,
+                        flightId = flightId,
+                        stage = state.stage,
+                        reason = state.holdReason ?: coordinator.emergency.reason
+                    )
+                    lastIncidentExportKey = exportKey
+                }
             }
 
             BuildingDroneTheme {
@@ -158,16 +223,16 @@ class MainActivity : ComponentActivity() {
                             scope.launch {
                                 val authRepository = container.operatorAuthRepository
                                 if (authRepository == null) {
-                                    loginError = "Prod auth repository 尚未初始化。"
+                                    loginError = "Prod auth repository 尚未設定。"
                                     loginLoading = false
                                     return@launch
                                 }
                                 try {
                                     val session = authRepository.login(username.trim(), password)
                                     signedIn = true
-                                    coordinator.updateAuthStatus("已登入：${session.displayName} (${session.username})")
+                                    coordinator.updateAuthStatus("已登入: ${session.displayName} (${session.username})")
                                 } catch (error: Exception) {
-                                    loginError = "登入失敗：${error.message ?: "unknown error"}"
+                                    loginError = "登入失敗: ${error.message ?: "unknown error"}"
                                 } finally {
                                     loginLoading = false
                                 }
@@ -188,11 +253,26 @@ private fun TransitUiState.toTelemetrySample(): TelemetrySampleWire {
         lat = 25.03410,
         lng = 121.56470,
         altitudeM = 34.6,
-        groundSpeedMps = if (stateLabel == "HOLD") 0.0 else 3.8,
+        groundSpeedMps = if (isHold) 0.0 else 3.8,
         batteryPct = 78,
         flightState = stateLabel,
         corridorDeviationM = if (status.name == "PARTIAL") 1.2 else 0.4
     )
+}
+
+private fun safeHardwareSnapshot(container: AppContainer): HardwareSnapshot {
+    return runCatching { container.hardwareStatusProvider.currentSnapshot() }
+        .getOrDefault(HardwareSnapshot())
+}
+
+private fun safePerceptionSnapshot(container: AppContainer): PerceptionSnapshot {
+    return runCatching { container.perceptionAdapter.currentSnapshot() }
+        .getOrDefault(PerceptionSnapshot())
+}
+
+private fun safeSimulatorStatus(container: AppContainer): SimulatorStatus {
+    return runCatching { container.simulatorAdapter.status() }
+        .getOrDefault(SimulatorStatus())
 }
 
 private fun UploadBacklogSnapshot.toCoordinatorStatus(): NetworkSyncStatus {

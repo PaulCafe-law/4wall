@@ -47,4 +47,26 @@ class SafetySupervisorTest {
             )
         )
     }
+
+    @Test
+    fun gpsWeak_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.GPS_WEAK,
+                SafetySnapshot(gpsWeak = true)
+            )
+        )
+    }
+
+    @Test
+    fun rcSignalLost_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.RC_SIGNAL_LOST,
+                SafetySnapshot(rcSignalHealthy = false)
+            )
+        )
+    }
 }

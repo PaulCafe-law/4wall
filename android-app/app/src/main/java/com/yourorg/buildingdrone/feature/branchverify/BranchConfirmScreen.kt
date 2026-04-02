@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.yourorg.buildingdrone.ui.toStatusCopy
 
 @Composable
 fun BranchConfirmScreen(
@@ -29,10 +30,17 @@ fun BranchConfirmScreen(
     onHold: () -> Unit,
     onTakeover: () -> Unit
 ) {
+    val statusCopy = state.status.toStatusCopy(MaterialTheme.colorScheme)
+
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("岔路確認", style = MaterialTheme.typography.headlineSmall)
+                Text("Branch Confirm", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "\u72c0\u614b: ${statusCopy.label}",
+                    color = statusCopy.tone,
+                    style = MaterialTheme.typography.titleMedium
+                )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -40,22 +48,23 @@ fun BranchConfirmScreen(
                         .background(Color(0xFF1B2328)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("模擬相機畫面", color = Color.White)
+                    Text("\u5206\u5c94\u53e3\u9810\u89bd\u756b\u9762", color = Color.White)
                 }
                 Text(state.confidenceLabel, style = MaterialTheme.typography.titleMedium)
-                Text("倒數：${state.countdownSeconds} 秒", style = MaterialTheme.typography.bodyMedium)
-                state.reason?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                Text("\u5012\u6578 ${state.countdownSeconds} \u79d2", style = MaterialTheme.typography.bodyMedium)
+                state.reason?.let { Text("\u539f\u56e0: $it", style = MaterialTheme.typography.bodyMedium) }
+                Text("\u4e0b\u4e00\u6b65: ${state.nextStep}", style = MaterialTheme.typography.bodyMedium)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = onChooseLeft, modifier = Modifier.weight(1f)) { Text("左轉") }
-            FilledTonalButton(onClick = onChooseStraight, modifier = Modifier.weight(1f)) { Text("直行") }
-            FilledTonalButton(onClick = onChooseRight, modifier = Modifier.weight(1f)) { Text("右轉") }
+            FilledTonalButton(onClick = onChooseLeft, modifier = Modifier.weight(1f)) { Text("\u5de6") }
+            FilledTonalButton(onClick = onChooseStraight, modifier = Modifier.weight(1f)) { Text("\u76f4\u884c") }
+            FilledTonalButton(onClick = onChooseRight, modifier = Modifier.weight(1f)) { Text("\u53f3") }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = onTimeout, modifier = Modifier.weight(1f)) { Text("逾時") }
-            OutlinedButton(onClick = onHold, modifier = Modifier.weight(1f)) { Text("懸停") }
-            OutlinedButton(onClick = onTakeover, modifier = Modifier.weight(1f)) { Text("接管") }
+            OutlinedButton(onClick = onTimeout, modifier = Modifier.weight(1f)) { Text("\u6a21\u578b\u903e\u6642") }
+            OutlinedButton(onClick = onHold, modifier = Modifier.weight(1f)) { Text("\u5148 HOLD") }
+            OutlinedButton(onClick = onTakeover, modifier = Modifier.weight(1f)) { Text("\u4eba\u5de5\u63a5\u7ba1") }
         }
     }
 }

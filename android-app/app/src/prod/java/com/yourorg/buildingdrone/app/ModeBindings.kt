@@ -3,7 +3,7 @@ package com.yourorg.buildingdrone.app
 import android.app.Application
 import com.yourorg.buildingdrone.BuildConfig
 import com.yourorg.buildingdrone.data.FileDeviceStorageRepository
-import com.yourorg.buildingdrone.data.InMemoryFlightLogRepository
+import com.yourorg.buildingdrone.data.FileFlightLogRepository
 import com.yourorg.buildingdrone.data.auth.OperatorAuthRepository
 import com.yourorg.buildingdrone.data.network.PlannerApi
 import com.yourorg.buildingdrone.data.network.PlannerTransport
@@ -52,7 +52,7 @@ fun createAppContainer(application: Application): AppContainer {
     return AppContainer(
         runtimeMode = RuntimeMode.PROD,
         missionRepository = missionRepository,
-        flightLogRepository = InMemoryFlightLogRepository(),
+        flightLogRepository = FileFlightLogRepository(File(application.filesDir, "prod-blackbox")),
         storageRepository = FileDeviceStorageRepository(application.filesDir),
         mobileSdkSession = DjiSdkSession(),
         hardwareStatusProvider = DjiConnectionRepository(),

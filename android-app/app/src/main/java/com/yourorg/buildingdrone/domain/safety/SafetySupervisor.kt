@@ -13,6 +13,8 @@ data class SafetySnapshot(
     val frameStreamHealthy: Boolean = true,
     val appHealthy: Boolean = true,
     val gpsHealthy: Boolean = true,
+    val gpsWeak: Boolean = false,
+    val rcSignalHealthy: Boolean = true,
     val deviceHealthBlocking: Boolean = false
 )
 
@@ -35,12 +37,21 @@ class DefaultHoldPolicy : HoldPolicy {
             FlightEventType.BRANCH_VERIFY_UNKNOWN,
             FlightEventType.OBSTACLE_HARD_STOP,
             FlightEventType.CORRIDOR_DEVIATION_HARD,
+            FlightEventType.GPS_WEAK,
             FlightEventType.GPS_LOST,
+            FlightEventType.RC_SIGNAL_DEGRADED,
+            FlightEventType.RC_SIGNAL_LOST,
             FlightEventType.APP_HEALTH_BAD,
             FlightEventType.FRAME_STREAM_DROPPED,
             FlightEventType.SEMANTIC_TIMEOUT,
             FlightEventType.DEVICE_HEALTH_BLOCKING
-        ) || !snapshot.frameStreamHealthy || !snapshot.appHealthy || !snapshot.gpsHealthy || snapshot.deviceHealthBlocking
+        ) ||
+            !snapshot.frameStreamHealthy ||
+            !snapshot.appHealthy ||
+            !snapshot.gpsHealthy ||
+            snapshot.gpsWeak ||
+            !snapshot.rcSignalHealthy ||
+            snapshot.deviceHealthBlocking
     }
 }
 

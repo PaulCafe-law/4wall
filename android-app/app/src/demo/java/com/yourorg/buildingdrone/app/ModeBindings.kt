@@ -1,8 +1,8 @@
 package com.yourorg.buildingdrone.app
 
 import android.app.Application
+import com.yourorg.buildingdrone.data.FileFlightLogRepository
 import com.yourorg.buildingdrone.data.FakeMissionRepository
-import com.yourorg.buildingdrone.data.InMemoryFlightLogRepository
 import com.yourorg.buildingdrone.data.StaticDeviceStorageRepository
 import com.yourorg.buildingdrone.data.demoMissionBundle
 import com.yourorg.buildingdrone.dji.FakeCameraStreamAdapter
@@ -19,7 +19,7 @@ fun createAppContainer(application: Application): AppContainer {
     return AppContainer(
         runtimeMode = RuntimeMode.DEMO,
         missionRepository = FakeMissionRepository(demoMissionBundle()),
-        flightLogRepository = InMemoryFlightLogRepository(),
+        flightLogRepository = FileFlightLogRepository(application.filesDir.resolve("demo-blackbox")),
         storageRepository = StaticDeviceStorageRepository(2L * 1024L * 1024L * 1024L),
         mobileSdkSession = FakeMobileSdkSession(),
         hardwareStatusProvider = FakeHardwareStatusProvider(),

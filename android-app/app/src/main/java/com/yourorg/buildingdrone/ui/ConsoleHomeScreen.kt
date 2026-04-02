@@ -124,8 +124,8 @@ fun ConsoleHomeScreen(
 
                     ConsoleScreen.EMERGENCY -> EmergencyScreen(
                         state = demoCoordinator.emergency,
-                        onCompleteLanding = demoCoordinator::completeRthLanding,
-                        onAbortManual = demoCoordinator::abortManual
+                        onPrimaryAction = demoCoordinator::runPrimaryEmergencyAction,
+                        onSecondaryAction = demoCoordinator::runSecondaryEmergencyAction
                     )
                 }
             }
@@ -148,9 +148,9 @@ private fun ConsoleHeader(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text("Mini 4 Pro Building Route Assistant", style = MaterialTheme.typography.headlineSmall)
-            Text("目前階段：$stage", style = MaterialTheme.typography.titleMedium)
-            Text("為什麼停住 / 風險：$reason", style = MaterialTheme.typography.bodyLarge)
-            Text("下一步：$nextStep", style = MaterialTheme.typography.bodyMedium)
+            Text("目前飛行階段: $stage", style = MaterialTheme.typography.titleMedium)
+            Text("停住原因 / 主要風險: $reason", style = MaterialTheme.typography.bodyLarge)
+            Text("下一步: $nextStep", style = MaterialTheme.typography.bodyMedium)
         }
     }
 }

@@ -49,7 +49,10 @@ enum class FlightEventType {
     AUTH_REFRESHED,
     UPLOAD_BACKLOG_UPDATED,
     BATTERY_CRITICAL,
+    GPS_WEAK,
     GPS_LOST,
+    RC_SIGNAL_DEGRADED,
+    RC_SIGNAL_LOST,
     DEVICE_HEALTH_BLOCKING,
     APP_HEALTH_BAD
 }
@@ -82,6 +85,8 @@ data class TransitionContext(
     val frameStreamHealthy: Boolean = true,
     val appHealthy: Boolean = true,
     val gpsReady: Boolean = true,
+    val gpsWeak: Boolean = false,
+    val rcSignalHealthy: Boolean = true,
     val deviceHealthBlocking: Boolean = false,
     val batteryCritical: Boolean = false,
     val takeoffComplete: Boolean = false,

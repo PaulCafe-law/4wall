@@ -15,12 +15,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.yourorg.buildingdrone.ui.toStatusCopy
 
 @Composable
 fun EmergencyScreen(
     state: EmergencyUiState,
-    onCompleteLanding: () -> Unit,
-    onAbortManual: () -> Unit
+    onPrimaryAction: () -> Unit,
+    onSecondaryAction: () -> Unit
 ) {
     val bannerColor = when (state.mode) {
         EmergencyMode.HOLD -> Color(0xFF5C3D00)
@@ -28,6 +29,7 @@ fun EmergencyScreen(
         EmergencyMode.TAKEOVER -> Color(0xFF402343)
         EmergencyMode.INFO -> Color(0xFF1E2A32)
     }
+    val statusCopy = state.status.toStatusCopy(MaterialTheme.colorScheme)
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Card(modifier = Modifier.fillMaxWidth()) {
@@ -38,30 +40,34 @@ fun EmergencyScreen(
                     .padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("緊急狀態 / 懸停 / 返航", style = MaterialTheme.typography.headlineSmall, color = Color.White)
-                Text(state.reason, style = MaterialTheme.typography.titleLarge, color = Color.White)
-                Text(state.nextStep, style = MaterialTheme.typography.bodyLarge, color = Color.White)
+                Text("\u5b89\u5168\u6c7a\u7b56\u4e2d\u5fc3", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+                Text("\u72c0\u614b: ${statusCopy.label}", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                Text("\u505c\u4f4f\u539f\u56e0: ${state.reason}", style = MaterialTheme.typography.titleLarge, color = Color.White)
+                Text("\u4e0b\u4e00\u6b65: ${state.nextStep}", style = MaterialTheme.typography.bodyLarge, color = Color.White)
             }
         }
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("操作員動作", style = MaterialTheme.typography.titleMedium)
-                Text("原因與下一步都必須明確顯示，不能有隱藏的備援行為。")
-                Text("底部控制列的按鈕在整個任務過程中都維持為主要控制入口。")
+                Text("\u64cd\u4f5c\u898f\u5247", style = MaterialTheme.typography.titleMedium)
+                Text(state.operatorHint, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "\u82e5\u7121\u6cd5\u78ba\u5b9a\u662f\u5426\u53ef\u5b89\u5168\u6062\u5fa9\u81ea\u4e3b\u98db\u884c\uff0c\u4fdd\u6301 HOLD\uff0c\u4e26\u6539\u7531 RTH \u6216\u4eba\u5de5\u63a5\u7ba1\u7d50\u675f\u7576\u524d\u6d41\u7a0b\u3002",
+                    style = MaterialTheme.typography.bodyMedium
+                )
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilledTonalButton(
-                onClick = onCompleteLanding,
+                onClick = onPrimaryAction,
                 modifier = Modifier.weight(1f),
-                enabled = state.completeLandingEnabled
+                enabled = state.primaryActionEnabled
             ) {
                 Text(state.primaryActionLabel)
             }
             OutlinedButton(
-                onClick = onAbortManual,
+                onClick = onSecondaryAction,
                 modifier = Modifier.weight(1f),
-                enabled = state.abortManualEnabled
+                enabled = state.secondaryActionEnabled
             ) {
                 Text(state.secondaryActionLabel)
             }

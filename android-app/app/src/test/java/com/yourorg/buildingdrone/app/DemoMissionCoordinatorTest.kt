@@ -37,7 +37,7 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
         assertFalse(coordinator.preflight.readyToUpload)
-        assertEquals("只有在 PRECHECK 階段才能核准 preflight。", coordinator.preflight.warning)
+        assertEquals("只有在 PRECHECK 才能批准 preflight。", coordinator.preflight.warning)
     }
 
     @Test
@@ -52,7 +52,7 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(ConsoleScreen.INSPECTION, coordinator.activeScreen)
         assertEquals(FlightStage.APPROACH_VIEWPOINT, coordinator.flightState.stage)
-        assertEquals("必須先完成 Align View 才能 Capture。", coordinator.inspection.reason)
+        assertEquals("必須先完成 Align View，才能 Capture。", coordinator.inspection.reason)
         assertFalse(coordinator.inspection.captureEnabled)
     }
 
@@ -65,7 +65,7 @@ class DemoMissionCoordinatorTest {
 
         assertEquals(ConsoleScreen.IN_FLIGHT, coordinator.activeScreen)
         assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
-        assertEquals("目前不允許上傳 mission。", coordinator.preflight.warning)
+        assertEquals("目前不允許上傳任務。", coordinator.preflight.warning)
         assertEquals("目前 stage 不允許進入 branch confirm。", coordinator.transit.partialWarning)
     }
 
@@ -79,24 +79,36 @@ class DemoMissionCoordinatorTest {
     }
 
     @Test
-    fun emergencyActions_areEnabledOnlyForMatchingStage() {
+    fun emergencyActions_exposeResumeAndLandingPaths() {
         val coordinator = coordinator()
         coordinator.loadMockMission()
         coordinator.approvePreflight()
         coordinator.uploadAndStartMission()
 
+        coordinator.requestHold()
+        assertTrue(coordinator.emergency.primaryActionEnabled)
+        assertFalse(coordinator.emergency.secondaryActionEnabled)
+        coordinator.runPrimaryEmergencyAction()
+        assertEquals(FlightStage.TRANSIT, coordinator.flightState.stage)
+
         coordinator.requestRth()
-        assertTrue(coordinator.emergency.completeLandingEnabled)
-        assertFalse(coordinator.emergency.abortManualEnabled)
+        assertTrue(coordinator.emergency.primaryActionEnabled)
+        assertFalse(coordinator.emergency.secondaryActionEnabled)
 
         coordinator.completeRthLanding()
         assertEquals(FlightStage.LANDING, coordinator.flightState.stage)
 
         coordinator.completeRthLanding()
         assertEquals(FlightStage.COMPLETED, coordinator.flightState.stage)
+    }
 
+    @Test
+    fun takeover_enablesSecondaryAbortAction() {
+        val coordinator = coordinator()
         coordinator.requestTakeover()
-        assertTrue(coordinator.emergency.abortManualEnabled)
-        assertFalse(coordinator.emergency.completeLandingEnabled)
+
+        assertEquals(FlightStage.MANUAL_OVERRIDE, coordinator.flightState.stage)
+        assertTrue(coordinator.emergency.secondaryActionEnabled)
+        assertFalse(coordinator.emergency.primaryActionEnabled)
     }
 }

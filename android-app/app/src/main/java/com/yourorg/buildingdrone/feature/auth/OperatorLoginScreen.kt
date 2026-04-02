@@ -36,13 +36,13 @@ fun OperatorLoginScreen(
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("操作員登入", style = MaterialTheme.typography.headlineSmall)
-                Text("Prod mode 需要先取得 operator token，才可下載 mission bundle。")
+                Text("\u64cd\u4f5c\u54e1\u767b\u5165", style = MaterialTheme.typography.headlineSmall)
+                Text("Prod mode \u9700\u8981\u6709\u6548\u7684 operator token\uff0c\u767b\u5165\u5f8c\u624d\u80fd\u540c\u6b65 mission bundle\u3002")
                 OutlinedTextField(
                     value = username,
                     onValueChange = onUsernameChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("帳號") },
+                    label = { Text("\u5e33\u865f") },
                     singleLine = true,
                     enabled = !loading
                 )
@@ -50,7 +50,7 @@ fun OperatorLoginScreen(
                     value = password,
                     onValueChange = onPasswordChange,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("密碼") },
+                    label = { Text("\u5bc6\u78bc") },
                     singleLine = true,
                     enabled = !loading,
                     visualTransformation = PasswordVisualTransformation()
@@ -61,7 +61,10 @@ fun OperatorLoginScreen(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !loading && username.isNotBlank() && password.isNotBlank()
                 ) {
-                    Text(if (loading) "登入中…" else "登入並進入飛行控制台")
+                    Text(
+                        if (loading) "\u767b\u5165\u4e2d"
+                        else "\u767b\u5165\u4e26\u9032\u5165\u98db\u884c\u63a7\u5236\u53f0"
+                    )
                 }
             }
         }
