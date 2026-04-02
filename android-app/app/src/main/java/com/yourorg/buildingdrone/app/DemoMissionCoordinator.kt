@@ -149,6 +149,13 @@ class DemoMissionCoordinator(
         }
         applyEvent(FlightEventType.MISSION_SELECTED)
         applyEvent(FlightEventType.MISSION_BUNDLE_DOWNLOADED, TransitionContext(missionBundleLoaded = true))
+        applyEvent(
+            FlightEventType.MISSION_BUNDLE_VERIFIED,
+            TransitionContext(
+                missionBundleLoaded = true,
+                missionBundleVerified = true
+            )
+        )
         missionSetup = missionSetup.copy(
             bundleLoaded = true,
             status = ScreenDataState.SUCCESS,

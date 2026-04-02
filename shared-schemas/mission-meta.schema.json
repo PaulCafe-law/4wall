@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://4wall.local/schemas/mission-meta.schema.json",
+  "title": "MissionMeta",
+  "type": "object",
+  "required": [
+    "missionId",
+    "bundleVersion",
+    "artifactVersion",
+    "checksum",
+    "segments",
+    "verificationPoints",
+    "inspectionViewpoints",
+    "safetyDefaults"
+  ],
+  "properties": {
+    "missionId": { "type": "string", "minLength": 1 },
+    "bundleVersion": { "type": "string", "minLength": 1 },
+    "artifactVersion": { "type": "integer", "minimum": 1 },
+    "checksum": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string" },
+    "segments": { "type": "integer", "minimum": 0 },
+    "verificationPoints": { "type": "integer", "minimum": 0 },
+    "inspectionViewpoints": { "type": "integer", "minimum": 0 },
+    "safetyDefaults": {
+      "type": "object",
+      "required": ["semanticTimeout", "batteryCritical", "frameDrop"],
+      "properties": {
+        "semanticTimeout": { "type": "string" },
+        "batteryCritical": { "type": "string" },
+        "frameDrop": { "type": "string" }
+      }
+    }
+  }
+}

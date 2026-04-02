@@ -10,5 +10,6 @@ data class PreflightUiState(
     val blockers: List<String>,
     val readyToUpload: Boolean,
     val checklist: List<PreflightChecklistItem> = emptyList(),
-    val warning: String? = null
+    val warning: String? = null,
+    val modeLabel: String = "demo"
 )

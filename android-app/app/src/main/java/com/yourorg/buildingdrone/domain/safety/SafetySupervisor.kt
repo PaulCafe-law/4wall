@@ -11,7 +11,9 @@ enum class SafetyDecision {
 data class SafetySnapshot(
     val batteryCritical: Boolean = false,
     val frameStreamHealthy: Boolean = true,
-    val appHealthy: Boolean = true
+    val appHealthy: Boolean = true,
+    val gpsHealthy: Boolean = true,
+    val deviceHealthBlocking: Boolean = false
 )
 
 interface HoldPolicy {
@@ -34,8 +36,11 @@ class DefaultHoldPolicy : HoldPolicy {
             FlightEventType.OBSTACLE_HARD_STOP,
             FlightEventType.CORRIDOR_DEVIATION_HARD,
             FlightEventType.GPS_LOST,
-            FlightEventType.APP_HEALTH_BAD
-        ) || !snapshot.frameStreamHealthy || !snapshot.appHealthy
+            FlightEventType.APP_HEALTH_BAD,
+            FlightEventType.FRAME_STREAM_DROPPED,
+            FlightEventType.SEMANTIC_TIMEOUT,
+            FlightEventType.DEVICE_HEALTH_BLOCKING
+        ) || !snapshot.frameStreamHealthy || !snapshot.appHealthy || !snapshot.gpsHealthy || snapshot.deviceHealthBlocking
     }
 }
 

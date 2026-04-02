@@ -1,17 +1,5 @@
 package com.yourorg.buildingdrone.domain.statemachine
 
-/*
-State machine reference
-=======================
-IDLE -> PRECHECK -> MISSION_READY -> TAKEOFF -> TRANSIT
-TRANSIT -> BRANCH_VERIFY -> TRANSIT
-TRANSIT -> LOCAL_AVOID -> TRANSIT
-TRANSIT -> APPROACH_VIEWPOINT -> VIEW_ALIGN -> CAPTURE
-Any uncertain branch -> HOLD
-Battery critical -> RTH -> LANDING -> COMPLETED
-User takeover -> MANUAL_OVERRIDE -> COMPLETED | ABORTED
-*/
-
 enum class FlightStage {
     IDLE,
     PRECHECK,
@@ -34,6 +22,8 @@ enum class FlightStage {
 enum class FlightEventType {
     MISSION_SELECTED,
     MISSION_BUNDLE_DOWNLOADED,
+    MISSION_BUNDLE_VERIFIED,
+    MISSION_BUNDLE_INVALID,
     MISSION_UPLOADED,
     PREFLIGHT_OK,
     CORRIDOR_DEVIATION_WARN,
@@ -49,11 +39,15 @@ enum class FlightEventType {
     BRANCH_VERIFY_TIMEOUT,
     VIEW_ALIGN_OK,
     VIEW_ALIGN_TIMEOUT,
+    FRAME_STREAM_DROPPED,
+    SEMANTIC_TIMEOUT,
     USER_HOLD_REQUESTED,
+    USER_RESUME_REQUESTED,
     USER_RTH_REQUESTED,
     USER_TAKEOVER_REQUESTED,
     BATTERY_CRITICAL,
     GPS_LOST,
+    DEVICE_HEALTH_BLOCKING,
     APP_HEALTH_BAD
 }
 
@@ -61,6 +55,8 @@ data class FlightState(
     val stage: FlightStage = FlightStage.IDLE,
     val missionId: String? = null,
     val missionBundleLoaded: Boolean = false,
+    val missionBundleVerified: Boolean = false,
+    val preflightReady: Boolean = false,
     val missionUploaded: Boolean = false,
     val lastEvent: FlightEventType? = null,
     val holdReason: String? = null,
@@ -71,9 +67,13 @@ data class FlightState(
 
 data class TransitionContext(
     val missionBundleLoaded: Boolean = false,
+    val missionBundleVerified: Boolean = false,
+    val preflightReady: Boolean = false,
     val missionUploaded: Boolean = false,
     val frameStreamHealthy: Boolean = true,
     val appHealthy: Boolean = true,
+    val gpsReady: Boolean = true,
+    val deviceHealthBlocking: Boolean = false,
     val batteryCritical: Boolean = false,
     val takeoffComplete: Boolean = false,
     val obstacleCleared: Boolean = false,
@@ -103,8 +103,10 @@ class DefaultTransitionGuard : TransitionGuard {
     ): Boolean {
         return when (to) {
             FlightStage.PRECHECK -> from.stage == FlightStage.IDLE
-            FlightStage.MISSION_READY -> context.missionBundleLoaded || from.missionBundleLoaded
-            FlightStage.TAKEOFF -> (context.missionUploaded || from.missionUploaded) && (from.missionBundleLoaded || context.missionBundleLoaded)
+            FlightStage.MISSION_READY -> (context.missionBundleLoaded || from.missionBundleLoaded) &&
+                (context.missionBundleVerified || from.missionBundleVerified)
+            FlightStage.TAKEOFF -> (context.missionUploaded || from.missionUploaded) &&
+                (context.preflightReady || from.preflightReady)
             FlightStage.TRANSIT -> from.missionUploaded || context.missionUploaded
             FlightStage.BRANCH_VERIFY -> from.missionUploaded || context.missionUploaded
             FlightStage.LOCAL_AVOID -> from.missionUploaded || context.missionUploaded

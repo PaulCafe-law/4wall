@@ -31,7 +31,7 @@ class SafetySupervisorTest {
         assertEquals(
             SafetyDecision.HOLD,
             supervisor.evaluate(
-                FlightEventType.OBSTACLE_WARN,
+                FlightEventType.FRAME_STREAM_DROPPED,
                 SafetySnapshot(frameStreamHealthy = false)
             )
         )
@@ -42,7 +42,7 @@ class SafetySupervisorTest {
         assertEquals(
             SafetyDecision.HOLD,
             supervisor.evaluate(
-                FlightEventType.OBSTACLE_WARN,
+                FlightEventType.APP_HEALTH_BAD,
                 SafetySnapshot(appHealthy = false)
             )
         )

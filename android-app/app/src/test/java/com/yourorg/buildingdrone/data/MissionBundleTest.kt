@@ -16,6 +16,8 @@ class MissionBundleTest {
         assertEquals(1, bundle.verificationPoints.size)
         assertEquals(1, bundle.inspectionViewpoints.size)
         assertTrue(bundle.verificationPoints.first().expectedOptions.contains(BranchDecision.LEFT))
+        assertTrue(bundle.isArtifactComplete())
+        assertTrue(bundle.isVerified())
     }
 
     @Test(expected = IllegalArgumentException::class)

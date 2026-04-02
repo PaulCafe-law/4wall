@@ -49,6 +49,45 @@ data class MissionFailsafe(
     val onFrameDrop: String = "HOLD"
 )
 
+data class MissionArtifact(
+    val name: String,
+    val localPath: String,
+    val checksum: String,
+    val version: Int,
+    val sizeBytes: Long = 0L
+) {
+    init {
+        require(name.isNotBlank()) { "artifact name must not be blank" }
+        require(localPath.isNotBlank()) { "artifact localPath must not be blank" }
+        require(checksum.isNotBlank()) { "artifact checksum must not be blank" }
+        require(version > 0) { "artifact version must be positive" }
+        require(sizeBytes >= 0L) { "artifact sizeBytes must not be negative" }
+    }
+
+    fun isEmbedded(): Boolean = localPath.startsWith("embedded://")
+}
+
+data class MissionArtifacts(
+    val missionKmz: MissionArtifact,
+    val missionMeta: MissionArtifact
+) {
+    fun hasLocalPaths(): Boolean = missionKmz.localPath.isNotBlank() && missionMeta.localPath.isNotBlank()
+}
+
+data class MissionBundleVerification(
+    val schemaMajor: Int = 1,
+    val missionMetaPresent: Boolean = true,
+    val missionKmzPresent: Boolean = true,
+    val missionMetaChecksumVerified: Boolean = true,
+    val missionKmzChecksumVerified: Boolean = true
+) {
+    val isComplete: Boolean
+        get() = missionMetaPresent && missionKmzPresent
+
+    val isVerified: Boolean
+        get() = schemaMajor == 1 && missionMetaChecksumVerified && missionKmzChecksumVerified
+}
+
 data class MissionBundle(
     val missionId: String,
     val routeMode: String,
@@ -57,6 +96,9 @@ data class MissionBundle(
     val inspectionViewpoints: List<InspectionViewpoint>,
     val defaultAltitudeMeters: Double,
     val defaultSpeedMetersPerSecond: Double,
+    val bundleVersion: String = "1.0.0",
+    val artifacts: MissionArtifacts = demoMissionArtifacts(),
+    val verification: MissionBundleVerification = MissionBundleVerification(),
     val failsafe: MissionFailsafe = MissionFailsafe()
 ) {
     init {
@@ -65,8 +107,28 @@ data class MissionBundle(
         require(corridorSegments.isNotEmpty()) { "corridorSegments must not be empty" }
         require(defaultAltitudeMeters > 0.0) { "defaultAltitudeMeters must be positive" }
         require(defaultSpeedMetersPerSecond > 0.0) { "defaultSpeedMetersPerSecond must be positive" }
+        require(bundleVersion.isNotBlank()) { "bundleVersion must not be blank" }
     }
+
+    fun isArtifactComplete(): Boolean = artifacts.hasLocalPaths() && verification.isComplete
+
+    fun isVerified(): Boolean = isArtifactComplete() && verification.isVerified
 }
+
+fun demoMissionArtifacts(): MissionArtifacts = MissionArtifacts(
+    missionKmz = MissionArtifact(
+        name = "mission.kmz",
+        localPath = "embedded://demo-mission.kmz",
+        checksum = "sha256:demo-kmz",
+        version = 1
+    ),
+    missionMeta = MissionArtifact(
+        name = "mission_meta.json",
+        localPath = "embedded://demo-mission-meta.json",
+        checksum = "sha256:demo-meta",
+        version = 1
+    )
+)
 
 fun demoMissionBundle(): MissionBundle = MissionBundle(
     missionId = "demo-mission-001",

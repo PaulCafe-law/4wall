@@ -5,8 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.yourorg.buildingdrone.data.MissionBundle
 import com.yourorg.buildingdrone.ui.BuildingDroneTheme
 import com.yourorg.buildingdrone.ui.ConsoleHomeScreen
 
@@ -16,10 +18,12 @@ class MainActivity : ComponentActivity() {
         val container = (application as BuildingDroneApplication).container
 
         setContent {
-            val missionBundle by produceState<com.yourorg.buildingdrone.data.MissionBundle?>(initialValue = null) {
-                value = container.missionRepository.loadMissionBundle()
-            }
+            var missionBundle by remember { mutableStateOf<MissionBundle?>(null) }
             val demoCoordinator = remember { DemoMissionCoordinator(container.flightReducer) }
+
+            LaunchedEffect(Unit) {
+                missionBundle = container.missionRepository.loadMissionBundle()
+            }
 
             LaunchedEffect(missionBundle) {
                 demoCoordinator.attachBundle(missionBundle)
