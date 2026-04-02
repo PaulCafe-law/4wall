@@ -1,0 +1,33 @@
+name: Planner Server CI
+
+on:
+  push:
+    paths:
+      - "planner-server/**"
+      - "docs/api-spec.md"
+      - "docs/auth.md"
+      - "docs/server-architecture.md"
+      - ".github/workflows/planner-server.yml"
+  pull_request:
+    paths:
+      - "planner-server/**"
+      - "docs/api-spec.md"
+      - "docs/auth.md"
+      - "docs/server-architecture.md"
+      - ".github/workflows/planner-server.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: planner-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: pytest

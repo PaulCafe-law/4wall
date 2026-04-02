@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: four-wall-planner
+    runtime: docker
+    rootDir: planner-server
+    healthCheckPath: /healthz
+    envVars:
+      - key: BUILDING_ROUTE_ENVIRONMENT
+        value: production
+      - key: BUILDING_ROUTE_ROUTE_PROVIDER
+        value: osrm
+      - key: BUILDING_ROUTE_ARTIFACT_BACKEND
+        value: s3
+      - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+      - key: BUILDING_ROUTE_AUTH_SECRET_KEY
+        generateValue: true
