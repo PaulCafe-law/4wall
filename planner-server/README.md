@@ -25,6 +25,13 @@ python -m uvicorn app.main:app --reload
 pytest
 ```
 
+## Bring-Up Helpers
+
+```powershell
+.\.venv\Scripts\python.exe .\scripts\create_operator.py --username fieldpilot --display-name "Field Pilot" --password "CHANGE_ME_NOW"
+.\.venv\Scripts\python.exe .\scripts\smoke_test.py --base-url http://127.0.0.1:8000 --username fieldpilot --password CHANGE_ME_NOW
+```
+
 ## Notes
 
 - `MockRouteProvider` is the default provider so local demo flows do not depend on external routing
