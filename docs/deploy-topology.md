@@ -6,10 +6,10 @@ Ship a launch-ready beta with one deploy platform, predictable domains, and expl
 
 ## Current State
 
-- `planner-server` already has a Render web service definition in `planner-server/render.yaml`.
-- API health check path is `/healthz`.
-- GitHub Actions currently test only `planner-server` via `.github/workflows/planner-server.yml`.
-- No web app deploy path exists yet.
+- Repo-root `render.yaml` is the Render blueprint source of truth for staging and production app/api services.
+- API health check path is `/healthz`, and it now includes DB dependency status.
+- GitHub Actions cover backend CI, web CI, and beta smoke in separate workflows.
+- Web release smoke reuses `planner-server/scripts/smoke_test.py` in `web-beta` mode.
 
 ## Target Topology
 
@@ -40,15 +40,18 @@ Using Render for both surfaces keeps beta operations on one platform and avoids 
 
 ## Environment Contract
 
-### Shared
+### Shared API Inputs
 
 - `BUILDING_ROUTE_ENVIRONMENT`
+- `BUILDING_ROUTE_APP_ORIGIN`
 - `BUILDING_ROUTE_AUTH_SECRET_KEY`
 - `BUILDING_ROUTE_DATABASE_URL`
 - `BUILDING_ROUTE_ARTIFACT_BACKEND`
-- `BUILDING_ROUTE_ARTIFACT_BUCKET`
-- `BUILDING_ROUTE_APP_ORIGIN`
-- `BUILDING_ROUTE_API_ORIGIN`
+- `BUILDING_ROUTE_S3_BUCKET`
+- `BUILDING_ROUTE_S3_ENDPOINT_URL`
+- `BUILDING_ROUTE_S3_REGION`
+- `BUILDING_ROUTE_S3_ACCESS_KEY_ID`
+- `BUILDING_ROUTE_S3_SECRET_ACCESS_KEY`
 
 ### API Only
 
@@ -62,13 +65,22 @@ Using Render for both surfaces keeps beta operations on one platform and avoids 
 - `VITE_APP_ENVIRONMENT`
 - `VITE_SENTRY_DSN` if enabled later
 
+### Smoke Only
+
+- `BETA_API_BASE_URL`
+- `BETA_WEB_LOGIN_URL`
+- `BETA_APP_ORIGIN`
+- `BETA_WEB_SMOKE_EMAIL`
+- `BETA_WEB_SMOKE_PASSWORD`
+
 ## Health Checks
 
 ### API
 
 - primary health check: `GET /healthz`
-- response must be `2xx` or `3xx`
-- production and staging should also verify database connectivity inside the health endpoint over time
+- response must be `200` only when API and DB are healthy
+- response must be `503` when DB connectivity fails
+- response body includes dependency status so deploy failures are actionable
 
 ### Web
 
@@ -84,8 +96,9 @@ Render health checks apply directly to the API web service. Web checks can run a
 3. Deploy staging web app.
 4. Run smoke checks:
    - login page loads
-   - session refresh works
+   - session refresh works with the configured app origin
    - mission list route renders for a seeded test org
+   - artifact download succeeds from an existing seeded mission
 5. Promote or merge to production.
 6. Repeat the same checks on `api.<domain>` and `app.<domain>`.
 
@@ -98,10 +111,8 @@ Render health checks apply directly to the API web service. Web checks can run a
 
 ## CI Notes
 
-Current workflow coverage is backend-only. Beta target requires:
+- `.github/workflows/planner-server.yml`
+- `.github/workflows/web-app.yml`
+- `.github/workflows/smoke-beta.yml`
 
-- planner-server tests
-- web-app build and tests
-- API and web smoke checks before marking deploy healthy
-
-These CI changes belong to implementation sprints, not Stage 0, but the topology is fixed here so later work does not guess.
+The blueprint and workflows together now define the deploy contract in-repo.

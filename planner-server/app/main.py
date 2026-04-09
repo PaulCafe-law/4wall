@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.artifacts import MissionArtifactService, MockMissionKmzGenerator
@@ -57,8 +59,30 @@ def build_app(
     app.state.rate_limiter = RateLimiter()
 
     @app.get("/healthz")
-    def healthcheck() -> dict[str, str]:
-        return {"status": "ok"}
+    def healthcheck() -> JSONResponse:
+        # Release gate:
+        #   Render -> /healthz -> DB probe
+        #                    ok -> 200
+        #                  fail -> 503
+        response_status = "ok"
+        database_status = {"status": "ok"}
+        status_code = status.HTTP_200_OK
+        try:
+            with app.state.engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+        except Exception as exc:
+            response_status = "degraded"
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            database_status = {"status": "error", "error": exc.__class__.__name__}
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "status": response_status,
+                "dependencies": {
+                    "database": database_status,
+                },
+            },
+        )
 
     app.include_router(auth_router)
     app.include_router(missions_router)

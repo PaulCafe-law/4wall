@@ -71,7 +71,9 @@ It does not mean:
 - Documentation synchronized with shipped behavior.
 - Staging and production app/api paths are configured.
 - Manual invoice workflow is operator-usable.
-- Deploy path is configured for web and API.
+- Deploy path is configured for web and API through the repo-root `render.yaml` blueprint.
+- Release execution follows `docs/web-beta-release-runbook.md`.
+- Beta smoke is fail-closed and proves login, refresh, authenticated mission read, and artifact download.
 - Canary path is defined for real app and API URLs.
 - Security pass has no blocking findings on auth, tenancy, invite, or artifact delivery.
 

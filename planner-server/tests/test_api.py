@@ -3,6 +3,41 @@ from datetime import datetime, timezone
 from tests.helpers import valid_request_payload
 
 
+def test_healthcheck_reports_database_ready(client) -> None:
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "dependencies": {
+            "database": {
+                "status": "ok",
+            }
+        },
+    }
+
+
+def test_healthcheck_returns_503_when_database_is_unavailable(client, app, monkeypatch) -> None:
+    class BrokenEngine:
+        def connect(self):
+            raise RuntimeError("db unavailable")
+
+    monkeypatch.setattr(app.state, "engine", BrokenEngine())
+
+    response = client.get("/healthz")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "degraded",
+        "dependencies": {
+            "database": {
+                "status": "error",
+                "error": "RuntimeError",
+            }
+        },
+    }
+
+
 def test_plan_endpoint_requires_auth(client) -> None:
     response = client.post("/v1/missions/plan", json=valid_request_payload())
 

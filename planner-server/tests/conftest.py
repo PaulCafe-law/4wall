@@ -13,6 +13,7 @@ def test_settings(tmp_path: Path) -> Settings:
     return Settings(
         app_name="Planner Test",
         environment="test",
+        app_origin=None,
         database_url=f"sqlite:///{tmp_path / 'planner.db'}",
         artifact_backend="local",
         artifact_root=str(tmp_path / "artifacts"),

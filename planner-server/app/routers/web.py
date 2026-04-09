@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 import re
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
+from sqlalchemy import func, or_
 from sqlmodel import Session, select
 
 from app.audit import record_audit
@@ -58,7 +59,12 @@ from app.web_dto import (
     WebLoginRequestDto,
     WebSessionUserDto,
 )
-from app.web_scope import ensure_customer_invite_role, ensure_org_read_access, ensure_org_write_access
+from app.web_scope import (
+    apply_org_read_scope,
+    ensure_customer_invite_role,
+    ensure_org_read_access,
+    ensure_org_write_access,
+)
 
 
 router = APIRouter(tags=["web"])
@@ -73,6 +79,7 @@ def web_login(
     settings=Depends(get_settings),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> WebSessionDto:
+    _enforce_session_origin(http_request, settings)
     email = request.email.strip().lower()
     _check_rate_limit(
         rate_limiter,
@@ -103,11 +110,13 @@ def web_login(
 
 @router.post("/v1/web/session/refresh", response_model=WebSessionDto)
 def web_refresh(
+    http_request: Request,
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=WEB_REFRESH_COOKIE_NAME),
     session: Session = Depends(get_session),
     settings=Depends(get_settings),
 ) -> WebSessionDto:
+    _enforce_session_origin(http_request, settings)
     if not refresh_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing_refresh_cookie")
     try:
@@ -126,11 +135,13 @@ def web_refresh(
 
 @router.post("/v1/web/session/logout", status_code=204)
 def web_logout(
+    http_request: Request,
     response: Response,
     refresh_token: str | None = Cookie(default=None, alias=WEB_REFRESH_COOKIE_NAME),
     session: Session = Depends(get_session),
     settings=Depends(get_settings),
 ) -> Response:
+    _enforce_session_origin(http_request, settings)
     if refresh_token:
         try:
             payload = validate_web_refresh_token(refresh_token, settings, session)
@@ -153,25 +164,47 @@ def list_organizations(
     current_user: CurrentWebUser = Depends(require_internal_user),
     session: Session = Depends(get_session),
 ) -> list[OrganizationSummaryDto]:
-    organizations = list(session.exec(select(Organization)).all())
-    memberships = list(session.exec(select(OrganizationMembership)).all())
-    sites = list(session.exec(select(Site)).all())
-    results: list[OrganizationSummaryDto] = []
-    for organization in organizations:
-        if not organization.is_active and "platform_admin" not in current_user.global_roles:
-            continue
-        member_count = sum(1 for membership in memberships if membership.organization_id == organization.id and membership.is_active)
-        site_count = sum(1 for site in sites if site.organization_id == organization.id)
-        results.append(
-            OrganizationSummaryDto(
-                organizationId=organization.id,
-                name=organization.name,
-                slug=organization.slug,
-                memberCount=member_count,
-                siteCount=site_count,
-            )
+    member_counts = (
+        select(
+            OrganizationMembership.organization_id.label("organization_id"),
+            func.count(OrganizationMembership.id).label("member_count"),
         )
-    return results
+        .where(
+            OrganizationMembership.organization_id.is_not(None),
+            OrganizationMembership.is_active.is_(True),
+        )
+        .group_by(OrganizationMembership.organization_id)
+        .subquery()
+    )
+    site_counts = (
+        select(
+            Site.organization_id.label("organization_id"),
+            func.count(Site.id).label("site_count"),
+        )
+        .group_by(Site.organization_id)
+        .subquery()
+    )
+    statement = (
+        select(
+            Organization,
+            func.coalesce(member_counts.c.member_count, 0).label("member_count"),
+            func.coalesce(site_counts.c.site_count, 0).label("site_count"),
+        )
+        .outerjoin(member_counts, member_counts.c.organization_id == Organization.id)
+        .outerjoin(site_counts, site_counts.c.organization_id == Organization.id)
+    )
+    if "platform_admin" not in current_user.global_roles:
+        statement = statement.where(Organization.is_active.is_(True))
+    return [
+        OrganizationSummaryDto(
+            organizationId=organization.id,
+            name=organization.name,
+            slug=organization.slug,
+            memberCount=member_count,
+            siteCount=site_count,
+        )
+        for organization, member_count, site_count in session.exec(statement).all()
+    ]
 
 
 @router.post("/v1/organizations", response_model=OrganizationSummaryDto)
@@ -482,17 +515,18 @@ def list_sites(
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> list[SiteDto]:
-    sites = list(session.exec(select(Site)).all())
-    visible: list[SiteDto] = []
-    for site in sites:
-        if organizationId is not None and site.organization_id != organizationId:
-            continue
-        if search and search.lower() not in site.name.lower() and search.lower() not in site.address.lower():
-            continue
-        if not current_user.can_read_org(site.organization_id):
-            continue
-        visible.append(_serialize_site(site))
-    return visible
+    statement = apply_org_read_scope(select(Site), Site.organization_id, current_user)
+    if organizationId is not None:
+        statement = statement.where(Site.organization_id == organizationId)
+    if search:
+        pattern = f"%{search.lower()}%"
+        statement = statement.where(
+            or_(
+                func.lower(Site.name).like(pattern),
+                func.lower(Site.address).like(pattern),
+            )
+        )
+    return [_serialize_site(site) for site in session.exec(statement).all()]
 
 
 @router.post("/v1/sites", response_model=SiteDto)
@@ -584,17 +618,12 @@ def list_invoices(
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> list[BillingInvoiceDto]:
-    invoices = list(session.exec(select(BillingInvoice)).all())
-    visible: list[BillingInvoiceDto] = []
-    for invoice in invoices:
-        if organizationId is not None and invoice.organization_id != organizationId:
-            continue
-        if statusFilter is not None and invoice.status != statusFilter:
-            continue
-        if not current_user.can_read_org(invoice.organization_id):
-            continue
-        visible.append(_serialize_invoice(invoice))
-    return visible
+    statement = apply_org_read_scope(select(BillingInvoice), BillingInvoice.organization_id, current_user)
+    if organizationId is not None:
+        statement = statement.where(BillingInvoice.organization_id == organizationId)
+    if statusFilter is not None:
+        statement = statement.where(BillingInvoice.status == statusFilter)
+    return [_serialize_invoice(invoice) for invoice in session.exec(statement).all()]
 
 
 @router.post("/v1/billing/invoices", response_model=BillingInvoiceDto)
@@ -676,27 +705,26 @@ def get_audit_log(
 ) -> list[AuditEventDto]:
     from app.models import AuditEvent
 
-    events = list(session.exec(select(AuditEvent)).all())
-    filtered = []
-    for event in events:
-        if organizationId is not None and event.organization_id != organizationId:
-            continue
-        if action is not None and event.action != action:
-            continue
-        filtered.append(
-            AuditEventDto(
-                auditEventId=event.id,
-                organizationId=event.organization_id,
-                actorUserId=event.actor_user_id,
-                actorOperatorId=event.actor_operator_id,
-                action=event.action,
-                targetType=event.target_type,
-                targetId=event.target_id,
-                metadata=event.metadata_json,
-                createdAt=event.created_at,
-            )
+    statement = apply_org_read_scope(select(AuditEvent), AuditEvent.organization_id, current_user)
+    if organizationId is not None:
+        statement = statement.where(AuditEvent.organization_id == organizationId)
+    if action is not None:
+        statement = statement.where(AuditEvent.action == action)
+    statement = statement.order_by(AuditEvent.created_at.desc())
+    return [
+        AuditEventDto(
+            auditEventId=event.id,
+            organizationId=event.organization_id,
+            actorUserId=event.actor_user_id,
+            actorOperatorId=event.actor_operator_id,
+            action=event.action,
+            targetType=event.target_type,
+            targetId=event.target_id,
+            metadata=event.metadata_json,
+            createdAt=event.created_at,
         )
-    return filtered
+        for event in session.exec(statement).all()
+    ]
 
 
 def _issue_web_session(session: Session, settings, user: UserAccount, response: Response) -> WebSessionDto:
@@ -822,3 +850,18 @@ def _check_rate_limit(
     normalized_subject = subject.strip().lower() or "anonymous"
     bucket = f"{scope}:{client_identity(request)}:{normalized_subject}"
     rate_limiter.check(bucket, rule)
+
+
+def _enforce_session_origin(request: Request, settings) -> None:
+    expected_origin = (settings.app_origin or "").rstrip("/")
+    if not expected_origin:
+        return
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    if origin:
+        if origin != expected_origin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="origin_not_allowed")
+        return
+    referer = request.headers.get("referer") or ""
+    if referer == expected_origin or referer.startswith(f"{expected_origin}/"):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="origin_not_allowed")
