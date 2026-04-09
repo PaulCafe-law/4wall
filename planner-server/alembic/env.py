@@ -6,7 +6,23 @@ from alembic import context
 from sqlmodel import SQLModel
 
 from app.config import Settings
-from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, RefreshToken, TelemetryBatch  # noqa: F401
+from app.models import (  # noqa: F401
+    AuditEvent,
+    BillingInvoice,
+    Flight,
+    FlightEvent,
+    Invite,
+    Mission,
+    MissionArtifact,
+    OperatorAccount,
+    Organization,
+    OrganizationMembership,
+    RefreshToken,
+    Site,
+    TelemetryBatch,
+    UserAccount,
+    WebRefreshToken,
+)
 
 
 config = context.config
