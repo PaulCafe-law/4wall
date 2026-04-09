@@ -1,0 +1,351 @@
+# Desktop Web API Contract
+
+## Design Rules
+
+- Android APIs and artifact flows remain valid. This contract extends the planner server for the desktop web beta.
+- The web app is invite-only and org-scoped.
+- Android keeps bearer-token auth behavior.
+- The web app uses:
+  - short-lived access tokens in memory
+  - rotating refresh tokens in an HttpOnly cookie
+  - same-site app/api deployment so browser auth stays same-site
+- Artifact downloads remain authenticated and must also enforce org-scoped authorization.
+
+## Session Model
+
+### Access Token
+
+- Returned in login and refresh responses
+- TTL: 15 minutes
+- Stored in memory only
+- Sent as `Authorization: Bearer <accessToken>`
+
+### Refresh Token
+
+- Rotated on every refresh
+- Stored in `HttpOnly`, `Secure`, `SameSite=Strict` cookie
+- Cookie name: `fw_refresh`
+- Only used by web session endpoints
+
+### Session Endpoints
+
+- `POST /v1/web/session/login`
+- `POST /v1/web/session/refresh`
+- `POST /v1/web/session/logout`
+- `GET /v1/web/session/me`
+
+## Roles
+
+| Role | Scope | Can Read | Can Write |
+|---|---|---|---|
+| `platform_admin` | global | all orgs, sites, missions, invoices, audit events | orgs, invites, memberships, invoices, audit-related operations |
+| `ops` | org-scoped or internal support scope | assigned orgs, missions, artifacts, invoices, audit events | sites, mission support actions, invoices |
+| `customer_admin` | org-scoped | own org sites, missions, artifacts, invoices, members | own org sites, mission requests, invite acceptance support actions |
+| `customer_viewer` | org-scoped | own org sites, missions, artifacts, invoices | no write access |
+
+## Organizations and Invites
+
+These endpoints are required to make invite-only beta onboarding usable.
+
+### GET /v1/organizations
+
+- internal only
+- lists orgs with member and site counts
+
+### POST /v1/organizations
+
+- internal only
+- creates a new org
+
+### GET /v1/organizations/{organizationId}
+
+- internal only
+- returns org profile, members, pending invites, and recent missions
+
+### PATCH /v1/organizations/{organizationId}
+
+- internal only
+- updates org metadata and support flags
+
+### GET /v1/organizations/{organizationId}/members
+
+- internal or org admin
+- returns active members and pending invites
+
+### POST /v1/organizations/{organizationId}/invites
+
+- internal or org admin
+- creates an invite
+
+#### Request
+
+```json
+{
+  "email": "ops@example.com",
+  "role": "customer_admin",
+  "displayName": "Tower A Ops"
+}
+```
+
+### POST /v1/invites/accept
+
+- public invite acceptance endpoint
+
+#### Request
+
+```json
+{
+  "inviteToken": "inv_tok_123",
+  "password": "strong-password",
+  "displayName": "Tower A Ops"
+}
+```
+
+### POST /v1/invites/{inviteId}/revoke
+
+- internal or org admin
+- invalidates an unused invite
+
+## Web Session Endpoints
+
+### POST /v1/web/session/login
+
+#### Request
+
+```json
+{
+  "email": "ops@example.com",
+  "password": "secret"
+}
+```
+
+#### 200 Response
+
+```json
+{
+  "accessToken": "jwt-access",
+  "tokenType": "bearer",
+  "expiresInSeconds": 900,
+  "user": {
+    "userId": "usr_123",
+    "email": "ops@example.com",
+    "displayName": "Tower A Ops",
+    "role": "customer_admin",
+    "organizationId": "org_123"
+  }
+}
+```
+
+Response also sets the `fw_refresh` cookie.
+
+### POST /v1/web/session/refresh
+
+- rotates the refresh cookie
+- returns the same shape as login
+
+### POST /v1/web/session/logout
+
+- clears the refresh cookie
+- invalidates the current refresh token record
+
+### GET /v1/web/session/me
+
+- returns the authenticated web session user and current org summary
+
+## Sites
+
+### GET /v1/sites
+
+- returns sites visible to the caller
+- query params:
+  - `organizationId` internal only
+  - `status`
+  - `search`
+
+### POST /v1/sites
+
+- internal, `ops`, or `customer_admin`
+
+#### Request
+
+```json
+{
+  "organizationId": "org_123",
+  "name": "Tower A",
+  "externalRef": "tower-a",
+  "address": "Taipei City ...",
+  "location": {
+    "lat": 25.03391,
+    "lng": 121.56452
+  },
+  "notes": "North facade first"
+}
+```
+
+### GET /v1/sites/{siteId}
+
+- returns site profile, recent missions, and invoice summary
+
+### PATCH /v1/sites/{siteId}
+
+- internal, `ops`, or `customer_admin`
+
+## Missions
+
+### GET /v1/missions
+
+- query params:
+  - `organizationId` internal only
+  - `siteId`
+  - `status`
+  - `requestedBy`
+  - `cursor`
+
+### GET /v1/missions/{missionId}
+
+- returns mission summary, planning status, artifact metadata, and recent flight uploads
+
+### POST /v1/missions/plan
+
+This extends the existing planner API with tenant and requester context.
+
+#### Request
+
+```json
+{
+  "organizationId": "org_123",
+  "siteId": "site_123",
+  "missionName": "tower-a-prod-beta",
+  "requestedByUserId": "usr_123",
+  "origin": {
+    "lat": 25.03391,
+    "lng": 121.56452
+  },
+  "targetBuilding": {
+    "buildingId": "tower-a",
+    "label": "Tower A"
+  },
+  "routingMode": "road_network_following",
+  "corridorPolicy": {
+    "defaultHalfWidthM": 8.0,
+    "maxHalfWidthM": 12.0,
+    "branchConfirmRadiusM": 18.0
+  },
+  "flightProfile": {
+    "defaultAltitudeM": 35.0,
+    "defaultSpeedMps": 4.0,
+    "maxApproachSpeedMps": 1.0
+  },
+  "demoMode": false
+}
+```
+
+#### Additional Response Fields
+
+```json
+{
+  "missionId": "msn_20260402_001",
+  "organizationId": "org_123",
+  "siteId": "site_123",
+  "requestedByUserId": "usr_123",
+  "status": "ready"
+}
+```
+
+Allowed statuses:
+
+- `draft`
+- `planning`
+- `ready`
+- `failed`
+- `archived`
+
+## Flight Data Read APIs
+
+### GET /v1/flights/{flightId}/events
+
+- internal or same-org support viewers only
+- returns stored event batches for replay and support
+
+### GET /v1/flights/{flightId}/telemetry
+
+- internal or same-org support viewers only
+- returns paginated telemetry batches for blackbox-style reconstruction
+
+## Billing
+
+Beta billing is manual-invoice-first. No payment provider callbacks are required for launch.
+
+### GET /v1/billing/invoices
+
+- internal users can filter across orgs
+- customer roles only see invoices from their own org
+- query params:
+  - `organizationId`
+  - `status`
+  - `dueBefore`
+
+Allowed statuses:
+
+- `draft`
+- `issued`
+- `invoice_due`
+- `paid`
+- `overdue`
+- `void`
+
+### POST /v1/billing/invoices
+
+- internal only
+
+#### Request
+
+```json
+{
+  "organizationId": "org_123",
+  "invoiceNumber": "TW-2026-0001",
+  "currency": "TWD",
+  "subtotal": 12000,
+  "tax": 600,
+  "total": 12600,
+  "dueDate": "2026-05-01",
+  "paymentInstructions": "Wire transfer",
+  "attachmentRefs": [
+    "inv_2026_0001.pdf"
+  ],
+  "notes": "Beta launch package"
+}
+```
+
+### PATCH /v1/billing/invoices/{invoiceId}
+
+- internal only
+- supports status transition, payment note, receipt ref, and void reason updates
+
+## Audit
+
+### GET /v1/audit-log
+
+- internal only
+- query params:
+  - `organizationId`
+  - `actorUserId`
+  - `action`
+  - `cursor`
+
+Required audited actions:
+
+- login success/failure
+- refresh/logout
+- invite issue, revoke, accept
+- membership or role change
+- site create/update
+- mission create/status change
+- artifact publish
+- invoice create/status change
+
+## Compatibility Rules
+
+- Existing Android endpoints remain supported.
+- Existing artifact URLs remain supported but now require org-aware authorization for web-visible missions.
+- New web-specific endpoints must not require Android changes to keep flight-critical work decoupled.
