@@ -1,50 +1,45 @@
 # Building Route Assistant
 
-Mini 4 Pro investor-demo scaffold for a conservative building route assistant.
+Mini 4 Pro production-ready beta repo with three runtime boundaries:
 
-The repo is split into two runtime boundaries:
-
-- `android-app/`: operator-facing Android app, flight-critical loop, demo UI, safety state machine
-- `planner-server/`: planning-only FastAPI service that produces mission bundles and mock artifacts
+- `android-app/`: flight-critical operator app
+- `planner-server/`: planning, tenancy, artifact, billing, and ingest API
+- `web-app/`: desktop-first invite-only operations and customer console
 
 ## Safety Position
 
-- The server plans, it does not fly.
-- The Android app owns preflight gating, execution state, and fail-safe escalation.
-- Uncertainty defaults to `HOLD`.
-- `RTH` is reserved for battery-critical or explicit operator command.
+- Android owns the flight-critical loop.
+- The planner server and web app never issue real-time flight control.
+- Mission artifacts and web surfaces must fail closed.
+- Uncertainty resolves to `HOLD`.
 
 ## Current Status
 
-- Core architecture, API, state machine, UI flow, and sprint docs are under `docs/`
-- Android demo app compiles, runs unit tests, builds a debug APK, and exposes a 6-screen operator flow
-- Planner server serves a mission-planning skeleton with in-memory artifacts and pytest coverage
+- Stage 0 governance and web beta scope docs are in place.
+- `planner-server` now includes web auth, tenancy, billing, audit, and DB-aware health checks.
+- `web-app` provides invite/login, sites, missions, planner, billing, org admin, and audit views.
+- Android Sprint 4 work exists separately and is not part of the Web Beta RC release gate.
 
 ## Repo Layout
 
 ```text
 docs/
-  architecture, API, state machine, UI flow, demo script, sprint plans
+  scope, architecture, deploy topology, threat model, release runbook
 
 android-app/
-  Kotlin Android app
-  Jetpack Compose operator UI
-  conservative state machine + fake DJI adapters
+  flight-critical Android runtime
 
 planner-server/
-  FastAPI planner skeleton
-  mock route provider
-  mock KMZ + mission metadata artifacts
+  FastAPI planner and operations backend
+
+web-app/
+  React/Vite desktop beta console
+
+render.yaml
+  Render blueprint for staging/prod app + api services
 ```
 
 ## Verification Commands
-
-Android:
-
-```powershell
-Set-Location .\android-app
-.\gradlew.bat --no-daemon testDebugUnitTest assembleDebug lintDebug
-```
 
 Planner server:
 
@@ -53,33 +48,30 @@ Set-Location .\planner-server
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m pytest
+python -m pytest tests -q
 ```
 
-Run the local planner server:
+Web app:
 
 ```powershell
-Set-Location .\planner-server
-.venv\Scripts\Activate.ps1
-python -m uvicorn app.main:app --reload
+Set-Location .\web-app
+npm ci
+npm run lint
+npm run test
+npm run build
 ```
 
-## Demo Flow
+## Release Paths
 
-1. Load the mock mission in `Mission Setup`
-2. Review and approve `Preflight Checklist`
-3. Upload and start from `Preflight`
-4. Use `In-Flight Main` to trigger branch, obstacle, and inspection events
-5. Use `Branch Confirm` to confirm, timeout, or escalate
-6. Use `Inspection Capture` to align first, then capture
-7. Use the bottom rail or `Emergency` screen for `HOLD`, `RTH`, and manual takeover
+- Deploy topology source of truth: [render.yaml](/D:/The%20Fourth%20Wall%20AI/codebase/render.yaml)
+- Deploy and rollback procedure: [web-beta-release-runbook.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-release-runbook.md)
+- Staging/prod topology contract: [deploy-topology.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/deploy-topology.md)
 
 ## Key Docs
 
-- `docs/architecture-building-route-assistant.md`
-- `docs/api-spec.md`
-- `docs/state-machine.md`
-- `docs/ui-mission-flow.md`
-- `docs/demo-script.md`
-- `docs/failsafe-table.md`
-- `INVESTOR_DEMO_CHECKLIST.md`
+- [architecture-building-route-assistant.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/architecture-building-route-assistant.md)
+- [api-spec.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/api-spec.md)
+- [PROD_READINESS_PLAN.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PROD_READINESS_PLAN.md)
+- [web-beta-scope.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-scope.md)
+- [web-threat-model.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-threat-model.md)
+- [deploy-topology.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/deploy-topology.md)

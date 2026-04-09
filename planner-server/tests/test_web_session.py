@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from app.security import WEB_REFRESH_COOKIE_NAME
 from tests.helpers import login_web, seed_organization, seed_user
 
@@ -88,3 +90,47 @@ def test_web_login_rate_limit_blocks_repeated_failed_attempts(client, session_fa
 
     assert blocked_response.status_code == 429
     assert blocked_response.json()["detail"] == "rate_limit_exceeded"
+
+
+def test_web_session_endpoints_reject_wrong_origin(client, app, session_factory) -> None:
+    with session_factory() as session:
+        organization = seed_organization(session, name="Origin Org")
+        organization_id = organization.id
+        seed_user(
+            session,
+            email="origin@org.test",
+            password=PASSWORD,
+            org_roles=[(organization_id, "customer_admin")],
+        )
+        session.commit()
+
+    app.state.settings = replace(app.state.settings, app_origin="https://app.beta.example")
+
+    blocked_login = client.post(
+        "/v1/web/session/login",
+        headers={"Origin": "https://evil.example"},
+        json={"email": "origin@org.test", "password": PASSWORD},
+    )
+    assert blocked_login.status_code == 403
+    assert blocked_login.json()["detail"] == "origin_not_allowed"
+
+    allowed_login = client.post(
+        "/v1/web/session/login",
+        headers={"Origin": "https://app.beta.example"},
+        json={"email": "origin@org.test", "password": PASSWORD},
+    )
+    assert allowed_login.status_code == 200
+
+    blocked_refresh = client.post(
+        "/v1/web/session/refresh",
+        headers={"Origin": "https://evil.example"},
+    )
+    assert blocked_refresh.status_code == 403
+    assert blocked_refresh.json()["detail"] == "origin_not_allowed"
+
+    blocked_logout = client.post(
+        "/v1/web/session/logout",
+        headers={"Origin": "https://evil.example"},
+    )
+    assert blocked_logout.status_code == 403
+    assert blocked_logout.json()["detail"] == "origin_not_allowed"

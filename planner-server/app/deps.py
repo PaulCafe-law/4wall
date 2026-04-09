@@ -30,6 +30,14 @@ class CurrentWebUser:
             if membership.organization_id == organization_id and membership.is_active
         }
 
+    @property
+    def readable_org_ids(self) -> tuple[str, ...]:
+        return tuple(
+            membership.organization_id
+            for membership in self.memberships
+            if membership.organization_id is not None and membership.is_active
+        )
+
     def can_read_org(self, organization_id: str) -> bool:
         if self.global_roles.intersection({"platform_admin", "ops"}):
             return True

@@ -31,7 +31,7 @@ from app.dto import (
 from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
 from app.providers import RouteProvider, RouteProviderError
 from app.web_dto import FlightEventRecordDto, MissionDetailDto, MissionSummaryDto, TelemetryBatchRecordDto
-from app.web_scope import ensure_org_read_access, ensure_org_write_access
+from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
 
 
 router = APIRouter(tags=["missions"])
@@ -169,34 +169,31 @@ def list_missions(
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> list[MissionSummaryDto]:
-    statement = select(Mission).where(Mission.organization_id.is_not(None))
-    missions = list(session.exec(statement).all())
-    visible: list[MissionSummaryDto] = []
-    for mission in missions:
-        if mission.organization_id is None:
-            continue
-        if organizationId is not None and mission.organization_id != organizationId:
-            continue
-        if siteId is not None and mission.site_id != siteId:
-            continue
-        if statusFilter is not None and mission.status != statusFilter:
-            continue
-        if requestedBy is not None and mission.requested_by_user_id != requestedBy:
-            continue
-        if not current_user.can_read_org(mission.organization_id):
-            continue
-        visible.append(
-            MissionSummaryDto(
-                missionId=mission.id,
-                organizationId=mission.organization_id,
-                siteId=mission.site_id,
-                missionName=mission.mission_name,
-                status=mission.status,
-                bundleVersion=mission.bundle_version,
-                createdAt=mission.created_at,
-            )
+    statement = apply_org_read_scope(
+        select(Mission).where(Mission.organization_id.is_not(None)),
+        Mission.organization_id,
+        current_user,
+    )
+    if organizationId is not None:
+        statement = statement.where(Mission.organization_id == organizationId)
+    if siteId is not None:
+        statement = statement.where(Mission.site_id == siteId)
+    if statusFilter is not None:
+        statement = statement.where(Mission.status == statusFilter)
+    if requestedBy is not None:
+        statement = statement.where(Mission.requested_by_user_id == requestedBy)
+    return [
+        MissionSummaryDto(
+            missionId=mission.id,
+            organizationId=mission.organization_id,
+            siteId=mission.site_id,
+            missionName=mission.mission_name,
+            status=mission.status,
+            bundleVersion=mission.bundle_version,
+            createdAt=mission.created_at,
         )
-    return visible
+        for mission in session.exec(statement).all()
+    ]
 
 
 @router.get("/v1/missions/{mission_id}", response_model=MissionDetailDto)

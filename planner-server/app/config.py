@@ -20,6 +20,7 @@ def _env_int(name: str, default: int) -> int:
 class Settings:
     app_name: str
     environment: str
+    app_origin: str | None
     database_url: str
     artifact_backend: str
     artifact_root: str
@@ -48,6 +49,7 @@ class Settings:
         return cls(
             app_name=os.getenv("BUILDING_ROUTE_APP_NAME", "Building Route Planner"),
             environment=os.getenv("BUILDING_ROUTE_ENVIRONMENT", "development"),
+            app_origin=os.getenv("BUILDING_ROUTE_APP_ORIGIN"),
             database_url=os.getenv("BUILDING_ROUTE_DATABASE_URL", "sqlite:///./data/planner.db"),
             artifact_backend=os.getenv("BUILDING_ROUTE_ARTIFACT_BACKEND", "local"),
             artifact_root=os.getenv("BUILDING_ROUTE_ARTIFACT_ROOT", "./data/artifacts"),
@@ -78,6 +80,8 @@ class Settings:
 
     def validate_runtime(self) -> None:
         if self.environment.lower() not in {"development", "dev", "test"}:
+            if not self.app_origin:
+                raise ValueError("BUILDING_ROUTE_APP_ORIGIN must be set outside development/test")
             if self.auth_secret_key == "dev-insecure-secret-change-me":
                 raise ValueError("BUILDING_ROUTE_AUTH_SECRET_KEY must be set outside development/test")
             if self.bootstrap_operator_enabled:
