@@ -1,0 +1,50 @@
+name: Beta Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "planner-server/**"
+      - "web-app/**"
+      - ".github/workflows/smoke-beta.yml"
+
+jobs:
+  smoke:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required deployment variables
+        env:
+          API_HEALTH_URL: ${{ vars.BETA_API_HEALTH_URL }}
+          WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
+          API_MISSION_URL: ${{ vars.BETA_API_MISSION_SMOKE_URL }}
+          BETA_SMOKE_BEARER: ${{ secrets.BETA_SMOKE_BEARER }}
+        run: |
+          if [ -z "$API_HEALTH_URL" ] || [ -z "$WEB_LOGIN_URL" ]; then
+            echo "Skipping smoke because BETA_API_HEALTH_URL or BETA_WEB_LOGIN_URL is not configured."
+            exit 0
+          fi
+          echo "Deployment variables present."
+      - name: API health
+        env:
+          API_HEALTH_URL: ${{ vars.BETA_API_HEALTH_URL }}
+        run: curl --fail --silent --show-error "$API_HEALTH_URL"
+      - name: Web login route
+        env:
+          WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
+        run: curl --fail --silent --show-error "$WEB_LOGIN_URL" | grep -iq "sign in"
+      - name: Authenticated mission list smoke
+        env:
+          API_MISSION_URL: ${{ vars.BETA_API_MISSION_SMOKE_URL }}
+          BETA_SMOKE_BEARER: ${{ secrets.BETA_SMOKE_BEARER }}
+        run: |
+          if [ -z "$API_MISSION_URL" ] || [ -z "$BETA_SMOKE_BEARER" ]; then
+            echo "Skipping authenticated mission list smoke because URL or bearer secret is missing."
+            exit 0
+          fi
+          curl --fail --silent --show-error \
+            -H "Authorization: Bearer $BETA_SMOKE_BEARER" \
+            "$API_MISSION_URL"

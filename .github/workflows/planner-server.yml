@@ -4,30 +4,40 @@ on:
   push:
     paths:
       - "planner-server/**"
+      - "shared-schemas/**"
       - "docs/api-spec.md"
       - "docs/auth.md"
       - "docs/server-architecture.md"
+      - "docs/web-*.md"
       - ".github/workflows/planner-server.yml"
   pull_request:
     paths:
       - "planner-server/**"
+      - "shared-schemas/**"
       - "docs/api-spec.md"
       - "docs/auth.md"
       - "docs/server-architecture.md"
+      - "docs/web-*.md"
       - ".github/workflows/planner-server.yml"
 
 jobs:
   test:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: planner-server
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.13"
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Validate migrations
+        env:
+          BUILDING_ROUTE_DATABASE_URL: sqlite:///./data/ci-migration.db
+        run: python -m alembic upgrade head
       - name: Run tests
-        run: pytest
+        run: python -m pytest tests -q

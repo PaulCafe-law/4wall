@@ -57,6 +57,9 @@ class InspectionIntentDto(BaseModel):
 
 
 class MissionPlanRequestDto(BaseModel):
+    organizationId: str | None = None
+    siteId: str | None = None
+    requestedByUserId: str | None = None
     missionName: str = Field(min_length=1)
     origin: GeoPointDto
     targetBuilding: TargetBuildingDto
@@ -123,6 +126,10 @@ class MissionArtifactsDto(BaseModel):
 
 class MissionPlanResponseDto(BaseModel):
     missionId: str
+    organizationId: str | None = None
+    siteId: str | None = None
+    requestedByUserId: str | None = None
+    status: Literal["draft", "planning", "ready", "failed", "archived"] = "ready"
     bundleVersion: str = "1.0.0"
     missionBundle: MissionBundleDto
     artifacts: MissionArtifactsDto

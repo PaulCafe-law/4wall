@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.config import Settings
@@ -23,6 +24,10 @@ def test_settings(tmp_path: Path) -> Settings:
         auth_secret_key="test-secret-key-with-32-bytes-minimum",
         access_token_ttl_minutes=15,
         refresh_token_ttl_days=7,
+        web_login_rate_limit_attempts=5,
+        web_login_rate_limit_window_seconds=300,
+        invite_accept_rate_limit_attempts=5,
+        invite_accept_rate_limit_window_seconds=300,
         bootstrap_operator_enabled=True,
         bootstrap_operator_username="pilot",
         bootstrap_operator_password="pilot-dev-only",
@@ -34,8 +39,13 @@ def test_settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def client(test_settings: Settings) -> TestClient:
-    with TestClient(build_app(settings=test_settings)) as client:
+def app(test_settings: Settings) -> FastAPI:
+    return build_app(settings=test_settings)
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    with TestClient(app) as client:
         yield client
 
 
@@ -47,3 +57,8 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     )
     token = response.json()["accessToken"]
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+def session_factory(app: FastAPI):
+    return app.state.session_factory
