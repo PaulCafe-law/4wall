@@ -6,6 +6,7 @@ services:
   - type: web
     name: four-wall-api-staging
     runtime: docker
+    region: singapore
     rootDir: planner-server
     healthCheckPath: /healthz
     autoDeployTrigger: checksPass
@@ -38,6 +39,7 @@ services:
   - type: web
     name: four-wall-api
     runtime: docker
+    region: singapore
     rootDir: planner-server
     healthCheckPath: /healthz
     autoDeployTrigger: "off"
