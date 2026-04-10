@@ -4,14 +4,14 @@
 
 Deliver a demo for Mini 4 Pro that follows a road or pedestrian network as an aerial corridor, reaches exterior building inspection viewpoints, confirms branches conservatively, performs local avoidance with bounded authority, then auto-hovers for framing.
 
-## Greenfield Scan Result
+## Bootstrap Status
 
-This workspace is currently greenfield.
+This workspace started greenfield. Current bootstrap status:
 
-- Existing git repo: none detected
-- Existing Android app: none detected
-- Existing planner server: none detected
-- Existing docs: none detected
+- Git repo: initialized locally
+- Android app: minimal Kotlin app skeleton present under `android-app/`
+- Planner server: FastAPI skeleton present under `planner-server/`
+- Core docs: present under `docs/`
 
 Chosen baseline stack for implementation:
 

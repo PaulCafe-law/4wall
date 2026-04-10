@@ -1,0 +1,106 @@
+import { screen } from '@testing-library/react'
+
+import { BillingPage } from './BillingPage'
+import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
+
+describe('BillingPage', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('hides invoice mutation controls for customer users', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify([]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+
+    renderWithProviders(<BillingPage />, {
+      auth: createAuthValue({
+        session: createSession({
+          globalRoles: [],
+          memberships: [
+            {
+              membershipId: 'm-1',
+              organizationId: 'org-1',
+              role: 'customer_admin',
+              isActive: true,
+            },
+          ],
+        }),
+        isInternal: false,
+      }),
+    })
+
+    expect(await screen.findByText('No invoice yet')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'New Invoice' })).not.toBeInTheDocument()
+  })
+
+  it('renders overdue status and create controls for internal users', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.includes('/v1/billing/invoices')) {
+        return new Response(
+          JSON.stringify([
+            {
+              invoiceId: 'inv-1',
+              organizationId: 'org-1',
+              invoiceNumber: 'INV-001',
+              currency: 'TWD',
+              subtotal: 1000,
+              tax: 50,
+              total: 1050,
+              dueDate: '2026-04-17T00:00:00Z',
+              status: 'overdue',
+              paymentInstructions: 'Bank transfer',
+              attachmentRefs: [],
+              notes: 'Follow up',
+              paymentNote: '',
+              receiptRef: '',
+              voidReason: '',
+              createdAt: '2026-04-10T00:00:00Z',
+              updatedAt: '2026-04-10T00:00:00Z',
+            },
+          ]),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+      }
+      if (url.includes('/v1/organizations')) {
+        return new Response(
+          JSON.stringify([
+            {
+              organizationId: 'org-1',
+              name: 'Org One',
+              slug: 'org-one',
+              memberCount: 1,
+              siteCount: 1,
+            },
+          ]),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          },
+        )
+      }
+      return new Response('not found', { status: 404 })
+    })
+
+    renderWithProviders(<BillingPage />, {
+      auth: createAuthValue({
+        session: createSession({
+          globalRoles: ['ops'],
+          memberships: [],
+        }),
+        isInternal: true,
+      }),
+    })
+
+    expect(await screen.findByText('INV-001')).toBeInTheDocument()
+    expect(screen.getByText('overdue')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'New Invoice' })).toBeInTheDocument()
+  })
+})

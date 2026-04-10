@@ -1,0 +1,106 @@
+# Web Beta RC deploy graph:
+#   main -> staging-api + staging-app -> smoke-beta.yml
+#                                 pass -> promote prod-api + prod-app
+#                                 fail -> rollback previous healthy deploy
+services:
+  - type: web
+    name: four-wall-api-staging
+    runtime: docker
+    region: singapore
+    rootDir: planner-server
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: BUILDING_ROUTE_ENVIRONMENT
+        value: staging
+      - key: BUILDING_ROUTE_APP_ORIGIN
+        sync: false
+      - key: BUILDING_ROUTE_DATABASE_URL
+        sync: false
+      - key: BUILDING_ROUTE_AUTH_SECRET_KEY
+        sync: false
+      - key: BUILDING_ROUTE_ROUTE_PROVIDER
+        value: osrm
+      - key: BUILDING_ROUTE_ARTIFACT_BACKEND
+        value: s3
+      - key: BUILDING_ROUTE_S3_BUCKET
+        sync: false
+      - key: BUILDING_ROUTE_S3_ENDPOINT_URL
+        sync: false
+      - key: BUILDING_ROUTE_S3_REGION
+        sync: false
+      - key: BUILDING_ROUTE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BUILDING_ROUTE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+
+  - type: web
+    name: four-wall-api
+    runtime: docker
+    region: singapore
+    rootDir: planner-server
+    healthCheckPath: /healthz
+    autoDeployTrigger: "off"
+    envVars:
+      - key: BUILDING_ROUTE_ENVIRONMENT
+        value: production
+      - key: BUILDING_ROUTE_APP_ORIGIN
+        sync: false
+      - key: BUILDING_ROUTE_DATABASE_URL
+        sync: false
+      - key: BUILDING_ROUTE_AUTH_SECRET_KEY
+        sync: false
+      - key: BUILDING_ROUTE_ROUTE_PROVIDER
+        value: osrm
+      - key: BUILDING_ROUTE_ARTIFACT_BACKEND
+        value: s3
+      - key: BUILDING_ROUTE_S3_BUCKET
+        sync: false
+      - key: BUILDING_ROUTE_S3_ENDPOINT_URL
+        sync: false
+      - key: BUILDING_ROUTE_S3_REGION
+        sync: false
+      - key: BUILDING_ROUTE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BUILDING_ROUTE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+
+  - type: web
+    name: four-wall-web-staging
+    runtime: static
+    rootDir: web-app
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    autoDeployTrigger: checksPass
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_APP_ENVIRONMENT
+        value: staging
+
+  - type: web
+    name: four-wall-web
+    runtime: static
+    rootDir: web-app
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    autoDeployTrigger: "off"
+    pullRequestPreviewsEnabled: true
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false
+      - key: VITE_APP_ENVIRONMENT
+        value: production

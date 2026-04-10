@@ -20,6 +20,8 @@ Thumbs.db
 venv/
 __pycache__/
 *.pyc
+planner-server/data/
+planner-server/.pytest_cache/
 
 # Logs and temp
 *.log

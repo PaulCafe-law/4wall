@@ -16,8 +16,10 @@
   - Server-side planning and mock mission loading are enough for demo
 - Multi-drone or fleet management
   - Not needed for investor demo
-- Post-flight analytics and reporting portal
-  - Nice follow-on, not on critical path
+- Post-flight analytics and reporting portal beyond basic audit/event views
+  - Beta only needs mission status, artifacts, and operator-grade auditability
+- Hosted online checkout as the beta launch gate
+  - Manual invoices ship first so billing does not block launch
 - Beyond visual line of sight autonomy
   - Not part of current safety posture
 - Aggressive obstacle avoidance maneuvers
@@ -31,7 +33,7 @@
 
 ## Engineering Deferrals
 
-- Production-grade auth and tenancy model
+- Open self-serve signup and self-service organization provisioning
 - Persistent offline sync queue for every telemetry sample
 - DJI-specific KMZ correctness validation on hardware
 - Hardware-in-the-loop integration suite
