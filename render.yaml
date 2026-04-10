@@ -75,6 +75,10 @@ services:
     rootDir: web-app
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     autoDeployTrigger: checksPass
     pullRequestPreviewsEnabled: true
     envVars:
@@ -89,6 +93,10 @@ services:
     rootDir: web-app
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     autoDeployTrigger: "off"
     pullRequestPreviewsEnabled: true
     envVars:
