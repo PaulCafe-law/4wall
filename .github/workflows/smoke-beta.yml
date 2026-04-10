@@ -59,7 +59,8 @@ jobs:
           WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
         run: |
           for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error "$WEB_LOGIN_URL" | grep -iq "sign in"; then
+            response="$(curl --fail --silent --show-error "$WEB_LOGIN_URL")"
+            if echo "$response" | grep -iq '<div id="root"></div>' && echo "$response" | grep -iq '<script type="module"'; then
               exit 0
             fi
             sleep 10
