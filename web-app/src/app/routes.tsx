@@ -66,10 +66,10 @@ export function RequireAuthenticated() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-grain px-6">
         <div className="rounded-[2rem] border border-white/70 bg-white/80 px-8 py-10 text-center shadow-panel backdrop-blur">
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">Session restore</p>
-          <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">Restoring workspace</h1>
+          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">工作階段還原</p>
+          <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">正在還原工作區</h1>
           <p className="mt-3 text-sm text-chrome-700">
-            Checking the latest authenticated session and role map.
+            正在檢查最近一次已驗證的工作階段與角色對應。
           </p>
         </div>
       </div>
@@ -92,12 +92,12 @@ export function RequireInternal({ children }: { children: ReactElement }) {
     return (
       <div className="mx-auto max-w-3xl">
         <div className="rounded-[1.75rem] border border-red-200 bg-red-50/85 p-8 text-center shadow-panel">
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-red-600">Forbidden role</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-red-600">角色受限</p>
           <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">
-            Internal access required
+            需要內部權限
           </h1>
           <p className="mt-3 text-sm text-chrome-700">
-            This view is reserved for platform operations and audit workflows.
+            這個頁面僅提供平台營運與稽核流程使用。
           </p>
         </div>
       </div>

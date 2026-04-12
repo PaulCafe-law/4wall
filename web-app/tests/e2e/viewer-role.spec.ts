@@ -66,12 +66,12 @@ test('customer viewer can browse but cannot see site mutation controls', async (
   })
 
   await page.goto('/login')
-  await page.getByLabel('Email').fill('viewer@test.dev')
-  await page.getByLabel('Password').fill('Password123!')
-  await page.getByRole('button', { name: 'Enter Console' }).click()
+  await page.getByLabel('電子郵件').fill('viewer@test.dev')
+  await page.getByLabel('密碼').fill('Password123!')
+  await page.getByRole('button', { name: '進入主控台' }).click()
 
-  await page.getByRole('link', { name: 'Sites' }).click()
+  await page.getByRole('link', { name: '場址' }).click()
 
   await expect(page.getByRole('link', { name: /Viewer Site/i })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'New Site' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '新增場址' })).toHaveCount(0)
 })

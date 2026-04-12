@@ -6,11 +6,12 @@ import { z } from 'zod'
 import { ActionButton, Field, Input, Panel } from '../../components/ui'
 import { ApiError } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
+import { formatApiError } from '../../lib/presentation'
 
 const inviteSchema = z.object({
-  inviteToken: z.string().min(1, 'Invite token is required'),
-  displayName: z.string().min(1, 'Display name is required'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  inviteToken: z.string().min(1, '邀請代碼不可為空'),
+  displayName: z.string().min(1, '顯示名稱不可為空'),
+  password: z.string().min(8, '密碼至少需要 8 個字元'),
 })
 
 type InviteFormValues = z.infer<typeof inviteSchema>
@@ -42,8 +43,8 @@ export function InvitePage() {
       await auth.acceptInvite(values)
       navigate('/missions', { replace: true })
     } catch (error) {
-      const detail = error instanceof ApiError ? error.detail : 'Unable to accept invite'
-      setError('root', { message: detail })
+      const detail = error instanceof ApiError ? error.detail : undefined
+      setError('root', { message: formatApiError(detail, '無法啟用邀請，請稍後再試。') })
     }
   })
 
@@ -51,51 +52,50 @@ export function InvitePage() {
     <div className="min-h-screen bg-grain px-6 py-10">
       <div className="mx-auto grid max-w-5xl gap-6 md:grid-cols-[minmax(0,1fr)_26rem]">
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">Invite acceptance</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">邀請啟用</p>
           <h1 className="mt-3 font-display text-4xl font-semibold tracking-[-0.04em] text-chrome-950">
-            Activate your beta access
+            啟用你的測試權限
           </h1>
           <p className="mt-4 max-w-2xl text-base text-chrome-700">
-            This app supports customers, internal ops, and platform admins in one console. Invite
-            tokens are single-use and time-boxed, so complete setup in one session.
+            這套應用在同一個主控台中同時支援客戶、內部營運與平台管理員。邀請代碼僅能使用一次且有時效，請在同一次操作中完成設定。
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             <div className="rounded-2xl border border-chrome-200 bg-chrome-50/70 p-4">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Role-bound</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">角色綁定</p>
               <p className="mt-2 text-sm text-chrome-700">
-                Your invite decides whether you land in read-only or writable workspace modes.
+                邀請內容會決定你進入的是唯讀工作區還是可寫入工作區。
               </p>
             </div>
             <div className="rounded-2xl border border-chrome-200 bg-chrome-50/70 p-4">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Cookie session</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Cookie 工作階段</p>
               <p className="mt-2 text-sm text-chrome-700">
-                Refresh stays in an HttpOnly cookie. Access token remains in app memory only.
+                刷新權杖保留在 HttpOnly cookie 中，存取權杖只存在於應用記憶體。
               </p>
             </div>
             <div className="rounded-2xl border border-chrome-200 bg-chrome-50/70 p-4">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Audit ready</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">可追溯稽核</p>
               <p className="mt-2 text-sm text-chrome-700">
-                Internal support access and billing mutations are visible in the audit trail.
+                內部支援存取與帳務異動都能在稽核記錄中追蹤。
               </p>
             </div>
           </div>
         </Panel>
 
         <Panel className="self-start">
-          <h2 className="font-display text-3xl font-semibold text-chrome-950">Accept invite</h2>
+          <h2 className="font-display text-3xl font-semibold text-chrome-950">啟用邀請</h2>
           <p className="mt-2 text-sm text-chrome-700">
-            Paste the invite token you received, choose a display name, and set your password.
+            貼上收到的邀請代碼，填寫顯示名稱，並設定登入密碼。
           </p>
 
           <form className="mt-6 space-y-4" onSubmit={onSubmit}>
-            <Field label="Invite token" error={errors.inviteToken?.message}>
+            <Field label="邀請代碼" error={errors.inviteToken?.message}>
               <Input autoComplete="off" {...register('inviteToken')} />
             </Field>
-            <Field label="Display name" error={errors.displayName?.message}>
+            <Field label="顯示名稱" error={errors.displayName?.message}>
               <Input autoComplete="name" {...register('displayName')} />
             </Field>
-            <Field label="Password" error={errors.password?.message}>
+            <Field label="密碼" error={errors.password?.message}>
               <Input type="password" autoComplete="new-password" {...register('password')} />
             </Field>
             {errors.root?.message ? (
@@ -104,7 +104,7 @@ export function InvitePage() {
               </div>
             ) : null}
             <ActionButton className="w-full" disabled={isSubmitting} type="submit">
-              {isSubmitting ? 'Activating…' : 'Activate Access'}
+              {isSubmitting ? '啟用中…' : '啟用帳號'}
             </ActionButton>
           </form>
         </Panel>

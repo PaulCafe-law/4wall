@@ -25,8 +25,8 @@ export function MissionDetailPage() {
   if (!missionId) {
     return (
       <EmptyState
-        title="Mission not selected"
-        body="Pick a mission from the mission index to inspect request payload, bundle result, and artifacts."
+        title="尚未選取任務"
+        body="請先從任務總覽選取一筆任務，才能查看請求內容、任務包結果與產物。"
       />
     )
   }
@@ -34,7 +34,7 @@ export function MissionDetailPage() {
   if (missionQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">Loading mission detail…</p>
+        <p className="text-sm text-chrome-700">正在載入任務明細…</p>
       </Panel>
     )
   }
@@ -42,8 +42,8 @@ export function MissionDetailPage() {
   if (!missionQuery.data) {
     return (
       <EmptyState
-        title="Mission unavailable"
-        body="The selected mission could not be loaded with the current role and org scope."
+        title="無法取得任務"
+        body="目前角色或組織範圍下無法載入這筆任務。"
       />
     )
   }
@@ -53,8 +53,8 @@ export function MissionDetailPage() {
 
   const rail = (
     <Panel>
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Artifact panel</p>
-      <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">Bundle outputs</h2>
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">產物面板</p>
+      <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">任務包輸出</h2>
       <div className="mt-4 space-y-3">
         {artifacts.missionKmz ? (
           <a
@@ -68,7 +68,7 @@ export function MissionDetailPage() {
           </a>
         ) : (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
-            Artifact generation failed or is not yet available.
+            產物尚未產生完成，或產生程序已失敗。
           </div>
         )}
 
@@ -90,9 +90,9 @@ export function MissionDetailPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Mission detail"
+        eyebrow="任務明細"
         title={mission.missionName}
-        subtitle="Review planner inputs, org association, status, and published artifacts from one screen."
+        subtitle="在同一個畫面中檢視規劃輸入、組織關聯、任務狀態與已發布的產物。"
         action={<StatusBadge status={mission.status} />}
       />
 
@@ -102,25 +102,25 @@ export function MissionDetailPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <DataList
                 rows={[
-                  { label: 'Mission ID', value: mission.missionId },
-                  { label: 'Organization', value: mission.organizationId ?? 'Internal only' },
-                  { label: 'Site', value: mission.siteId ?? 'Not linked' },
-                  { label: 'Bundle', value: mission.bundleVersion },
-                  { label: 'Created', value: formatDate(mission.createdAt) },
+                  { label: '任務編號', value: mission.missionId },
+                  { label: '組織', value: mission.organizationId ?? '僅供內部使用' },
+                  { label: '場址', value: mission.siteId ?? '未連結' },
+                  { label: '任務包', value: mission.bundleVersion },
+                  { label: '建立時間', value: formatDate(mission.createdAt) },
                 ]}
               />
             </div>
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Request payload</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">請求內容</p>
             <pre className="mt-4 overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
               {JSON.stringify(mission.request, null, 2)}
             </pre>
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Response payload</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">回應內容</p>
             <pre className="mt-4 overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
               {JSON.stringify(mission.response, null, 2)}
             </pre>
@@ -130,7 +130,7 @@ export function MissionDetailPage() {
 
           <div className="flex justify-end">
             <Link to="/missions" className="rounded-full border border-chrome-300 px-4 py-2 text-sm text-chrome-800">
-              Back to missions
+              返回任務列表
             </Link>
           </div>
         </div>

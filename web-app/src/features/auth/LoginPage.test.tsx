@@ -5,7 +5,7 @@ import { LoginPage } from './LoginPage'
 import { createAuthValue, renderWithProviders } from '../../test/utils'
 
 describe('LoginPage', () => {
-  it('validates email and password before submit', async () => {
+  it('顯示繁中驗證錯誤訊息', async () => {
     const user = userEvent.setup()
 
     renderWithProviders(<LoginPage />, {
@@ -13,11 +13,11 @@ describe('LoginPage', () => {
       auth: createAuthValue({ status: 'anonymous', session: null, user: null }),
     })
 
-    await user.type(screen.getByLabelText('Email'), 'invalid-email')
-    await user.type(screen.getByLabelText('Password'), '123')
-    await user.click(screen.getByRole('button', { name: 'Enter Console' }))
+    await user.type(screen.getByLabelText('電子郵件'), 'invalid-email')
+    await user.type(screen.getByLabelText('密碼'), '123')
+    await user.click(screen.getByRole('button', { name: '進入主控台' }))
 
-    expect(await screen.findByText('Enter a valid email address')).toBeInTheDocument()
-    expect(await screen.findByText('Password must be at least 8 characters')).toBeInTheDocument()
+    expect(await screen.findByText('請輸入有效的電子郵件地址')).toBeInTheDocument()
+    expect(await screen.findByText('密碼至少需要 8 個字元')).toBeInTheDocument()
   })
 })
