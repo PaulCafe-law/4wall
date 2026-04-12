@@ -29,3 +29,16 @@
 - Reuse existing planner-server planning and artifact services instead of creating a second backend.
 - Treat manual invoices as the only billing path required for beta launch.
 - Design for `app.<domain>` and `api.<domain>` from day one so web session cookies remain same-site.
+
+## Product Gaps After Beta RC
+
+The beta now proves the deploy path, auth model, mission flow, and output delivery. The remaining product gaps are customer-experience gaps, not platform-foundation gaps.
+
+| Area | Current State | Target | Remaining Gap | Risk If Skipped |
+|---|---|---|---|---|
+| Customer landing | Users currently land in task-first pages | A true customer overview shows today's work, recent outputs, and overdue items | No clear "what should I do next?" home screen exists | New users feel dropped into raw lists instead of a product |
+| Team management | Internal org tools exist; customer-facing team controls are limited | Customers manage invites and understand their team state without ops intervention | Team workflow is still too internal and too low-context | Customers stay dependent on ops for routine account changes |
+| Output experience | Outputs are available inside mission detail | Output delivery feels like a customer handoff surface, not a debug panel | Outputs are discoverable but not yet highlighted as core value | Customers may miss or underuse delivered mission bundles |
+| Support queue | Audit and mission detail exist | Internal users see a dedicated support queue for failed or stalled work | Exception handling is still spread across lists and logs | Support work stays slower and less consistent |
+| Status feedback | Statuses exist in raw lists and details | Customers see visible pending items, exceptions, and overdue reminders | There is no cohesive reminder model yet | Customers do not know what needs attention without digging |
+| Billing delivery | Manual invoice records work | Billing feels like an account workspace, not a backend record list | Payment context and customer-facing framing remain thin | Commercial readiness feels incomplete despite working data paths |

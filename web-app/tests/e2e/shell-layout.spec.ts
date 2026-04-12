@@ -57,32 +57,47 @@ for (const viewport of viewports) {
       })
     })
 
+    await page.route('**/v1/sites', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      })
+    })
+
+    await page.route('**/v1/billing/invoices', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      })
+    })
+
     await page.goto('/login')
-    await page.getByLabel('電子郵件').fill('platform@prod.internal.test')
+    await page.getByLabel('電子郵件地址').fill('platform@prod.internal.test')
     await page.getByLabel('密碼').fill('Password123!')
     await page.getByRole('button', { name: '進入主控台' }).click()
 
-    await expect(page).toHaveURL(/\/missions$/)
+    await expect(page).toHaveURL(/\/$/)
 
     const sidebar = page.locator('aside')
-    const nav = page.locator('nav')
+    const navs = page.locator('nav')
     const main = page.locator('main')
 
     await expect(sidebar).toBeVisible()
-    await expect(nav).toBeVisible()
+    await expect(navs).toHaveCount(2)
     await expect(page.getByRole('link', { name: '稽核記錄' })).toBeVisible()
 
-    const [sidebarBox, navBox, mainBox] = await Promise.all([
-      sidebar.boundingBox(),
-      nav.boundingBox(),
-      main.boundingBox(),
-    ])
+    const [sidebarBox, mainBox] = await Promise.all([sidebar.boundingBox(), main.boundingBox()])
+    const navBoxes = await Promise.all((await navs.all()).map((nav) => nav.boundingBox()))
 
     expect(sidebarBox).not.toBeNull()
-    expect(navBox).not.toBeNull()
     expect(mainBox).not.toBeNull()
 
-    expect(navBox!.x + navBox!.width).toBeLessThanOrEqual(sidebarBox!.x + sidebarBox!.width + 1)
+    for (const navBox of navBoxes) {
+      expect(navBox).not.toBeNull()
+      expect(navBox!.x + navBox!.width).toBeLessThanOrEqual(sidebarBox!.x + sidebarBox!.width + 1)
+    }
     expect(mainBox!.x).toBeGreaterThanOrEqual(sidebarBox!.x + sidebarBox!.width - 1)
   })
 }

@@ -20,29 +20,29 @@ const statusLabels: Record<string, string> = {
 }
 
 const apiErrorLabels: Record<string, string> = {
-  invalid_credentials: '帳號或密碼錯誤。',
-  missing_refresh_cookie: '找不到工作階段憑證，請重新登入。',
+  invalid_credentials: '帳號或密碼不正確',
+  missing_refresh_cookie: '找不到工作階段資訊，請重新登入。',
   web_refresh_token_revoked: '工作階段已失效，請重新登入。',
-  user_inactive: '此帳號已停用。',
-  forbidden_role: '目前角色沒有執行此操作的權限。',
-  organization_slug_exists: '此組織代號已存在。',
+  user_inactive: '此帳號目前無法使用。',
+  forbidden_role: '你的角色沒有執行這個動作的權限。',
+  organization_slug_exists: '這個組織代稱已被使用。',
   organization_not_found: '找不到指定的組織。',
-  membership_not_found: '找不到指定的成員關係。',
-  invite_not_found: '找不到邀請資料。',
-  invite_revoked: '此邀請已被撤銷。',
-  invite_used: '此邀請已經使用過。',
-  invite_expired: '此邀請已過期。',
+  membership_not_found: '找不到指定的成員紀錄。',
+  invite_not_found: '找不到邀請。',
+  invite_revoked: '這封邀請已被撤銷。',
+  invite_used: '這封邀請已被使用。',
+  invite_expired: '這封邀請已過期。',
   site_not_found: '找不到指定的場址。',
   invoice_not_found: '找不到指定的帳單。',
-  invalid_slug: '組織代號格式無效。',
-  origin_not_allowed: '目前來源網域不允許執行此操作。',
-  rate_limit_exceeded: '操作過於頻繁，請稍後再試。',
+  invalid_slug: '組織代稱格式不正確。',
+  origin_not_allowed: '目前的登入來源未被允許。',
+  rate_limit_exceeded: '操作太頻繁，請稍後再試。',
 }
 
 const auditActionLabels: Record<string, string> = {
-  web_login: '網頁登入',
-  web_logout: '網頁登出',
-  web_refresh: '工作階段續期',
+  web_login: '登入',
+  web_logout: '登出',
+  web_refresh: '更新工作階段',
   organization_created: '建立組織',
   invite_created: '建立邀請',
   invite_accepted: '接受邀請',
@@ -59,7 +59,7 @@ const auditTargetTypeLabels: Record<string, string> = {
   mission: '任務',
   session: '工作階段',
   user: '使用者',
-  membership: '成員關係',
+  membership: '成員',
 }
 
 export function formatRole(role: Role): string {
@@ -82,7 +82,7 @@ export function formatBoolean(value: boolean): string {
 }
 
 export function formatAccessMode(isInternal: boolean): string {
-  return isInternal ? '內部' : '客戶'
+  return isInternal ? '內部支援' : '客戶檢視'
 }
 
 export function formatSearchMode(hasFilter: boolean): string {

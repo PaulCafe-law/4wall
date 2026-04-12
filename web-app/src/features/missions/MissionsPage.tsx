@@ -19,9 +19,9 @@ export function MissionsPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="任務總覽"
+        eyebrow="任務清單"
         title="任務"
-        subtitle="追蹤規劃佇列、檢視已產生的任務包，並快速進入場址層級的任務明細。"
+        subtitle="追蹤任務請求的進度、查看已完成的成果版本，並從任務詳情進入成果下載區。"
         action={
           <Link to="/missions/new" className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
             新增任務請求
@@ -30,24 +30,24 @@ export function MissionsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="全部" value={missions.length} />
-        <Metric label="規劃中" value={planningCount} hint="可用來辨識佇列延遲或產生程序卡住。" />
-        <Metric label="已就緒" value={readyCount} hint={failedCount > 0 ? `${failedCount} 筆失敗` : '目前沒有失敗的規劃'} />
+        <Metric label="全部任務" value={missions.length} />
+        <Metric label="規劃中" value={planningCount} hint="若長時間停留在規劃中，可通知內部支援協助查看。" />
+        <Metric label="已就緒" value={readyCount} hint={failedCount > 0 ? `另有 ${failedCount} 筆任務失敗` : '目前沒有失敗任務'} />
       </div>
 
       {missionsQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在載入任務…</p>
+          <p className="text-sm text-chrome-700">正在整理任務資料…</p>
         </Panel>
       ) : null}
 
       {!missionsQuery.isLoading && missions.length === 0 ? (
         <EmptyState
-          title="尚無任務"
-          body="當客戶或營運人員送出規劃請求後，任務會出現在這裡，並附上任務包狀態與產物連結。"
+          title="目前還沒有任務"
+          body="先送出第一筆任務請求，之後就能在這裡查看規劃進度、成果版本與下載入口。"
           action={
             <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
-              開啟規劃器
+              前往新增任務請求
             </Link>
           }
         />
@@ -66,11 +66,11 @@ export function MissionsPage() {
                     <StatusBadge status={mission.status} />
                   </div>
                   <p className="mt-2 text-sm text-chrome-700">
-                    任務包 {mission.bundleVersion} · 建立於 {formatDate(mission.createdAt)}
+                    成果版本 {mission.bundleVersion} · 建立於 {formatDate(mission.createdAt)}
                   </p>
                 </div>
                 <span className="max-w-full break-all font-mono text-[11px] uppercase tracking-[0.24em] text-chrome-500 md:max-w-xs md:text-right">
-                  {mission.organizationId ?? '內部'}
+                  {mission.organizationId ?? '未指定組織'}
                 </span>
               </div>
             </Panel>

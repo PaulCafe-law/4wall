@@ -4,7 +4,7 @@ Mini 4 Pro production-ready beta repo with three runtime boundaries:
 
 - `android-app/`: flight-critical operator app
 - `planner-server/`: planning, tenancy, artifact, billing, and ingest API
-- `web-app/`: desktop-first invite-only operations and customer console
+- `web-app/`: desktop-first invite-only customer operations console with internal admin extensions
 
 ## Safety Position
 
@@ -17,8 +17,27 @@ Mini 4 Pro production-ready beta repo with three runtime boundaries:
 
 - Stage 0 governance and web beta scope docs are in place.
 - `planner-server` now includes web auth, tenancy, billing, audit, and DB-aware health checks.
-- `web-app` provides invite/login, sites, missions, planner, billing, org admin, and audit views.
+- `web-app` provides invite/login, overview, sites, missions, mission outputs, billing, team, org admin, support, and audit views.
 - Android Sprint 4 work exists separately and is not part of the Web Beta RC release gate.
+
+## Web Product Position
+
+The web app is not a developer console and not a flight-control surface.
+
+- Primary audience: invited contractor staff
+- Secondary audience: internal `platform_admin` and `ops`
+- Customer-first workflow:
+  - manage sites
+  - request missions
+  - inspect outputs
+  - track billing
+  - manage team access
+- Internal extension workflow:
+  - manage organizations
+  - review support queue
+  - inspect audit history
+
+This keeps one shared platform shell while preserving a customer-facing language and information architecture.
 
 ## Repo Layout
 
