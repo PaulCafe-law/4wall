@@ -45,18 +45,18 @@ It does not cover Android field readiness or Sprint 4 hardware validation.
 
 1. Confirm CI is green for `planner-server` and `web-app`.
 2. Apply the repo-root `render.yaml` blueprint if service shape changed.
-3. Deploy `four-wall-api-staging`.
-4. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
-5. Deploy `four-wall-web-staging`.
+3. Merge the intended release revision to `main`.
+4. Wait for `four-wall-api-staging` and `four-wall-web-staging` to auto-deploy.
+5. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
 6. Run `.github/workflows/smoke-beta.yml` against staging.
 
 ## Promotion to Production
 
 1. Confirm staging smoke passed.
-2. Promote the same revision to `four-wall-api`.
+2. Wait for `four-wall-api` and `four-wall-web` to auto-deploy the same `main` revision.
 3. Wait for production `/healthz` to return `200`.
-4. Promote the same revision to `four-wall-web`.
-5. Re-run `.github/workflows/smoke-beta.yml` against production values.
+4. Re-run `.github/workflows/smoke-beta.yml` against production values.
+5. Roll back immediately if production smoke fails.
 
 ## Rollback Triggers
 
@@ -75,6 +75,12 @@ Rollback immediately if any of these occur:
 3. Select the last healthy deploy.
 4. Redeploy that version.
 5. Re-run API health and beta smoke before declaring recovery complete.
+
+## Automation Notes
+
+- `four-wall-api-staging` and `four-wall-web-staging` auto-deploy from `main` after required checks pass.
+- `four-wall-api` and `four-wall-web` also auto-deploy from `main` after required checks pass.
+- Because production no longer waits for a manual promote step, the release decision now depends on green CI plus fast post-deploy smoke.
 
 ## Evidence to Keep
 

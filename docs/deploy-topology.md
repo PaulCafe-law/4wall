@@ -10,6 +10,7 @@ Ship a launch-ready beta with one deploy platform, predictable domains, and expl
 - API health check path is `/healthz`, and it now includes DB dependency status.
 - GitHub Actions cover backend CI, web CI, and beta smoke in separate workflows.
 - Web release smoke reuses `planner-server/scripts/smoke_test.py` in `web-beta` mode.
+- Render staging and production services are expected to track `main` so deploy behavior follows the repo rather than a long-lived release branch.
 
 ## Target Topology
 
@@ -91,23 +92,30 @@ Render health checks apply directly to the API web service. Web checks can run a
 
 ## Canary and Smoke Flow
 
-1. Deploy staging API.
-2. Verify `staging-api.<domain>/healthz`.
-3. Deploy staging web app.
-4. Run smoke checks:
+1. Merge the intended release revision to `main`.
+2. Wait for Render to auto-deploy staging and production after required GitHub checks pass.
+3. Verify `staging-api.<domain>/healthz`.
+4. Run smoke checks against staging:
    - login page loads
    - session refresh works with the configured app origin
    - mission list route renders for a seeded test org
    - artifact download succeeds from an existing seeded mission
-5. Promote or merge to production.
+5. Verify `api.<domain>/healthz` and `app.<domain>/login`.
 6. Repeat the same checks on `api.<domain>` and `app.<domain>`.
+7. Roll back immediately if production smoke fails.
 
 ## Rollback Rules
 
-- Any failed API health check blocks promotion.
-- Any org-isolation or auth smoke failure blocks promotion.
-- Any artifact download auth regression blocks promotion.
+- Any failed API health check blocks release acceptance.
+- Any org-isolation or auth smoke failure blocks release acceptance.
+- Any artifact download auth regression blocks release acceptance.
 - Web regressions roll back independently from Android work and must never require Android changes to restore service.
+
+## Deploy Policy Tradeoff
+
+- Production auto-deploy removes the previous manual promote gate between staging and production.
+- The compensating control is green CI plus immediate post-deploy smoke on both staging and production.
+- If that smoke becomes flaky or non-actionable, production auto-deploy should be reverted until the signal is trustworthy again.
 
 ## CI Notes
 

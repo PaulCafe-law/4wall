@@ -42,7 +42,7 @@ services:
     region: singapore
     rootDir: planner-server
     healthCheckPath: /healthz
-    autoDeployTrigger: "off"
+    autoDeployTrigger: checksPass
     envVars:
       - key: BUILDING_ROUTE_ENVIRONMENT
         value: production
@@ -97,7 +97,7 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
-    autoDeployTrigger: "off"
+    autoDeployTrigger: checksPass
     pullRequestPreviewsEnabled: true
     envVars:
       - key: VITE_API_BASE_URL
