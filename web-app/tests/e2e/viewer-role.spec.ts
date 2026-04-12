@@ -20,7 +20,7 @@ const viewerSession = {
   },
 }
 
-test('customer viewer can browse but cannot see site mutation controls', async ({ page }) => {
+test('customer viewer can browse but cannot see site mutation controls or internal navigation', async ({ page }) => {
   await page.route('**/v1/web/session/refresh', async (route) => {
     await route.fulfill({
       status: 401,
@@ -65,11 +65,21 @@ test('customer viewer can browse but cannot see site mutation controls', async (
     })
   })
 
+  await page.route('**/v1/billing/invoices', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([]),
+    })
+  })
+
   await page.goto('/login')
-  await page.getByLabel('電子郵件').fill('viewer@test.dev')
+  await page.getByLabel('電子郵件地址').fill('viewer@test.dev')
   await page.getByLabel('密碼').fill('Password123!')
   await page.getByRole('button', { name: '進入主控台' }).click()
 
+  await expect(page).toHaveURL(/\/$/)
+  await expect(page.getByRole('link', { name: '組織' })).toHaveCount(0)
   await page.getByRole('link', { name: '場址' }).click()
 
   await expect(page.getByRole('link', { name: /Viewer Site/i })).toBeVisible()

@@ -117,9 +117,11 @@ export function ActionButton({
   className,
   variant = 'primary',
   ...props
-}: PropsWithChildren<React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'ghost'
-}>) {
+}: PropsWithChildren<
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: 'primary' | 'secondary' | 'ghost'
+  }
+>) {
   const variants = {
     primary: 'bg-chrome-950 text-white hover:bg-chrome-900',
     secondary: 'border border-chrome-300 bg-white text-chrome-950 hover:border-chrome-500',

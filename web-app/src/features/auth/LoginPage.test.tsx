@@ -5,7 +5,7 @@ import { LoginPage } from './LoginPage'
 import { createAuthValue, renderWithProviders } from '../../test/utils'
 
 describe('LoginPage', () => {
-  it('顯示繁中驗證錯誤訊息', async () => {
+  it('shows validation errors for invalid credentials input', async () => {
     const user = userEvent.setup()
 
     renderWithProviders(<LoginPage />, {
@@ -13,7 +13,7 @@ describe('LoginPage', () => {
       auth: createAuthValue({ status: 'anonymous', session: null, user: null }),
     })
 
-    await user.type(screen.getByLabelText('電子郵件'), 'invalid-email')
+    await user.type(screen.getByLabelText('電子郵件地址'), 'invalid-email')
     await user.type(screen.getByLabelText('密碼'), '123')
     await user.click(screen.getByRole('button', { name: '進入主控台' }))
 

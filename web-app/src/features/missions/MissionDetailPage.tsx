@@ -25,8 +25,8 @@ export function MissionDetailPage() {
   if (!missionId) {
     return (
       <EmptyState
-        title="尚未選取任務"
-        body="請先從任務總覽選取一筆任務，才能查看請求內容、任務包結果與產物。"
+        title="找不到任務"
+        body="請從任務列表重新開啟一筆任務，查看狀態、請求內容與成果下載區。"
       />
     )
   }
@@ -34,7 +34,7 @@ export function MissionDetailPage() {
   if (missionQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">正在載入任務明細…</p>
+        <p className="text-sm text-chrome-700">正在讀取任務詳情…</p>
       </Panel>
     )
   }
@@ -42,8 +42,8 @@ export function MissionDetailPage() {
   if (!missionQuery.data) {
     return (
       <EmptyState
-        title="無法取得任務"
-        body="目前角色或組織範圍下無法載入這筆任務。"
+        title="目前無法讀取這筆任務"
+        body="可能是任務不存在，或你目前沒有檢視它的權限。"
       />
     )
   }
@@ -53,8 +53,8 @@ export function MissionDetailPage() {
 
   const rail = (
     <Panel>
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">產物面板</p>
-      <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">任務包輸出</h2>
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">任務成果</p>
+      <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">下載區</h2>
       <div className="mt-4 space-y-3">
         {artifacts.missionKmz ? (
           <a
@@ -68,7 +68,7 @@ export function MissionDetailPage() {
           </a>
         ) : (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
-            產物尚未產生完成，或產生程序已失敗。
+            目前還沒有 mission.kmz 可下載。若任務已失敗，請通知內部支援協助查看。
           </div>
         )}
 
@@ -90,37 +90,35 @@ export function MissionDetailPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="任務明細"
+        eyebrow="任務詳情"
         title={mission.missionName}
-        subtitle="在同一個畫面中檢視規劃輸入、組織關聯、任務狀態與已發布的產物。"
+        subtitle="查看這筆任務的狀態、原始請求內容、規劃回應與成果下載區。"
         action={<StatusBadge status={mission.status} />}
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-6">
           <Panel>
-            <div className="grid gap-4 md:grid-cols-2">
-              <DataList
-                rows={[
-                  { label: '任務編號', value: mission.missionId },
-                  { label: '組織', value: mission.organizationId ?? '僅供內部使用' },
-                  { label: '場址', value: mission.siteId ?? '未連結' },
-                  { label: '任務包', value: mission.bundleVersion },
-                  { label: '建立時間', value: formatDate(mission.createdAt) },
-                ]}
-              />
-            </div>
+            <DataList
+              rows={[
+                { label: '任務編號', value: mission.missionId },
+                { label: '組織', value: mission.organizationId ?? '未指定組織' },
+                { label: '場址', value: mission.siteId ?? '未指定場址' },
+                { label: '成果版本', value: mission.bundleVersion },
+                { label: '建立時間', value: formatDate(mission.createdAt) },
+              ]}
+            />
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">請求內容</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">任務請求內容</p>
             <pre className="mt-4 overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
               {JSON.stringify(mission.request, null, 2)}
             </pre>
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">回應內容</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">規劃回應內容</p>
             <pre className="mt-4 overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
               {JSON.stringify(mission.response, null, 2)}
             </pre>
@@ -130,7 +128,7 @@ export function MissionDetailPage() {
 
           <div className="flex justify-end">
             <Link to="/missions" className="rounded-full border border-chrome-300 px-4 py-2 text-sm text-chrome-800">
-              返回任務列表
+              回到任務列表
             </Link>
           </div>
         </div>
