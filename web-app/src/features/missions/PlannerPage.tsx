@@ -8,19 +8,20 @@ import { ActionButton, EmptyState, Field, Input, Panel, Select, ShellSection } f
 import { api, ApiError } from '../../lib/api'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { useOrganizationChoices } from '../../lib/organization-choices'
+import { formatApiError } from '../../lib/presentation'
 
 const plannerSchema = z.object({
-  organizationId: z.string().min(1, 'Organization is required'),
-  siteId: z.string().min(1, 'Site is required'),
-  missionName: z.string().min(1, 'Mission name is required'),
-  buildingId: z.string().min(1, 'Building id is required'),
-  buildingLabel: z.string().min(1, 'Building label is required'),
+  organizationId: z.string().min(1, '請選擇組織'),
+  siteId: z.string().min(1, '請選擇場址'),
+  missionName: z.string().min(1, '任務名稱不可為空'),
+  buildingId: z.string().min(1, '建物代號不可為空'),
+  buildingLabel: z.string().min(1, '建物名稱不可為空'),
   originLat: z.coerce.number(),
   originLng: z.coerce.number(),
   viewpointLat: z.coerce.number(),
   viewpointLng: z.coerce.number(),
   yawDeg: z.coerce.number(),
-  distanceToFacadeM: z.coerce.number().min(1),
+  distanceToFacadeM: z.coerce.number().min(1, '立面距離至少需要 1 公尺'),
 })
 
 type PlannerFormInput = z.input<typeof plannerSchema>
@@ -106,16 +107,16 @@ export function PlannerPage() {
     try {
       await planMission.mutateAsync(values)
     } catch (error) {
-      const detail = error instanceof ApiError ? error.detail : 'Planner request failed'
-      setError('root', { message: detail })
+      const detail = error instanceof ApiError ? error.detail : undefined
+      setError('root', { message: formatApiError(detail, '任務規劃送出失敗，請稍後再試。') })
     }
   })
 
   if (choices.length === 0) {
     return (
       <EmptyState
-        title="Forbidden role"
-        body="This account can view missions but does not have a writable organization for planner submissions."
+        title="目前沒有可寫入的組織"
+        body="這個帳號可以查看任務，但沒有可用於送出規劃請求的可寫入組織。"
       />
     )
   }
@@ -123,16 +124,16 @@ export function PlannerPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Planner workspace"
-        title="New mission request"
-        subtitle="Desktop-first map workflow condensed into a structured beta form: org, site, building context, and one viewpoint seed."
+        eyebrow="規劃工作區"
+        title="新增任務請求"
+        subtitle="將桌面優先的地圖工作流程收斂為一個結構化表單：組織、場址、建物脈絡與一個視角種子。"
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <Panel>
           <form className="grid gap-4" onSubmit={onSubmit}>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Organization" error={errors.organizationId?.message}>
+              <Field label="組織" error={errors.organizationId?.message}>
                 <Select {...register('organizationId')}>
                   {choices.map((choice) => (
                     <option key={choice.organizationId} value={choice.organizationId}>
@@ -141,9 +142,9 @@ export function PlannerPage() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Site" error={errors.siteId?.message}>
+              <Field label="場址" error={errors.siteId?.message}>
                 <Select {...register('siteId')}>
-                  <option value="">Select a site</option>
+                  <option value="">請選擇場址</option>
                   {visibleSites.map((site) => (
                     <option key={site.siteId} value={site.siteId}>
                       {site.name}
@@ -154,41 +155,41 @@ export function PlannerPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Mission name" error={errors.missionName?.message}>
+              <Field label="任務名稱" error={errors.missionName?.message}>
                 <Input {...register('missionName')} />
               </Field>
-              <Field label="Building id" error={errors.buildingId?.message}>
+              <Field label="建物代號" error={errors.buildingId?.message}>
                 <Input {...register('buildingId')} />
               </Field>
             </div>
 
-            <Field label="Building label" error={errors.buildingLabel?.message}>
+            <Field label="建物名稱" error={errors.buildingLabel?.message}>
               <Input {...register('buildingLabel')} />
             </Field>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Origin latitude" error={errors.originLat?.message}>
+              <Field label="起點緯度" error={errors.originLat?.message}>
                 <Input step="0.00001" type="number" {...register('originLat')} />
               </Field>
-              <Field label="Origin longitude" error={errors.originLng?.message}>
+              <Field label="起點經度" error={errors.originLng?.message}>
                 <Input step="0.00001" type="number" {...register('originLng')} />
               </Field>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Viewpoint latitude" error={errors.viewpointLat?.message}>
+              <Field label="視角緯度" error={errors.viewpointLat?.message}>
                 <Input step="0.00001" type="number" {...register('viewpointLat')} />
               </Field>
-              <Field label="Viewpoint longitude" error={errors.viewpointLng?.message}>
+              <Field label="視角經度" error={errors.viewpointLng?.message}>
                 <Input step="0.00001" type="number" {...register('viewpointLng')} />
               </Field>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Yaw degrees" error={errors.yawDeg?.message}>
+              <Field label="偏航角度" error={errors.yawDeg?.message}>
                 <Input step="1" type="number" {...register('yawDeg')} />
               </Field>
-              <Field label="Facade distance (m)" error={errors.distanceToFacadeM?.message}>
+              <Field label="立面距離（公尺）" error={errors.distanceToFacadeM?.message}>
                 <Input step="0.1" type="number" {...register('distanceToFacadeM')} />
               </Field>
             </div>
@@ -201,18 +202,18 @@ export function PlannerPage() {
 
             <div className="flex justify-end">
               <ActionButton disabled={planMission.isPending} type="submit">
-                {planMission.isPending ? 'Planning…' : 'Submit Mission Request'}
+                {planMission.isPending ? '規劃中…' : '送出任務請求'}
               </ActionButton>
             </div>
           </form>
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Workspace notes</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">工作區說明</p>
           <div className="mt-4 space-y-4 text-sm text-chrome-700">
-            <p>Planning in progress surfaces as soon as the request enters the server pipeline.</p>
-            <p>The backend still stays planning-only. Android remains the flight-critical runtime.</p>
-            <p>Artifacts publish into the mission detail panel once generation completes.</p>
+            <p>當請求進入後端管線後，任務會立即以規劃中狀態出現在列表中。</p>
+            <p>後端仍維持規劃用途，不進入飛行關鍵迴路；Android 仍是唯一的飛行關鍵執行端。</p>
+            <p>產物完成後會發布到任務明細頁的產物面板。</p>
           </div>
         </Panel>
       </div>

@@ -23,9 +23,7 @@ jobs:
           python-version: "3.13"
       - uses: actions/setup-node@v4
         with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: web-app/package-lock.json
+          node-version: "22"
       - name: Check required deployment variables
         env:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
@@ -47,12 +45,6 @@ jobs:
           echo "Deployment variables present."
       - name: Install smoke dependencies
         run: python -m pip install -r planner-server/requirements.txt
-      - name: Install browser smoke dependencies
-        working-directory: web-app
-        run: npm ci
-      - name: Install Playwright browser
-        working-directory: web-app
-        run: npx playwright install --with-deps chromium
       - name: API health
         env:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
@@ -70,15 +62,20 @@ jobs:
           WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
         run: |
           for attempt in $(seq 1 30); do
-            response="$(curl --fail --silent --show-error "$WEB_LOGIN_URL")"
-            if echo "$response" | grep -iq '<div id="root"></div>' && echo "$response" | grep -iq '<script type="module"'; then
+            body=$(curl --fail --silent --show-error "$WEB_LOGIN_URL") || true
+            if printf '%s' "$body" | grep -q '<div id="root"></div>' && printf '%s' "$body" | grep -q 'type="module"'; then
               exit 0
             fi
             sleep 10
           done
           echo "Web login route never became ready"
           exit 1
-      - name: Web browser login smoke
+      - name: Install Playwright browser smoke dependencies
+        working-directory: web-app
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Browser login smoke
         working-directory: web-app
         env:
           PLAYWRIGHT_BASE_URL: ${{ vars.BETA_APP_ORIGIN }}

@@ -5,12 +5,12 @@ import { RequireAuthenticated, RequireInternal } from './routes'
 import { createAuthValue, renderWithProviders } from '../test/utils'
 
 describe('route guards', () => {
-  it('redirects expired sessions back to login', async () => {
+  it('工作階段過期時會導回登入頁', async () => {
     renderWithProviders(
       <Routes>
-        <Route path="/login" element={<div>Login screen</div>} />
+        <Route path="/login" element={<div>登入頁</div>} />
         <Route element={<RequireAuthenticated />}>
-          <Route path="/" element={<div>Protected content</div>} />
+          <Route path="/" element={<div>受保護內容</div>} />
         </Route>
       </Routes>,
       {
@@ -18,17 +18,17 @@ describe('route guards', () => {
       },
     )
 
-    expect(await screen.findByText('Login screen')).toBeInTheDocument()
+    expect(await screen.findByText('登入頁')).toBeInTheDocument()
   })
 
-  it('blocks non-internal roles from internal routes', async () => {
+  it('非內部角色會看到權限受限提示', async () => {
     renderWithProviders(
       <Routes>
         <Route
           path="/"
           element={
             <RequireInternal>
-              <div>Internal destination</div>
+              <div>內部頁面</div>
             </RequireInternal>
           }
         />
@@ -44,6 +44,6 @@ describe('route guards', () => {
       },
     )
 
-    expect(await screen.findByText('Internal access required')).toBeInTheDocument()
+    expect(await screen.findByText('需要內部權限')).toBeInTheDocument()
   })
 })

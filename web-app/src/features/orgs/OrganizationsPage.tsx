@@ -12,14 +12,15 @@ import {
   Input,
   Modal,
   Panel,
-  ShellSection,
   Select,
+  ShellSection,
 } from '../../components/ui'
 import { api, ApiError } from '../../lib/api'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
+import { formatApiError, formatBoolean, formatRole, formatRoleOption } from '../../lib/presentation'
 
 const inviteSchema = z.object({
-  email: z.email('Enter a valid email address'),
+  email: z.string().email('請輸入有效的電子郵件地址'),
   role: z.enum(['customer_admin', 'customer_viewer']),
 })
 
@@ -70,15 +71,15 @@ export function OrganizationsPage() {
     try {
       await createInvite.mutateAsync(values)
     } catch (error) {
-      const detail = error instanceof ApiError ? error.detail : 'Unable to create invite'
-      setError('root', { message: detail })
+      const detail = error instanceof ApiError ? error.detail : undefined
+      setError('root', { message: formatApiError(detail, '無法建立邀請，請稍後再試。') })
     }
   })
 
   if (organizationsQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">Loading organizations…</p>
+        <p className="text-sm text-chrome-700">正在載入組織…</p>
       </Panel>
     )
   }
@@ -86,8 +87,8 @@ export function OrganizationsPage() {
   if (!organizationsQuery.data?.length) {
     return (
       <EmptyState
-        title="No organization yet"
-        body="Create or import organizations before invite management and audit triage can proceed."
+        title="尚無組織"
+        body="請先建立或匯入組織，才能繼續處理邀請管理與稽核分流。"
       />
     )
   }
@@ -99,25 +100,25 @@ export function OrganizationsPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Internal console"
-        title="Organizations"
-        subtitle="Inspect org membership, pending invites, and customer-side access without leaving the main app."
+        eyebrow="內部主控台"
+        title="組織"
+        subtitle="直接在主應用中查看組織成員、待接受邀請與客戶端存取狀態。"
         action={
           <Modal
             open={isOpen}
             onOpenChange={setIsOpen}
-            title="Issue invite"
-            description="Invite customer admins or customer viewers into the selected organization."
-            trigger={<ActionButton>New Invite</ActionButton>}
+            title="發送邀請"
+            description="將客戶管理員或客戶檢視者邀請到目前選取的組織。"
+            trigger={<ActionButton>新增邀請</ActionButton>}
           >
             <form className="grid gap-4" onSubmit={onSubmit}>
-              <Field label="Email" error={errors.email?.message}>
+              <Field label="電子郵件" error={errors.email?.message}>
                 <Input {...register('email')} />
               </Field>
-              <Field label="Role" error={errors.role?.message}>
+              <Field label="角色" error={errors.role?.message}>
                 <Select {...register('role')}>
-                  <option value="customer_viewer">customer_viewer</option>
-                  <option value="customer_admin">customer_admin</option>
+                  <option value="customer_viewer">{formatRoleOption('customer_viewer')}</option>
+                  <option value="customer_admin">{formatRoleOption('customer_admin')}</option>
                 </Select>
               </Field>
               {errors.root?.message ? (
@@ -127,7 +128,7 @@ export function OrganizationsPage() {
               ) : null}
               <div className="flex justify-end">
                 <ActionButton disabled={createInvite.isPending} type="submit">
-                  {createInvite.isPending ? 'Issuing…' : 'Create Invite'}
+                  {createInvite.isPending ? '發送中…' : '建立邀請'}
                 </ActionButton>
               </div>
             </form>
@@ -150,7 +151,7 @@ export function OrganizationsPage() {
                 type="button"
               >
                 <p className="font-medium text-chrome-950">{organization.name}</p>
-                <p className="mt-1 text-sm text-chrome-600">{organization.slug}</p>
+                <p className="mt-1 break-all text-sm text-chrome-600">{organization.slug}</p>
               </button>
             ))}
           </div>
@@ -162,7 +163,7 @@ export function OrganizationsPage() {
               {selectedOrganization?.name}
             </h2>
             <p className="mt-2 text-sm text-chrome-700">
-              Pending invites return the raw invite token so ops can distribute them manually during beta.
+              待接受邀請會保留原始邀請代碼，方便測試階段由營運人員手動發送。
             </p>
           </Panel>
 
@@ -171,36 +172,36 @@ export function OrganizationsPage() {
               <Panel>
                 <DataList
                   rows={[
-                    { label: 'Slug', value: detailQuery.data.slug },
-                    { label: 'Active', value: detailQuery.data.isActive ? 'Yes' : 'No' },
-                    { label: 'Members', value: detailQuery.data.members.length },
-                    { label: 'Pending', value: detailQuery.data.pendingInvites.length },
+                    { label: '代號', value: detailQuery.data.slug },
+                    { label: '啟用狀態', value: formatBoolean(detailQuery.data.isActive) },
+                    { label: '成員數', value: detailQuery.data.members.length },
+                    { label: '待接受邀請', value: detailQuery.data.pendingInvites.length },
                   ]}
                 />
               </Panel>
 
               <Panel>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Members</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成員</p>
                 <div className="mt-4 grid gap-3">
                   {detailQuery.data.members.map((member) => (
                     <div key={member.membershipId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                      <p className="font-medium text-chrome-950">{member.role}</p>
-                      <p className="mt-1 text-sm text-chrome-700">{member.isActive ? 'active' : 'disabled'}</p>
+                      <p className="font-medium text-chrome-950">{formatRole(member.role)}</p>
+                      <p className="mt-1 text-sm text-chrome-700">{member.isActive ? '啟用中' : '已停用'}</p>
                     </div>
                   ))}
                 </div>
               </Panel>
 
               <Panel>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Pending invites</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">待接受邀請</p>
                 <div className="mt-4 grid gap-3">
                   {detailQuery.data.pendingInvites.length === 0 ? (
-                    <p className="text-sm text-chrome-700">No outstanding invite.</p>
+                    <p className="text-sm text-chrome-700">目前沒有待接受的邀請。</p>
                   ) : (
                     detailQuery.data.pendingInvites.map((invite) => (
                       <div key={invite.inviteId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                        <p className="font-medium text-chrome-950">{invite.email}</p>
-                        <p className="mt-1 text-sm text-chrome-700">{invite.role}</p>
+                        <p className="break-all font-medium text-chrome-950">{invite.email}</p>
+                        <p className="mt-1 text-sm text-chrome-700">{formatRole(invite.role)}</p>
                       </div>
                     ))
                   )}
