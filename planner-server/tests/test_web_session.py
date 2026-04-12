@@ -1,5 +1,8 @@
 from dataclasses import replace
 
+from fastapi.testclient import TestClient
+
+from app.main import build_app
 from app.security import WEB_REFRESH_COOKIE_NAME
 from tests.helpers import login_web, seed_organization, seed_user
 
@@ -134,3 +137,53 @@ def test_web_session_endpoints_reject_wrong_origin(client, app, session_factory)
     )
     assert blocked_logout.status_code == 403
     assert blocked_logout.json()["detail"] == "origin_not_allowed"
+
+
+def test_web_login_preflight_allows_local_browser_origin_in_test(test_settings) -> None:
+    app = build_app(settings=test_settings)
+    with TestClient(app) as client:
+        response = client.options(
+            "/v1/web/session/login",
+            headers={
+                "Origin": "http://127.0.0.1:4173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:4173"
+    assert response.headers["access-control-allow-credentials"] == "true"
+
+
+def test_web_login_preflight_allows_only_configured_origin_in_production(test_settings) -> None:
+    production_settings = replace(
+        test_settings,
+        environment="production",
+        app_origin="https://four-wall-web.onrender.com",
+        bootstrap_operator_enabled=False,
+    )
+    app = build_app(settings=production_settings)
+    with TestClient(app) as client:
+        allowed = client.options(
+            "/v1/web/session/login",
+            headers={
+                "Origin": "https://four-wall-web.onrender.com",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        blocked = client.options(
+            "/v1/web/session/login",
+            headers={
+                "Origin": "https://evil.example",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://four-wall-web.onrender.com"
+    assert allowed.headers["access-control-allow-credentials"] == "true"
+    assert blocked.status_code == 400
+    assert blocked.headers.get("access-control-allow-origin") is None
