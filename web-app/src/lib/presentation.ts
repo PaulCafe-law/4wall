@@ -55,6 +55,7 @@ const auditActionLabels: Record<string, string> = {
   invite_accepted: '接受邀請',
   site_created: '建立場址',
   invoice_created: '建立帳單',
+  'organization.detail.read_access': '讀取組織詳情',
   'flight.control_intent_requested': '提出控制請求',
   'flight.control_intent_acknowledged': '回覆控制請求',
   'flight.live_ops.read_access': '讀取飛行監看',

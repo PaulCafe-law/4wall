@@ -50,6 +50,7 @@ Android implementation is handled as an external dependency by a separate workst
 
 ### Customer Navigation
 
+- `Overview`
 - `Sites`
 - `Missions`
 - `Artifacts`
@@ -69,6 +70,7 @@ Android implementation is handled as an external dependency by a separate workst
 - Invite acceptance
 - Login
 - Session restore / auth expiry handling
+- Customer overview
 - Site list
 - Site detail
 - Mission list
@@ -100,8 +102,9 @@ Android implementation is handled as an external dependency by a separate workst
 3. Create or update a site
 4. Submit a mission plan request
 5. Watch mission status move from `draft` or `planning` to `ready` or `failed`
-6. Download artifacts when available
-7. Review invoice state
+6. Review team members and pending invites
+7. Download artifacts when available
+8. Review invoice state
 
 ### Internal Ops
 

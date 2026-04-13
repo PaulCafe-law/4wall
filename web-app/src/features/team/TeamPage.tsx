@@ -105,6 +105,16 @@ export function TeamPage() {
     )
   }
 
+  if (detailQuery.isError) {
+    const detail = detailQuery.error instanceof ApiError ? detailQuery.error.detail : undefined
+    return (
+      <EmptyState
+        title="目前無法讀取團隊資料"
+        body={formatApiError(detail, '請稍後再試，或請平台營運確認你的組織權限。')}
+      />
+    )
+  }
+
   return (
     <div className="space-y-6">
       <ShellSection

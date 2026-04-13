@@ -92,3 +92,41 @@ def test_org_scope_blocks_cross_tenant_mission_artifact_and_flight_reads(client,
     assert client.get(f"/v1/missions/{mission_id}/artifacts/mission.kmz", headers=org_b_headers).status_code == 403
     assert client.get(f"/v1/flights/flight-org-a/events", headers=org_b_headers).status_code == 403
     assert client.get(f"/v1/flights/flight-org-a/telemetry", headers=org_b_headers).status_code == 403
+
+
+def test_org_scope_allows_customer_team_reads_for_own_org_only(client, session_factory) -> None:
+    with session_factory() as session:
+        org_a = seed_organization(session, name="Org A")
+        org_b = seed_organization(session, name="Org B")
+        org_a_id = org_a.id
+        org_b_id = org_b.id
+        seed_user(
+            session,
+            email="admin@orga.test",
+            password=PASSWORD,
+            org_roles=[(org_a_id, "customer_admin")],
+        )
+        seed_user(
+            session,
+            email="viewer@orgb.test",
+            password=PASSWORD,
+            org_roles=[(org_b_id, "customer_viewer")],
+        )
+        session.commit()
+
+    org_a_headers, _ = login_web(client, email="admin@orga.test", password=PASSWORD)
+    org_a_response = client.get(f"/v1/organizations/{org_a_id}", headers=org_a_headers)
+    assert org_a_response.status_code == 200
+    org_a_body = org_a_response.json()
+    assert org_a_body["organizationId"] == org_a_id
+    assert len(org_a_body["members"]) == 1
+    assert org_a_body["pendingInvites"] == []
+    assert client.get(f"/v1/organizations/{org_b_id}", headers=org_a_headers).status_code == 403
+
+    org_b_headers, _ = login_web(client, email="viewer@orgb.test", password=PASSWORD)
+    org_b_response = client.get(f"/v1/organizations/{org_b_id}", headers=org_b_headers)
+    assert org_b_response.status_code == 200
+    org_b_body = org_b_response.json()
+    assert org_b_body["organizationId"] == org_b_id
+    assert len(org_b_body["members"]) == 1
+    assert client.get(f"/v1/organizations/{org_a_id}", headers=org_b_headers).status_code == 403
