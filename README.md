@@ -19,6 +19,7 @@ Mini 4 Pro production-ready beta repo with three runtime boundaries:
 - `planner-server` now includes web auth, tenancy, billing, audit, and DB-aware health checks.
 - `web-app` provides invite/login, overview, sites, missions, mission outputs, billing, team, org admin, support, and audit views.
 - Android Sprint 4 work exists separately and is not part of the Web Beta RC release gate.
+- The next repo-level step is no longer "build the beta stack", it is "move from operable beta to full product".
 
 ## Web Product Position
 
@@ -90,6 +91,9 @@ npm run build
 
 - [architecture-building-route-assistant.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/architecture-building-route-assistant.md)
 - [api-spec.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/api-spec.md)
+- [FULL_PRODUCT_ROADMAP.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/FULL_PRODUCT_ROADMAP.md)
+- [PHASE_1_OPERABLE_PRODUCT_GAP_ANALYSIS.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_OPERABLE_PRODUCT_GAP_ANALYSIS.md)
+- [PRODUCT_GAP_MATRIX.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PRODUCT_GAP_MATRIX.md)
 - [PROD_READINESS_PLAN.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PROD_READINESS_PLAN.md)
 - [web-beta-scope.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-scope.md)
 - [web-threat-model.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-threat-model.md)
