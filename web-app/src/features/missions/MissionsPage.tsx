@@ -19,9 +19,9 @@ export function MissionsPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="任務清單"
+        eyebrow="任務總覽"
         title="任務"
-        subtitle="追蹤任務請求的進度、查看已完成的成果版本，並從任務詳情進入成果下載區。"
+        subtitle="追蹤任務請求的進度、查看任務包狀態，並從任務明細進入成果下載區。"
         action={
           <Link to="/missions/new" className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
             新增任務請求
@@ -30,20 +30,20 @@ export function MissionsPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="全部任務" value={missions.length} />
-        <Metric label="規劃中" value={planningCount} hint="若長時間停留在規劃中，可通知內部支援協助查看。" />
+        <Metric label="全部" value={missions.length} />
+        <Metric label="規劃中" value={planningCount} hint="若長時間停留在規劃中，請聯繫支援協助查看。" />
         <Metric label="已就緒" value={readyCount} hint={failedCount > 0 ? `另有 ${failedCount} 筆任務失敗` : '目前沒有失敗任務'} />
       </div>
 
       {missionsQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在整理任務資料…</p>
+          <p className="text-sm text-chrome-700">正在載入任務…</p>
         </Panel>
       ) : null}
 
       {!missionsQuery.isLoading && missions.length === 0 ? (
         <EmptyState
-          title="目前還沒有任務"
+          title="尚無任務"
           body="先送出第一筆任務請求，之後就能在這裡查看規劃進度、成果版本與下載入口。"
           action={
             <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
@@ -66,7 +66,7 @@ export function MissionsPage() {
                     <StatusBadge status={mission.status} />
                   </div>
                   <p className="mt-2 text-sm text-chrome-700">
-                    成果版本 {mission.bundleVersion} · 建立於 {formatDate(mission.createdAt)}
+                    任務包版本 {mission.bundleVersion} · 建立於 {formatDate(mission.createdAt)}
                   </p>
                 </div>
                 <span className="max-w-full break-all font-mono text-[11px] uppercase tracking-[0.24em] text-chrome-500 md:max-w-xs md:text-right">

@@ -26,13 +26,13 @@ import { formatAccessMode, formatApiError } from '../../lib/presentation'
 
 const invoiceSchema = z.object({
   organizationId: z.string().min(1, '請選擇組織'),
-  invoiceNumber: z.string().min(1, '請輸入帳單編號'),
-  currency: z.string().length(3, '幣別請輸入 3 碼代碼'),
+  invoiceNumber: z.string().min(1, '帳單編號不可為空'),
+  currency: z.string().length(3, '幣別必須是 3 碼代號'),
   subtotal: z.coerce.number().min(0),
   tax: z.coerce.number().min(0),
   total: z.coerce.number().min(0),
-  dueDate: z.string().min(1, '請輸入到期日'),
-  paymentInstructions: z.string().min(1, '請輸入付款說明'),
+  dueDate: z.string().min(1, '到期日不可為空'),
+  paymentInstructions: z.string().min(1, '付款說明不可為空'),
   notes: z.string().default(''),
 })
 
@@ -99,7 +99,7 @@ export function BillingPage() {
       await createInvoice.mutateAsync(values)
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setError('root', { message: formatApiError(detail, '建立帳單失敗，請稍後再試。') })
+      setError('root', { message: formatApiError(detail, '無法建立帳單，請稍後再試。') })
     }
   })
 
@@ -107,8 +107,8 @@ export function BillingPage() {
     <div className="space-y-6">
       <ShellSection
         eyebrow="帳務"
-        title="帳務"
-        subtitle="查看目前可見的帳單狀態與付款說明。內部角色可在這裡建立人工帳單。"
+        title="帳單"
+        subtitle="查看目前可見的帳單狀態、付款說明與備註。內部角色可在這裡建立人工帳單。"
         action={
           auth.isInternal ? (
             <Modal
@@ -116,7 +116,7 @@ export function BillingPage() {
               onOpenChange={setIsOpen}
               title="建立帳單"
               description="填入組織、金額、到期日與付款說明後，帳單就會出現在客戶帳務頁。"
-              trigger={<ActionButton>新增帳單</ActionButton>}
+              trigger={<ActionButton>開立帳單</ActionButton>}
             >
               <form className="grid gap-4" onSubmit={onSubmit}>
                 <Field label="組織" error={errors.organizationId?.message}>
@@ -166,7 +166,7 @@ export function BillingPage() {
                 ) : null}
                 <div className="flex justify-end">
                   <ActionButton disabled={createInvoice.isPending} type="submit">
-                    {createInvoice.isPending ? '建立中…' : '送出帳單'}
+                    {createInvoice.isPending ? '開立中…' : '開立帳單'}
                   </ActionButton>
                 </div>
               </form>
@@ -177,18 +177,18 @@ export function BillingPage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <Metric label="可見帳單" value={invoices.length} />
-        <Metric label="逾期帳單" value={overdueCount} hint="如需補件或追蹤付款，可查看付款說明與備註。" />
-        <Metric label="你的檢視模式" value={formatAccessMode(auth.isInternal)} />
+        <Metric label="逾期" value={overdueCount} hint="如需補件或追蹤付款，可查看付款說明與備註。" />
+        <Metric label="檢視模式" value={formatAccessMode(auth.isInternal)} />
       </div>
 
       {invoicesQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在讀取帳單資料…</p>
+          <p className="text-sm text-chrome-700">正在載入帳單…</p>
         </Panel>
       ) : null}
 
       {!invoicesQuery.isLoading && invoices.length === 0 ? (
-        <EmptyState title="目前沒有帳單" body="目前還沒有可查看的帳單資料。" />
+        <EmptyState title="尚無帳單" body="當營運人員建立帳單後，這裡就會顯示付款說明與狀態。" />
       ) : null}
 
       <div className="grid gap-4">
@@ -208,7 +208,7 @@ export function BillingPage() {
                 <p className="mt-3 text-sm text-chrome-700">{invoice.paymentInstructions}</p>
               </div>
               <div className="max-w-full break-words rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-3 text-sm text-chrome-700 md:max-w-sm">
-                {invoice.notes || '目前沒有備註'}
+                {invoice.notes || '尚無帳務備註'}
               </div>
             </div>
           </Panel>

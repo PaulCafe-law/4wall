@@ -19,7 +19,7 @@ export function AuditPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="內部支援"
+        eyebrow="內部稽核"
         title="稽核記錄"
         subtitle="查看登入、邀請、帳務與成果相關的操作紀錄。可先選擇組織，再聚焦到單一客戶的歷史事件。"
       />
@@ -43,14 +43,14 @@ export function AuditPage() {
 
       {auditQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在讀取稽核記錄…</p>
+          <p className="text-sm text-chrome-700">正在載入稽核記錄…</p>
         </Panel>
       ) : null}
 
       {!auditQuery.isLoading && events.length === 0 ? (
         <EmptyState
-          title="目前沒有稽核事件"
-          body="請調整組織篩選條件，或稍後再查看新的登入、邀請、任務與帳務紀錄。"
+          title="尚無稽核事件"
+          body="當發生登入、邀請、帳務或成果相關操作後，紀錄就會出現在這裡。"
         />
       ) : null}
 
@@ -66,7 +66,7 @@ export function AuditPage() {
                   {formatAuditTargetType(event.targetType)} {event.targetId ?? ''}
                 </h2>
                 <p className="mt-2 text-sm text-chrome-700">
-                  {event.organizationId ?? '系統層級'} · {formatDate(event.createdAt)}
+                  {event.organizationId ?? '全域'} · {formatDate(event.createdAt)}
                 </p>
               </div>
               <pre className="max-w-full overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50 md:max-w-lg">
