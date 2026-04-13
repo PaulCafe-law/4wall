@@ -1,14 +1,19 @@
 import type {
   AuditEvent,
   BillingInvoice,
+  ControlIntent,
+  ControlIntentAction,
   FlightEventRecord,
   InviteCreateResponse,
+  LiveFlightDetail,
+  LiveFlightSummary,
   MissionDetail,
   MissionPlanResponse,
   MissionSummary,
   OrganizationDetail,
   OrganizationSummary,
   Site,
+  SupportQueueItem,
   TelemetryBatchRecord,
   WebSession,
 } from './types'
@@ -51,7 +56,7 @@ async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
       const payload = (await response.json()) as { detail?: string }
       detail = payload.detail ?? detail
     } catch {
-      // use default detail
+      // fall back to the response status text
     }
     throw new ApiError(response.status, detail)
   }
@@ -140,6 +145,11 @@ export interface InvitePayload {
   role: 'customer_admin' | 'customer_viewer'
 }
 
+export interface ControlIntentPayload {
+  action: ControlIntentAction
+  reason?: string
+}
+
 export const api = {
   login: (payload: LoginPayload) =>
     apiFetch<WebSession>('/v1/web/session/login', {
@@ -201,6 +211,18 @@ export const api = {
     apiFetch<FlightEventRecord[]>(`/v1/flights/${flightId}/events`, { token }),
   listTelemetry: (token: string, flightId: string) =>
     apiFetch<TelemetryBatchRecord[]>(`/v1/flights/${flightId}/telemetry`, { token }),
+  listLiveFlights: (token: string) => apiFetch<LiveFlightSummary[]>('/v1/live-ops/flights', { token }),
+  getLiveFlight: (token: string, flightId: string) =>
+    apiFetch<LiveFlightDetail>(`/v1/live-ops/flights/${flightId}`, { token }),
+  listControlIntents: (token: string, flightId: string) =>
+    apiFetch<ControlIntent[]>(`/v1/live-ops/flights/${flightId}/control-intents`, { token }),
+  requestControlIntent: (token: string, flightId: string, payload: ControlIntentPayload) =>
+    apiFetch<ControlIntent>(`/v1/live-ops/flights/${flightId}/control-intents`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  listSupportQueue: (token: string) => apiFetch<SupportQueueItem[]>('/v1/support/queue', { token }),
 }
 
 export function absoluteArtifactUrl(path: string): string {

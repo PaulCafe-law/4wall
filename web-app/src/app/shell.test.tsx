@@ -36,6 +36,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: '任務' })).toBeVisible()
     expect(screen.getByRole('link', { name: '帳務' })).toBeVisible()
     expect(screen.getByRole('link', { name: '團隊' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '飛行監看' })).toBeVisible()
     expect(screen.getByRole('link', { name: '組織' })).toBeVisible()
     expect(screen.getByRole('link', { name: '支援佇列' })).toBeVisible()
     expect(screen.getByRole('link', { name: '稽核記錄' })).toBeVisible()
@@ -54,7 +55,6 @@ describe('AppShell', () => {
           session: createSession({
             displayName: 'Customer User',
             email: 'customer@test.dev',
-            globalRoles: [],
             memberships: [
               {
                 membershipId: 'membership-1',
@@ -70,6 +70,7 @@ describe('AppShell', () => {
     )
 
     expect(screen.getByRole('link', { name: '總覽' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: '飛行監看' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '組織' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '支援佇列' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '稽核記錄' })).not.toBeInTheDocument()

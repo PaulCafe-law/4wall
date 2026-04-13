@@ -1,136 +1,99 @@
 import { Link } from 'react-router-dom'
 
-import { EmptyState, Metric, Panel, ShellSection, StatusBadge, formatCurrency, formatDate } from '../../components/ui'
+import { EmptyState, Metric, Panel, ShellSection, formatDate } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
+import { formatSupportSeverity } from '../../lib/presentation'
 
 export function SupportPage() {
-  const missionsQuery = useAuthedQuery({
-    queryKey: ['missions'],
-    queryFn: api.listMissions,
-    staleTime: 15_000,
+  const supportQuery = useAuthedQuery({
+    queryKey: ['support', 'queue'],
+    queryFn: api.listSupportQueue,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
   })
 
-  const invoicesQuery = useAuthedQuery({
-    queryKey: ['billing', 'invoices'],
-    queryFn: api.listInvoices,
-    staleTime: 15_000,
-  })
-
-  const organizationsQuery = useAuthedQuery({
-    queryKey: ['organizations'],
-    queryFn: api.listOrganizations,
-    staleTime: 30_000,
-  })
-
-  const organizations = organizationsQuery.data ?? []
-  const organizationNames = new Map(organizations.map((organization) => [organization.organizationId, organization.name]))
-
-  const missions = missionsQuery.data ?? []
-  const invoices = invoicesQuery.data ?? []
-
-  const failedMissions = missions.filter((mission) => mission.status === 'failed')
-  const planningMissions = missions.filter((mission) => mission.status === 'planning')
-  const overdueInvoices = invoices.filter((invoice) => invoice.status === 'overdue')
-
-  const isLoading = missionsQuery.isLoading || invoicesQuery.isLoading || organizationsQuery.isLoading
+  const items = supportQuery.data ?? []
+  const criticalCount = items.filter((item) => item.severity === 'critical').length
+  const warningCount = items.filter((item) => item.severity === 'warning').length
 
   return (
     <div className="space-y-6">
       <ShellSection
         eyebrow="內部支援"
         title="支援佇列"
-        subtitle="集中查看需要跟進的任務與帳務例外，讓跨客戶支援有固定入口，不必只靠稽核記錄排查。"
+        subtitle="集中查看失敗任務、bridge 告警與需要人工介入的現場狀態。這一頁只給內部營運與管理員使用。"
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="失敗任務" value={failedMissions.length} hint="優先確認成果是否可交付，或是否需要重新送單。" />
-        <Metric label="規劃中任務" value={planningMissions.length} hint="需要跟進是否長時間停留在規劃中。" />
-        <Metric label="逾期帳單" value={overdueInvoices.length} hint="可回到帳務頁面查看付款說明與備註。" />
+        <Metric label="待處理項目" value={items.length} />
+        <Metric label="嚴重" value={criticalCount} hint="需要優先處理的項目。" />
+        <Metric label="警示" value={warningCount} hint="可持續追蹤，但尚未進入最高優先級。" />
       </div>
 
-      {isLoading ? (
+      {supportQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在整理支援佇列…</p>
+          <p className="text-sm text-chrome-700">正在讀取支援佇列。</p>
         </Panel>
       ) : null}
 
-      {!isLoading && failedMissions.length === 0 && planningMissions.length === 0 && overdueInvoices.length === 0 ? (
+      {!supportQuery.isLoading && items.length === 0 ? (
         <EmptyState
-          title="目前沒有需要支援的工作"
-          body="任務與帳務目前看起來都在正常軌道上。若需要追溯操作紀錄，可前往稽核記錄。"
+          title="目前沒有待處理項目"
+          body="failed mission、bridge 告警與遙測中斷會集中出現在這裡。"
         />
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <Panel>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">任務支援</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">需要跟進的任務</h2>
-            </div>
-            <Link to="/missions" className="text-sm text-ember-500 underline">
-              查看全部任務
-            </Link>
-          </div>
-          <div className="mt-4 grid gap-3">
-            {[...failedMissions, ...planningMissions]
-              .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-              .slice(0, 8)
-              .map((mission) => (
-                <Link
-                  key={mission.missionId}
-                  to={`/missions/${mission.missionId}`}
-                  className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4 transition hover:border-chrome-400"
-                >
-                  <div className="flex flex-wrap items-center gap-3">
-                    <p className="font-medium text-chrome-950">{mission.missionName}</p>
-                    <StatusBadge status={mission.status} />
-                  </div>
-                  <p className="mt-2 text-sm text-chrome-700">
-                    {organizationNames.get(mission.organizationId ?? '') ?? mission.organizationId ?? '未指定組織'} · 建立於{' '}
-                    {formatDate(mission.createdAt)}
-                  </p>
-                </Link>
-              ))}
-            {failedMissions.length === 0 && planningMissions.length === 0 ? (
-              <p className="text-sm text-chrome-700">目前沒有需要支援的任務。</p>
-            ) : null}
-          </div>
-        </Panel>
-
-        <Panel>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">帳務支援</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">需要跟進的帳單</h2>
-            </div>
-            <Link to="/billing" className="text-sm text-ember-500 underline">
-              前往帳務
-            </Link>
-          </div>
-          <div className="mt-4 grid gap-3">
-            {overdueInvoices.slice(0, 8).map((invoice) => (
-              <Link
-                key={invoice.invoiceId}
-                to="/billing"
-                className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4 transition hover:border-chrome-400"
-              >
+      <div className="grid gap-4">
+        {items.map((item) => (
+          <Panel key={item.itemId}>
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
-                  <p className="font-medium text-chrome-950">{invoice.invoiceNumber}</p>
-                  <StatusBadge status={invoice.status} />
+                  <h2 className="break-words font-display text-2xl font-semibold text-chrome-950">
+                    {item.title}
+                  </h2>
+                  <span
+                    className={
+                      item.severity === 'critical'
+                        ? 'rounded-full bg-red-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-red-700'
+                        : item.severity === 'warning'
+                          ? 'rounded-full bg-amber-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-amber-800'
+                          : 'rounded-full bg-chrome-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700'
+                    }
+                  >
+                    {formatSupportSeverity(item.severity)}
+                  </span>
                 </div>
-                <p className="mt-2 text-sm text-chrome-700">
-                  {organizationNames.get(invoice.organizationId) ?? invoice.organizationId} · 到期日 {formatDate(invoice.dueDate)} ·{' '}
-                  {formatCurrency(invoice.currency, invoice.total)}
-                </p>
-              </Link>
-            ))}
-            {overdueInvoices.length === 0 ? (
-              <p className="text-sm text-chrome-700">目前沒有逾期帳單。</p>
-            ) : null}
-          </div>
-        </Panel>
+                <p className="mt-2 text-sm text-chrome-700">{item.summary}</p>
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-chrome-500">
+                  <span>組織：{item.organizationId}</span>
+                  {item.missionId ? <span>任務：{item.missionId}</span> : null}
+                  {item.flightId ? <span>飛行：{item.flightId}</span> : null}
+                  <span>建立時間：{formatDate(item.createdAt)}</span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {item.flightId ? (
+                  <Link
+                    to="/live-ops"
+                    className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
+                  >
+                    前往飛行監看
+                  </Link>
+                ) : null}
+                {item.missionId ? (
+                  <Link
+                    to={`/missions/${item.missionId}`}
+                    className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm text-white"
+                  >
+                    查看任務
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          </Panel>
+        ))}
       </div>
     </div>
   )
