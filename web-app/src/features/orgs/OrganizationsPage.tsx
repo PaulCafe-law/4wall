@@ -28,7 +28,7 @@ type InviteFormValues = z.infer<typeof inviteSchema>
 
 export function OrganizationsPage() {
   const queryClient = useQueryClient()
-  const [selectedOrganizationId, setSelectedOrganizationId] = useState('')
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<string>('')
   const [isOpen, setIsOpen] = useState(false)
 
   const organizationsQuery = useAuthedQuery({
@@ -72,14 +72,14 @@ export function OrganizationsPage() {
       await createInvite.mutateAsync(values)
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setError('root', { message: formatApiError(detail, '建立邀請失敗，請稍後再試。') })
+      setError('root', { message: formatApiError(detail, '無法建立邀請，請稍後再試。') })
     }
   })
 
   if (organizationsQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">正在整理組織資料…</p>
+        <p className="text-sm text-chrome-700">正在載入組織…</p>
       </Panel>
     )
   }
@@ -87,8 +87,8 @@ export function OrganizationsPage() {
   if (!organizationsQuery.data?.length) {
     return (
       <EmptyState
-        title="目前還沒有組織"
-        body="先建立第一個客戶組織，之後才能分派成員、場址與任務。"
+        title="尚無組織"
+        body="請先建立或匯入組織，才能繼續處理邀請管理與稽核分流。"
       />
     )
   }
@@ -100,16 +100,16 @@ export function OrganizationsPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="內部支援"
+        eyebrow="內部主控台"
         title="組織"
-        subtitle="查看所有客戶組織的狀態、成員數與待接受邀請，並在需要時協助發送新的邀請。"
+        subtitle="直接在主應用中查看組織成員、待接受邀請與客戶端存取狀態。"
         action={
           <Modal
             open={isOpen}
             onOpenChange={setIsOpen}
-            title="建立邀請"
-            description="邀請會附帶角色資訊，並綁定到目前選取的組織。"
-            trigger={<ActionButton>建立邀請</ActionButton>}
+            title="發送邀請"
+            description="將客戶管理員或客戶檢視者邀請到目前選取的組織。"
+            trigger={<ActionButton>新增邀請</ActionButton>}
           >
             <form className="grid gap-4" onSubmit={onSubmit}>
               <Field label="電子郵件地址" error={errors.email?.message}>
@@ -128,7 +128,7 @@ export function OrganizationsPage() {
               ) : null}
               <div className="flex justify-end">
                 <ActionButton disabled={createInvite.isPending} type="submit">
-                  {createInvite.isPending ? '正在建立邀請…' : '送出邀請'}
+                  {createInvite.isPending ? '發送中…' : '建立邀請'}
                 </ActionButton>
               </div>
             </form>
@@ -163,7 +163,7 @@ export function OrganizationsPage() {
               {selectedOrganization?.name}
             </h2>
             <p className="mt-2 text-sm text-chrome-700">
-              查看組織的啟用狀態、成員與待接受邀請，並在需要時協助客戶完成成員開通。
+              待接受邀請會保留原始邀請內容，方便在測試階段由營運人員手動追蹤。
             </p>
           </Panel>
 
@@ -172,7 +172,7 @@ export function OrganizationsPage() {
               <Panel>
                 <DataList
                   rows={[
-                    { label: '組織代稱', value: detailQuery.data.slug },
+                    { label: '組織代號', value: detailQuery.data.slug },
                     { label: '啟用狀態', value: formatBoolean(detailQuery.data.isActive) },
                     { label: '成員數', value: detailQuery.data.members.length },
                     { label: '待接受邀請', value: detailQuery.data.pendingInvites.length },
@@ -181,13 +181,13 @@ export function OrganizationsPage() {
               </Panel>
 
               <Panel>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成員角色</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成員</p>
                 <div className="mt-4 grid gap-3">
                   {detailQuery.data.members.map((member, index) => (
                     <div key={member.membershipId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                       <p className="font-medium text-chrome-950">成員紀錄 {index + 1}</p>
                       <p className="mt-1 text-sm text-chrome-700">{formatRole(member.role)}</p>
-                      <p className="mt-1 text-sm text-chrome-700">{member.isActive ? '已啟用' : '未啟用'}</p>
+                      <p className="mt-1 text-sm text-chrome-700">{member.isActive ? '啟用中' : '未啟用'}</p>
                     </div>
                   ))}
                 </div>
