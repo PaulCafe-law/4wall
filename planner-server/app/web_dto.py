@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 RoleLiteral = Literal["platform_admin", "ops", "customer_admin", "customer_viewer"]
 InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdue", "void"]
 SupportSeverityLiteral = Literal["info", "warning", "critical"]
+MissionDeliveryStateLiteral = Literal["planning", "ready", "failed", "published"]
 ControlIntentActionLiteral = Literal[
     "request_remote_control",
     "release_remote_control",
@@ -146,6 +147,23 @@ class MissionSummaryDto(BaseModel):
     createdAt: datetime
 
 
+class MissionArtifactDownloadDto(BaseModel):
+    artifactName: str
+    downloadUrl: str
+    version: int
+    checksumSha256: str
+    contentType: str
+    sizeBytes: int
+    cacheControl: str
+    publishedAt: datetime
+
+
+class MissionDeliveryDto(BaseModel):
+    state: MissionDeliveryStateLiteral
+    publishedAt: datetime | None = None
+    failureReason: str | None = None
+
+
 class MissionDetailDto(BaseModel):
     missionId: str
     organizationId: str | None = None
@@ -156,6 +174,8 @@ class MissionDetailDto(BaseModel):
     bundleVersion: str
     request: dict[str, Any]
     response: dict[str, Any]
+    delivery: MissionDeliveryDto
+    artifacts: list[MissionArtifactDownloadDto] = Field(default_factory=list)
     createdAt: datetime
 
 

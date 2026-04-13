@@ -15,6 +15,7 @@ const roleLabels: Record<Role, string> = {
 
 const statusLabels: Record<string, string> = {
   ready: '已就緒',
+  published: '已發布',
   planning: '規劃中',
   failed: '失敗',
   draft: '草稿',

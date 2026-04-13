@@ -1,3 +1,4 @@
+from app.models import Mission
 from tests.helpers import login_web, seed_organization, seed_user, valid_request_payload
 
 
@@ -66,3 +67,86 @@ def test_mission_list_only_returns_current_org_records(client, session_factory) 
     missions = list_response.json()
     assert len(missions) == 1
     assert missions[0]["organizationId"] == org_a_id
+
+
+def test_mission_detail_includes_delivery_metadata_and_artifacts(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Delivery Org")
+        org_id = org.id
+        seed_user(
+            session,
+            email="admin@delivery.test",
+            password=PASSWORD,
+            org_roles=[(org_id, "customer_admin")],
+        )
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@delivery.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "name": "Delivery Site",
+            "address": "Taipei",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "notes": "",
+        },
+    )
+    assert site_response.status_code == 200
+
+    payload = valid_request_payload()
+    payload["organizationId"] = org_id
+    payload["siteId"] = site_response.json()["siteId"]
+    plan_response = client.post("/v1/missions/plan", headers=headers, json=payload)
+
+    assert plan_response.status_code == 200
+    mission_id = plan_response.json()["missionId"]
+
+    detail_response = client.get(f"/v1/missions/{mission_id}", headers=headers)
+
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["delivery"]["state"] == "published"
+    assert detail["delivery"]["publishedAt"] is not None
+    assert detail["delivery"]["failureReason"] is None
+    assert [artifact["artifactName"] for artifact in detail["artifacts"]] == ["mission.kmz", "mission_meta.json"]
+    assert all(artifact["publishedAt"] for artifact in detail["artifacts"])
+
+
+def test_mission_detail_returns_failure_reason_for_failed_mission(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Failure Org")
+        user = seed_user(
+            session,
+            email="admin@failure.test",
+            password=PASSWORD,
+            org_roles=[(org.id, "customer_admin")],
+        )
+        mission = Mission(
+            id="msn_failed_delivery",
+            organization_id=org.id,
+            site_id=None,
+            requested_by_user_id=user.id,
+            mission_name="Failure Mission",
+            status="failed",
+            routing_mode="road_network_following",
+            bundle_version="bundle-failed",
+            demo_mode=False,
+            request_json={"missionName": "Failure Mission"},
+            response_json={"failureReason": "Route provider timed out for this site."},
+        )
+        session.add(mission)
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@failure.test", password=PASSWORD)
+    detail_response = client.get("/v1/missions/msn_failed_delivery", headers=headers)
+
+    assert detail_response.status_code == 200
+    detail = detail_response.json()
+    assert detail["delivery"] == {
+        "state": "failed",
+        "publishedAt": None,
+        "failureReason": "Route provider timed out for this site.",
+    }
+    assert detail["artifacts"] == []
