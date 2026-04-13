@@ -237,12 +237,13 @@ def create_organization(
 @router.get("/v1/organizations/{organization_id}", response_model=OrganizationDetailDto)
 def get_organization(
     organization_id: str,
-    current_user: CurrentWebUser = Depends(require_internal_user),
+    current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> OrganizationDetailDto:
     organization = session.get(Organization, organization_id)
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="organization_not_found")
+    ensure_org_read_access(session, current_user, organization_id, action="organization.detail.read_access")
     memberships = list(
         session.exec(select(OrganizationMembership).where(OrganizationMembership.organization_id == organization_id)).all()
     )
