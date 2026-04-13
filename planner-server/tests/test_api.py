@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import hashlib
 
 from tests.helpers import valid_request_payload
 
@@ -61,6 +62,7 @@ def test_plan_and_artifact_endpoints_require_auth_and_return_checksums(client, a
     assert kmz_response.headers["x-artifact-checksum"] == mission["artifacts"]["missionKmz"]["checksumSha256"]
     assert meta_response.status_code == 200
     assert meta_response.headers["x-artifact-checksum"] == mission["artifacts"]["missionMeta"]["checksumSha256"]
+    assert hashlib.sha256(meta_response.content).hexdigest() == mission["artifacts"]["missionMeta"]["checksumSha256"]
     assert meta_response.json()["missionId"] == mission_id
 
 
