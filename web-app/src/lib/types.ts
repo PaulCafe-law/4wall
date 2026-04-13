@@ -94,6 +94,23 @@ export interface MissionSummary {
   createdAt: string
 }
 
+export interface MissionDelivery {
+  state: 'planning' | 'ready' | 'failed' | 'published'
+  publishedAt: string | null
+  failureReason: string | null
+}
+
+export interface MissionArtifactDownload {
+  artifactName: string
+  downloadUrl: string
+  version: number
+  checksumSha256: string
+  contentType: string
+  sizeBytes: number
+  cacheControl: string
+  publishedAt: string
+}
+
 export interface MissionDetail {
   missionId: string
   organizationId: string | null
@@ -104,6 +121,8 @@ export interface MissionDetail {
   bundleVersion: string
   request: Record<string, unknown>
   response: Record<string, unknown>
+  delivery: MissionDelivery
+  artifacts: MissionArtifactDownload[]
   createdAt: string
 }
 

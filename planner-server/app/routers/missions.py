@@ -30,7 +30,14 @@ from app.dto import (
 )
 from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
 from app.providers import RouteProvider, RouteProviderError
-from app.web_dto import FlightEventRecordDto, MissionDetailDto, MissionSummaryDto, TelemetryBatchRecordDto
+from app.web_dto import (
+    FlightEventRecordDto,
+    MissionArtifactDownloadDto,
+    MissionDeliveryDto,
+    MissionDetailDto,
+    MissionSummaryDto,
+    TelemetryBatchRecordDto,
+)
 from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
 
 
@@ -206,6 +213,13 @@ def get_mission_detail(
     if mission is None or mission.organization_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
     ensure_org_read_access(session, current_user, mission.organization_id, action="mission.read_access")
+    artifacts = list(
+        session.exec(
+            select(MissionArtifact)
+            .where(MissionArtifact.mission_id == mission_id)
+            .order_by(MissionArtifact.created_at.asc(), MissionArtifact.artifact_name.asc())
+        ).all()
+    )
     return MissionDetailDto(
         missionId=mission.id,
         organizationId=mission.organization_id,
@@ -216,6 +230,8 @@ def get_mission_detail(
         bundleVersion=mission.bundle_version,
         request=mission.request_json,
         response=mission.response_json,
+        delivery=_serialize_mission_delivery(mission, artifacts),
+        artifacts=[_serialize_mission_artifact(mission_id, artifact) for artifact in artifacts],
         createdAt=mission.created_at,
     )
 
@@ -383,6 +399,55 @@ def _artifact_descriptors(mission_id: str, artifacts):
             cacheControl=artifacts.mission_meta_json.cache_control,
         ),
     }
+
+
+def _serialize_mission_artifact(mission_id: str, artifact: MissionArtifact) -> MissionArtifactDownloadDto:
+    return MissionArtifactDownloadDto(
+        artifactName=artifact.artifact_name,
+        downloadUrl=f"/v1/missions/{mission_id}/artifacts/{artifact.artifact_name}",
+        version=artifact.version,
+        checksumSha256=artifact.checksum_sha256,
+        contentType=artifact.content_type,
+        sizeBytes=artifact.size_bytes,
+        cacheControl=artifact.cache_control,
+        publishedAt=artifact.created_at,
+    )
+
+
+def _serialize_mission_delivery(mission: Mission, artifacts: list[MissionArtifact]) -> MissionDeliveryDto:
+    published_at = max((artifact.created_at for artifact in artifacts), default=None)
+    if mission.status == "failed":
+        return MissionDeliveryDto(
+            state="failed",
+            publishedAt=published_at,
+            failureReason=_extract_failure_reason(mission.response_json),
+        )
+    if artifacts:
+        return MissionDeliveryDto(state="published", publishedAt=published_at)
+    if mission.status == "planning":
+        return MissionDeliveryDto(state="planning")
+    return MissionDeliveryDto(state="ready")
+
+
+def _extract_failure_reason(payload: dict) -> str | None:
+    direct_candidates = [
+        payload.get("failureReason"),
+        payload.get("failure_reason"),
+        payload.get("error"),
+        payload.get("detail"),
+        payload.get("message"),
+    ]
+    for candidate in direct_candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("failureReason", "failure_reason", "error", "detail", "message"):
+            candidate = metadata.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+    return None
 
 
 def _get_artifact(session: Session, mission_id: str, artifact_name: str) -> MissionArtifact:

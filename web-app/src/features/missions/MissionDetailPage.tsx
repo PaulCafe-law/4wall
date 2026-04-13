@@ -1,16 +1,20 @@
 import { Link, useParams } from 'react-router-dom'
 
-import { DataList, EmptyState, Panel, ShellSection, StatusBadge, formatDate } from '../../components/ui'
+import { DataList, EmptyState, Panel, ShellSection, StatusBadge, formatDateTime } from '../../components/ui'
 import { absoluteArtifactUrl, api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
-import type { ArtifactDescriptor } from '../../lib/types'
 
-function readArtifacts(record: Record<string, unknown>): { missionKmz?: ArtifactDescriptor; missionMeta?: ArtifactDescriptor } {
-  const artifacts = record.artifacts as Record<string, ArtifactDescriptor> | undefined
-  return {
-    missionKmz: artifacts?.missionKmz,
-    missionMeta: artifacts?.missionMeta,
+function readArtifactMessage(state: 'planning' | 'ready' | 'failed' | 'published', failureReason: string | null) {
+  if (state === 'published') {
+    return '成果已正式發布，可直接下載任務包與說明檔。'
   }
+  if (state === 'ready') {
+    return '規劃已完成，正在整理交付檔案。若長時間沒有成果，請聯繫支援協助查看。'
+  }
+  if (state === 'failed') {
+    return failureReason ?? '本次任務未成功產生交付檔案，請聯繫支援協助查看原因。'
+  }
+  return '任務仍在規劃中，成果檔完成後會出現在這裡。'
 }
 
 export function MissionDetailPage() {
@@ -49,23 +53,42 @@ export function MissionDetailPage() {
   }
 
   const mission = missionQuery.data
-  const artifacts = readArtifacts(mission.response)
+  const missionKmz = mission.artifacts.find((artifact) => artifact.artifactName === 'mission.kmz')
+  const missionMeta = mission.artifacts.find((artifact) => artifact.artifactName === 'mission_meta.json')
+  const deliveryMessage = readArtifactMessage(mission.delivery.state, mission.delivery.failureReason)
 
   const rail = (
     <Panel>
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">任務成果</p>
-      <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">下載成果</h2>
-      <p className="mt-2 text-sm text-chrome-700">規劃完成後，可在這裡下載任務包與對應的說明檔。</p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">任務交付</p>
+      <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">成果與發布狀態</h2>
+      <p className="mt-2 text-sm text-chrome-700">{deliveryMessage}</p>
+      <div className="mt-4">
+        <DataList
+          rows={[
+            { label: '交付狀態', value: <StatusBadge status={mission.delivery.state} /> },
+            {
+              label: '發布時間',
+              value: mission.delivery.publishedAt ? formatDateTime(mission.delivery.publishedAt) : '尚未發布',
+            },
+            { label: '可下載檔案', value: mission.artifacts.length },
+            {
+              label: '失敗原因',
+              value: mission.delivery.failureReason ?? '無',
+            },
+          ]}
+        />
+      </div>
       <div className="mt-4 space-y-3">
-        {artifacts.missionKmz ? (
+        {missionKmz ? (
           <a
             className="block rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4 transition hover:border-ember-300"
-            href={absoluteArtifactUrl(artifacts.missionKmz.downloadUrl)}
+            href={absoluteArtifactUrl(missionKmz.downloadUrl)}
             target="_blank"
             rel="noreferrer"
           >
             <p className="font-medium text-chrome-950">mission.kmz</p>
-            <p className="mt-2 text-xs text-chrome-600">sha256 {artifacts.missionKmz.checksumSha256}</p>
+            <p className="mt-2 text-xs text-chrome-600">發布於 {formatDateTime(missionKmz.publishedAt)}</p>
+            <p className="mt-1 text-xs text-chrome-600">sha256 {missionKmz.checksumSha256}</p>
           </a>
         ) : (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
@@ -73,15 +96,16 @@ export function MissionDetailPage() {
           </div>
         )}
 
-        {artifacts.missionMeta ? (
+        {missionMeta ? (
           <a
             className="block rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4 transition hover:border-ember-300"
-            href={absoluteArtifactUrl(artifacts.missionMeta.downloadUrl)}
+            href={absoluteArtifactUrl(missionMeta.downloadUrl)}
             target="_blank"
             rel="noreferrer"
           >
             <p className="font-medium text-chrome-950">mission_meta.json</p>
-            <p className="mt-2 text-xs text-chrome-600">sha256 {artifacts.missionMeta.checksumSha256}</p>
+            <p className="mt-2 text-xs text-chrome-600">發布於 {formatDateTime(missionMeta.publishedAt)}</p>
+            <p className="mt-1 text-xs text-chrome-600">sha256 {missionMeta.checksumSha256}</p>
           </a>
         ) : null}
       </div>
@@ -105,8 +129,9 @@ export function MissionDetailPage() {
                 { label: '任務編號', value: mission.missionId },
                 { label: '組織', value: mission.organizationId ?? '未指定組織' },
                 { label: '場址', value: mission.siteId ?? '未指定場址' },
+                { label: '任務狀態', value: <StatusBadge status={mission.status} /> },
                 { label: '任務包版本', value: mission.bundleVersion },
-                { label: '建立時間', value: formatDate(mission.createdAt) },
+                { label: '建立時間', value: formatDateTime(mission.createdAt) },
               ]}
             />
           </Panel>

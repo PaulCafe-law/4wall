@@ -53,7 +53,7 @@ export function Panel({
 
 export function StatusBadge({ status }: { status: string }) {
   const classes =
-    status === 'ready' || status === 'paid'
+    status === 'ready' || status === 'paid' || status === 'published'
       ? 'bg-moss-300/40 text-moss-500'
       : status === 'failed' || status === 'overdue' || status === 'void'
         ? 'bg-red-100 text-red-700'
@@ -261,6 +261,16 @@ export function formatDate(value: string) {
     year: 'numeric',
     month: 'numeric',
     day: 'numeric',
+  }).format(new Date(value))
+}
+
+export function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat('zh-TW', {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(value))
 }
 
