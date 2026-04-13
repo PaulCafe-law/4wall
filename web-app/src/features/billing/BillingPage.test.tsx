@@ -33,8 +33,8 @@ describe('BillingPage', () => {
       }),
     })
 
-    expect(await screen.findByText('目前沒有帳單')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '新增帳單' })).not.toBeInTheDocument()
+    expect(await screen.findByText('尚無帳單')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '開立帳單' })).not.toBeInTheDocument()
   })
 
   it('shows overdue state and invoice creation controls for internal users', async () => {
@@ -100,7 +100,7 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('逾期')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '新增帳單' })).toBeInTheDocument()
+    expect(screen.getByText('逾期', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '開立帳單' })).toBeInTheDocument()
   })
 })
