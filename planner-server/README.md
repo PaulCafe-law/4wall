@@ -29,6 +29,22 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --reload
 ```
 
+## Provision an Operator Account
+
+Use the helper script instead of editing the database by hand:
+
+```powershell
+Set-Location .\planner-server
+.\.venv\Scripts\python.exe .\scripts\create_operator.py --username fieldpilot --display-name "Field Pilot" --password "CHANGE_ME_NOW"
+```
+
+Update the password later only when intended:
+
+```powershell
+Set-Location .\planner-server
+.\.venv\Scripts\python.exe .\scripts\create_operator.py --username fieldpilot --display-name "Field Pilot" --password "NEW_SECRET" --update-password --activate
+```
+
 ## Test
 
 ```powershell
