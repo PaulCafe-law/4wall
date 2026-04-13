@@ -13,15 +13,15 @@ import { formatApiError } from '../../lib/presentation'
 const plannerSchema = z.object({
   organizationId: z.string().min(1, '請選擇組織'),
   siteId: z.string().min(1, '請選擇場址'),
-  missionName: z.string().min(1, '請輸入任務名稱'),
-  buildingId: z.string().min(1, '請輸入建物代稱'),
-  buildingLabel: z.string().min(1, '請輸入建物名稱'),
+  missionName: z.string().min(1, '任務名稱不可為空'),
+  buildingId: z.string().min(1, '建物代號不可為空'),
+  buildingLabel: z.string().min(1, '建物名稱不可為空'),
   originLat: z.coerce.number(),
   originLng: z.coerce.number(),
   viewpointLat: z.coerce.number(),
   viewpointLng: z.coerce.number(),
   yawDeg: z.coerce.number(),
-  distanceToFacadeM: z.coerce.number().min(1, '距離建面至少需要 1 公尺'),
+  distanceToFacadeM: z.coerce.number().min(1, '立面距離至少需要 1 公尺'),
 })
 
 type PlannerFormInput = z.input<typeof plannerSchema>
@@ -108,15 +108,15 @@ export function PlannerPage() {
       await planMission.mutateAsync(values)
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setError('root', { message: formatApiError(detail, '建立任務請求失敗，請稍後再試。') })
+      setError('root', { message: formatApiError(detail, '任務規劃送出失敗，請稍後再試。') })
     }
   })
 
   if (choices.length === 0) {
     return (
       <EmptyState
-        title="目前沒有可建立任務的組織"
-        body="你的帳號還沒有可寫入的組織，因此目前無法建立任務請求。"
+        title="目前沒有可寫入的組織"
+        body="這個帳號可以查看任務，但沒有可用於送出規劃請求的可寫入組織。"
       />
     )
   }
@@ -124,9 +124,9 @@ export function PlannerPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="任務請求"
+        eyebrow="規劃工作區"
         title="新增任務請求"
-        subtitle="填入任務基本資料、場址與觀測點資訊後，系統會建立新的任務規劃請求。"
+        subtitle="將桌面優先的規劃流程收斂為一個結構化表單：組織、場址、建物脈絡與一個視角種子。"
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -158,7 +158,7 @@ export function PlannerPage() {
               <Field label="任務名稱" error={errors.missionName?.message}>
                 <Input {...register('missionName')} />
               </Field>
-              <Field label="建物代稱" error={errors.buildingId?.message}>
+              <Field label="建物代號" error={errors.buildingId?.message}>
                 <Input {...register('buildingId')} />
               </Field>
             </div>
@@ -177,19 +177,19 @@ export function PlannerPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="觀測點緯度" error={errors.viewpointLat?.message}>
+              <Field label="視角緯度" error={errors.viewpointLat?.message}>
                 <Input step="0.00001" type="number" {...register('viewpointLat')} />
               </Field>
-              <Field label="觀測點經度" error={errors.viewpointLng?.message}>
+              <Field label="視角經度" error={errors.viewpointLng?.message}>
                 <Input step="0.00001" type="number" {...register('viewpointLng')} />
               </Field>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="鏡頭朝向角度" error={errors.yawDeg?.message}>
+              <Field label="偏航角度" error={errors.yawDeg?.message}>
                 <Input step="1" type="number" {...register('yawDeg')} />
               </Field>
-              <Field label="距離建面（公尺）" error={errors.distanceToFacadeM?.message}>
+              <Field label="立面距離（公尺）" error={errors.distanceToFacadeM?.message}>
                 <Input step="0.1" type="number" {...register('distanceToFacadeM')} />
               </Field>
             </div>
@@ -202,18 +202,18 @@ export function PlannerPage() {
 
             <div className="flex justify-end">
               <ActionButton disabled={planMission.isPending} type="submit">
-                {planMission.isPending ? '建立中…' : '送出任務請求'}
+                {planMission.isPending ? '規劃中…' : '送出任務請求'}
               </ActionButton>
             </div>
           </form>
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">送出後會發生什麼</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">工作區說明</p>
           <div className="mt-4 space-y-4 text-sm text-chrome-700">
-            <p>系統會建立一筆新的任務請求，並進入規劃流程。</p>
-            <p>規劃完成後，任務會在任務清單中顯示為「已就緒」，你可進入任務詳情下載成果。</p>
-            <p>若規劃失敗，請從任務詳情查看狀態與目前的成果資訊，必要時通知內部支援協助處理。</p>
+            <p>當請求進入後端管線後，任務會立即以規劃中狀態出現在列表中。</p>
+            <p>後端仍只負責規劃用途，不進入飛行關鍵迴路；Android 仍是唯一的飛行關鍵執行端。</p>
+            <p>產物完成後會發布到任務明細頁的成果面板。</p>
           </div>
         </Panel>
       </div>
