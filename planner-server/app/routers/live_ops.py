@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from app.audit import record_audit
 from app.deps import CurrentWebUser, get_session, require_internal_user
-from app.models import AuditEvent, Flight, FlightEvent, Mission, Site, TelemetryBatch
+from app.models import AuditEvent, Flight, FlightEvent, Mission, Organization, Site, TelemetryBatch
 from app.web_dto import (
     ControlIntentDto,
     ControlIntentRequestDto,
@@ -131,17 +131,23 @@ def list_support_queue(
     for mission in failed_missions:
         if mission.organization_id is None:
             continue
+        context = _support_context(session, organization_id=mission.organization_id, mission=mission)
         items.append(
             SupportQueueItemDto(
                 itemId=f"mission-failed-{mission.id}",
+                category="mission_failed",
                 severity="critical",
                 organizationId=mission.organization_id,
+                organizationName=context["organizationName"],
                 missionId=mission.id,
+                missionName=context["missionName"],
+                siteName=context["siteName"],
                 title="任務規劃失敗",
                 summary=(
                     f"{mission.mission_name} 已標記為 failed。"
-                    "請先檢查 mission request、route provider 與 artifact 產出紀錄。"
+                    "這代表交付流程未成功完成，需要立即確認規劃輸入與產出紀錄。"
                 ),
+                recommendedNextStep="打開任務詳情，先核對 mission request、規劃回應與 artifact 產出紀錄。",
                 createdAt=_ensure_utc(mission.created_at) or mission.created_at,
             )
         )
@@ -151,20 +157,27 @@ def list_support_queue(
         if flight.organization_id is None:
             continue
         summary = _build_live_summary(session, flight)
+        mission = session.get(Mission, flight.mission_id)
+        context = _support_context(session, organization_id=flight.organization_id, mission=mission)
 
         if summary.latestTelemetry is not None and summary.latestTelemetry.batteryPct < LOW_BATTERY_THRESHOLD:
             items.append(
                 SupportQueueItemDto(
                     itemId=f"battery-{flight.id}",
+                    category="battery_low",
                     severity="warning",
                     organizationId=flight.organization_id,
+                    organizationName=context["organizationName"],
                     flightId=flight.id,
                     missionId=flight.mission_id,
+                    missionName=context["missionName"],
+                    siteName=context["siteName"],
                     title="電量過低",
                     summary=(
                         f"最新電量為 {summary.latestTelemetry.batteryPct}%。"
-                        "請確認現場是否已進入 HOLD、返航，或由觀察員完成接手。"
+                        "現場需要盡快確認飛行是否已進入安全收斂流程。"
                     ),
+                    recommendedNextStep="立即確認現場是否已 HOLD、返航，並由 observer 回報目前接手狀態。",
                     createdAt=summary.latestTelemetry.timestamp,
                 )
             )
@@ -174,12 +187,17 @@ def list_support_queue(
             items.append(
                 SupportQueueItemDto(
                     itemId=f"telemetry-stale-{flight.id}",
+                    category="telemetry_stale",
                     severity="critical",
                     organizationId=flight.organization_id,
+                    organizationName=context["organizationName"],
                     flightId=flight.id,
                     missionId=flight.mission_id,
+                    missionName=context["missionName"],
+                    siteName=context["siteName"],
                     title="遙測中斷",
                     summary="超過 90 秒未收到遙測。請檢查 uplink、Android bridge 與現場控制站狀態。",
+                    recommendedNextStep="先確認現場仍有目視控制與 observer 在位，再檢查 uplink、bridge 與控制站連線。",
                     createdAt=last_telemetry_at,
                 )
             )
@@ -196,12 +214,17 @@ def list_support_queue(
             items.append(
                 SupportQueueItemDto(
                     itemId=f"bridge-alert-{bridge_alert.id}",
+                    category="bridge_alert",
                     severity=severity,
                     organizationId=flight.organization_id,
+                    organizationName=context["organizationName"],
                     flightId=flight.id,
                     missionId=flight.mission_id,
+                    missionName=context["missionName"],
+                    siteName=context["siteName"],
                     title=f"Bridge 告警：{code}",
                     summary=human_summary,
+                    recommendedNextStep="打開飛行監看確認最新 lease、telemetry 與 video 狀態，必要時聯繫現場 observer。",
                     createdAt=_ensure_utc(bridge_alert.event_timestamp) or bridge_alert.event_timestamp,
                 )
             )
@@ -395,6 +418,16 @@ def _coerce_support_severity(raw: Any) -> str:
     if value in {"info", "warning", "critical"}:
         return value
     return "warning"
+
+
+def _support_context(session: Session, *, organization_id: str, mission: Mission | None) -> dict[str, str | None]:
+    organization = session.get(Organization, organization_id)
+    site = session.get(Site, mission.site_id) if mission is not None and mission.site_id is not None else None
+    return {
+        "organizationName": organization.name if organization is not None else None,
+        "missionName": mission.mission_name if mission is not None else None,
+        "siteName": site.name if site is not None else None,
+    }
 
 
 def _as_bool(raw: Any) -> bool:

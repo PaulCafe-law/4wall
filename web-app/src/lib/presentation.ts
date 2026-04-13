@@ -3,6 +3,7 @@ import type {
   ControlMode,
   InvoiceStatus,
   Role,
+  SupportCategory,
   SupportSeverity,
 } from './types'
 
@@ -99,6 +100,13 @@ const supportSeverityLabels: Record<SupportSeverity, string> = {
   critical: '嚴重',
 }
 
+const supportCategoryLabels: Record<SupportCategory, string> = {
+  mission_failed: '任務失敗',
+  battery_low: '低電量',
+  telemetry_stale: '遙測中斷',
+  bridge_alert: 'Bridge 告警',
+}
+
 const alertLabels: Record<string, string> = {
   low_battery: '低電量',
   telemetry_stale: '遙測中斷',
@@ -170,6 +178,10 @@ export function formatControlAction(action: ControlIntentAction): string {
 
 export function formatSupportSeverity(severity: SupportSeverity): string {
   return supportSeverityLabels[severity] ?? severity
+}
+
+export function formatSupportCategory(category: SupportCategory): string {
+  return supportCategoryLabels[category] ?? category
 }
 
 export function formatFlightAlert(alert: string): string {
