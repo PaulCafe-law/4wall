@@ -9,8 +9,14 @@ This runbook covers the Web Beta RC release path for:
 - Render staging and production services defined in the repo-root `render.yaml`
 
 It does not cover Android field readiness or Sprint 4 hardware validation.
+It also does not own Android implementation details for live monitoring; Android is treated here as an upstream contract dependency only.
 
 ## Required Inputs
+
+Reference these docs before shipping any `live-ops` or `support` change:
+
+- `docs/WEB_THREAD_ANDROID_HANDOFF.md`
+- `docs/WEB_THREAD_FAIL_CLOSED_BEHAVIOR.md`
 
 ### Render Services
 
@@ -44,19 +50,28 @@ It does not cover Android field readiness or Sprint 4 hardware validation.
 ## Staging Deploy
 
 1. Confirm CI is green for `planner-server` and `web-app`.
-2. Apply the repo-root `render.yaml` blueprint if service shape changed.
-3. Merge the intended release revision to `main`.
-4. Wait for `four-wall-api-staging` and `four-wall-web-staging` to auto-deploy.
+2. If the release touches `live-ops` or `support`, confirm the expected Android event contract is unchanged or already available. If not, the web surface must stay in placeholder or monitor-only state.
+3. Apply the repo-root `render.yaml` blueprint if service shape changed.
+4. Deploy `four-wall-api-staging`.
 5. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
-6. Run `.github/workflows/smoke-beta.yml` against staging.
+6. Deploy `four-wall-web-staging`.
+7. Run `.github/workflows/smoke-beta.yml` against staging.
 
 ## Promotion to Production
 
 1. Confirm staging smoke passed.
-2. Wait for `four-wall-api` and `four-wall-web` to auto-deploy the same `main` revision.
+2. Promote the same revision to `four-wall-api`.
 3. Wait for production `/healthz` to return `200`.
-4. Re-run `.github/workflows/smoke-beta.yml` against production values.
-5. Roll back immediately if production smoke fails.
+4. Promote the same revision to `four-wall-web`.
+5. Re-run `.github/workflows/smoke-beta.yml` against production values.
+
+## Live Ops Guardrail
+
+If Android is not yet emitting the expected telemetry, lease, video, or bridge-alert events:
+
+- keep `Live Ops` internal-only
+- show placeholder or monitor-only states in web
+- do not add browser-side control shortcuts to compensate
 
 ## Rollback Triggers
 
@@ -75,12 +90,6 @@ Rollback immediately if any of these occur:
 3. Select the last healthy deploy.
 4. Redeploy that version.
 5. Re-run API health and beta smoke before declaring recovery complete.
-
-## Automation Notes
-
-- `four-wall-api-staging` and `four-wall-web-staging` auto-deploy from `main` after required checks pass.
-- `four-wall-api` and `four-wall-web` also auto-deploy from `main` after required checks pass.
-- Because production no longer waits for a manual promote step, the release decision now depends on green CI plus fast post-deploy smoke.
 
 ## Evidence to Keep
 

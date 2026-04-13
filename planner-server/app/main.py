@@ -15,7 +15,7 @@ from app.db import create_engine_for_settings, create_session_factory, init_db
 from app.models import OperatorAccount
 from app.providers import MockRouteProvider, OsmOsrmRouteProvider, RouteProvider
 from app.rate_limit import RateLimiter
-from app.routers import auth_router, missions_router, web_router
+from app.routers import auth_router, live_ops_router, missions_router, web_router
 from app.security import hash_password
 from app.storage import ArtifactStorage, LocalFileArtifactStorage, S3ArtifactStorage
 
@@ -96,40 +96,10 @@ def build_app(
 
     app.include_router(auth_router)
     app.include_router(missions_router)
+    app.include_router(live_ops_router)
     app.include_router(web_router)
 
     return app
-
-
-def _normalize_origin(origin: str | None) -> str | None:
-    if not origin:
-        return None
-    return origin.rstrip("/")
-
-
-def _cors_allowed_origins(settings: Settings) -> list[str]:
-    configured_origin = _normalize_origin(settings.app_origin)
-    if settings.environment.lower() in {"development", "dev", "test"}:
-        return sorted(
-            {
-                *LOCAL_WEB_ORIGINS,
-                *( [configured_origin] if configured_origin else [] ),
-            }
-        )
-    return [configured_origin] if configured_origin else []
-
-
-def _configure_cors(app: FastAPI, settings: Settings) -> None:
-    allowed_origins = _cors_allowed_origins(settings)
-    if not allowed_origins:
-        return
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type"],
-    )
 
 
 def _build_route_provider(settings: Settings) -> RouteProvider:
@@ -159,6 +129,32 @@ def _bootstrap_operator(session: Session, settings: Settings) -> None:
         )
     )
     session.commit()
+
+
+def _normalize_origin(origin: str | None) -> str | None:
+    if not origin:
+        return None
+    return origin.rstrip("/")
+
+
+def _cors_allowed_origins(settings: Settings) -> list[str]:
+    configured_origin = _normalize_origin(settings.app_origin)
+    if settings.environment.lower() in {"development", "dev", "test"}:
+        return sorted({*LOCAL_WEB_ORIGINS, *([configured_origin] if configured_origin else [])})
+    return [configured_origin] if configured_origin else []
+
+
+def _configure_cors(app: FastAPI, settings: Settings) -> None:
+    allowed_origins = _cors_allowed_origins(settings)
+    if not allowed_origins:
+        return
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
 
 
 app = build_app()

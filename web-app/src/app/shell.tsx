@@ -13,6 +13,7 @@ const customerLinks = [
 ]
 
 const internalLinks = [
+  { to: '/live-ops', label: '飛行監看' },
   { to: '/organizations', label: '組織' },
   { to: '/support', label: '支援佇列' },
   { to: '/audit', label: '稽核記錄' },
@@ -29,22 +30,25 @@ export function AppShell() {
   const location = useLocation()
 
   const headerScopeLabel = auth.isInternal
-    ? location.pathname.startsWith('/organizations') ||
+    ? location.pathname.startsWith('/live-ops') ||
+      location.pathname.startsWith('/organizations') ||
       location.pathname.startsWith('/support') ||
       location.pathname.startsWith('/audit')
-      ? '目前為跨組織支援模式'
-      : '目前為客戶工作區檢視模式'
-    : '目前為客戶工作區'
+      ? '目前為內部支援與跨組織檢視模式。'
+      : '目前為客戶工作區檢視模式。'
+    : '目前為客戶工作區檢視模式。'
 
   return (
     <>
       <div className="md:hidden">
         <div className="min-h-screen bg-grain px-6 py-10">
           <div className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur">
-            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">桌面優先測試版</p>
-            <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">請使用較寬的螢幕開啟這個主控台</h1>
+            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">桌面優先</p>
+            <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">
+              目前僅支援桌面寬度
+            </h1>
             <p className="mt-3 text-sm text-chrome-700">
-              這個 Beta 版目前針對桌面使用情境設計。建議使用 1280px 以上視窗，以取得完整的場址、任務與帳務體驗。
+              請在 1280px 以上的桌面視窗開啟，才能使用完整的任務、監看與營運功能。
             </p>
           </div>
         </div>
@@ -59,7 +63,7 @@ export function AppShell() {
                 路線主控台
               </h1>
               <p className="mt-2 text-sm text-chrome-700">
-                給營造商與內部營運共同使用的任務、場址、成果與帳務平台。這裡不進飛行控制迴路。
+                客戶可管理場址、任務與帳務；內部人員可額外查看飛行監看、支援與稽核資料。
               </p>
             </div>
 
@@ -125,8 +129,10 @@ export function AppShell() {
         <div className="min-w-0">
           <header className="sticky top-0 z-20 flex flex-col items-start gap-3 border-b border-white/60 bg-chrome-50/70 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">目前角色</p>
-              <p className="text-sm text-chrome-700">{headerScopeLabel}</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">營運工作台</p>
+              <p className="text-sm text-chrome-700">
+                {headerScopeLabel}
+              </p>
             </div>
             <ActionButton variant="secondary" onClick={() => void auth.logout()}>
               登出

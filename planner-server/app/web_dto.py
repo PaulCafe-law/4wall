@@ -8,6 +8,17 @@ from pydantic import BaseModel, Field
 
 RoleLiteral = Literal["platform_admin", "ops", "customer_admin", "customer_viewer"]
 InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdue", "void"]
+SupportSeverityLiteral = Literal["info", "warning", "critical"]
+ControlIntentActionLiteral = Literal[
+    "request_remote_control",
+    "release_remote_control",
+    "pause_mission",
+    "resume_mission",
+    "hold",
+    "return_to_home",
+]
+ControlIntentStatusLiteral = Literal["requested", "accepted", "rejected", "superseded"]
+ControlModeLiteral = Literal["monitor_only", "remote_control_requested", "remote_control_active", "released"]
 
 
 class MembershipDto(BaseModel):
@@ -214,3 +225,79 @@ class TelemetryBatchRecordDto(BaseModel):
     firstTimestamp: datetime
     lastTimestamp: datetime
     payload: list[dict[str, Any]]
+
+
+class LiveTelemetrySampleDto(BaseModel):
+    timestamp: datetime
+    lat: float
+    lng: float
+    altitudeM: float
+    groundSpeedMps: float
+    batteryPct: int
+    flightState: str
+    corridorDeviationM: float
+
+
+class VideoChannelDescriptorDto(BaseModel):
+    available: bool = False
+    streaming: bool = False
+    viewerUrl: str | None = None
+    codec: str | None = None
+    latencyMs: int | None = None
+    lastFrameAt: datetime | None = None
+
+
+class ControlLeaseDto(BaseModel):
+    holder: str = "released"
+    mode: ControlModeLiteral = "monitor_only"
+    remoteControlEnabled: bool = False
+    observerReady: bool = False
+    heartbeatHealthy: bool = False
+    expiresAt: datetime | None = None
+
+
+class LiveFlightSummaryDto(BaseModel):
+    flightId: str
+    organizationId: str
+    missionId: str
+    missionName: str
+    siteId: str | None = None
+    siteName: str | None = None
+    lastEventAt: datetime | None = None
+    lastTelemetryAt: datetime | None = None
+    latestTelemetry: LiveTelemetrySampleDto | None = None
+    video: VideoChannelDescriptorDto = Field(default_factory=VideoChannelDescriptorDto)
+    controlLease: ControlLeaseDto = Field(default_factory=ControlLeaseDto)
+    alerts: list[str] = Field(default_factory=list)
+
+
+class LiveFlightDetailDto(LiveFlightSummaryDto):
+    recentEvents: list[FlightEventRecordDto] = Field(default_factory=list)
+
+
+class ControlIntentRequestDto(BaseModel):
+    action: ControlIntentActionLiteral
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class ControlIntentDto(BaseModel):
+    requestId: str
+    flightId: str
+    action: ControlIntentActionLiteral
+    status: ControlIntentStatusLiteral
+    reason: str | None = None
+    requestedByUserId: str | None = None
+    createdAt: datetime
+    acknowledgedAt: datetime | None = None
+    resolutionNote: str | None = None
+
+
+class SupportQueueItemDto(BaseModel):
+    itemId: str
+    severity: SupportSeverityLiteral
+    organizationId: str
+    flightId: str | None = None
+    missionId: str | None = None
+    title: str
+    summary: str
+    createdAt: datetime

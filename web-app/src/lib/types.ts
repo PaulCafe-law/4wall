@@ -2,6 +2,24 @@ export type Role = 'platform_admin' | 'ops' | 'customer_admin' | 'customer_viewe
 
 export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overdue' | 'void'
 
+export type SupportSeverity = 'info' | 'warning' | 'critical'
+
+export type ControlIntentAction =
+  | 'request_remote_control'
+  | 'release_remote_control'
+  | 'pause_mission'
+  | 'resume_mission'
+  | 'hold'
+  | 'return_to_home'
+
+export type ControlIntentStatus = 'requested' | 'accepted' | 'rejected' | 'superseded'
+
+export type ControlMode =
+  | 'monitor_only'
+  | 'remote_control_requested'
+  | 'remote_control_active'
+  | 'released'
+
 export interface Membership {
   membershipId: string
   organizationId: string | null
@@ -157,6 +175,77 @@ export interface TelemetryBatchRecord {
   firstTimestamp: string
   lastTimestamp: string
   payload: Array<Record<string, unknown>>
+}
+
+export interface LiveTelemetrySample {
+  timestamp: string
+  lat: number
+  lng: number
+  altitudeM: number
+  groundSpeedMps: number
+  batteryPct: number
+  flightState: string
+  corridorDeviationM: number
+}
+
+export interface VideoChannelDescriptor {
+  available: boolean
+  streaming: boolean
+  viewerUrl: string | null
+  codec: string | null
+  latencyMs: number | null
+  lastFrameAt: string | null
+}
+
+export interface ControlLease {
+  holder: string
+  mode: ControlMode
+  remoteControlEnabled: boolean
+  observerReady: boolean
+  heartbeatHealthy: boolean
+  expiresAt: string | null
+}
+
+export interface LiveFlightSummary {
+  flightId: string
+  organizationId: string
+  missionId: string
+  missionName: string
+  siteId: string | null
+  siteName: string | null
+  lastEventAt: string | null
+  lastTelemetryAt: string | null
+  latestTelemetry: LiveTelemetrySample | null
+  video: VideoChannelDescriptor
+  controlLease: ControlLease
+  alerts: string[]
+}
+
+export interface LiveFlightDetail extends LiveFlightSummary {
+  recentEvents: FlightEventRecord[]
+}
+
+export interface ControlIntent {
+  requestId: string
+  flightId: string
+  action: ControlIntentAction
+  status: ControlIntentStatus
+  reason: string | null
+  requestedByUserId: string | null
+  createdAt: string
+  acknowledgedAt: string | null
+  resolutionNote: string | null
+}
+
+export interface SupportQueueItem {
+  itemId: string
+  severity: SupportSeverity
+  organizationId: string
+  flightId: string | null
+  missionId: string | null
+  title: string
+  summary: string
+  createdAt: string
 }
 
 export interface InviteCreateResponse {
