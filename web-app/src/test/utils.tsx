@@ -34,6 +34,7 @@ export function createAuthValue(overrides: Partial<AuthContextValue> = {}): Auth
     isInternal: Boolean(user?.globalRoles.some((role) => role === 'platform_admin' || role === 'ops')),
     globalRoles: user?.globalRoles ?? [],
     login: vi.fn(async () => {}),
+    signup: vi.fn(async () => {}),
     acceptInvite: vi.fn(async () => {}),
     logout: vi.fn(async () => {}),
     markExpired: vi.fn(),

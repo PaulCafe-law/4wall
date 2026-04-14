@@ -20,6 +20,8 @@ def test_postgres_driver_is_available_for_engine_creation():
         refresh_token_ttl_days=7,
         web_login_rate_limit_attempts=5,
         web_login_rate_limit_window_seconds=300,
+        web_signup_rate_limit_attempts=5,
+        web_signup_rate_limit_window_seconds=300,
         invite_accept_rate_limit_attempts=5,
         invite_accept_rate_limit_window_seconds=300,
         bootstrap_operator_enabled=False,

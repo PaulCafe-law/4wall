@@ -44,6 +44,8 @@ class Settings:
     refresh_token_ttl_days: int
     web_login_rate_limit_attempts: int
     web_login_rate_limit_window_seconds: int
+    web_signup_rate_limit_attempts: int
+    web_signup_rate_limit_window_seconds: int
     invite_accept_rate_limit_attempts: int
     invite_accept_rate_limit_window_seconds: int
     bootstrap_operator_enabled: bool
@@ -75,6 +77,8 @@ class Settings:
             refresh_token_ttl_days=_env_int("BUILDING_ROUTE_REFRESH_TOKEN_TTL_DAYS", 7),
             web_login_rate_limit_attempts=_env_int("BUILDING_ROUTE_WEB_LOGIN_RATE_LIMIT_ATTEMPTS", 5),
             web_login_rate_limit_window_seconds=_env_int("BUILDING_ROUTE_WEB_LOGIN_RATE_LIMIT_WINDOW_SECONDS", 300),
+            web_signup_rate_limit_attempts=_env_int("BUILDING_ROUTE_WEB_SIGNUP_RATE_LIMIT_ATTEMPTS", 5),
+            web_signup_rate_limit_window_seconds=_env_int("BUILDING_ROUTE_WEB_SIGNUP_RATE_LIMIT_WINDOW_SECONDS", 300),
             invite_accept_rate_limit_attempts=_env_int("BUILDING_ROUTE_INVITE_ACCEPT_RATE_LIMIT_ATTEMPTS", 5),
             invite_accept_rate_limit_window_seconds=_env_int("BUILDING_ROUTE_INVITE_ACCEPT_RATE_LIMIT_WINDOW_SECONDS", 300),
             bootstrap_operator_enabled=_env_bool("BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED", True),

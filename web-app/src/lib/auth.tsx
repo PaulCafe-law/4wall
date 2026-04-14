@@ -10,7 +10,7 @@ import {
   type PropsWithChildren,
 } from 'react'
 
-import { api, ApiError, type InviteAcceptPayload, type LoginPayload } from './api'
+import { api, ApiError, type InviteAcceptPayload, type LoginPayload, type SignupPayload } from './api'
 import type { Role, SessionUser, WebSession } from './types'
 
 export type AuthStatus = 'restoring' | 'anonymous' | 'authenticated' | 'expired'
@@ -22,6 +22,7 @@ export interface AuthContextValue {
   isInternal: boolean
   globalRoles: Role[]
   login: (payload: LoginPayload) => Promise<void>
+  signup: (payload: SignupPayload) => Promise<void>
   acceptInvite: (payload: InviteAcceptPayload) => Promise<void>
   logout: () => Promise<void>
   markExpired: () => void
@@ -77,6 +78,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     applySession(nextSession)
   }
 
+  const signup = async (payload: SignupPayload) => {
+    const nextSession = await api.signup(payload)
+    applySession(nextSession)
+  }
+
   const acceptInvite = async (payload: InviteAcceptPayload) => {
     const nextSession = await api.acceptInvite(payload)
     applySession(nextSession)
@@ -105,6 +111,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     isInternal,
     globalRoles,
     login,
+    signup,
     acceptInvite,
     logout,
     markExpired,

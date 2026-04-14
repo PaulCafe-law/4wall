@@ -23,7 +23,9 @@ Use it together with:
 - Deploy `four-wall-web-staging`.
 - Run `.github/workflows/smoke-beta.yml` against staging values.
 - Validate these user flows on staging:
+  - self-serve signup
   - login
+  - invite acceptance
   - overview
   - mission list
   - mission detail and artifact download

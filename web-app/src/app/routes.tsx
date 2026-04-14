@@ -6,6 +6,7 @@ import { AppShell } from './shell'
 import { AuditPage } from '../features/audit/AuditPage'
 import { InvitePage } from '../features/auth/InvitePage'
 import { LoginPage } from '../features/auth/LoginPage'
+import { SignupPage } from '../features/auth/SignupPage'
 import { BillingPage } from '../features/billing/BillingPage'
 import { LiveOpsPage } from '../features/liveops/LiveOpsPage'
 import { MissionDetailPage } from '../features/missions/MissionDetailPage'
@@ -27,6 +28,7 @@ export function AppRoutes() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
             <Route path="/invite" element={<InvitePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>

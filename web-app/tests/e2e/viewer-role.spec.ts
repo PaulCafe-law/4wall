@@ -74,9 +74,9 @@ test('customer viewer can browse but cannot see site mutation controls or intern
   })
 
   await page.goto('/login')
-  await page.getByLabel('電子郵件地址').fill('viewer@test.dev')
+  await page.getByLabel(/電子郵件/).fill('viewer@test.dev')
   await page.getByLabel('密碼').fill('Password123!')
-  await page.getByRole('button', { name: '進入主控台' }).click()
+  await page.getByRole('button', { name: /登入工作區|進入主控台/ }).click()
 
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByRole('link', { name: '組織' })).toHaveCount(0)
