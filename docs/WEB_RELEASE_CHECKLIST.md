@@ -41,8 +41,8 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - invite acceptance
   - customer admin deployed smoke
   - customer viewer deployed smoke if viewer smoke credentials are configured
-  - overview
-  - mission list
+  - overview aggregate cards, including pending actions and recent deliveries
+  - mission list with explicit delivery badges, publish time, and failure reason
   - mission detail and artifact download
   - billing
   - team
@@ -80,4 +80,5 @@ Rollback immediately if any of these occur:
 - production smoke run URL
 - Render deploy IDs for staging and production
 - manual QA notes for customer and internal flows
+- confirmation that explicit admin/viewer smoke accounts still match the environment after any secret rotation
 - any rollback event, trigger, and recovery deploy ID

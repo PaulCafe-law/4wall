@@ -28,6 +28,7 @@ from app.dto import (
     TelemetryBatchAcceptedDto,
     TelemetryBatchRequestDto,
 )
+from app.mission_delivery import build_artifact_map, serialize_mission_delivery, summarize_mission_delivery
 from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
 from app.providers import RouteProvider, RouteProviderError
 from app.web_dto import (
@@ -189,17 +190,11 @@ def list_missions(
         statement = statement.where(Mission.status == statusFilter)
     if requestedBy is not None:
         statement = statement.where(Mission.requested_by_user_id == requestedBy)
+    missions = session.exec(statement.order_by(Mission.created_at.desc())).all()
+    artifact_map = build_artifact_map(session, [mission.id for mission in missions])
     return [
-        MissionSummaryDto(
-            missionId=mission.id,
-            organizationId=mission.organization_id,
-            siteId=mission.site_id,
-            missionName=mission.mission_name,
-            status=mission.status,
-            bundleVersion=mission.bundle_version,
-            createdAt=mission.created_at,
-        )
-        for mission in session.exec(statement).all()
+        _serialize_mission_summary(mission, artifact_map.get(mission.id, []))
+        for mission in missions
     ]
 
 
@@ -230,7 +225,7 @@ def get_mission_detail(
         bundleVersion=mission.bundle_version,
         request=mission.request_json,
         response=mission.response_json,
-        delivery=_serialize_mission_delivery(mission, artifacts),
+        delivery=serialize_mission_delivery(mission, artifacts),
         artifacts=[_serialize_mission_artifact(mission_id, artifact) for artifact in artifacts],
         createdAt=mission.created_at,
     )
@@ -414,40 +409,20 @@ def _serialize_mission_artifact(mission_id: str, artifact: MissionArtifact) -> M
     )
 
 
-def _serialize_mission_delivery(mission: Mission, artifacts: list[MissionArtifact]) -> MissionDeliveryDto:
-    published_at = max((artifact.created_at for artifact in artifacts), default=None)
-    if mission.status == "failed":
-        return MissionDeliveryDto(
-            state="failed",
-            publishedAt=published_at,
-            failureReason=_extract_failure_reason(mission.response_json),
-        )
-    if artifacts:
-        return MissionDeliveryDto(state="published", publishedAt=published_at)
-    if mission.status == "planning":
-        return MissionDeliveryDto(state="planning")
-    return MissionDeliveryDto(state="ready")
-
-
-def _extract_failure_reason(payload: dict) -> str | None:
-    direct_candidates = [
-        payload.get("failureReason"),
-        payload.get("failure_reason"),
-        payload.get("error"),
-        payload.get("detail"),
-        payload.get("message"),
-    ]
-    for candidate in direct_candidates:
-        if isinstance(candidate, str) and candidate.strip():
-            return candidate.strip()
-
-    metadata = payload.get("metadata")
-    if isinstance(metadata, dict):
-        for key in ("failureReason", "failure_reason", "error", "detail", "message"):
-            candidate = metadata.get(key)
-            if isinstance(candidate, str) and candidate.strip():
-                return candidate.strip()
-    return None
+def _serialize_mission_summary(mission: Mission, artifacts: list[MissionArtifact]) -> MissionSummaryDto:
+    delivery_status, published_at, failure_reason = summarize_mission_delivery(mission, artifacts)
+    return MissionSummaryDto(
+        missionId=mission.id,
+        organizationId=mission.organization_id,
+        siteId=mission.site_id,
+        missionName=mission.mission_name,
+        status=mission.status,
+        bundleVersion=mission.bundle_version,
+        deliveryStatus=delivery_status,
+        publishedAt=published_at,
+        failureReason=failure_reason,
+        createdAt=mission.created_at,
+    )
 
 
 def _get_artifact(session: Session, mission_id: str, artifact_name: str) -> MissionArtifact:

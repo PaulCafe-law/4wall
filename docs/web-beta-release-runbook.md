@@ -61,6 +61,7 @@ The current rollout model is:
 - authenticated admin shell smoke is required
 - browser-level customer admin management smoke is enabled when explicit `BETA_WEB_SMOKE_ADMIN_*` secrets are configured
 - viewer smoke is supported and should be turned on once the environment has a stable seeded `customer_viewer`
+- if any smoke secret is rotated, manually verify that the exact staging/production account can still log in before re-running `Beta Smoke`
 
 ## Staging Deploy
 
@@ -73,6 +74,10 @@ The current rollout model is:
 7. Run `.github/workflows/smoke-beta.yml` against staging.
 8. Manually verify self-serve signup and invite acceptance if auth surface changed.
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
+10. Manually verify:
+   - overview pending-action cards
+   - mission list delivery badges and failure copy
+   - mission detail publication panel
 
 ## Promotion to Production
 
@@ -83,6 +88,7 @@ The current rollout model is:
 5. Re-run `.github/workflows/smoke-beta.yml` against production values.
 6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
 7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
+8. Re-check the same overview / mission-delivery manual flows on production before closing the deploy.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

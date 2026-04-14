@@ -67,6 +67,9 @@ def test_mission_list_only_returns_current_org_records(client, session_factory) 
     missions = list_response.json()
     assert len(missions) == 1
     assert missions[0]["organizationId"] == org_a_id
+    assert missions[0]["deliveryStatus"] == "published"
+    assert missions[0]["publishedAt"] is not None
+    assert missions[0]["failureReason"] is None
 
 
 def test_mission_detail_includes_delivery_metadata_and_artifacts(client, session_factory) -> None:
@@ -150,3 +153,39 @@ def test_mission_detail_returns_failure_reason_for_failed_mission(client, sessio
         "failureReason": "Route provider timed out for this site.",
     }
     assert detail["artifacts"] == []
+
+
+def test_mission_list_surfaces_failure_reason_for_failed_delivery(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Failure Summary Org")
+        user = seed_user(
+            session,
+            email="admin@failure-summary.test",
+            password=PASSWORD,
+            org_roles=[(org.id, "customer_admin")],
+        )
+        mission = Mission(
+            id="msn_failed_summary",
+            organization_id=org.id,
+            site_id=None,
+            requested_by_user_id=user.id,
+            mission_name="Summary Failure Mission",
+            status="failed",
+            routing_mode="road_network_following",
+            bundle_version="bundle-failed",
+            demo_mode=False,
+            request_json={"missionName": "Summary Failure Mission"},
+            response_json={"failureReason": "Planner could not publish artifacts."},
+        )
+        session.add(mission)
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@failure-summary.test", password=PASSWORD)
+    list_response = client.get("/v1/missions", headers=headers)
+
+    assert list_response.status_code == 200
+    missions = list_response.json()
+    assert len(missions) == 1
+    assert missions[0]["deliveryStatus"] == "failed"
+    assert missions[0]["publishedAt"] is None
+    assert missions[0]["failureReason"] == "Planner could not publish artifacts."

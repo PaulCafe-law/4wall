@@ -163,6 +163,9 @@ class MissionSummaryDto(BaseModel):
     missionName: str
     status: str
     bundleVersion: str
+    deliveryStatus: MissionDeliveryStateLiteral
+    publishedAt: datetime | None = None
+    failureReason: str | None = None
     createdAt: datetime
 
 
@@ -216,6 +219,36 @@ class BillingInvoiceDto(BaseModel):
     voidReason: str
     createdAt: datetime
     updatedAt: datetime
+
+
+class OverviewInviteDto(BaseModel):
+    inviteId: str
+    organizationId: str
+    organizationName: str | None = None
+    email: str
+    role: RoleLiteral
+    expiresAt: datetime
+
+
+class OverviewSupportSummaryDto(BaseModel):
+    openCount: int = 0
+    criticalCount: int = 0
+    warningCount: int = 0
+
+
+class OverviewDto(BaseModel):
+    siteCount: int = 0
+    missionCount: int = 0
+    planningMissionCount: int = 0
+    failedMissionCount: int = 0
+    publishedMissionCount: int = 0
+    overdueInvoiceCount: int = 0
+    pendingInviteCount: int = 0
+    recentMissions: list[MissionSummaryDto] = Field(default_factory=list)
+    recentDeliveries: list[MissionSummaryDto] = Field(default_factory=list)
+    recentInvoices: list[BillingInvoiceDto] = Field(default_factory=list)
+    pendingInvites: list[OverviewInviteDto] = Field(default_factory=list)
+    supportSummary: OverviewSupportSummaryDto | None = None
 
 
 class CreateInvoiceRequestDto(BaseModel):

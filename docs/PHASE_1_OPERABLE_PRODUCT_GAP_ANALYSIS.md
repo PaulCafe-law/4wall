@@ -15,6 +15,8 @@ The current `main` branch already has:
 - sites, missions, mission detail, artifacts, billing, team, audit
 - internal-only `Live Ops` and `Support`
 - basic release docs, Render topology, and smoke coverage
+- a single `overview` aggregate read path for daily landing-page data
+- mission list/detail delivery metadata with explicit `planning / ready / failed / published` states
 
 The main remaining gaps are product usability and operational completeness, not foundational stack creation.
 
@@ -51,12 +53,12 @@ The main remaining gaps are product usability and operational completeness, not 
 
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
-| Overview | Page exists, but still light as a true home screen | Useful customer and internal daily landing page | Missing task prioritization, reminders, and exception summarization |
-| Mission delivery | Mission detail shows request/response and artifact links | Delivery-oriented artifact panel with clear publish state | Missing publication state, timestamps, and customer-facing failure explanation |
-| Team management | Team reads, invites, and basic self-serve signup exist | Customer self-service org settings, member role management, membership activation, and invite management | Missing org settings, member administration, and last-admin safety rails |
-| Support queue | Internal-only queue exists | Mission-centered support workspace | Missing richer context, triage actions, and operator next-step language |
-| Live Ops | Internal-only monitoring exists | Stable monitoring surface with explicit monitor-only degradation | Missing stronger empty, stale, and unavailable states tied to Android prerequisites |
-| Release process | Docs and smoke exist across multiple files | One coherent release checklist and acceptance path | Missing single source of truth for release verification |
+| Overview | Backend aggregate and daily landing page now exist | Useful customer and internal daily landing page | Still needs deeper prioritization, reminders, and more polished empty states |
+| Mission delivery | Mission list/detail now expose delivery state, publish time, and failure reason | Delivery-oriented artifact panel with clear publish state | Still missing artifact history, release notes, and customer-facing delivery summaries beyond the current mission |
+| Team management | Team reads, invites, org rename, role management, and member activation exist | Customer self-service org settings, member role management, membership activation, and invite management | Still missing resend invite and richer invite-state feedback |
+| Support queue | Internal-only queue includes mission/org/site context and recommended next steps | Mission-centered support workspace | Still needs assignment state and handling workflow, not just triage context |
+| Live Ops | Internal-only monitoring exists | Stable monitoring surface with explicit monitor-only degradation | Still needs stronger freshness and unavailable-state polish once Android contracts harden |
+| Release process | Dual-role smoke and one checklist now exist | One coherent release checklist and acceptance path | Still depends on disciplined manual evidence capture after each deploy |
 
 ## Phase 1 Deliverables
 
