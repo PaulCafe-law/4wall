@@ -34,7 +34,7 @@ The main remaining gaps are product usability and operational completeness, not 
 
 ### Team and Organization Management
 
-- customer team management must cover members, pending invites, and role visibility
+- customer team management must cover organization settings, members, pending invites, role management, and membership activation
 - internal org view must keep cross-tenant support context without leaking customer-only language into the customer UI
 
 ### Internal Ops Workspaces
@@ -53,7 +53,7 @@ The main remaining gaps are product usability and operational completeness, not 
 |---|---|---|---|
 | Overview | Page exists, but still light as a true home screen | Useful customer and internal daily landing page | Missing task prioritization, reminders, and exception summarization |
 | Mission delivery | Mission detail shows request/response and artifact links | Delivery-oriented artifact panel with clear publish state | Missing publication state, timestamps, and customer-facing failure explanation |
-| Team management | Team read flows exist | Customer self-service team visibility and invite management | Missing stronger self-serve coordination cues and full invite lifecycle polish |
+| Team management | Team reads, invites, and basic self-serve signup exist | Customer self-service org settings, member role management, membership activation, and invite management | Missing org settings, member administration, and last-admin safety rails |
 | Support queue | Internal-only queue exists | Mission-centered support workspace | Missing richer context, triage actions, and operator next-step language |
 | Live Ops | Internal-only monitoring exists | Stable monitoring surface with explicit monitor-only degradation | Missing stronger empty, stale, and unavailable states tied to Android prerequisites |
 | Release process | Docs and smoke exist across multiple files | One coherent release checklist and acceptance path | Missing single source of truth for release verification |
@@ -62,7 +62,7 @@ The main remaining gaps are product usability and operational completeness, not 
 
 - customer-facing overview improvements
 - mission delivery / artifact publication state improvements
-- team and org workflow polish
+- team and org workflow polish, including member management
 - support and live-ops usability hardening
 - unified release checklist and deployment evidence template
 

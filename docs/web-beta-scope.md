@@ -102,7 +102,7 @@ Android implementation is handled as an external dependency by a separate workst
 3. Create or update a site
 4. Submit a mission plan request
 5. Watch mission status move from `draft` or `planning` to `ready` or `failed`
-6. Review team members and pending invites
+6. Review organization settings, team members, roles, and pending invites
 7. Download artifacts when available
 8. Review invoice state
 
