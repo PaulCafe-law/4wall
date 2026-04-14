@@ -55,7 +55,8 @@ Reference these docs before shipping any `live-ops` or `support` change:
 
 The current rollout model is:
 
-- admin smoke is required
+- authenticated admin smoke is required
+- browser-level customer admin management smoke is enabled when explicit `BETA_WEB_SMOKE_ADMIN_*` secrets are configured
 - viewer smoke is supported and should be turned on once the environment has a stable seeded `customer_viewer`
 
 ## Staging Deploy
