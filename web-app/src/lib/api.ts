@@ -4,6 +4,7 @@ import type {
   ControlIntent,
   ControlIntentAction,
   FlightEventRecord,
+  Invite,
   InviteCreateResponse,
   LiveFlightDetail,
   LiveFlightSummary,
@@ -201,6 +202,11 @@ export const api = {
       method: 'POST',
       token,
       body: JSON.stringify(payload),
+    }),
+  revokeInvite: (token: string, inviteId: string) =>
+    apiFetch<Invite>(`/v1/invites/${inviteId}/revoke`, {
+      method: 'POST',
+      token,
     }),
   listAuditLog: (token: string, organizationId?: string) =>
     apiFetch<AuditEvent[]>(

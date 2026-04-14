@@ -175,3 +175,70 @@ def test_accept_invite_rate_limit_blocks_repeated_invalid_attempts(client, sessi
 
     assert blocked_response.status_code == 429
     assert blocked_response.json()["detail"] == "rate_limit_exceeded"
+
+
+def test_customer_admin_can_revoke_pending_invite_for_own_org(client, session_factory) -> None:
+    with session_factory() as session:
+        organization = seed_organization(session, name="Customer Invite Org")
+        organization_id = organization.id
+        seed_user(
+            session,
+            email="admin@customer-invite.test",
+            password=PASSWORD,
+            org_roles=[(organization_id, "customer_admin")],
+        )
+        session.commit()
+
+    admin_headers, _ = login_web(client, email="admin@customer-invite.test", password=PASSWORD)
+    invite_response = client.post(
+        f"/v1/organizations/{organization_id}/invites",
+        headers=admin_headers,
+        json={"email": "viewer@customer-invite.test", "role": "customer_viewer"},
+    )
+
+    assert invite_response.status_code == 200
+    invite_id = invite_response.json()["invite"]["inviteId"]
+
+    revoke_response = client.post(f"/v1/invites/{invite_id}/revoke", headers=admin_headers)
+
+    assert revoke_response.status_code == 200
+    assert revoke_response.json()["revokedAt"] is not None
+
+    detail_response = client.get(f"/v1/organizations/{organization_id}", headers=admin_headers)
+    assert detail_response.status_code == 200
+    assert detail_response.json()["pendingInvites"] == []
+
+
+def test_customer_viewer_cannot_revoke_pending_invite(client, session_factory) -> None:
+    with session_factory() as session:
+        organization = seed_organization(session, name="Viewer Invite Org")
+        organization_id = organization.id
+        seed_user(
+            session,
+            email="admin@viewer-invite.test",
+            password=PASSWORD,
+            org_roles=[(organization_id, "customer_admin")],
+        )
+        seed_user(
+            session,
+            email="viewer@viewer-invite.test",
+            password=PASSWORD,
+            org_roles=[(organization_id, "customer_viewer")],
+        )
+        session.commit()
+
+    admin_headers, _ = login_web(client, email="admin@viewer-invite.test", password=PASSWORD)
+    invite_response = client.post(
+        f"/v1/organizations/{organization_id}/invites",
+        headers=admin_headers,
+        json={"email": "pending@viewer-invite.test", "role": "customer_viewer"},
+    )
+
+    assert invite_response.status_code == 200
+    invite_id = invite_response.json()["invite"]["inviteId"]
+
+    viewer_headers, _ = login_web(client, email="viewer@viewer-invite.test", password=PASSWORD)
+    revoke_response = client.post(f"/v1/invites/{invite_id}/revoke", headers=viewer_headers)
+
+    assert revoke_response.status_code == 403
+    assert revoke_response.json()["detail"] == "forbidden_role"
