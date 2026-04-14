@@ -10,6 +10,7 @@ RoleLiteral = Literal["platform_admin", "ops", "customer_admin", "customer_viewe
 InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdue", "void"]
 SupportSeverityLiteral = Literal["info", "warning", "critical"]
 MissionDeliveryStateLiteral = Literal["planning", "ready", "failed", "published"]
+SupportCategoryLiteral = Literal["mission_failed", "battery_low", "telemetry_stale", "bridge_alert"]
 ControlIntentActionLiteral = Literal[
     "request_remote_control",
     "release_remote_control",
@@ -314,10 +315,15 @@ class ControlIntentDto(BaseModel):
 
 class SupportQueueItemDto(BaseModel):
     itemId: str
+    category: SupportCategoryLiteral
     severity: SupportSeverityLiteral
     organizationId: str
+    organizationName: str | None = None
     flightId: str | None = None
     missionId: str | None = None
+    missionName: str | None = None
+    siteName: str | None = None
     title: str
     summary: str
+    recommendedNextStep: str
     createdAt: datetime

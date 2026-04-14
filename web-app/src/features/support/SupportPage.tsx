@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { EmptyState, Metric, Panel, ShellSection, formatDate } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
-import { formatSupportSeverity } from '../../lib/presentation'
+import { formatSupportCategory, formatSupportSeverity } from '../../lib/presentation'
 
 export function SupportPage() {
   const supportQuery = useAuthedQuery({
@@ -47,12 +47,15 @@ export function SupportPage() {
       <div className="grid gap-4">
         {items.map((item) => (
           <Panel key={item.itemId}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div className="min-w-0">
+            <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-3">
                   <h2 className="break-words font-display text-2xl font-semibold text-chrome-950">
                     {item.title}
                   </h2>
+                  <span className="rounded-full bg-chrome-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700">
+                    {formatSupportCategory(item.category)}
+                  </span>
                   <span
                     className={
                       item.severity === 'critical'
@@ -66,13 +69,34 @@ export function SupportPage() {
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-chrome-700">{item.summary}</p>
-                <div className="mt-3 flex flex-wrap gap-3 text-xs text-chrome-500">
-                  <span>組織：{item.organizationId}</span>
-                  {item.missionId ? <span>任務：{item.missionId}</span> : null}
-                  {item.flightId ? <span>飛行：{item.flightId}</span> : null}
-                  <span>建立時間：{formatDate(item.createdAt)}</span>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">事件 context</p>
+                    <div className="mt-3 space-y-2 text-sm text-chrome-700">
+                      <p>
+                        組織：{item.organizationName ?? '未命名組織'}
+                        <span className="ml-2 text-xs text-chrome-500">{item.organizationId}</span>
+                      </p>
+                      {item.missionId ? (
+                        <p>
+                          任務：{item.missionName ?? item.missionId}
+                          <span className="ml-2 text-xs text-chrome-500">{item.missionId}</span>
+                        </p>
+                      ) : null}
+                      {item.siteName ? <p>場址：{item.siteName}</p> : null}
+                      {item.flightId ? <p>飛行：{item.flightId}</p> : null}
+                      <p>建立時間：{formatDate(item.createdAt)}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-ember-200 bg-ember-50/70 px-4 py-4">
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-500">建議下一步</p>
+                    <p className="mt-3 text-sm text-chrome-800">{item.recommendedNextStep}</p>
+                  </div>
                 </div>
               </div>
+
               <div className="flex flex-wrap gap-3">
                 {item.flightId ? (
                   <Link

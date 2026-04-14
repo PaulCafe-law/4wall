@@ -3,6 +3,7 @@ export type Role = 'platform_admin' | 'ops' | 'customer_admin' | 'customer_viewe
 export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overdue' | 'void'
 
 export type SupportSeverity = 'info' | 'warning' | 'critical'
+export type SupportCategory = 'mission_failed' | 'battery_low' | 'telemetry_stale' | 'bridge_alert'
 
 export type ControlIntentAction =
   | 'request_remote_control'
@@ -258,12 +259,17 @@ export interface ControlIntent {
 
 export interface SupportQueueItem {
   itemId: string
+  category: SupportCategory
   severity: SupportSeverity
   organizationId: string
+  organizationName: string | null
   flightId: string | null
   missionId: string | null
+  missionName: string | null
+  siteName: string | null
   title: string
   summary: string
+  recommendedNextStep: string
   createdAt: string
 }
 

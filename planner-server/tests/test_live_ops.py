@@ -279,10 +279,24 @@ def test_support_queue_is_internal_only_and_surfaces_mission_bridge_and_battery_
 
     internal_response = client.get("/v1/support/queue", headers=ops_headers)
     assert internal_response.status_code == 200, internal_response.text
-    titles = {item["title"] for item in internal_response.json()}
+    items = internal_response.json()
+    titles = {item["title"] for item in items}
     assert "任務規劃失敗" in titles
     assert "電量過低" in titles
     assert "Bridge 告警：uplink_degraded" in titles
+
+    failed_item = next(item for item in items if item["title"] == "任務規劃失敗")
+    assert failed_item["category"] == "mission_failed"
+    assert failed_item["organizationName"] == "Acme Build"
+    assert failed_item["missionName"] == "building-a-demo"
+    assert failed_item["siteName"] == "Tower A"
+    assert "mission request" in failed_item["recommendedNextStep"]
+
+    bridge_item = next(item for item in items if item["title"] == "Bridge 告警：uplink_degraded")
+    assert bridge_item["category"] == "bridge_alert"
+    assert bridge_item["organizationName"] == "Acme Build"
+    assert bridge_item["flightId"] == flight_id
+    assert "observer" in bridge_item["recommendedNextStep"]
 
     customer_response = client.get("/v1/support/queue", headers=admin_headers)
     assert customer_response.status_code == 403

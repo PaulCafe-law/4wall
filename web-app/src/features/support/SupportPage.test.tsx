@@ -28,12 +28,17 @@ describe('SupportPage', () => {
     apiMock.listSupportQueue.mockResolvedValue([
       {
         itemId: 'item-001',
+        category: 'bridge_alert',
         severity: 'critical',
         organizationId: 'org-001',
+        organizationName: 'Acme Build',
         flightId: 'flight-001',
         missionId: 'mission-001',
+        missionName: 'Tower A Demo',
+        siteName: 'Tower A',
         title: 'Bridge 告警：uplink_degraded',
         summary: 'Android bridge reported unstable uplink quality.',
+        recommendedNextStep: '打開飛行監看確認最新 lease、telemetry 與 video 狀態，必要時聯繫現場 observer。',
         createdAt: '2026-04-14T10:00:00Z',
       },
     ])
@@ -48,6 +53,18 @@ describe('SupportPage', () => {
 
     expect(await screen.findByText('支援佇列')).toBeInTheDocument()
     expect(await screen.findByText('Bridge 告警：uplink_degraded')).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        (_, element) => element?.tagName === 'P' && (element.textContent?.includes('組織：Acme Build') ?? false),
+      ),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByText(
+        (_, element) => element?.tagName === 'P' && (element.textContent?.includes('任務：Tower A Demo') ?? false),
+      ),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('建議下一步')).toBeInTheDocument()
+    expect(await screen.findByText('Bridge 告警')).toBeInTheDocument()
     expect(await screen.findByRole('link', { name: '查看任務' })).toBeInTheDocument()
   })
 })
