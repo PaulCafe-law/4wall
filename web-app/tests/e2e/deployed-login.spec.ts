@@ -13,11 +13,12 @@ test('deployed admin login reaches the authenticated shell', async ({ page }) =>
   await page.locator('form button[type="submit"]').click()
 
   await page.waitForURL(/\/$/)
-  await expect(page.getByRole('button', { name: /登出|Logout|Log out/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /登出|Logout|Log out/ })).toBeVisible({ timeout: 15_000 })
 
   if (expectTeamAdmin) {
     await page.goto('/team')
-    await expect(page.getByLabel('invite-team-member')).toBeVisible()
-    await expect(page.getByLabel('save-organization')).toBeEnabled()
+    await expect(page.getByLabel('organization-name')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByLabel('invite-team-member')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByLabel('save-organization')).toBeEnabled({ timeout: 15_000 })
   }
 })

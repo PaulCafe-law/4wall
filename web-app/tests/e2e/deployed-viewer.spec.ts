@@ -12,9 +12,11 @@ test('deployed viewer login stays read-only on team surfaces', async ({ page }) 
   await page.locator('form button[type="submit"]').click()
 
   await page.waitForURL(/\/$/)
+  await expect(page.getByRole('button', { name: /登出|Logout|Log out/ })).toBeVisible({ timeout: 15_000 })
 
   await page.goto('/team')
+  await expect(page.getByLabel('organization-name')).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('a[href="/organizations"]')).toHaveCount(0)
   await expect(page.getByLabel('invite-team-member')).toHaveCount(0)
-  await expect(page.getByLabel('save-organization')).toBeDisabled()
+  await expect(page.getByLabel('save-organization')).toBeDisabled({ timeout: 15_000 })
 })
