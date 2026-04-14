@@ -248,7 +248,13 @@ def get_organization(
         session.exec(select(OrganizationMembership).where(OrganizationMembership.organization_id == organization_id)).all()
     )
     invites = list(
-        session.exec(select(Invite).where(Invite.organization_id == organization_id, Invite.accepted_at.is_(None))).all()
+        session.exec(
+            select(Invite).where(
+                Invite.organization_id == organization_id,
+                Invite.accepted_at.is_(None),
+                Invite.revoked_at.is_(None),
+            )
+        ).all()
     )
     return OrganizationDetailDto(
         organizationId=organization.id,

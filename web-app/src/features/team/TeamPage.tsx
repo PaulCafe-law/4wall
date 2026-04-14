@@ -9,6 +9,7 @@ import {
   DataList,
   EmptyState,
   Field,
+  formatDateTime,
   Input,
   Metric,
   Modal,
@@ -21,6 +22,7 @@ import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { useOrganizationChoices } from '../../lib/organization-choices'
 import { formatApiError, formatBoolean, formatRole, formatRoleOption } from '../../lib/presentation'
+import type { InviteCreateResponse } from '../../lib/types'
 
 const inviteSchema = z.object({
   email: z.string().email('請輸入有效的電子郵件地址'),
@@ -28,13 +30,22 @@ const inviteSchema = z.object({
 })
 
 type InviteFormValues = z.infer<typeof inviteSchema>
+type RevokeInvitePayload = { inviteId: string }
+
+function buildInviteUrl(inviteToken: string) {
+  const inviteUrl = new URL('/invite', window.location.origin)
+  inviteUrl.searchParams.set('token', inviteToken)
+  return inviteUrl.toString()
+}
 
 export function TeamPage() {
   const auth = useAuth()
   const queryClient = useQueryClient()
   const { choices, isLoading: choicesLoading } = useOrganizationChoices('read')
   const [selectedOrganizationId, setSelectedOrganizationId] = useState('')
-  const [isOpen, setIsOpen] = useState(false)
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
+  const [latestInvite, setLatestInvite] = useState<InviteCreateResponse | null>(null)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'unavailable' | 'failed'>('idle')
 
   const selectedId = selectedOrganizationId || choices[0]?.organizationId || ''
   const canInvite = selectedId ? auth.canWriteOrganization(selectedId) : false
@@ -49,9 +60,24 @@ export function TeamPage() {
     mutationKey: ['team', 'invite', selectedId],
     mutationFn: ({ token, payload }: { token: string; payload: InviteFormValues }) =>
       api.createInvite(token, selectedId, payload),
-    onSuccess: async () => {
+    onSuccess: async (response) => {
+      setLatestInvite(response)
+      setCopyState('idle')
       await queryClient.invalidateQueries({ queryKey: ['organization', selectedId] })
-      setIsOpen(false)
+      setIsInviteModalOpen(false)
+    },
+  })
+
+  const revokeInvite = useAuthedMutation({
+    mutationKey: ['team', 'invite', selectedId, 'revoke'],
+    mutationFn: ({ token, payload }: { token: string; payload: RevokeInvitePayload }) =>
+      api.revokeInvite(token, payload.inviteId),
+    onSuccess: async (_, variables) => {
+      if (latestInvite?.invite.inviteId === variables.inviteId) {
+        setLatestInvite(null)
+        setCopyState('idle')
+      }
+      await queryClient.invalidateQueries({ queryKey: ['organization', selectedId] })
     },
   })
 
@@ -72,11 +98,18 @@ export function TeamPage() {
   const roleSummary = useMemo(() => {
     const summary = new Map<string, number>()
     for (const member of detailQuery.data?.members ?? []) {
-      const key = formatRole(member.role)
-      summary.set(key, (summary.get(key) ?? 0) + 1)
+      const roleLabel = formatRole(member.role)
+      summary.set(roleLabel, (summary.get(roleLabel) ?? 0) + 1)
     }
     return [...summary.entries()]
   }, [detailQuery.data])
+
+  const latestInviteUrl = useMemo(() => {
+    if (!latestInvite) {
+      return ''
+    }
+    return buildInviteUrl(latestInvite.inviteToken)
+  }, [latestInvite])
 
   const onSubmit = handleSubmit(async (values) => {
     try {
@@ -88,10 +121,26 @@ export function TeamPage() {
     }
   })
 
+  async function handleCopyInviteLink() {
+    if (!latestInviteUrl) {
+      return
+    }
+    if (!navigator.clipboard?.writeText) {
+      setCopyState('unavailable')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(latestInviteUrl)
+      setCopyState('copied')
+    } catch {
+      setCopyState('failed')
+    }
+  }
+
   if (choicesLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">正在整理團隊資料…</p>
+        <p className="text-sm text-chrome-700">正在載入團隊資料…</p>
       </Panel>
     )
   }
@@ -100,7 +149,7 @@ export function TeamPage() {
     return (
       <EmptyState
         title="目前沒有可管理的團隊"
-        body="你的帳號還沒有可查看的組織。請先接受邀請，或請平台營運協助建立組織。"
+        body="請先加入至少一個組織，才能查看成員、邀請與角色設定。"
       />
     )
   }
@@ -109,8 +158,8 @@ export function TeamPage() {
     const detail = detailQuery.error instanceof ApiError ? detailQuery.error.detail : undefined
     return (
       <EmptyState
-        title="目前無法讀取團隊資料"
-        body={formatApiError(detail, '請稍後再試，或請平台營運確認你的組織權限。')}
+        title="無法載入團隊資料"
+        body={formatApiError(detail, '目前無法讀取組織詳情，請稍後再試。')}
       />
     )
   }
@@ -120,22 +169,26 @@ export function TeamPage() {
       <ShellSection
         eyebrow="客戶工作區"
         title="團隊"
-        subtitle="查看目前組織的成員角色與待接受邀請。若你有管理權限，也可以從這裡直接邀請新成員。"
+        subtitle="管理目前組織的成員、待接受邀請與協作權限。客戶管理者可直接發送或撤銷邀請。"
         action={
           canInvite ? (
             <Modal
-              open={isOpen}
-              onOpenChange={setIsOpen}
-              title="邀請團隊成員"
-              description="邀請會寄給指定的電子郵件地址。對方接受邀請後，就能登入這個平台。"
-              trigger={<ActionButton>邀請成員</ActionButton>}
+              open={isInviteModalOpen}
+              onOpenChange={setIsInviteModalOpen}
+              title="邀請成員"
+              description="建立新的邀請連結，讓受邀人完成帳號啟用並加入目前組織。"
+              trigger={
+                <ActionButton aria-label="invite-team-member" type="button">
+                  邀請成員
+                </ActionButton>
+              }
             >
               <form className="grid gap-4" onSubmit={onSubmit}>
-                <Field label="電子郵件地址" error={errors.email?.message}>
-                  <Input {...register('email')} />
+                <Field label="電子郵件" error={errors.email?.message}>
+                  <Input aria-label="invite-email" autoComplete="email" {...register('email')} />
                 </Field>
                 <Field label="角色" error={errors.role?.message}>
-                  <Select {...register('role')}>
+                  <Select aria-label="invite-role" {...register('role')}>
                     <option value="customer_viewer">{formatRoleOption('customer_viewer')}</option>
                     <option value="customer_admin">{formatRoleOption('customer_admin')}</option>
                   </Select>
@@ -146,8 +199,8 @@ export function TeamPage() {
                   </div>
                 ) : null}
                 <div className="flex justify-end">
-                  <ActionButton disabled={createInvite.isPending} type="submit">
-                    {createInvite.isPending ? '正在建立邀請…' : '送出邀請'}
+                  <ActionButton aria-label="submit-invite" disabled={createInvite.isPending} type="submit">
+                    {createInvite.isPending ? '建立邀請中…' : '建立邀請'}
                   </ActionButton>
                 </div>
               </form>
@@ -168,19 +221,78 @@ export function TeamPage() {
         </Field>
       </Panel>
 
+      {latestInvite ? (
+        <Panel>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">最新邀請</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">已建立可分享的邀請連結</h2>
+              <p className="mt-2 text-sm text-chrome-700">
+                {latestInvite.invite.email} ・ {formatRole(latestInvite.invite.role)}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <ActionButton
+                aria-label="copy-invite-link"
+                disabled={!latestInviteUrl}
+                type="button"
+                variant="secondary"
+                onClick={() => void handleCopyInviteLink()}
+              >
+                複製邀請連結
+              </ActionButton>
+              <ActionButton
+                aria-label="dismiss-latest-invite"
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  setLatestInvite(null)
+                  setCopyState('idle')
+                }}
+              >
+                關閉
+              </ActionButton>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-4">
+            <DataList
+              rows={[
+                { label: '受邀信箱', value: latestInvite.invite.email },
+                { label: '角色', value: formatRole(latestInvite.invite.role) },
+                { label: '到期時間', value: formatDateTime(latestInvite.invite.expiresAt) },
+              ]}
+            />
+            <Field
+              label="邀請連結"
+              hint={
+                copyState === 'copied'
+                  ? '邀請連結已複製。'
+                  : copyState === 'unavailable'
+                    ? '目前瀏覽器不支援直接複製，請手動複製。'
+                    : copyState === 'failed'
+                      ? '複製失敗，請手動複製。'
+                      : '把這個連結交給受邀成員完成啟用。'
+              }
+            >
+              <Input aria-label="invite-link" readOnly value={latestInviteUrl} />
+            </Field>
+          </div>
+        </Panel>
+      ) : null}
+
       {detailQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在讀取團隊詳細資料…</p>
+          <p className="text-sm text-chrome-700">正在載入組織詳情…</p>
         </Panel>
       ) : null}
 
       {detailQuery.data ? (
         <>
           <div className="grid gap-4 md:grid-cols-4">
-            <Metric label="組織成員數" value={detailQuery.data.members.length} />
+            <Metric label="成員數" value={detailQuery.data.members.length} />
             <Metric label="待接受邀請" value={detailQuery.data.pendingInvites.length} />
-            <Metric label="可邀請新成員" value={formatBoolean(canInvite)} />
-            <Metric label="角色類型" value={roleSummary.length || 0} hint="目前組織內的角色分布。" />
+            <Metric label="可發送邀請" value={formatBoolean(canInvite)} />
+            <Metric label="角色種類" value={roleSummary.length || 0} hint="目前團隊中出現的角色數量" />
           </div>
 
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -188,14 +300,14 @@ export function TeamPage() {
               <Panel>
                 <h2 className="font-display text-2xl font-semibold text-chrome-950">{detailQuery.data.name}</h2>
                 <p className="mt-2 text-sm text-chrome-700">
-                  這裡顯示團隊角色分布與待接受邀請。完整的人員檔案會在後續商品化版本補齊。
+                  這裡集中顯示目前組織的團隊狀態，方便確認角色分工、帳號是否啟用，以及還有哪些邀請尚未完成。
                 </p>
                 <div className="mt-4">
                   <DataList
                     rows={[
-                      { label: '組織代稱', value: detailQuery.data.slug },
+                      { label: '組織代號', value: detailQuery.data.slug },
                       { label: '啟用狀態', value: formatBoolean(detailQuery.data.isActive) },
-                      { label: '你的權限', value: canInvite ? '可管理團隊' : '僅可檢視' },
+                      { label: '邀請權限', value: canInvite ? '可管理邀請' : '僅能檢視' },
                     ]}
                   />
                 </div>
@@ -210,7 +322,7 @@ export function TeamPage() {
                     roleSummary.map(([role, count]) => (
                       <div key={role} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                         <p className="font-medium text-chrome-950">{role}</p>
-                        <p className="mt-2 text-sm text-chrome-700">{count} 位成員</p>
+                        <p className="mt-2 text-sm text-chrome-700">{count} 人</p>
                       </div>
                     ))
                   )}
@@ -220,14 +332,38 @@ export function TeamPage() {
 
             <Panel>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">待接受邀請</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">目前待處理的邀請</h2>
+              <p className="mt-2 text-sm text-chrome-700">從這裡確認邀請是否已送出、何時到期，以及是否需要撤銷後重新建立。</p>
+              {revokeInvite.isError ? (
+                <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {formatApiError(
+                    revokeInvite.error instanceof ApiError ? revokeInvite.error.detail : undefined,
+                    '撤銷邀請失敗，請稍後再試。',
+                  )}
+                </div>
+              ) : null}
               <div className="mt-4 grid gap-3">
                 {detailQuery.data.pendingInvites.length === 0 ? (
-                  <p className="text-sm text-chrome-700">目前沒有待接受的邀請。</p>
+                  <p className="text-sm text-chrome-700">目前沒有待接受邀請。</p>
                 ) : (
                   detailQuery.data.pendingInvites.map((invite) => (
                     <div key={invite.inviteId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                       <p className="break-all font-medium text-chrome-950">{invite.email}</p>
                       <p className="mt-1 text-sm text-chrome-700">{formatRole(invite.role)}</p>
+                      <p className="mt-1 text-sm text-chrome-600">到期：{formatDateTime(invite.expiresAt)}</p>
+                      {canInvite ? (
+                        <div className="mt-3">
+                          <ActionButton
+                            aria-label={`revoke-invite-${invite.inviteId}`}
+                            disabled={revokeInvite.isPending}
+                            type="button"
+                            variant="secondary"
+                            onClick={() => void revokeInvite.mutateAsync({ inviteId: invite.inviteId })}
+                          >
+                            {revokeInvite.isPending ? '處理中…' : '撤銷邀請'}
+                          </ActionButton>
+                        </div>
+                      ) : null}
                     </div>
                   ))
                 )}
