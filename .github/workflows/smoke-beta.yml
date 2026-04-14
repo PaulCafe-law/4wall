@@ -35,6 +35,7 @@ jobs:
           BETA_WEB_SMOKE_VIEWER_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD }}
         run: |
           missing=()
+          echo "VIEWER_SMOKE_ENABLED=false" >> "$GITHUB_ENV"
           for name in BETA_API_BASE_URL WEB_LOGIN_URL BETA_APP_ORIGIN BETA_WEB_SMOKE_ADMIN_EMAIL BETA_WEB_SMOKE_ADMIN_PASSWORD; do
             if [ -z "${!name}" ]; then
               missing+=("$name")
@@ -47,6 +48,7 @@ jobs:
           if [ -z "$BETA_WEB_SMOKE_VIEWER_EMAIL" ] || [ -z "$BETA_WEB_SMOKE_VIEWER_PASSWORD" ]; then
             echo "Viewer smoke credentials not configured; viewer-only smoke will be skipped."
           else
+            echo "VIEWER_SMOKE_ENABLED=true" >> "$GITHUB_ENV"
             echo "Viewer smoke credentials present."
           fi
           echo "Deployment variables present."
@@ -90,7 +92,7 @@ jobs:
           PW_WEB_SMOKE_ADMIN_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_ADMIN_PASSWORD || secrets.BETA_WEB_SMOKE_PASSWORD }}
         run: npx playwright test tests/e2e/deployed-login.spec.ts
       - name: Browser viewer role smoke
-        if: ${{ secrets.BETA_WEB_SMOKE_VIEWER_EMAIL != '' && secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD != '' }}
+        if: ${{ env.VIEWER_SMOKE_ENABLED == 'true' }}
         working-directory: web-app
         env:
           PLAYWRIGHT_BASE_URL: ${{ vars.BETA_APP_ORIGIN }}
@@ -112,7 +114,7 @@ jobs:
             --web-password "$BETA_WEB_SMOKE_ADMIN_PASSWORD" \
             --app-origin "$BETA_APP_ORIGIN"
       - name: Web beta viewer read-only smoke
-        if: ${{ secrets.BETA_WEB_SMOKE_VIEWER_EMAIL != '' && secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD != '' }}
+        if: ${{ env.VIEWER_SMOKE_ENABLED == 'true' }}
         working-directory: planner-server
         env:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
