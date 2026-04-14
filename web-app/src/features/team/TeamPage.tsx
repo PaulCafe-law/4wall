@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -30,6 +30,7 @@ const inviteSchema = z.object({
 })
 
 type InviteFormValues = z.infer<typeof inviteSchema>
+
 type MemberDraft = {
   role: 'customer_admin' | 'customer_viewer'
   isActive: boolean
@@ -67,7 +68,7 @@ export function TeamPage() {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false)
   const [latestInvite, setLatestInvite] = useState<InviteCreateResponse | null>(null)
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'unavailable' | 'failed'>('idle')
-  const [organizationName, setOrganizationName] = useState('')
+  const [organizationNameDraft, setOrganizationNameDraft] = useState<string | null>(null)
   const [organizationError, setOrganizationError] = useState<string | null>(null)
   const [organizationNotice, setOrganizationNotice] = useState<string | null>(null)
   const [memberDrafts, setMemberDrafts] = useState<Record<string, MemberDraft>>({})
@@ -83,20 +84,7 @@ export function TeamPage() {
     enabled: Boolean(selectedId),
   })
 
-  useEffect(() => {
-    if (!detailQuery.data) {
-      return
-    }
-    setOrganizationName(detailQuery.data.name)
-    setMemberDrafts(
-      Object.fromEntries(
-        detailQuery.data.members.map((member) => [member.membershipId, memberDraftFromRecord(member)]),
-      ),
-    )
-    setOrganizationError(null)
-    setOrganizationNotice(null)
-    setMemberErrors({})
-  }, [detailQuery.data])
+  const organizationName = organizationNameDraft ?? detailQuery.data?.name ?? ''
 
   const createInvite = useAuthedMutation({
     mutationKey: ['team', 'invite', selectedId],
@@ -128,6 +116,7 @@ export function TeamPage() {
     mutationFn: ({ token, payload }: { token: string; payload: { name: string } }) =>
       api.updateOrganization(token, selectedId, payload),
     onSuccess: async () => {
+      setOrganizationNameDraft(null)
       setOrganizationError(null)
       setOrganizationNotice('組織設定已更新。')
       await queryClient.invalidateQueries({ queryKey: ['organization', selectedId] })
@@ -150,6 +139,11 @@ export function TeamPage() {
       }),
     onSuccess: async (_, variables) => {
       setMemberErrors((current) => {
+        const next = { ...current }
+        delete next[variables.membershipId]
+        return next
+      })
+      setMemberDrafts((current) => {
         const next = { ...current }
         delete next[variables.membershipId]
         return next
@@ -205,6 +199,22 @@ export function TeamPage() {
     }
   })
 
+  function resetSelectionState() {
+    setOrganizationNameDraft(null)
+    setOrganizationError(null)
+    setOrganizationNotice(null)
+    setMemberDrafts({})
+    setMemberErrors({})
+    setPendingMembershipId(null)
+    setLatestInvite(null)
+    setCopyState('idle')
+  }
+
+  function handleOrganizationChange(event: ChangeEvent<HTMLSelectElement>) {
+    setSelectedOrganizationId(event.target.value)
+    resetSelectionState()
+  }
+
   async function handleCopyInviteLink() {
     if (!latestInviteUrl) {
       return
@@ -226,14 +236,16 @@ export function TeamPage() {
     if (!detailQuery.data) {
       return
     }
+
     const nextName = organizationName.trim()
     if (!nextName) {
       setOrganizationError('請輸入組織名稱。')
       return
     }
+
     if (nextName === detailQuery.data.name) {
-      setOrganizationNotice('組織設定沒有變更。')
       setOrganizationError(null)
+      setOrganizationNotice('組織設定沒有變更。')
       return
     }
 
@@ -269,6 +281,7 @@ export function TeamPage() {
     if (!hasMemberDraftChanges(member, draft)) {
       return
     }
+
     setPendingMembershipId(member.membershipId)
     try {
       await updateMembership.mutateAsync({
@@ -359,7 +372,7 @@ export function TeamPage() {
 
       <Panel>
         <Field label="組織">
-          <Select value={selectedId} onChange={(event) => setSelectedOrganizationId(event.target.value)}>
+          <Select value={selectedId} onChange={handleOrganizationChange}>
             {choices.map((choice) => (
               <option key={choice.organizationId} value={choice.organizationId}>
                 {choice.name}
@@ -475,7 +488,7 @@ export function TeamPage() {
                       disabled={!canManageOrganization}
                       value={organizationName}
                       onChange={(event) => {
-                        setOrganizationName(event.target.value)
+                        setOrganizationNameDraft(event.target.value)
                         setOrganizationError(null)
                         setOrganizationNotice(null)
                       }}
