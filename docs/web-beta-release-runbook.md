@@ -11,6 +11,10 @@ This runbook covers the Web Beta RC release path for:
 It does not cover Android field readiness or Sprint 4 hardware validation.
 It also does not own Android implementation details for live monitoring; Android is treated here as an upstream contract dependency only.
 
+The release acceptance checklist lives in:
+
+- `docs/WEB_RELEASE_CHECKLIST.md`
+
 ## Required Inputs
 
 Reference these docs before shipping any `live-ops` or `support` change:
@@ -64,6 +68,8 @@ Reference these docs before shipping any `live-ops` or `support` change:
 3. Wait for production `/healthz` to return `200`.
 4. Promote the same revision to `four-wall-web`.
 5. Re-run `.github/workflows/smoke-beta.yml` against production values.
+
+Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 
 ## Live Ops Guardrail
 
