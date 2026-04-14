@@ -27,6 +27,8 @@ def test_settings(tmp_path: Path) -> Settings:
         refresh_token_ttl_days=7,
         web_login_rate_limit_attempts=5,
         web_login_rate_limit_window_seconds=300,
+        web_signup_rate_limit_attempts=5,
+        web_signup_rate_limit_window_seconds=300,
         invite_accept_rate_limit_attempts=5,
         invite_accept_rate_limit_window_seconds=300,
         bootstrap_operator_enabled=True,

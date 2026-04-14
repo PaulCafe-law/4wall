@@ -80,6 +80,14 @@ export interface InviteAcceptPayload {
   displayName?: string
 }
 
+export interface SignupPayload {
+  email: string
+  password: string
+  displayName?: string
+  organizationName: string
+  organizationSlug?: string
+}
+
 export interface SitePayload {
   organizationId: string
   name: string
@@ -154,6 +162,11 @@ export interface ControlIntentPayload {
 export const api = {
   login: (payload: LoginPayload) =>
     apiFetch<WebSession>('/v1/web/session/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  signup: (payload: SignupPayload) =>
+    apiFetch<WebSession>('/v1/web/session/signup', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),

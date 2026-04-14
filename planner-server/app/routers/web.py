@@ -57,6 +57,7 @@ from app.web_dto import (
     UpdateOrganizationRequestDto,
     WebSessionDto,
     WebLoginRequestDto,
+    WebSignupRequestDto,
     WebSessionUserDto,
 )
 from app.web_scope import (
@@ -103,6 +104,80 @@ def web_login(
         session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
     record_audit(session, action="web.login_succeeded", actor_user_id=user.id, target_type="user", target_id=user.id)
+    session_dto = _issue_web_session(session, settings, user, response)
+    session.commit()
+    return session_dto
+
+
+@router.post("/v1/web/session/signup", response_model=WebSessionDto)
+def web_signup(
+    request: WebSignupRequestDto,
+    http_request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings=Depends(get_settings),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> WebSessionDto:
+    _enforce_session_origin(http_request, settings)
+    email = request.email.strip().lower()
+    org_name = request.organizationName.strip()
+    slug_source = request.organizationSlug or org_name
+    slug = _slugify(slug_source)
+    _check_rate_limit(
+        rate_limiter,
+        http_request,
+        scope="web_signup",
+        subject=f"{email}:{slug}",
+        rule=RateLimitRule(
+            max_attempts=settings.web_signup_rate_limit_attempts,
+            window_seconds=settings.web_signup_rate_limit_window_seconds,
+        ),
+    )
+    existing_user = session.exec(select(UserAccount).where(UserAccount.email == email)).first()
+    if existing_user is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user_email_exists")
+    existing_org = session.exec(select(Organization).where(Organization.slug == slug)).first()
+    if existing_org is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="organization_slug_exists")
+
+    user = UserAccount(
+        email=email,
+        display_name=request.displayName or email.split("@")[0],
+        password_hash=hash_password(request.password),
+    )
+    session.add(user)
+    session.flush()
+
+    organization = Organization(name=org_name, slug=slug)
+    session.add(organization)
+    session.flush()
+
+    membership = OrganizationMembership(
+        user_id=user.id,
+        organization_id=organization.id,
+        role="customer_admin",
+    )
+    session.add(membership)
+    session.flush()
+
+    record_audit(
+        session,
+        action="web.signup_succeeded",
+        organization_id=organization.id,
+        actor_user_id=user.id,
+        target_type="user",
+        target_id=user.id,
+        metadata={"email": user.email},
+    )
+    record_audit(
+        session,
+        action="organization.created",
+        organization_id=organization.id,
+        actor_user_id=user.id,
+        target_type="organization",
+        target_id=organization.id,
+        metadata={"selfServe": True},
+    )
     session_dto = _issue_web_session(session, settings, user, response)
     session.commit()
     return session_dto

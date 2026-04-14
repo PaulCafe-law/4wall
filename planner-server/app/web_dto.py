@@ -58,6 +58,14 @@ class WebLoginRequestDto(BaseModel):
     password: str = Field(min_length=8)
 
 
+class WebSignupRequestDto(BaseModel):
+    email: str = Field(min_length=3)
+    password: str = Field(min_length=8)
+    displayName: str | None = Field(default=None, min_length=1)
+    organizationName: str = Field(min_length=1)
+    organizationSlug: str | None = Field(default=None, min_length=1)
+
+
 class CreateOrganizationRequestDto(BaseModel):
     name: str = Field(min_length=1)
     slug: str | None = None

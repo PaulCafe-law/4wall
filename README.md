@@ -4,7 +4,7 @@ Mini 4 Pro production-ready beta repo with three runtime boundaries:
 
 - `android-app/`: flight-critical operator app
 - `planner-server/`: planning, tenancy, artifact, billing, and ingest API
-- `web-app/`: desktop-first invite-only customer operations console with internal admin extensions
+- `web-app/`: desktop-first customer operations console with self-serve signup and internal admin extensions
 
 ## Safety Position
 
@@ -18,6 +18,7 @@ Mini 4 Pro production-ready beta repo with three runtime boundaries:
 - Stage 0 governance and web beta scope docs are in place.
 - `planner-server` now includes web auth, tenancy, billing, audit, and DB-aware health checks.
 - `web-app` provides invite/login, overview, sites, missions, mission outputs, billing, team, org admin, support, and audit views.
+- `web-app` now targets a hybrid access model: self-serve signup for new customer organizations plus invite flows for internal-managed onboarding.
 - Android Sprint 4 work exists separately and is not part of the Web Beta RC release gate.
 - The next repo-level step is no longer "build the beta stack", it is "move from operable beta to full product".
 
@@ -93,6 +94,7 @@ npm run build
 - [api-spec.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/api-spec.md)
 - [FULL_PRODUCT_ROADMAP.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/FULL_PRODUCT_ROADMAP.md)
 - [PHASE_1_OPERABLE_PRODUCT_GAP_ANALYSIS.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_OPERABLE_PRODUCT_GAP_ANALYSIS.md)
+- [SELF_SERVE_ACCOUNT_FOUNDATION_GAP_ANALYSIS.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/SELF_SERVE_ACCOUNT_FOUNDATION_GAP_ANALYSIS.md)
 - [PRODUCT_GAP_MATRIX.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PRODUCT_GAP_MATRIX.md)
 - [PROD_READINESS_PLAN.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PROD_READINESS_PLAN.md)
 - [web-beta-scope.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-scope.md)

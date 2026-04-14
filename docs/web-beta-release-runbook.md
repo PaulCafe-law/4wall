@@ -60,6 +60,7 @@ Reference these docs before shipping any `live-ops` or `support` change:
 5. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
 6. Deploy `four-wall-web-staging`.
 7. Run `.github/workflows/smoke-beta.yml` against staging.
+8. Manually verify self-serve signup and invite acceptance if auth surface changed.
 
 ## Promotion to Production
 
@@ -68,6 +69,7 @@ Reference these docs before shipping any `live-ops` or `support` change:
 3. Wait for production `/healthz` to return `200`.
 4. Promote the same revision to `four-wall-web`.
 5. Re-run `.github/workflows/smoke-beta.yml` against production values.
+6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

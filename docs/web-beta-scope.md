@@ -32,7 +32,7 @@ Android implementation is handled as an external dependency by a separate workst
 ## Product Shape
 
 - App type: single React + Vite + TypeScript app
-- Access model: invite-only
+- Access model: hybrid self-serve + invite
 - Deployment: Render static site in front of `planner-server`
 - Roles:
   - `platform_admin`
@@ -106,6 +106,13 @@ Android implementation is handled as an external dependency by a separate workst
 7. Download artifacts when available
 8. Review invoice state
 
+### Self-Serve Customer
+
+1. Sign up
+2. Create a new organization
+3. Land as the first `customer_admin`
+4. Continue through the same site, mission, artifact, billing, and team flows
+
 ### Internal Ops
 
 1. Create an organization
@@ -117,7 +124,7 @@ Android implementation is handled as an external dependency by a separate workst
 
 ## Launch Gates
 
-- Invite-only auth works end to end
+- Invite and self-serve auth both work end to end
 - Org/site isolation passes integration tests
 - Site and mission workflows are usable by invited customers
 - Artifacts stay behind authenticated access
@@ -129,7 +136,6 @@ Android implementation is handled as an external dependency by a separate workst
 ## Not In Scope
 
 - PC native desktop packaging
-- open self-serve signup
 - hosted online checkout as a launch gate
 - post-flight analytics portal
 - mobile-first planner editing
@@ -141,6 +147,7 @@ Android implementation is handled as an external dependency by a separate workst
 ## Acceptance Checks
 
 - An invited `customer_admin` can create a site and submit a mission request without ops-side database edits.
+- A self-serve customer can create an account, create an organization, and reach the same workspace without ops-side database edits.
 - A `customer_viewer` can inspect missions, artifacts, and invoices but cannot mutate them.
 - An `ops` user can create invoices and inspect failures without seeing cross-org data leakage.
 - A `platform_admin` can manage orgs and invites and can review audit events for sensitive actions.
