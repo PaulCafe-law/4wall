@@ -29,6 +29,8 @@ jobs:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
           WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
           BETA_APP_ORIGIN: ${{ vars.BETA_APP_ORIGIN }}
+          BETA_WEB_SMOKE_DATA_EMAIL: ${{ secrets.BETA_WEB_SMOKE_EMAIL }}
+          BETA_WEB_SMOKE_DATA_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_PASSWORD }}
           RAW_BETA_WEB_SMOKE_ADMIN_EMAIL: ${{ secrets.BETA_WEB_SMOKE_ADMIN_EMAIL }}
           RAW_BETA_WEB_SMOKE_ADMIN_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_ADMIN_PASSWORD }}
           BETA_WEB_SMOKE_ADMIN_EMAIL: ${{ secrets.BETA_WEB_SMOKE_ADMIN_EMAIL || secrets.BETA_WEB_SMOKE_EMAIL }}
@@ -39,7 +41,7 @@ jobs:
           missing=()
           echo "CUSTOMER_ADMIN_UI_SMOKE_ENABLED=false" >> "$GITHUB_ENV"
           echo "VIEWER_SMOKE_ENABLED=false" >> "$GITHUB_ENV"
-          for name in BETA_API_BASE_URL WEB_LOGIN_URL BETA_APP_ORIGIN BETA_WEB_SMOKE_ADMIN_EMAIL BETA_WEB_SMOKE_ADMIN_PASSWORD; do
+          for name in BETA_API_BASE_URL WEB_LOGIN_URL BETA_APP_ORIGIN BETA_WEB_SMOKE_DATA_EMAIL BETA_WEB_SMOKE_DATA_PASSWORD; do
             if [ -z "${!name}" ]; then
               missing+=("$name")
             fi
@@ -100,19 +102,19 @@ jobs:
           PW_WEB_SMOKE_ADMIN_EMAIL: ${{ secrets.BETA_WEB_SMOKE_ADMIN_EMAIL || secrets.BETA_WEB_SMOKE_EMAIL }}
           PW_WEB_SMOKE_ADMIN_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_ADMIN_PASSWORD || secrets.BETA_WEB_SMOKE_PASSWORD }}
         run: npx playwright test tests/e2e/deployed-login.spec.ts
-      - name: Web beta admin authenticated smoke
+      - name: Web beta seeded artifact smoke
         working-directory: planner-server
         env:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
           BETA_APP_ORIGIN: ${{ vars.BETA_APP_ORIGIN }}
-          BETA_WEB_SMOKE_ADMIN_EMAIL: ${{ secrets.BETA_WEB_SMOKE_ADMIN_EMAIL || secrets.BETA_WEB_SMOKE_EMAIL }}
-          BETA_WEB_SMOKE_ADMIN_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_ADMIN_PASSWORD || secrets.BETA_WEB_SMOKE_PASSWORD }}
+          BETA_WEB_SMOKE_DATA_EMAIL: ${{ secrets.BETA_WEB_SMOKE_EMAIL }}
+          BETA_WEB_SMOKE_DATA_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_PASSWORD }}
         run: |
           python scripts/smoke_test.py \
-            --mode web-admin \
+            --mode web-beta \
             --base-url "$BETA_API_BASE_URL" \
-            --web-email "$BETA_WEB_SMOKE_ADMIN_EMAIL" \
-            --web-password "$BETA_WEB_SMOKE_ADMIN_PASSWORD" \
+            --web-email "$BETA_WEB_SMOKE_DATA_EMAIL" \
+            --web-password "$BETA_WEB_SMOKE_DATA_PASSWORD" \
             --app-origin "$BETA_APP_ORIGIN"
       - name: Browser customer admin team smoke
         if: ${{ env.CUSTOMER_ADMIN_UI_SMOKE_ENABLED == 'true' }}

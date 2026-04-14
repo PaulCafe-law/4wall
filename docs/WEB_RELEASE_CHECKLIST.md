@@ -10,12 +10,15 @@ Use it together with:
 
 Dual-role deployed smoke uses:
 
+- `BETA_WEB_SMOKE_EMAIL`
+- `BETA_WEB_SMOKE_PASSWORD`
 - `BETA_WEB_SMOKE_ADMIN_EMAIL`
 - `BETA_WEB_SMOKE_ADMIN_PASSWORD`
 - `BETA_WEB_SMOKE_VIEWER_EMAIL`
 - `BETA_WEB_SMOKE_VIEWER_PASSWORD`
 
-Admin smoke remains the required baseline.
+Seeded data smoke remains the required baseline.
+Admin smoke remains the required authenticated-shell baseline.
 Viewer smoke should be enabled in each environment once a seeded `customer_viewer` account is available.
 
 ## 1. Pre-Deploy Gate

@@ -71,12 +71,12 @@ class FakeClient:
 def test_canonical_mode_maps_web_beta_to_web_admin() -> None:
     smoke = load_smoke_module()
 
-    assert smoke._canonical_mode("web-beta") == "web-admin"
+    assert smoke._canonical_mode("web-beta") == "web-beta"
     assert smoke._canonical_mode("web-admin") == "web-admin"
     assert smoke._canonical_mode("web-viewer") == "web-viewer"
 
 
-def test_run_web_admin_smoke_supports_top_level_artifact_list() -> None:
+def test_run_web_beta_smoke_supports_top_level_artifact_list() -> None:
     smoke = load_smoke_module()
     kmz_bytes = b"kmz-payload"
     meta_bytes = b'{"missionId":"msn-001"}'
@@ -145,6 +145,61 @@ def test_run_web_admin_smoke_supports_top_level_artifact_list() -> None:
         }
     )
 
+    result = smoke.run_web_beta_smoke(
+        client=client,
+        base_url=base_url,
+        args=SimpleNamespace(
+            web_email="admin@example.com",
+            web_password="Password123!",
+            app_origin="https://app.example.com",
+        ),
+    )
+
+    assert result == {
+        "status": "ok",
+        "mode": "web-beta",
+        "user": "admin@example.com",
+        "missionId": "msn-001",
+        "downloadsVerified": ["mission.kmz", "mission_meta.json"],
+    }
+
+
+def test_run_web_admin_smoke_requires_customer_admin_membership() -> None:
+    smoke = load_smoke_module()
+    base_url = "https://planner.example"
+    client = FakeClient(
+        {
+            ("POST", f"{base_url}/v1/web/session/login"): [
+                FakeResponse(
+                    json_body={"accessToken": "login-token"},
+                    cookies={"fw_refresh": "refresh-1"},
+                )
+            ],
+            ("GET", f"{base_url}/v1/web/session/me"): [
+                FakeResponse(
+                    json_body={
+                        "email": "admin@example.com",
+                        "globalRoles": [],
+                        "memberships": [
+                            {
+                                "membershipId": "membership-1",
+                                "organizationId": "org-1",
+                                "role": "customer_admin",
+                                "isActive": True,
+                            }
+                        ],
+                    }
+                )
+            ],
+            ("POST", f"{base_url}/v1/web/session/refresh"): [
+                FakeResponse(
+                    json_body={"accessToken": "refresh-token"},
+                    cookies={"fw_refresh": "refresh-2"},
+                )
+            ],
+        }
+    )
+
     result = smoke.run_web_admin_smoke(
         client=client,
         base_url=base_url,
@@ -159,8 +214,8 @@ def test_run_web_admin_smoke_supports_top_level_artifact_list() -> None:
         "status": "ok",
         "mode": "web-admin",
         "user": "admin@example.com",
-        "missionId": "msn-001",
-        "downloadsVerified": ["mission.kmz", "mission_meta.json"],
+        "activeMembershipCount": 1,
+        "customerAdminMembership": True,
     }
 
 
