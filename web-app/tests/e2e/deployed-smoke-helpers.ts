@@ -20,7 +20,9 @@ export async function waitForTeamSurface(page: Page) {
     )
     .catch(() => null)
 
-  await page.goto('/team')
+  const teamNavLink = page.locator('a[href="/team"]').first()
+  await expect(teamNavLink).toBeVisible({ timeout: 15_000 })
+  await teamNavLink.click()
   await expect(page).toHaveURL(/\/team(?:[/?#].*)?$/, { timeout: 15_000 })
 
   const organizationName = page.getByLabel('organization-name')
@@ -30,7 +32,7 @@ export async function waitForTeamSurface(page: Page) {
   } catch {
     const currentUrl = page.url()
     if (/\/login(?:[/?#].*)?$/.test(currentUrl)) {
-      throw new Error('team smoke redirected back to /login, session did not persist')
+      throw new Error('team smoke redirected back to /login after in-app team navigation')
     }
 
     const detailResponse = await organizationDetailResponse
