@@ -71,8 +71,15 @@ Using Render for both surfaces keeps beta operations on one platform and avoids 
 - `BETA_API_BASE_URL`
 - `BETA_WEB_LOGIN_URL`
 - `BETA_APP_ORIGIN`
-- `BETA_WEB_SMOKE_EMAIL`
-- `BETA_WEB_SMOKE_PASSWORD`
+- `BETA_WEB_SMOKE_ADMIN_EMAIL`
+- `BETA_WEB_SMOKE_ADMIN_PASSWORD`
+- `BETA_WEB_SMOKE_VIEWER_EMAIL`
+- `BETA_WEB_SMOKE_VIEWER_PASSWORD`
+
+Operational policy:
+
+- admin smoke is required for each environment
+- viewer smoke is optional until a stable seeded viewer exists, then it should be enabled and kept green
 
 ## Health Checks
 
@@ -96,10 +103,11 @@ Render health checks apply directly to the API web service. Web checks can run a
 2. Wait for Render to auto-deploy staging and production after required GitHub checks pass.
 3. Verify `staging-api.<domain>/healthz`.
 4. Run smoke checks against staging:
-   - login page loads
-   - session refresh works with the configured app origin
-   - mission list route renders for a seeded test org
-   - artifact download succeeds from an existing seeded mission
+   - admin login page loads
+   - admin session refresh works with the configured app origin
+   - admin mission list route renders for a seeded test org
+   - admin artifact download succeeds from an existing seeded mission
+   - viewer read-only smoke passes if viewer credentials are configured
 5. Verify `api.<domain>/healthz` and `app.<domain>/login`.
 6. Repeat the same checks on `api.<domain>` and `app.<domain>`.
 7. Roll back immediately if production smoke fails.

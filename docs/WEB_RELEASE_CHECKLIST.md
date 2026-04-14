@@ -8,6 +8,16 @@ Use it together with:
 - [WEB_THREAD_ANDROID_HANDOFF.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/WEB_THREAD_ANDROID_HANDOFF.md)
 - [WEB_THREAD_FAIL_CLOSED_BEHAVIOR.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/WEB_THREAD_FAIL_CLOSED_BEHAVIOR.md)
 
+Dual-role deployed smoke uses:
+
+- `BETA_WEB_SMOKE_ADMIN_EMAIL`
+- `BETA_WEB_SMOKE_ADMIN_PASSWORD`
+- `BETA_WEB_SMOKE_VIEWER_EMAIL`
+- `BETA_WEB_SMOKE_VIEWER_PASSWORD`
+
+Admin smoke remains the required baseline.
+Viewer smoke should be enabled in each environment once a seeded `customer_viewer` account is available.
+
 ## 1. Pre-Deploy Gate
 
 - Confirm the release scope is limited to `planner-server`, `web-app`, `docs`, deploy config, or other approved web-thread files.
@@ -26,6 +36,8 @@ Use it together with:
   - self-serve signup
   - login
   - invite acceptance
+  - customer admin deployed smoke
+  - customer viewer deployed smoke if viewer smoke credentials are configured
   - overview
   - mission list
   - mission detail and artifact download
