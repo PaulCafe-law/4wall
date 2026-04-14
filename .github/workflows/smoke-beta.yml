@@ -29,11 +29,13 @@ jobs:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
           WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
           BETA_APP_ORIGIN: ${{ vars.BETA_APP_ORIGIN }}
-          BETA_WEB_SMOKE_EMAIL: ${{ secrets.BETA_WEB_SMOKE_EMAIL }}
-          BETA_WEB_SMOKE_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_PASSWORD }}
+          BETA_WEB_SMOKE_ADMIN_EMAIL: ${{ secrets.BETA_WEB_SMOKE_ADMIN_EMAIL || secrets.BETA_WEB_SMOKE_EMAIL }}
+          BETA_WEB_SMOKE_ADMIN_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_ADMIN_PASSWORD || secrets.BETA_WEB_SMOKE_PASSWORD }}
+          BETA_WEB_SMOKE_VIEWER_EMAIL: ${{ secrets.BETA_WEB_SMOKE_VIEWER_EMAIL }}
+          BETA_WEB_SMOKE_VIEWER_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD }}
         run: |
           missing=()
-          for name in BETA_API_BASE_URL WEB_LOGIN_URL BETA_APP_ORIGIN BETA_WEB_SMOKE_EMAIL BETA_WEB_SMOKE_PASSWORD; do
+          for name in BETA_API_BASE_URL WEB_LOGIN_URL BETA_APP_ORIGIN BETA_WEB_SMOKE_ADMIN_EMAIL BETA_WEB_SMOKE_ADMIN_PASSWORD; do
             if [ -z "${!name}" ]; then
               missing+=("$name")
             fi
@@ -41,6 +43,11 @@ jobs:
           if [ ${#missing[@]} -gt 0 ]; then
             echo "Missing required smoke configuration: ${missing[*]}"
             exit 1
+          fi
+          if [ -z "$BETA_WEB_SMOKE_VIEWER_EMAIL" ] || [ -z "$BETA_WEB_SMOKE_VIEWER_PASSWORD" ]; then
+            echo "Viewer smoke credentials not configured; viewer-only smoke will be skipped."
+          else
+            echo "Viewer smoke credentials present."
           fi
           echo "Deployment variables present."
       - name: Install smoke dependencies
@@ -75,24 +82,47 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
-      - name: Browser login smoke
+      - name: Browser admin login smoke
         working-directory: web-app
         env:
           PLAYWRIGHT_BASE_URL: ${{ vars.BETA_APP_ORIGIN }}
-          PW_WEB_SMOKE_EMAIL: ${{ secrets.BETA_WEB_SMOKE_EMAIL }}
-          PW_WEB_SMOKE_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_PASSWORD }}
+          PW_WEB_SMOKE_ADMIN_EMAIL: ${{ secrets.BETA_WEB_SMOKE_ADMIN_EMAIL || secrets.BETA_WEB_SMOKE_EMAIL }}
+          PW_WEB_SMOKE_ADMIN_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_ADMIN_PASSWORD || secrets.BETA_WEB_SMOKE_PASSWORD }}
         run: npx playwright test tests/e2e/deployed-login.spec.ts
-      - name: Web beta authenticated smoke
+      - name: Browser viewer role smoke
+        if: ${{ secrets.BETA_WEB_SMOKE_VIEWER_EMAIL != '' && secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD != '' }}
+        working-directory: web-app
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ vars.BETA_APP_ORIGIN }}
+          PW_WEB_SMOKE_VIEWER_EMAIL: ${{ secrets.BETA_WEB_SMOKE_VIEWER_EMAIL }}
+          PW_WEB_SMOKE_VIEWER_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD }}
+        run: npx playwright test tests/e2e/deployed-viewer.spec.ts
+      - name: Web beta admin authenticated smoke
         working-directory: planner-server
         env:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
           BETA_APP_ORIGIN: ${{ vars.BETA_APP_ORIGIN }}
-          BETA_WEB_SMOKE_EMAIL: ${{ secrets.BETA_WEB_SMOKE_EMAIL }}
-          BETA_WEB_SMOKE_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_PASSWORD }}
+          BETA_WEB_SMOKE_ADMIN_EMAIL: ${{ secrets.BETA_WEB_SMOKE_ADMIN_EMAIL || secrets.BETA_WEB_SMOKE_EMAIL }}
+          BETA_WEB_SMOKE_ADMIN_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_ADMIN_PASSWORD || secrets.BETA_WEB_SMOKE_PASSWORD }}
         run: |
           python scripts/smoke_test.py \
-            --mode web-beta \
+            --mode web-admin \
             --base-url "$BETA_API_BASE_URL" \
-            --web-email "$BETA_WEB_SMOKE_EMAIL" \
-            --web-password "$BETA_WEB_SMOKE_PASSWORD" \
+            --web-email "$BETA_WEB_SMOKE_ADMIN_EMAIL" \
+            --web-password "$BETA_WEB_SMOKE_ADMIN_PASSWORD" \
+            --app-origin "$BETA_APP_ORIGIN"
+      - name: Web beta viewer read-only smoke
+        if: ${{ secrets.BETA_WEB_SMOKE_VIEWER_EMAIL != '' && secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD != '' }}
+        working-directory: planner-server
+        env:
+          BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
+          BETA_APP_ORIGIN: ${{ vars.BETA_APP_ORIGIN }}
+          BETA_WEB_SMOKE_VIEWER_EMAIL: ${{ secrets.BETA_WEB_SMOKE_VIEWER_EMAIL }}
+          BETA_WEB_SMOKE_VIEWER_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_VIEWER_PASSWORD }}
+        run: |
+          python scripts/smoke_test.py \
+            --mode web-viewer \
+            --base-url "$BETA_API_BASE_URL" \
+            --web-email "$BETA_WEB_SMOKE_VIEWER_EMAIL" \
+            --web-password "$BETA_WEB_SMOKE_VIEWER_PASSWORD" \
             --app-origin "$BETA_APP_ORIGIN"

@@ -48,8 +48,15 @@ Reference these docs before shipping any `live-ops` or `support` change:
   - `BETA_API_BASE_URL`
   - `BETA_WEB_LOGIN_URL`
   - `BETA_APP_ORIGIN`
-  - `BETA_WEB_SMOKE_EMAIL`
-  - `BETA_WEB_SMOKE_PASSWORD`
+  - `BETA_WEB_SMOKE_ADMIN_EMAIL`
+  - `BETA_WEB_SMOKE_ADMIN_PASSWORD`
+  - `BETA_WEB_SMOKE_VIEWER_EMAIL`
+  - `BETA_WEB_SMOKE_VIEWER_PASSWORD`
+
+The current rollout model is:
+
+- admin smoke is required
+- viewer smoke is supported and should be turned on once the environment has a stable seeded `customer_viewer`
 
 ## Staging Deploy
 
@@ -61,6 +68,7 @@ Reference these docs before shipping any `live-ops` or `support` change:
 6. Deploy `four-wall-web-staging`.
 7. Run `.github/workflows/smoke-beta.yml` against staging.
 8. Manually verify self-serve signup and invite acceptance if auth surface changed.
+9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 
 ## Promotion to Production
 
@@ -70,6 +78,7 @@ Reference these docs before shipping any `live-ops` or `support` change:
 4. Promote the same revision to `four-wall-web`.
 5. Re-run `.github/workflows/smoke-beta.yml` against production values.
 6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
+7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

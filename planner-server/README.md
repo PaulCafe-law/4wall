@@ -68,6 +68,13 @@ Set-Location .\planner-server
 .\.venv\Scripts\python.exe .\scripts\smoke_test.py --mode web-beta --base-url https://staging-api.example.com --web-email smoke@example.com --web-password CHANGE_ME --app-origin https://staging-app.example.com
 ```
 
+Viewer read-only smoke:
+
+```powershell
+Set-Location .\planner-server
+.\.venv\Scripts\python.exe .\scripts\smoke_test.py --mode web-viewer --base-url https://staging-api.example.com --web-email viewer@example.com --web-password CHANGE_ME --app-origin https://staging-app.example.com
+```
+
 ## Release Notes
 
 - `/healthz` is release-gating and returns `503` when DB connectivity is broken.
