@@ -1,4 +1,6 @@
-import { expect, test } from '@playwright/test'
+import { test } from '@playwright/test'
+
+import { loginToAuthenticatedShell } from './deployed-smoke-helpers'
 
 const adminEmail = process.env.PW_WEB_SMOKE_ADMIN_EMAIL
 const adminPassword = process.env.PW_WEB_SMOKE_ADMIN_PASSWORD
@@ -6,11 +8,5 @@ const adminPassword = process.env.PW_WEB_SMOKE_ADMIN_PASSWORD
 test.skip(!adminEmail || !adminPassword, 'requires deployed admin smoke credentials')
 
 test('deployed admin login reaches the authenticated shell', async ({ page }) => {
-  await page.goto('/login')
-  await page.locator('input[type="email"]').fill(adminEmail!)
-  await page.locator('input[type="password"]').fill(adminPassword!)
-  await page.locator('form button[type="submit"]').click()
-
-  await page.waitForURL(/\/$/)
-  await expect(page.getByRole('button', { name: /登出|Logout|Log out/ })).toBeVisible({ timeout: 15_000 })
+  await loginToAuthenticatedShell(page, adminEmail!, adminPassword!)
 })
