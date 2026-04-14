@@ -138,6 +138,16 @@ def run_operator_smoke(client: httpx.Client, base_url: str, payload: dict[str, A
 
 def run_web_admin_smoke(client: httpx.Client, base_url: str, args: argparse.Namespace) -> dict[str, Any]:
     me_body, authed_headers = _login_and_refresh_web_session(client=client, base_url=base_url, args=args)
+    active_memberships = [
+        membership
+        for membership in me_body.get("memberships", [])
+        if membership.get("organizationId") and membership.get("isActive", True)
+    ]
+    ensure(bool(active_memberships), "admin smoke user has no active organization memberships")
+    ensure(
+        any(membership.get("role") == "customer_admin" for membership in active_memberships),
+        "admin smoke user must include an active customer_admin membership",
+    )
 
     missions_response = client.get(f"{base_url}/v1/missions", headers=authed_headers)
     missions_response.raise_for_status()
