@@ -48,6 +48,8 @@ Reference these docs before shipping any `live-ops` or `support` change:
   - `BETA_API_BASE_URL`
   - `BETA_WEB_LOGIN_URL`
   - `BETA_APP_ORIGIN`
+  - `BETA_WEB_SMOKE_EMAIL`
+  - `BETA_WEB_SMOKE_PASSWORD`
   - `BETA_WEB_SMOKE_ADMIN_EMAIL`
   - `BETA_WEB_SMOKE_ADMIN_PASSWORD`
   - `BETA_WEB_SMOKE_VIEWER_EMAIL`
@@ -55,7 +57,8 @@ Reference these docs before shipping any `live-ops` or `support` change:
 
 The current rollout model is:
 
-- authenticated admin smoke is required
+- seeded data smoke is required and uses `BETA_WEB_SMOKE_EMAIL` / `BETA_WEB_SMOKE_PASSWORD`
+- authenticated admin shell smoke is required
 - browser-level customer admin management smoke is enabled when explicit `BETA_WEB_SMOKE_ADMIN_*` secrets are configured
 - viewer smoke is supported and should be turned on once the environment has a stable seeded `customer_viewer`
 

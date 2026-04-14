@@ -92,7 +92,9 @@ def main() -> int:
 
     with httpx.Client(timeout=args.timeout_seconds) as client:
         mode = _canonical_mode(args.mode)
-        if mode == "web-admin":
+        if mode == "web-beta":
+            result = run_web_beta_smoke(client=client, base_url=base_url, args=args)
+        elif mode == "web-admin":
             result = run_web_admin_smoke(client=client, base_url=base_url, args=args)
         elif mode == "web-viewer":
             result = run_web_viewer_smoke(client=client, base_url=base_url, args=args)
@@ -149,10 +151,22 @@ def run_web_admin_smoke(client: httpx.Client, base_url: str, args: argparse.Name
         "admin smoke user must include an active customer_admin membership",
     )
 
+    return {
+        "status": "ok",
+        "mode": "web-admin",
+        "user": me_body["email"],
+        "activeMembershipCount": len(active_memberships),
+        "customerAdminMembership": True,
+    }
+
+
+def run_web_beta_smoke(client: httpx.Client, base_url: str, args: argparse.Namespace) -> dict[str, Any]:
+    me_body, authed_headers = _login_and_refresh_web_session(client=client, base_url=base_url, args=args)
+
     missions_response = client.get(f"{base_url}/v1/missions", headers=authed_headers)
     missions_response.raise_for_status()
     missions = missions_response.json()
-    ensure(bool(missions), "no missions visible to admin smoke user")
+    ensure(bool(missions), "no missions visible to seeded data smoke user")
     mission_id = missions[0]["missionId"]
 
     detail_response = client.get(f"{base_url}/v1/missions/{mission_id}", headers=authed_headers)
@@ -166,7 +180,7 @@ def run_web_admin_smoke(client: httpx.Client, base_url: str, args: argparse.Name
     )
     return {
         "status": "ok",
-        "mode": "web-admin",
+        "mode": "web-beta",
         "user": me_body["email"],
         "missionId": mission_id,
         "downloadsVerified": ["mission.kmz", "mission_meta.json"],
@@ -308,8 +322,6 @@ def _get_artifact_descriptors(artifacts: Any) -> tuple[dict[str, Any] | None, di
 
 
 def _canonical_mode(mode: str) -> str:
-    if mode == "web-beta":
-        return "web-admin"
     return mode
 
 
