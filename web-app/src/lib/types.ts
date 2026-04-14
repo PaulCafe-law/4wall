@@ -1,4 +1,5 @@
 export type Role = 'platform_admin' | 'ops' | 'customer_admin' | 'customer_viewer'
+export type CustomerRole = 'customer_admin' | 'customer_viewer'
 
 export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overdue' | 'void'
 
@@ -25,6 +26,16 @@ export interface Membership {
   membershipId: string
   organizationId: string | null
   role: Role
+  isActive: boolean
+}
+
+export interface OrganizationMember {
+  membershipId: string
+  organizationId: string
+  userId: string
+  email: string
+  displayName: string
+  role: CustomerRole
   isActive: boolean
 }
 
@@ -66,7 +77,7 @@ export interface OrganizationDetail {
   name: string
   slug: string
   isActive: boolean
-  members: Membership[]
+  members: OrganizationMember[]
   pendingInvites: Invite[]
 }
 

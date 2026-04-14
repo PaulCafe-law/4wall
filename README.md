@@ -94,6 +94,7 @@ npm run build
 - [api-spec.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/api-spec.md)
 - [FULL_PRODUCT_ROADMAP.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/FULL_PRODUCT_ROADMAP.md)
 - [PHASE_1_OPERABLE_PRODUCT_GAP_ANALYSIS.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_OPERABLE_PRODUCT_GAP_ANALYSIS.md)
+- [ORG_ACCESS_MANAGEMENT_GAP_ANALYSIS.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/ORG_ACCESS_MANAGEMENT_GAP_ANALYSIS.md)
 - [SELF_SERVE_ACCOUNT_FOUNDATION_GAP_ANALYSIS.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/SELF_SERVE_ACCOUNT_FOUNDATION_GAP_ANALYSIS.md)
 - [PRODUCT_GAP_MATRIX.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PRODUCT_GAP_MATRIX.md)
 - [PROD_READINESS_PLAN.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PROD_READINESS_PLAN.md)

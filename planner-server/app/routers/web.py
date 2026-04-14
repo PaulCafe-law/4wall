@@ -48,6 +48,7 @@ from app.web_dto import (
     InviteDto,
     MembershipDto,
     OrganizationDetailDto,
+    OrganizationMemberDto,
     OrganizationSummaryDto,
     SiteDto,
     SitePatchRequestDto,
@@ -319,9 +320,6 @@ def get_organization(
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="organization_not_found")
     ensure_org_read_access(session, current_user, organization_id, action="organization.detail.read_access")
-    memberships = list(
-        session.exec(select(OrganizationMembership).where(OrganizationMembership.organization_id == organization_id)).all()
-    )
     invites = list(
         session.exec(
             select(Invite).where(
@@ -336,15 +334,7 @@ def get_organization(
         name=organization.name,
         slug=organization.slug,
         isActive=organization.is_active,
-        members=[
-            MembershipDto(
-                membershipId=membership.id,
-                organizationId=membership.organization_id,
-                role=membership.role,
-                isActive=membership.is_active,
-            )
-            for membership in memberships
-        ],
+        members=_load_organization_members(session, organization_id),
         pendingInvites=[_serialize_invite(invite) for invite in invites],
     )
 
@@ -353,17 +343,18 @@ def get_organization(
 def update_organization(
     organization_id: str,
     request: UpdateOrganizationRequestDto,
-    current_user: CurrentWebUser = Depends(require_internal_user),
+    current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> OrganizationSummaryDto:
-    if "platform_admin" not in current_user.global_roles:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
     organization = session.get(Organization, organization_id)
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="organization_not_found")
+    ensure_org_write_access(session, current_user, organization_id, action="organization.update_access")
     if request.name is not None:
         organization.name = request.name
     if request.isActive is not None:
+        if "platform_admin" not in current_user.global_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
         organization.is_active = request.isActive
     organization.updated_at = datetime.now(timezone.utc)
     session.add(organization)
@@ -379,47 +370,51 @@ def update_organization(
     return OrganizationSummaryDto(organizationId=organization.id, name=organization.name, slug=organization.slug)
 
 
-@router.get("/v1/organizations/{organization_id}/members", response_model=list[MembershipDto])
+@router.get("/v1/organizations/{organization_id}/members", response_model=list[OrganizationMemberDto])
 def list_members(
     organization_id: str,
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
-) -> list[MembershipDto]:
+) -> list[OrganizationMemberDto]:
     ensure_org_read_access(session, current_user, organization_id, action="organization.members.read_access")
-    memberships = list(
-        session.exec(select(OrganizationMembership).where(OrganizationMembership.organization_id == organization_id)).all()
-    )
-    return [
-        MembershipDto(
-            membershipId=membership.id,
-            organizationId=membership.organization_id,
-            role=membership.role,
-            isActive=membership.is_active,
-        )
-        for membership in memberships
-    ]
+    return _load_organization_members(session, organization_id)
 
 
-@router.patch("/v1/organizations/{organization_id}/members/{membership_id}", response_model=MembershipDto)
+@router.patch("/v1/organizations/{organization_id}/members/{membership_id}", response_model=OrganizationMemberDto)
 def update_membership(
     organization_id: str,
     membership_id: str,
     request: UpdateMembershipRequestDto,
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
-) -> MembershipDto:
+) -> OrganizationMemberDto:
     membership = session.get(OrganizationMembership, membership_id)
     if membership is None or membership.organization_id != organization_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="membership_not_found")
-    if "platform_admin" in current_user.global_roles:
-        pass
-    elif "customer_admin" in current_user.roles_for_org(organization_id):
-        ensure_customer_invite_role(request.role)
-    else:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
-    membership.role = request.role
-    if request.isActive is not None:
-        membership.is_active = request.isActive
+    ensure_org_write_access(session, current_user, organization_id, action="organization.members.write_access")
+    ensure_customer_invite_role(request.role)
+
+    next_role = request.role
+    next_is_active = request.isActive if request.isActive is not None else membership.is_active
+    if membership.role == "customer_admin" and membership.is_active and (
+        next_role != "customer_admin" or not next_is_active
+    ):
+        remaining_admin_count = session.exec(
+            select(func.count(OrganizationMembership.id)).where(
+                OrganizationMembership.organization_id == organization_id,
+                OrganizationMembership.id != membership.id,
+                OrganizationMembership.role == "customer_admin",
+                OrganizationMembership.is_active.is_(True),
+            )
+        ).one()
+        if remaining_admin_count == 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="organization_requires_customer_admin",
+            )
+
+    membership.role = next_role
+    membership.is_active = next_is_active
     membership.updated_at = datetime.now(timezone.utc)
     session.add(membership)
     record_audit(
@@ -432,12 +427,10 @@ def update_membership(
         metadata={"role": membership.role, "isActive": membership.is_active},
     )
     session.commit()
-    return MembershipDto(
-        membershipId=membership.id,
-        organizationId=membership.organization_id,
-        role=membership.role,
-        isActive=membership.is_active,
-    )
+    member = _load_member_record(session, membership.id)
+    if member is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="membership_not_found")
+    return member
 
 
 @router.post("/v1/organizations/{organization_id}/invites", response_model=InviteCreateResponseDto)
@@ -841,6 +834,48 @@ def _serialize_user(current_user: CurrentWebUser) -> WebSessionUserDto:
             for membership in current_user.memberships
             if membership.organization_id is not None
         ],
+    )
+
+
+def _load_organization_members(session: Session, organization_id: str) -> list[OrganizationMemberDto]:
+    rows = session.exec(
+        select(OrganizationMembership, UserAccount)
+        .join(UserAccount, UserAccount.id == OrganizationMembership.user_id)
+        .where(OrganizationMembership.organization_id == organization_id)
+        .order_by(
+            OrganizationMembership.is_active.desc(),
+            OrganizationMembership.role.asc(),
+            UserAccount.display_name.asc(),
+            UserAccount.email.asc(),
+        )
+    ).all()
+    return [
+        _serialize_organization_member(membership, user)
+        for membership, user in rows
+    ]
+
+
+def _load_member_record(session: Session, membership_id: str) -> OrganizationMemberDto | None:
+    row = session.exec(
+        select(OrganizationMembership, UserAccount)
+        .join(UserAccount, UserAccount.id == OrganizationMembership.user_id)
+        .where(OrganizationMembership.id == membership_id)
+    ).first()
+    if row is None:
+        return None
+    membership, user = row
+    return _serialize_organization_member(membership, user)
+
+
+def _serialize_organization_member(membership: OrganizationMembership, user: UserAccount) -> OrganizationMemberDto:
+    return OrganizationMemberDto(
+        membershipId=membership.id,
+        organizationId=membership.organization_id or "",
+        userId=user.id,
+        email=user.email,
+        displayName=user.display_name,
+        role=membership.role,
+        isActive=membership.is_active,
     )
 
 

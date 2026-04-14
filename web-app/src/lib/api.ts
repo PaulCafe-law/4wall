@@ -154,6 +154,16 @@ export interface InvitePayload {
   role: 'customer_admin' | 'customer_viewer'
 }
 
+export interface OrganizationUpdatePayload {
+  name?: string
+  isActive?: boolean
+}
+
+export interface MembershipUpdatePayload {
+  role: 'customer_admin' | 'customer_viewer'
+  isActive?: boolean
+}
+
 export interface ControlIntentPayload {
   action: ControlIntentAction
   reason?: string
@@ -210,6 +220,21 @@ export const api = {
   listOrganizations: (token: string) => apiFetch<OrganizationSummary[]>('/v1/organizations', { token }),
   getOrganization: (token: string, organizationId: string) =>
     apiFetch<OrganizationDetail>(`/v1/organizations/${organizationId}`, { token }),
+  updateOrganization: (token: string, organizationId: string, payload: OrganizationUpdatePayload) =>
+    apiFetch<OrganizationSummary>(`/v1/organizations/${organizationId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  updateMembership: (token: string, organizationId: string, membershipId: string, payload: MembershipUpdatePayload) =>
+    apiFetch<OrganizationDetail['members'][number]>(
+      `/v1/organizations/${organizationId}/members/${membershipId}`,
+      {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify(payload),
+      },
+    ),
   createInvite: (token: string, organizationId: string, payload: InvitePayload) =>
     apiFetch<InviteCreateResponse>(`/v1/organizations/${organizationId}/invites`, {
       method: 'POST',

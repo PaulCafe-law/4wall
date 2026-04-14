@@ -31,6 +31,9 @@ Use it together with:
   - mission detail and artifact download
   - billing
   - team
+  - organization settings update
+  - member role update
+  - member deactivate/reactivate
 - If the release touches internal ops surfaces, validate:
   - `Support` loads
   - `Live Ops` stays internal-only

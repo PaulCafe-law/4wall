@@ -30,6 +30,16 @@ class MembershipDto(BaseModel):
     isActive: bool
 
 
+class OrganizationMemberDto(BaseModel):
+    membershipId: str
+    organizationId: str
+    userId: str
+    email: str
+    displayName: str
+    role: RoleLiteral
+    isActive: bool
+
+
 class OrganizationSummaryDto(BaseModel):
     organizationId: str
     name: str
@@ -81,7 +91,7 @@ class OrganizationDetailDto(BaseModel):
     name: str
     slug: str
     isActive: bool
-    members: list[MembershipDto]
+    members: list[OrganizationMemberDto]
     pendingInvites: list["InviteDto"]
 
 
