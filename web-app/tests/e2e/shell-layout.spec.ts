@@ -74,9 +74,9 @@ for (const viewport of viewports) {
     })
 
     await page.goto('/login')
-    await page.getByLabel('電子郵件地址').fill('platform@prod.internal.test')
+    await page.getByLabel(/電子郵件/).fill('platform@prod.internal.test')
     await page.getByLabel('密碼').fill('Password123!')
-    await page.getByRole('button', { name: '進入主控台' }).click()
+    await page.getByRole('button', { name: /登入工作區|進入主控台/ }).click()
 
     await expect(page).toHaveURL(/\/$/)
 
