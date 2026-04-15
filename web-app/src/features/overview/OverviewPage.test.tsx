@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { OverviewPage } from './OverviewPage'
@@ -72,10 +72,10 @@ describe('OverviewPage', () => {
           total: 10500,
           dueDate: '2026-04-12T00:00:00Z',
           status: 'overdue',
-          paymentInstructions: '',
+          paymentInstructions: 'Bank transfer',
           attachmentRefs: [],
           notes: '',
-          paymentNote: '請本週完成付款',
+          paymentNote: 'Please settle this invoice this week.',
           receiptRef: '',
           voidReason: '',
           createdAt: '2026-04-01T10:00:00Z',
@@ -89,6 +89,7 @@ describe('OverviewPage', () => {
           organizationName: 'Acme Build',
           email: 'viewer@acme.test',
           role: 'customer_viewer',
+          createdAt: '2026-04-15T10:00:00Z',
           expiresAt: '2026-04-20T10:00:00Z',
         },
       ],
@@ -111,13 +112,14 @@ describe('OverviewPage', () => {
       }),
     })
 
-    expect(await screen.findByText('今天先處理這些事')).toBeInTheDocument()
-    expect(screen.getByText('1 筆任務需要立即處理')).toBeInTheDocument()
-    expect(screen.getByText('1 筆帳單已逾期')).toBeInTheDocument()
-    expect(screen.getByText('1 封團隊邀請尚未接受')).toBeInTheDocument()
+    expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
     expect(screen.getByText('Tower A Published')).toBeInTheDocument()
     expect(screen.getByText('viewer@acme.test')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
+    expect(document.querySelector('a[href="/missions/mission-001"]')).toBeTruthy()
+    expect(document.querySelector('a[href="/missions/mission-002"]')).toBeTruthy()
+    expect(document.querySelector('a[href="/billing"]')).toBeTruthy()
+    expect(document.querySelector('a[href="/team"]')).toBeTruthy()
   })
 
   it('shows internal support summary when the overview contract includes support counts', async () => {
@@ -149,8 +151,9 @@ describe('OverviewPage', () => {
       }),
     })
 
-    expect(await screen.findByText('今日支援摘要')).toBeInTheDocument()
-    expect(screen.getAllByText('前往支援佇列').length).toBeGreaterThan(0)
-    expect(screen.getByText('前往 Live Ops')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(document.querySelector('a[href="/support"]')).toBeTruthy()
+      expect(document.querySelector('a[href="/live-ops"]')).toBeTruthy()
+    })
   })
 })

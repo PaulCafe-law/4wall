@@ -44,8 +44,8 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - overview aggregate cards, including pending actions and recent deliveries
   - mission list with explicit delivery badges, publish time, and failure reason
   - mission detail and artifact download
-  - billing
-  - team
+  - billing, including due / overdue / paid / void clarity plus payment note / receipt ref rendering
+  - team, including invite create / resend / revoke
   - organization settings update
   - member role update
   - member deactivate/reactivate
@@ -61,6 +61,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Promote the same web revision to `four-wall-web`.
 - Re-run `.github/workflows/smoke-beta.yml` against production values.
 - Validate the same core customer flows on production.
+- Reconfirm the explicit admin account can still open `/team`, resend an invite, and update organization settings after promotion.
 
 ## 4. Rollback Triggers
 

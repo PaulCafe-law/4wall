@@ -248,6 +248,11 @@ export const api = {
       method: 'POST',
       token,
     }),
+  resendInvite: (token: string, inviteId: string) =>
+    apiFetch<InviteCreateResponse>(`/v1/invites/${inviteId}/resend`, {
+      method: 'POST',
+      token,
+    }),
   listAuditLog: (token: string, organizationId?: string) =>
     apiFetch<AuditEvent[]>(
       organizationId ? `/v1/audit-log?organizationId=${organizationId}` : '/v1/audit-log',

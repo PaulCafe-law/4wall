@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import { vi } from 'vitest'
 
 import { BillingPage } from './BillingPage'
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
@@ -33,11 +34,11 @@ describe('BillingPage', () => {
       }),
     })
 
-    expect(await screen.findByText('尚無帳單')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '開立帳單' })).not.toBeInTheDocument()
+    expect(await screen.findByText('目前沒有帳單')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新增帳單' })).not.toBeInTheDocument()
   })
 
-  it('shows overdue state and invoice creation controls for internal users', async () => {
+  it('shows billing status clarity for internal users', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
       if (url.includes('/v1/billing/invoices')) {
@@ -55,9 +56,9 @@ describe('BillingPage', () => {
               status: 'overdue',
               paymentInstructions: 'Bank transfer',
               attachmentRefs: [],
-              notes: 'Follow up',
-              paymentNote: '',
-              receiptRef: '',
+              notes: '請先完成本月巡檢費用。',
+              paymentNote: '請於付款後回傳匯款末五碼。',
+              receiptRef: 'RCT-001',
               voidReason: '',
               createdAt: '2026-04-10T00:00:00Z',
               updatedAt: '2026-04-10T00:00:00Z',
@@ -100,7 +101,9 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('逾期', { selector: 'span' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '開立帳單' })).toBeInTheDocument()
+    expect(screen.getByText('這張帳單已逾期，請優先確認付款進度或聯繫內部窗口。')).toBeInTheDocument()
+    expect(screen.getByText('請於付款後回傳匯款末五碼。')).toBeInTheDocument()
+    expect(screen.getByText('RCT-001')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '新增帳單' })).toBeInTheDocument()
   })
 })

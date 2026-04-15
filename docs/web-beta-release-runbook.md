@@ -78,6 +78,8 @@ The current rollout model is:
    - overview pending-action cards
    - mission list delivery badges and failure copy
    - mission detail publication panel
+   - team invite lifecycle, including resend / revoke
+   - billing status clarity, payment note, and receipt reference rendering
 
 ## Promotion to Production
 
@@ -89,6 +91,7 @@ The current rollout model is:
 6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
 7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 8. Re-check the same overview / mission-delivery manual flows on production before closing the deploy.
+9. Re-check team invite lifecycle and billing clarity on production if the release touched team or billing surfaces.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

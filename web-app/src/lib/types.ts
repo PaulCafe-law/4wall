@@ -67,6 +67,7 @@ export interface Invite {
   organizationId: string
   email: string
   role: Role
+  createdAt: string
   expiresAt: string
   acceptedAt: string | null
   revokedAt: string | null

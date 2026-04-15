@@ -106,6 +106,7 @@ class InviteDto(BaseModel):
     organizationId: str
     email: str
     role: RoleLiteral
+    createdAt: datetime
     expiresAt: datetime
     acceptedAt: datetime | None = None
     revokedAt: datetime | None = None
