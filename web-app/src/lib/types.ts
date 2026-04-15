@@ -103,6 +103,9 @@ export interface MissionSummary {
   missionName: string
   status: string
   bundleVersion: string
+  deliveryStatus: 'planning' | 'ready' | 'failed' | 'published'
+  publishedAt: string | null
+  failureReason: string | null
   createdAt: string
 }
 
@@ -179,6 +182,36 @@ export interface BillingInvoice {
   voidReason: string
   createdAt: string
   updatedAt: string
+}
+
+export interface OverviewInvite {
+  inviteId: string
+  organizationId: string
+  organizationName: string | null
+  email: string
+  role: Role
+  expiresAt: string
+}
+
+export interface OverviewSupportSummary {
+  openCount: number
+  criticalCount: number
+  warningCount: number
+}
+
+export interface Overview {
+  siteCount: number
+  missionCount: number
+  planningMissionCount: number
+  failedMissionCount: number
+  publishedMissionCount: number
+  overdueInvoiceCount: number
+  pendingInviteCount: number
+  recentMissions: MissionSummary[]
+  recentDeliveries: MissionSummary[]
+  recentInvoices: BillingInvoice[]
+  pendingInvites: OverviewInvite[]
+  supportSummary: OverviewSupportSummary | null
 }
 
 export interface AuditEvent {

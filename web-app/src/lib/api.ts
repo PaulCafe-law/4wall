@@ -11,6 +11,7 @@ import type {
   MissionDetail,
   MissionPlanResponse,
   MissionSummary,
+  Overview,
   OrganizationDetail,
   OrganizationSummary,
   Site,
@@ -193,6 +194,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getOverview: (token: string) => apiFetch<Overview>('/v1/web/overview', { token }),
   listSites: (token: string) => apiFetch<Site[]>('/v1/sites', { token }),
   getSite: (token: string, siteId: string) => apiFetch<Site>(`/v1/sites/${siteId}`, { token }),
   createSite: (token: string, payload: SitePayload) =>

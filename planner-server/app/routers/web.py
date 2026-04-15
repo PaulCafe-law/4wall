@@ -16,12 +16,18 @@ from app.deps import (
     get_settings,
     require_internal_user,
 )
+from app.mission_delivery import build_artifact_map, summarize_mission_delivery
 from app.models import (
     BillingInvoice,
+    Flight,
+    FlightEvent,
     Invite,
+    Mission,
+    MissionArtifact,
     Organization,
     OrganizationMembership,
     Site,
+    TelemetryBatch,
     UserAccount,
 )
 from app.rate_limit import RateLimiter, RateLimitRule, client_identity
@@ -47,6 +53,10 @@ from app.web_dto import (
     InviteCreateResponseDto,
     InviteDto,
     MembershipDto,
+    MissionSummaryDto,
+    OverviewDto,
+    OverviewInviteDto,
+    OverviewSupportSummaryDto,
     OrganizationDetailDto,
     OrganizationMemberDto,
     OrganizationSummaryDto,
@@ -70,6 +80,11 @@ from app.web_scope import (
 
 
 router = APIRouter(tags=["web"])
+
+STALE_TELEMETRY_SECONDS = 90
+LOW_BATTERY_THRESHOLD = 25
+BRIDGE_ALERT_LOOKBACK_MINUTES = 10
+BRIDGE_ALERT_EVENT = "BRIDGE_ALERT"
 
 
 @router.post("/v1/web/session/login", response_model=WebSessionDto)
@@ -233,6 +248,74 @@ def web_logout(
 @router.get("/v1/web/session/me", response_model=WebSessionUserDto)
 def web_me(current_user: CurrentWebUser = Depends(get_current_web_user)) -> WebSessionUserDto:
     return _serialize_user(current_user)
+
+
+@router.get("/v1/web/overview", response_model=OverviewDto)
+def web_overview(
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> OverviewDto:
+    sites = session.exec(
+        apply_org_read_scope(select(Site), Site.organization_id, current_user).order_by(Site.created_at.desc())
+    ).all()
+    missions = session.exec(
+        apply_org_read_scope(
+            select(Mission).where(Mission.organization_id.is_not(None)),
+            Mission.organization_id,
+            current_user,
+        ).order_by(Mission.created_at.desc())
+    ).all()
+    mission_artifacts = build_artifact_map(session, [mission.id for mission in missions])
+    mission_summaries = [
+        _serialize_mission_summary(mission, mission_artifacts.get(mission.id, []))
+        for mission in missions
+    ]
+
+    invoices = session.exec(
+        apply_org_read_scope(select(BillingInvoice), BillingInvoice.organization_id, current_user).order_by(
+            BillingInvoice.created_at.desc()
+        )
+    ).all()
+    pending_invites = session.exec(
+        apply_org_read_scope(
+            select(Invite, Organization)
+            .join(Organization, Organization.id == Invite.organization_id)
+            .where(Invite.accepted_at.is_(None), Invite.revoked_at.is_(None)),
+            Invite.organization_id,
+            current_user,
+        ).order_by(Invite.created_at.desc())
+    ).all()
+
+    planning_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "planning")
+    failed_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "failed")
+    published_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "published")
+    overdue_count = sum(1 for invoice in invoices if invoice.status == "overdue")
+    support_summary = _build_overview_support_summary(session, current_user, failed_count, overdue_count)
+
+    return OverviewDto(
+        siteCount=len(sites),
+        missionCount=len(mission_summaries),
+        planningMissionCount=planning_count,
+        failedMissionCount=failed_count,
+        publishedMissionCount=published_count,
+        overdueInvoiceCount=overdue_count,
+        pendingInviteCount=len(pending_invites),
+        recentMissions=mission_summaries[:4],
+        recentDeliveries=[
+            mission
+            for mission in sorted(
+                (mission for mission in mission_summaries if mission.deliveryStatus == "published"),
+                key=lambda item: item.publishedAt or item.createdAt,
+                reverse=True,
+            )[:3]
+        ],
+        recentInvoices=[_serialize_invoice(invoice) for invoice in invoices[:3]],
+        pendingInvites=[
+            _serialize_overview_invite(invite=invite, organization=organization)
+            for invite, organization in pending_invites[:5]
+        ],
+        supportSummary=support_summary,
+    )
 
 
 @router.get("/v1/organizations", response_model=list[OrganizationSummaryDto])
@@ -891,6 +974,33 @@ def _serialize_invite(invite: Invite) -> InviteDto:
     )
 
 
+def _serialize_overview_invite(*, invite: Invite, organization: Organization | None) -> OverviewInviteDto:
+    return OverviewInviteDto(
+        inviteId=invite.id,
+        organizationId=invite.organization_id,
+        organizationName=organization.name if organization is not None else None,
+        email=invite.email,
+        role=invite.role,
+        expiresAt=invite.expires_at,
+    )
+
+
+def _serialize_mission_summary(mission: Mission, artifacts: list[MissionArtifact]) -> MissionSummaryDto:
+    delivery_status, published_at, failure_reason = summarize_mission_delivery(mission, artifacts)
+    return MissionSummaryDto(
+        missionId=mission.id,
+        organizationId=mission.organization_id,
+        siteId=mission.site_id,
+        missionName=mission.mission_name,
+        status=mission.status,
+        bundleVersion=mission.bundle_version,
+        deliveryStatus=delivery_status,
+        publishedAt=published_at,
+        failureReason=failure_reason,
+        createdAt=mission.created_at,
+    )
+
+
 def _serialize_site(site: Site) -> SiteDto:
     return SiteDto(
         siteId=site.id,
@@ -924,6 +1034,63 @@ def _serialize_invoice(invoice: BillingInvoice) -> BillingInvoiceDto:
         voidReason=invoice.void_reason,
         createdAt=invoice.created_at,
         updatedAt=invoice.updated_at,
+    )
+
+
+def _build_overview_support_summary(
+    session: Session,
+    current_user: CurrentWebUser,
+    failed_mission_count: int,
+    overdue_invoice_count: int,
+) -> OverviewSupportSummaryDto | None:
+    if not current_user.global_roles.intersection({"platform_admin", "ops"}):
+        return None
+
+    flights = session.exec(
+        apply_org_read_scope(
+            select(Flight).where(Flight.organization_id.is_not(None)),
+            Flight.organization_id,
+            current_user,
+        ).order_by(Flight.updated_at.desc())
+    ).all()
+    now = datetime.now(timezone.utc)
+    battery_low_count = 0
+    telemetry_stale_count = 0
+    bridge_alert_count = 0
+
+    for flight in flights:
+        latest_batch = session.exec(
+            select(TelemetryBatch)
+            .where(TelemetryBatch.flight_id == flight.id)
+            .order_by(TelemetryBatch.last_timestamp.desc())
+        ).first()
+        if latest_batch is not None and latest_batch.payload_json:
+            latest_sample = latest_batch.payload_json[-1]
+            battery_pct = int(latest_sample.get("batteryPct", 0))
+            if battery_pct < LOW_BATTERY_THRESHOLD:
+                battery_low_count += 1
+
+        last_telemetry_at = _ensure_utc(flight.last_telemetry_at)
+        if last_telemetry_at is not None and now - last_telemetry_at > timedelta(seconds=STALE_TELEMETRY_SECONDS):
+            telemetry_stale_count += 1
+
+        latest_bridge_alert = session.exec(
+            select(FlightEvent)
+            .where(FlightEvent.flight_id == flight.id, FlightEvent.event_type == BRIDGE_ALERT_EVENT)
+            .order_by(FlightEvent.event_timestamp.desc())
+        ).first()
+        if latest_bridge_alert is None:
+            continue
+        event_timestamp = _ensure_utc(latest_bridge_alert.event_timestamp)
+        if event_timestamp is not None and event_timestamp >= now - timedelta(minutes=BRIDGE_ALERT_LOOKBACK_MINUTES):
+            bridge_alert_count += 1
+
+    critical_count = failed_mission_count + telemetry_stale_count + bridge_alert_count
+    warning_count = overdue_invoice_count + battery_low_count
+    return OverviewSupportSummaryDto(
+        openCount=critical_count + warning_count,
+        criticalCount=critical_count,
+        warningCount=warning_count,
     )
 
 
