@@ -33,7 +33,7 @@ describe('LiveOpsPage', () => {
     apiMock.requestControlIntent.mockReset()
   })
 
-  it('renders live telemetry, lease state, and intent history', async () => {
+  it('renders monitor-only flight context with freshness and intent history', async () => {
     apiMock.listLiveFlights.mockResolvedValue([
       {
         flightId: 'flight-001',
@@ -42,10 +42,10 @@ describe('LiveOpsPage', () => {
         missionName: 'Tower A Demo',
         siteId: 'site-001',
         siteName: 'Tower A',
-        lastEventAt: '2026-04-14T10:00:00Z',
-        lastTelemetryAt: '2026-04-14T10:00:00Z',
+        lastEventAt: '2026-04-16T10:00:00Z',
+        lastTelemetryAt: '2026-04-16T09:57:30Z',
         latestTelemetry: {
-          timestamp: '2026-04-14T10:00:00Z',
+          timestamp: '2026-04-16T09:57:30Z',
           lat: 25.03391,
           lng: 121.56452,
           altitudeM: 38.5,
@@ -54,13 +54,17 @@ describe('LiveOpsPage', () => {
           flightState: 'TRANSIT',
           corridorDeviationM: 0.6,
         },
+        telemetryFreshness: 'stale',
+        telemetryAgeSeconds: 150,
         video: {
           available: true,
           streaming: true,
           viewerUrl: 'https://viewer.example.test/live',
           codec: 'h264',
           latencyMs: 900,
-          lastFrameAt: '2026-04-14T10:00:00Z',
+          lastFrameAt: '2026-04-16T09:57:00Z',
+          status: 'stale',
+          ageSeconds: 180,
         },
         controlLease: {
           holder: 'hq',
@@ -68,7 +72,7 @@ describe('LiveOpsPage', () => {
           remoteControlEnabled: false,
           observerReady: true,
           heartbeatHealthy: true,
-          expiresAt: '2026-04-14T10:05:00Z',
+          expiresAt: '2026-04-16T10:05:00Z',
         },
         alerts: ['bridge_alert'],
       },
@@ -80,10 +84,10 @@ describe('LiveOpsPage', () => {
       missionName: 'Tower A Demo',
       siteId: 'site-001',
       siteName: 'Tower A',
-      lastEventAt: '2026-04-14T10:00:00Z',
-      lastTelemetryAt: '2026-04-14T10:00:00Z',
+      lastEventAt: '2026-04-16T10:00:00Z',
+      lastTelemetryAt: '2026-04-16T09:57:30Z',
       latestTelemetry: {
-        timestamp: '2026-04-14T10:00:00Z',
+        timestamp: '2026-04-16T09:57:30Z',
         lat: 25.03391,
         lng: 121.56452,
         altitudeM: 38.5,
@@ -92,13 +96,17 @@ describe('LiveOpsPage', () => {
         flightState: 'TRANSIT',
         corridorDeviationM: 0.6,
       },
+      telemetryFreshness: 'stale',
+      telemetryAgeSeconds: 150,
       video: {
         available: true,
         streaming: true,
         viewerUrl: 'https://viewer.example.test/live',
         codec: 'h264',
         latencyMs: 900,
-        lastFrameAt: '2026-04-14T10:00:00Z',
+        lastFrameAt: '2026-04-16T09:57:00Z',
+        status: 'stale',
+        ageSeconds: 180,
       },
       controlLease: {
         holder: 'hq',
@@ -106,14 +114,14 @@ describe('LiveOpsPage', () => {
         remoteControlEnabled: false,
         observerReady: true,
         heartbeatHealthy: true,
-        expiresAt: '2026-04-14T10:05:00Z',
+        expiresAt: '2026-04-16T10:05:00Z',
       },
       alerts: ['bridge_alert'],
       recentEvents: [
         {
           eventId: 'evt-001',
           eventType: 'CONTROL_LEASE_UPDATED',
-          eventTimestamp: '2026-04-14T10:00:00Z',
+          eventTimestamp: '2026-04-16T10:00:00Z',
           payload: { holder: 'hq' },
         },
       ],
@@ -126,7 +134,7 @@ describe('LiveOpsPage', () => {
         status: 'requested',
         reason: 'HQ takeover drill',
         requestedByUserId: 'user-1',
-        createdAt: '2026-04-14T10:01:00Z',
+        createdAt: '2026-04-16T10:01:00Z',
         acknowledgedAt: null,
         resolutionNote: null,
       },
@@ -141,9 +149,11 @@ describe('LiveOpsPage', () => {
       }),
     })
 
-    expect(await screen.findByText('飛行監看')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Live Ops' })).toBeInTheDocument()
     expect(await screen.findAllByText('Tower A Demo')).not.toHaveLength(0)
-    expect(await screen.findByText('flight-001')).toBeInTheDocument()
+    expect(await screen.findByText('目前以 monitor-only 為主')).toBeInTheDocument()
+    expect(await screen.findAllByText('遙測延遲')).not.toHaveLength(0)
+    expect(await screen.findAllByText('影像延遲')).not.toHaveLength(0)
     expect(await screen.findByRole('button', { name: '申請遠端接管' })).toBeInTheDocument()
     expect(await screen.findByText('HQ takeover drill')).toBeInTheDocument()
     expect(await screen.findByText('CONTROL_LEASE_UPDATED')).toBeInTheDocument()

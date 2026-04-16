@@ -35,11 +35,7 @@ def _prepare_live_mission(client, session_factory) -> tuple[str, str, dict[str, 
             display_name="Platform Ops",
             global_roles=["ops"],
         )
-        site = seed_site(
-            session,
-            organization_id=organization.id,
-            name="Tower A",
-        )
+        site = seed_site(session, organization_id=organization.id, name="Tower A")
         session.commit()
         organization_id = organization.id
         site_id = site.id
@@ -58,7 +54,7 @@ def _prepare_live_mission(client, session_factory) -> tuple[str, str, dict[str, 
     return organization_id, mission_id, admin_headers, viewer_headers, ops_headers
 
 
-def test_live_ops_detail_is_internal_only_and_returns_latest_telemetry_video_and_lease(
+def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
     client,
     session_factory,
     auth_headers,
@@ -126,7 +122,10 @@ def test_live_ops_detail_is_internal_only_and_returns_latest_telemetry_video_and
 
     list_response = client.get("/v1/live-ops/flights", headers=ops_headers)
     assert list_response.status_code == 200, list_response.text
-    assert list_response.json()[0]["flightId"] == "flight-live-001"
+    listed = list_response.json()
+    assert listed[0]["flightId"] == "flight-live-001"
+    assert listed[0]["telemetryFreshness"] == "fresh"
+    assert listed[0]["video"]["status"] == "live"
 
     response = client.get("/v1/live-ops/flights/flight-live-001", headers=ops_headers)
 
@@ -135,9 +134,14 @@ def test_live_ops_detail_is_internal_only_and_returns_latest_telemetry_video_and
     assert body["organizationId"] == organization_id
     assert body["missionId"] == mission_id
     assert body["latestTelemetry"]["batteryPct"] == 78
+    assert body["telemetryFreshness"] == "fresh"
+    assert body["telemetryAgeSeconds"] is not None
+    assert body["telemetryAgeSeconds"] < 30
     assert body["video"]["available"] is True
     assert body["video"]["streaming"] is True
     assert body["video"]["viewerUrl"] == "https://viewer.example.test/live/flight-live-001"
+    assert body["video"]["status"] == "live"
+    assert body["video"]["ageSeconds"] is not None
     assert body["controlLease"]["mode"] == "remote_control_requested"
     assert body["controlLease"]["observerReady"] is True
     assert body["recentEvents"][0]["eventType"] in {"VIDEO_STREAM_STATE", "CONTROL_LEASE_UPDATED"}
@@ -220,7 +224,7 @@ def test_control_intent_request_is_recorded_and_viewer_cannot_request(
     assert any(event.action == "flight.control_intent_requested" for event in audit_events)
 
 
-def test_support_queue_is_internal_only_and_surfaces_mission_bridge_and_battery_risks(
+def test_support_queue_is_internal_only_and_surfaces_triage_context(
     client,
     session_factory,
     auth_headers,
@@ -228,6 +232,7 @@ def test_support_queue_is_internal_only_and_surfaces_mission_bridge_and_battery_
     _, mission_id, admin_headers, _, ops_headers = _prepare_live_mission(client, session_factory)
     flight_id = "flight-live-003"
     now = datetime.now(timezone.utc)
+    stale_sample_time = now - timedelta(minutes=3)
 
     with session_factory() as session:
         mission = session.get(Mission, mission_id)
@@ -262,7 +267,7 @@ def test_support_queue_is_internal_only_and_surfaces_mission_bridge_and_battery_
             "missionId": mission_id,
             "samples": [
                 {
-                    "timestamp": now.isoformat(),
+                    "timestamp": stale_sample_time.isoformat(),
                     "lat": 25.0341,
                     "lng": 121.5647,
                     "altitudeM": 34.6,
@@ -280,23 +285,40 @@ def test_support_queue_is_internal_only_and_surfaces_mission_bridge_and_battery_
     internal_response = client.get("/v1/support/queue", headers=ops_headers)
     assert internal_response.status_code == 200, internal_response.text
     items = internal_response.json()
-    titles = {item["title"] for item in items}
-    assert "任務規劃失敗" in titles
-    assert "電量過低" in titles
-    assert "Bridge 告警：uplink_degraded" in titles
 
-    failed_item = next(item for item in items if item["title"] == "任務規劃失敗")
+    by_title = {item["title"]: item for item in items}
+    assert "任務規劃失敗" in by_title
+    assert "電量偏低" in by_title
+    assert "遙測已過時" in by_title
+    assert "Bridge 告警: uplink_degraded" in by_title
+
+    failed_item = by_title["任務規劃失敗"]
     assert failed_item["category"] == "mission_failed"
     assert failed_item["organizationName"] == "Acme Build"
     assert failed_item["missionName"] == "building-a-demo"
     assert failed_item["siteName"] == "Tower A"
+    assert failed_item["lastObservedAt"] is not None
     assert "mission request" in failed_item["recommendedNextStep"]
 
-    bridge_item = next(item for item in items if item["title"] == "Bridge 告警：uplink_degraded")
+    battery_item = by_title["電量偏低"]
+    assert battery_item["category"] == "battery_low"
+    assert battery_item["severity"] == "warning"
+    assert battery_item["flightId"] == flight_id
+    assert battery_item["lastObservedAt"] is not None
+
+    stale_item = by_title["遙測已過時"]
+    assert stale_item["category"] == "telemetry_stale"
+    assert stale_item["severity"] == "critical"
+    assert stale_item["flightId"] == flight_id
+    assert stale_item["lastObservedAt"] is not None
+    assert "monitor-only" in stale_item["summary"]
+
+    bridge_item = by_title["Bridge 告警: uplink_degraded"]
     assert bridge_item["category"] == "bridge_alert"
     assert bridge_item["organizationName"] == "Acme Build"
     assert bridge_item["flightId"] == flight_id
-    assert "observer" in bridge_item["recommendedNextStep"]
+    assert bridge_item["lastObservedAt"] is not None
+    assert "lease" in bridge_item["recommendedNextStep"]
 
     customer_response = client.get("/v1/support/queue", headers=admin_headers)
     assert customer_response.status_code == 403

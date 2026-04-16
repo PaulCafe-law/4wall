@@ -50,9 +50,10 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - member role update
   - member deactivate/reactivate
 - If the release touches internal ops surfaces, validate:
-  - `Support` loads
+  - `Support` loads with severity/category filters, mission/org/site context, last-observed timing, and recommended next step copy
   - `Live Ops` stays internal-only
-  - unavailable Android data remains fail-closed
+  - telemetry freshness and video availability are visible in `Live Ops`
+  - unavailable or stale Android data remains fail-closed and clearly presented as monitor-only
 
 ## 3. Production Promotion
 
@@ -62,6 +63,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Re-run `.github/workflows/smoke-beta.yml` against production values.
 - Validate the same core customer flows on production.
 - Reconfirm the explicit admin account can still open `/team`, resend an invite, and update organization settings after promotion.
+- If internal ops surfaces changed, re-check the same `Support` and `Live Ops` monitor-only states on production.
 
 ## 4. Rollback Triggers
 

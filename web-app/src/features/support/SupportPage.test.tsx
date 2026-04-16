@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { SupportPage } from './SupportPage'
@@ -24,7 +24,7 @@ describe('SupportPage', () => {
     apiMock.listSupportQueue.mockReset()
   })
 
-  it('renders support queue items for internal users', async () => {
+  it('renders triage context and severity filters for internal users', async () => {
     apiMock.listSupportQueue.mockResolvedValue([
       {
         itemId: 'item-001',
@@ -36,10 +36,27 @@ describe('SupportPage', () => {
         missionId: 'mission-001',
         missionName: 'Tower A Demo',
         siteName: 'Tower A',
-        title: 'Bridge 告警：uplink_degraded',
+        title: 'Bridge 告警: uplink_degraded',
         summary: 'Android bridge reported unstable uplink quality.',
-        recommendedNextStep: '打開飛行監看確認最新 lease、telemetry 與 video 狀態，必要時聯繫現場 observer。',
-        createdAt: '2026-04-14T10:00:00Z',
+        recommendedNextStep: '打開 Live Ops，確認 lease、telemetry freshness、video 狀態與 observer 是否仍可支援現場處置。',
+        createdAt: '2026-04-16T10:00:00Z',
+        lastObservedAt: '2026-04-16T10:02:00Z',
+      },
+      {
+        itemId: 'item-002',
+        category: 'battery_low',
+        severity: 'warning',
+        organizationId: 'org-001',
+        organizationName: 'Acme Build',
+        flightId: 'flight-001',
+        missionId: 'mission-001',
+        missionName: 'Tower A Demo',
+        siteName: 'Tower A',
+        title: '電量偏低',
+        summary: '最新電量僅剩 20%。',
+        recommendedNextStep: '先看 Live Ops 的 lease、視訊與 observer 狀態，再決定是否請現場改成 HOLD 或返航。',
+        createdAt: '2026-04-16T09:55:00Z',
+        lastObservedAt: '2026-04-16T09:55:00Z',
       },
     ])
 
@@ -51,20 +68,16 @@ describe('SupportPage', () => {
       }),
     })
 
-    expect(await screen.findByText('支援佇列')).toBeInTheDocument()
-    expect(await screen.findByText('Bridge 告警：uplink_degraded')).toBeInTheDocument()
-    expect(
-      await screen.findByText(
-        (_, element) => element?.tagName === 'P' && (element.textContent?.includes('組織：Acme Build') ?? false),
-      ),
-    ).toBeInTheDocument()
-    expect(
-      await screen.findByText(
-        (_, element) => element?.tagName === 'P' && (element.textContent?.includes('任務：Tower A Demo') ?? false),
-      ),
-    ).toBeInTheDocument()
-    expect(await screen.findByText('建議下一步')).toBeInTheDocument()
-    expect(await screen.findByText('Bridge 告警')).toBeInTheDocument()
-    expect(await screen.findByRole('link', { name: '查看任務' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '支援佇列' })).toBeInTheDocument()
+    expect(await screen.findByText('Bridge 告警: uplink_degraded')).toBeInTheDocument()
+    expect(await screen.findAllByText('Acme Build', { exact: false })).not.toHaveLength(0)
+    expect(await screen.findAllByText('Tower A Demo', { exact: false })).not.toHaveLength(0)
+    expect(await screen.findAllByText('最近觀測', { exact: false })).not.toHaveLength(0)
+    expect(await screen.findAllByRole('link', { name: '打開 Live Ops' })).not.toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: '高風險' }))
+
+    expect(await screen.findByText('Bridge 告警: uplink_degraded')).toBeInTheDocument()
+    expect(screen.queryByText('電量偏低')).not.toBeInTheDocument()
   })
 })

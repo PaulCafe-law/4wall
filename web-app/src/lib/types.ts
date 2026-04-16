@@ -5,6 +5,8 @@ export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overd
 
 export type SupportSeverity = 'info' | 'warning' | 'critical'
 export type SupportCategory = 'mission_failed' | 'battery_low' | 'telemetry_stale' | 'bridge_alert'
+export type TelemetryFreshness = 'fresh' | 'stale' | 'missing'
+export type VideoAvailability = 'live' | 'stale' | 'unavailable'
 
 export type ControlIntentAction =
   | 'request_remote_control'
@@ -260,6 +262,8 @@ export interface VideoChannelDescriptor {
   codec: string | null
   latencyMs: number | null
   lastFrameAt: string | null
+  status: VideoAvailability
+  ageSeconds: number | null
 }
 
 export interface ControlLease {
@@ -281,6 +285,8 @@ export interface LiveFlightSummary {
   lastEventAt: string | null
   lastTelemetryAt: string | null
   latestTelemetry: LiveTelemetrySample | null
+  telemetryFreshness: TelemetryFreshness
+  telemetryAgeSeconds: number | null
   video: VideoChannelDescriptor
   controlLease: ControlLease
   alerts: string[]
@@ -316,6 +322,7 @@ export interface SupportQueueItem {
   summary: string
   recommendedNextStep: string
   createdAt: string
+  lastObservedAt: string | null
 }
 
 export interface InviteCreateResponse {

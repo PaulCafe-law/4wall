@@ -42,7 +42,8 @@ The main remaining gaps are product usability and operational completeness, not 
 ### Internal Ops Workspaces
 
 - `Support` must include mission context, org context, severity, and recommended next step
-- `Live Ops` must stay internal-only and present clear monitor-only behavior when bridge data is unavailable
+- `Support` should also expose last-observed timing and simple filters so triage is usable under load
+- `Live Ops` must stay internal-only and present explicit telemetry freshness, video availability, and monitor-only behavior when bridge data is unavailable
 
 ### Release Readiness
 
@@ -56,8 +57,8 @@ The main remaining gaps are product usability and operational completeness, not 
 | Overview | Backend aggregate and daily landing page now exist | Useful customer and internal daily landing page | Still needs deeper prioritization, reminders, and more polished empty states |
 | Mission delivery | Mission list/detail now expose delivery state, publish time, and failure reason | Delivery-oriented artifact panel with clear publish state | Still missing artifact history, release notes, and customer-facing delivery summaries beyond the current mission |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state now exist | Customer self-service org settings, member role management, membership activation, and invite management | Still needs final polish on invite feedback loops and clearer customer guidance around role changes |
-| Support queue | Internal-only queue includes mission/org/site context and recommended next steps | Mission-centered support workspace | Still needs assignment state and handling workflow, not just triage context |
-| Live Ops | Internal-only monitoring exists | Stable monitoring surface with explicit monitor-only degradation | Still needs stronger freshness and unavailable-state polish once Android contracts harden |
+| Support queue | Internal-only queue includes mission/org/site context, severity, last-observed timing, and recommended next steps | Mission-centered support workspace | Still needs assignment state and handling workflow, not just triage context |
+| Live Ops | Internal-only monitoring now exposes telemetry freshness, video availability, lease state, and control-intent history | Stable monitoring surface with explicit monitor-only degradation | Still needs richer incident history and stronger Android-backed freshness guarantees once the upstream contract hardens |
 | Release process | Dual-role smoke and one checklist now exist | One coherent release checklist and acceptance path | Still depends on disciplined manual evidence capture after each deploy |
 
 ## Phase 1 Deliverables
@@ -65,7 +66,7 @@ The main remaining gaps are product usability and operational completeness, not 
 - customer-facing overview improvements
 - mission delivery / artifact publication state improvements
 - team and org workflow polish, including member management
-- support and live-ops usability hardening
+- support and live-ops usability hardening, including triage filters and monitor-only diagnostics
 - unified release checklist and deployment evidence template
 
 ## Acceptance
