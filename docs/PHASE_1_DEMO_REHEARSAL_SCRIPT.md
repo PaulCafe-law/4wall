@@ -12,6 +12,10 @@ Use it when preparing:
 
 The goal is to make the route-to-report story repeatable without hidden operator knowledge.
 
+After a successful run, record the output in:
+
+- `docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md`
+
 ## Pre-Run Preconditions
 
 - `Beta Smoke` is green for the target environment.
@@ -156,6 +160,10 @@ Keep the following artifacts after rehearsal:
 - one `Support` screenshot for report failure
 - one `Live Ops` screenshot for report failure
 - one downloaded HTML report artifact
+
+Record those references in:
+
+- `docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md`
 
 ## Exit Criteria
 

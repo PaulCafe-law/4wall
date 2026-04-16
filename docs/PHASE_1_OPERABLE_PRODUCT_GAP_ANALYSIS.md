@@ -73,7 +73,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state exist | Support demo operator setup and reviewer access cleanly | Still needs polish on invite feedback loops and guidance |
 | Support queue | Internal-only queue includes mission/org/site context, severity, last-observed timing, recommended next steps, handling workflow state, and report-generation-failed categories | Triage surface that understands analysis/report failures as first-class cases | Still needs richer cross-linking into event/report workflows and rehearsal polish |
 | Live Ops | Internal-only monitoring exposes telemetry freshness, video availability, lease state, control-intent history, and report status/summary context | Stable monitor-only surface that complements the demo | Still needs stronger incident context and tighter route-to-report storytelling |
-| Release process | Dual-role smoke and one checklist exist, docs include report-failure / live-ops verification steps, and a dedicated rehearsal script now exists | One coherent release and demo acceptance path | Still needs one successful full rehearsal package captured from staging or production |
+| Release process | Dual-role smoke and one checklist exist, docs include report-failure / live-ops verification steps, a rehearsal script exists, and an evidence-package template is now available | One coherent release and demo acceptance path | Still needs one successful filled evidence package captured from staging or production |
 
 ## Phase 1 Deliverables
 

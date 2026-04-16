@@ -7,6 +7,7 @@ Use it together with:
 - [web-beta-release-runbook.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-release-runbook.md)
 - [PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md)
 - [PHASE_1_DEMO_REHEARSAL_SCRIPT.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md)
+- [PHASE_1_DEMO_EVIDENCE_TEMPLATE.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md)
 - [WEB_THREAD_ANDROID_HANDOFF.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/WEB_THREAD_ANDROID_HANDOFF.md)
 - [WEB_THREAD_FAIL_CLOSED_BEHAVIOR.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/WEB_THREAD_FAIL_CLOSED_BEHAVIOR.md)
 
