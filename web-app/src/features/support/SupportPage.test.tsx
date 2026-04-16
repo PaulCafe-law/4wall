@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { SupportPage } from './SupportPage'
@@ -6,6 +6,7 @@ import { createAuthValue, createSession, renderWithProviders } from '../../test/
 
 const apiMock = vi.hoisted(() => ({
   listSupportQueue: vi.fn(),
+  requestSupportQueueAction: vi.fn(),
 }))
 
 vi.mock('../../lib/api', async () => {
@@ -15,6 +16,7 @@ vi.mock('../../lib/api', async () => {
     api: {
       ...actual.api,
       listSupportQueue: apiMock.listSupportQueue,
+      requestSupportQueueAction: apiMock.requestSupportQueueAction,
     },
   }
 })
@@ -22,9 +24,10 @@ vi.mock('../../lib/api', async () => {
 describe('SupportPage', () => {
   beforeEach(() => {
     apiMock.listSupportQueue.mockReset()
+    apiMock.requestSupportQueueAction.mockReset()
   })
 
-  it('renders triage context and severity filters for internal users', async () => {
+  it('renders workflow context and can claim a support item', async () => {
     apiMock.listSupportQueue.mockResolvedValue([
       {
         itemId: 'item-001',
@@ -38,9 +41,16 @@ describe('SupportPage', () => {
         siteName: 'Tower A',
         title: 'Bridge 告警: uplink_degraded',
         summary: 'Android bridge reported unstable uplink quality.',
-        recommendedNextStep: '打開 Live Ops，確認 lease、telemetry freshness、video 狀態與 observer 是否仍可支援現場處置。',
+        recommendedNextStep: 'Open Live Ops and verify lease, telemetry freshness, video, and observer state.',
         createdAt: '2026-04-16T10:00:00Z',
         lastObservedAt: '2026-04-16T10:02:00Z',
+        workflow: {
+          state: 'open',
+          assignedToUserId: null,
+          assignedToDisplayName: null,
+          updatedAt: null,
+          note: null,
+        },
       },
       {
         itemId: 'item-002',
@@ -53,12 +63,26 @@ describe('SupportPage', () => {
         missionName: 'Tower A Demo',
         siteName: 'Tower A',
         title: '電量偏低',
-        summary: '最新電量僅剩 20%。',
-        recommendedNextStep: '先看 Live Ops 的 lease、視訊與 observer 狀態，再決定是否請現場改成 HOLD 或返航。',
+        summary: 'Latest telemetry shows 20% battery remaining.',
+        recommendedNextStep: 'Use Live Ops to confirm observer and return-home readiness.',
         createdAt: '2026-04-16T09:55:00Z',
         lastObservedAt: '2026-04-16T09:55:00Z',
+        workflow: {
+          state: 'claimed',
+          assignedToUserId: 'user-ops',
+          assignedToDisplayName: 'Platform Ops',
+          updatedAt: '2026-04-16T09:56:00Z',
+          note: null,
+        },
       },
     ])
+    apiMock.requestSupportQueueAction.mockResolvedValue({
+      state: 'claimed',
+      assignedToUserId: 'user-ops',
+      assignedToDisplayName: 'Platform Ops',
+      updatedAt: '2026-04-16T10:03:00Z',
+      note: null,
+    })
 
     renderWithProviders(<SupportPage />, {
       auth: createAuthValue({
@@ -70,14 +94,16 @@ describe('SupportPage', () => {
 
     expect(await screen.findByRole('heading', { name: '支援佇列' })).toBeInTheDocument()
     expect(await screen.findByText('Bridge 告警: uplink_degraded')).toBeInTheDocument()
-    expect(await screen.findAllByText('Acme Build', { exact: false })).not.toHaveLength(0)
-    expect(await screen.findAllByText('Tower A Demo', { exact: false })).not.toHaveLength(0)
-    expect(await screen.findAllByText('最近觀測', { exact: false })).not.toHaveLength(0)
-    expect(await screen.findAllByRole('link', { name: '打開 Live Ops' })).not.toHaveLength(0)
+    expect(screen.getByLabelText('support-workflow-item-001')).toHaveTextContent('待處理')
+    expect(screen.getByLabelText('support-workflow-item-002')).toHaveTextContent('已認領')
+    expect(screen.getByText('目前負責：Platform Ops')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: '高風險' }))
+    fireEvent.click(screen.getByLabelText('support-action-claim-item-001'))
 
-    expect(await screen.findByText('Bridge 告警: uplink_degraded')).toBeInTheDocument()
-    expect(screen.queryByText('電量偏低')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(apiMock.requestSupportQueueAction).toHaveBeenCalledWith(expect.any(String), 'item-001', {
+        action: 'claim',
+      })
+    })
   })
 })

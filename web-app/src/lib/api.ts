@@ -16,6 +16,7 @@ import type {
   OrganizationSummary,
   Site,
   SupportQueueItem,
+  SupportQueueAction,
   TelemetryBatchRecord,
   WebSession,
 } from './types'
@@ -170,6 +171,11 @@ export interface ControlIntentPayload {
   reason?: string
 }
 
+export interface SupportQueueActionPayload {
+  action: SupportQueueAction
+  note?: string
+}
+
 export const api = {
   login: (payload: LoginPayload) =>
     apiFetch<WebSession>('/v1/web/session/login', {
@@ -274,6 +280,12 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   listSupportQueue: (token: string) => apiFetch<SupportQueueItem[]>('/v1/support/queue', { token }),
+  requestSupportQueueAction: (token: string, itemId: string, payload: SupportQueueActionPayload) =>
+    apiFetch<SupportQueueItem['workflow']>(`/v1/support/queue/${itemId}/actions`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
 }
 
 export function absoluteArtifactUrl(path: string): string {

@@ -5,6 +5,8 @@ export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overd
 
 export type SupportSeverity = 'info' | 'warning' | 'critical'
 export type SupportCategory = 'mission_failed' | 'battery_low' | 'telemetry_stale' | 'bridge_alert'
+export type SupportWorkflowState = 'open' | 'claimed' | 'acknowledged' | 'resolved'
+export type SupportQueueAction = 'claim' | 'acknowledge' | 'resolve' | 'release'
 export type TelemetryFreshness = 'fresh' | 'stale' | 'missing'
 export type VideoAvailability = 'live' | 'stale' | 'unavailable'
 
@@ -323,6 +325,13 @@ export interface SupportQueueItem {
   recommendedNextStep: string
   createdAt: string
   lastObservedAt: string | null
+  workflow: {
+    state: SupportWorkflowState
+    assignedToUserId: string | null
+    assignedToDisplayName: string | null
+    updatedAt: string | null
+    note: string | null
+  }
 }
 
 export interface InviteCreateResponse {

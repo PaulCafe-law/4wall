@@ -101,7 +101,7 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('這張帳單已逾期，請優先確認付款進度或聯繫內部窗口。')).toBeInTheDocument()
+    expect(screen.getByText('這張帳單已逾期，請依付款說明安排後續處理。')).toBeInTheDocument()
     expect(screen.getByText('請於付款後回傳匯款末五碼。')).toBeInTheDocument()
     expect(screen.getByText('RCT-001')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '新增帳單' })).toBeInTheDocument()

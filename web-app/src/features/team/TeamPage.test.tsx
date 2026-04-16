@@ -348,6 +348,6 @@ describe('TeamPage', () => {
     })
 
     expect(await screen.findByText('無法載入團隊資料')).toBeInTheDocument()
-    expect(screen.getByText('你目前的角色沒有權限執行這項操作。')).toBeInTheDocument()
+    expect(screen.getByText('你目前的角色沒有權限執行這個動作。')).toBeInTheDocument()
   })
 })
