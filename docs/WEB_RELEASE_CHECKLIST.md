@@ -43,12 +43,13 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - customer admin deployed smoke
   - customer viewer deployed smoke if viewer smoke credentials are configured
   - site map read path and site selection
-  - route/template read or edit path if the release touched control-plane surfaces
-  - schedule and dispatch read path if the release touched control-plane surfaces
+  - route/template create or edit path if the release touched control-plane surfaces
+  - schedule create or edit path if the release touched control-plane surfaces
+  - dispatch path if the release touched control-plane surfaces
   - overview aggregate cards, including pending actions, ready-for-delivery reminders, invoice reminders, recent deliveries, and setup guidance when a workspace has no sites or no missions
   - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
   - mission list with explicit delivery badges, publish time, failure reason, and clean customer-facing copy
-  - mission detail and artifact download, including checksum, version, published timestamp, next-step guidance, event count, and report summary
+  - mission detail and artifact download, including checksum, version, published timestamp, next-step guidance, event count, report summary, and linked route/template/schedule/dispatch metadata when the release touched control-plane surfaces
   - billing, including due / overdue / paid / void clarity plus payment note / receipt ref rendering and reminder panels for overdue or due-soon invoices
   - team, including invite create / resend / revoke
   - organization settings update
@@ -68,6 +69,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Re-run `.github/workflows/smoke-beta.yml` against production values.
 - Validate the same core customer flows on production.
 - Reconfirm any route/template/schedule/dispatch surface touched by the release on production.
+- Reconfirm mission detail still shows linked planning metadata for one dispatched mission when the release touched control-plane surfaces.
 - Reconfirm the explicit admin account can still open `/team`, resend an invite, and update organization settings after promotion.
 - If internal ops surfaces changed, re-check the same `Support` and `Live Ops` monitor-only states on production.
  - If support handling changed, verify a support item can be claimed, acknowledged, and resolved without exposing customer-facing write paths.
@@ -90,6 +92,7 @@ Rollback immediately if any of these occur:
 - production smoke run URL
 - Render deploy IDs for staging and production
 - manual QA notes for customer and internal flows
-- demo-story notes for one end-to-end route -> dispatch -> event -> report walkthrough when the release touches Phase 1 demo features
+- demo-story notes for one route/template -> schedule -> dispatch -> mission-detail walkthrough when the release touches the control-plane slice
+- demo-story notes for one end-to-end route -> dispatch -> event -> report walkthrough when the release touches Phase 1 event/report features
 - confirmation that explicit admin/viewer smoke accounts still match the environment after any secret rotation
 - any rollback event, trigger, and recovery deploy ID

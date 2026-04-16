@@ -290,6 +290,8 @@ def web_overview(
     ready_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "ready")
     failed_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "failed")
     published_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "published")
+    scheduled_count = sum(1 for mission in missions if mission.status in {"scheduled", "dispatched"})
+    running_count = sum(1 for mission in missions if mission.status in {"running", "in_progress"})
     invoice_due_count = sum(1 for invoice in invoices if invoice.status == "invoice_due")
     overdue_count = sum(1 for invoice in invoices if invoice.status == "overdue")
     support_summary = _build_overview_support_summary(session, current_user, failed_count, overdue_count)
@@ -298,6 +300,8 @@ def web_overview(
         siteCount=len(sites),
         missionCount=len(mission_summaries),
         planningMissionCount=planning_count,
+        scheduledMissionCount=scheduled_count,
+        runningMissionCount=running_count,
         readyMissionCount=ready_count,
         failedMissionCount=failed_count,
         publishedMissionCount=published_count,

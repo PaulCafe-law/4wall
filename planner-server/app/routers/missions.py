@@ -28,6 +28,7 @@ from app.dto import (
     TelemetryBatchAcceptedDto,
     TelemetryBatchRequestDto,
 )
+from app.inspection_control import load_mission_control_plane
 from app.mission_delivery import build_artifact_map, serialize_mission_delivery, summarize_mission_delivery
 from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
 from app.providers import RouteProvider, RouteProviderError
@@ -215,6 +216,7 @@ def get_mission_detail(
             .order_by(MissionArtifact.created_at.asc(), MissionArtifact.artifact_name.asc())
         ).all()
     )
+    route, template, schedule, dispatch = load_mission_control_plane(session, mission)
     return MissionDetailDto(
         missionId=mission.id,
         organizationId=mission.organization_id,
@@ -227,6 +229,10 @@ def get_mission_detail(
         response=mission.response_json,
         delivery=serialize_mission_delivery(mission, artifacts),
         artifacts=[_serialize_mission_artifact(mission_id, artifact) for artifact in artifacts],
+        route=route,
+        template=template,
+        schedule=schedule,
+        dispatch=dispatch,
         createdAt=mission.created_at,
     )
 

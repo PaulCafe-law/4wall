@@ -20,6 +20,8 @@ The current `main` branch already has:
 - basic release docs, Render topology, and smoke coverage
 - a single `overview` aggregate read path for daily landing-page data
 - mission list/detail delivery metadata with explicit `planning / ready / failed / published` states
+- a first control-plane slice with route, template, schedule, and dispatch records plus a `/control-plane` web surface
+- mission detail linkage for route / template / schedule / dispatch metadata
 
 The main gap is no longer basic web scaffolding. The main gap is that the product still lacks the demo-critical story:
 
@@ -64,7 +66,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
 | Overview | Overview aggregate and daily landing page exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Missing event/report summaries and stronger demo-oriented prioritization |
-| Inspection control plane | Sites and mission request workflow exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | No first-class route/template/schedule/dispatch model or UI yet |
+| Inspection control plane | Sites, mission request workflow, first-class route/template/schedule/dispatch models, and an initial `/control-plane` UI slice exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs stronger map presentation, editing flows, and tighter demo guidance around route -> schedule -> dispatch progression |
 | Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, artifact metadata, customer-facing delivery copy, and explicit next-step guidance | Delivery-oriented event / evidence / report surface | Missing report status, event count, report artifacts, and evidence gallery |
 | Event interpretation and reporting | Artifacts and audit exist, but there is no event/report product flow | Mission-linked anomaly events, evidence screenshots, summaries, and downloadable reports | No contract, no web surface, no demo-ready reporting pipeline |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state exist | Support demo operator setup and reviewer access cleanly | Still needs polish on invite feedback loops and guidance |
@@ -87,6 +89,11 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 Phase 1 is complete when:
 
 - a demo operator can configure a site, route/template, schedule, and dispatch record from the web
+- the control-plane slice can be rehearsed without hidden operator knowledge:
+  - select a site
+  - create route/template/schedule
+  - dispatch a mission
+  - open mission detail and confirm linked planning metadata
 - a completed mission can show event count, evidence, summary, and downloadable report output
 - overview, missions, mission detail, support, and live ops all tell the same story for one mission lifecycle
 - customers and reviewers can understand the output without engineering translation

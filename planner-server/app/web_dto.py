@@ -199,6 +199,40 @@ class InspectionAlertRuleDto(BaseModel):
     note: str | None = None
 
 
+class InspectionWaypointInputDto(BaseModel):
+    kind: InspectionWaypointKindLiteral
+    lat: float
+    lng: float
+    altitudeM: float
+    label: str | None = None
+    headingDeg: float | None = None
+    dwellSeconds: int | None = None
+
+
+class InspectionAlertRuleInputDto(BaseModel):
+    ruleId: str | None = None
+    kind: InspectionAlertRuleKindLiteral
+    enabled: bool = True
+    threshold: float | None = None
+    note: str | None = None
+
+
+class CreateInspectionRouteRequestDto(BaseModel):
+    organizationId: str
+    siteId: str
+    name: str = Field(min_length=1)
+    description: str = ""
+    waypoints: list[InspectionWaypointInputDto] = Field(min_length=1)
+    planningParameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateInspectionRouteRequestDto(BaseModel):
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    waypoints: list[InspectionWaypointInputDto] | None = None
+    planningParameters: dict[str, Any] | None = None
+
+
 class InspectionRouteDto(BaseModel):
     routeId: str
     organizationId: str
@@ -225,6 +259,24 @@ class InspectionTemplateDto(BaseModel):
     updatedAt: datetime
 
 
+class CreateInspectionTemplateRequestDto(BaseModel):
+    organizationId: str
+    siteId: str
+    routeId: str | None = None
+    name: str = Field(min_length=1)
+    description: str = ""
+    inspectionProfile: dict[str, Any] = Field(default_factory=dict)
+    alertRules: list[InspectionAlertRuleInputDto] = Field(default_factory=list)
+
+
+class UpdateInspectionTemplateRequestDto(BaseModel):
+    routeId: str | None = None
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    inspectionProfile: dict[str, Any] | None = None
+    alertRules: list[InspectionAlertRuleInputDto] | None = None
+
+
 class InspectionScheduleDto(BaseModel):
     scheduleId: str
     organizationId: str
@@ -239,6 +291,26 @@ class InspectionScheduleDto(BaseModel):
     updatedAt: datetime
 
 
+class CreateInspectionScheduleRequestDto(BaseModel):
+    organizationId: str
+    siteId: str
+    routeId: str | None = None
+    templateId: str | None = None
+    plannedAt: datetime | None = None
+    recurrence: str | None = None
+    status: InspectionScheduleStatusLiteral = "scheduled"
+    alertRules: list[InspectionAlertRuleInputDto] = Field(default_factory=list)
+
+
+class UpdateInspectionScheduleRequestDto(BaseModel):
+    routeId: str | None = None
+    templateId: str | None = None
+    plannedAt: datetime | None = None
+    recurrence: str | None = None
+    status: InspectionScheduleStatusLiteral | None = None
+    alertRules: list[InspectionAlertRuleInputDto] | None = None
+
+
 class DispatchRecordDto(BaseModel):
     dispatchId: str
     missionId: str
@@ -247,6 +319,16 @@ class DispatchRecordDto(BaseModel):
     scheduleId: str | None = None
     dispatchedAt: datetime
     dispatchedByUserId: str | None = None
+    assignee: str | None = None
+    executionTarget: str | None = None
+    status: DispatchStatusLiteral = "queued"
+    note: str | None = None
+
+
+class CreateDispatchRequestDto(BaseModel):
+    routeId: str | None = None
+    templateId: str | None = None
+    scheduleId: str | None = None
     assignee: str | None = None
     executionTarget: str | None = None
     status: DispatchStatusLiteral = "queued"

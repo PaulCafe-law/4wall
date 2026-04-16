@@ -91,6 +91,34 @@ export function MissionDetailPage() {
   const mission = missionQuery.data
   const missionKmz = mission.artifacts.find((artifact) => artifact.artifactName === 'mission.kmz')
   const missionMeta = mission.artifacts.find((artifact) => artifact.artifactName === 'mission_meta.json')
+  const controlPlanePanel =
+    mission.route || mission.template || mission.schedule || mission.dispatch ? (
+      <Panel>
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Control plane</p>
+        <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Linked planning metadata</h2>
+        <div className="mt-4">
+          <DataList
+            rows={[
+              { label: 'Route', value: mission.route?.name ?? 'Not linked' },
+              { label: 'Route points', value: mission.route ? mission.route.pointCount : 'Not linked' },
+              { label: 'Template', value: mission.template?.name ?? 'Not linked' },
+              { label: 'Schedule', value: mission.schedule?.status ?? 'Not linked' },
+              {
+                label: 'Planned at',
+                value: mission.schedule?.plannedAt ? formatDateTime(mission.schedule.plannedAt) : 'Not scheduled',
+              },
+              { label: 'Dispatch', value: mission.dispatch?.status ?? 'Not dispatched' },
+              { label: 'Assignee', value: mission.dispatch?.assignee ?? 'Not set' },
+              { label: 'Target', value: mission.dispatch?.executionTarget ?? 'Not set' },
+              {
+                label: 'Dispatched at',
+                value: mission.dispatch?.dispatchedAt ? formatDateTime(mission.dispatch.dispatchedAt) : 'Not dispatched',
+              },
+            ]}
+          />
+        </div>
+      </Panel>
+    ) : null
 
   const rail = (
     <Panel>
@@ -195,6 +223,8 @@ export function MissionDetailPage() {
               ]}
             />
           </Panel>
+
+          {controlPlanePanel}
 
           <Panel>
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Request</p>

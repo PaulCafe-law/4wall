@@ -8,6 +8,7 @@ import { InvitePage } from '../features/auth/InvitePage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { SignupPage } from '../features/auth/SignupPage'
 import { BillingPage } from '../features/billing/BillingPage'
+import { ControlPlanePage } from '../features/controlplane/ControlPlanePage'
 import { LiveOpsPage } from '../features/liveops/LiveOpsPage'
 import { MissionDetailPage } from '../features/missions/MissionDetailPage'
 import { MissionsPage } from '../features/missions/MissionsPage'
@@ -35,6 +36,7 @@ export function AppRoutes() {
                 <Route index element={<OverviewPage />} />
                 <Route path="/sites" element={<SitesPage />} />
                 <Route path="/sites/:siteId" element={<SitesPage />} />
+                <Route path="/control-plane" element={<ControlPlanePage />} />
                 <Route path="/missions" element={<MissionsPage />} />
                 <Route path="/missions/new" element={<PlannerPage />} />
                 <Route path="/missions/:missionId" element={<MissionDetailPage />} />
