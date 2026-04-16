@@ -22,6 +22,7 @@ The current `main` branch already has:
 - mission list/detail delivery metadata with explicit `planning / ready / failed / published` states
 - a first control-plane slice with route, template, schedule, and dispatch records plus a `/control-plane` web surface
 - mission detail linkage for route / template / schedule / dispatch metadata
+- a first event/report slice with mission-linked demo analysis, evidence artifacts, report summaries, and downloadable HTML report output
 
 The main gap is no longer basic web scaffolding. The main gap is that the product still lacks the demo-critical story:
 
@@ -65,10 +66,10 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
-| Overview | Overview aggregate and daily landing page exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Missing event/report summaries and stronger demo-oriented prioritization |
+| Overview | Overview aggregate, daily landing page, latest report summary, and latest event summary exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Still needs stronger demo-oriented prioritization and rehearsal polish |
 | Inspection control plane | Sites, mission request workflow, first-class route/template/schedule/dispatch models, and an initial `/control-plane` UI slice exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs stronger map presentation, editing flows, and tighter demo guidance around route -> schedule -> dispatch progression |
-| Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, artifact metadata, customer-facing delivery copy, and explicit next-step guidance | Delivery-oriented event / evidence / report surface | Missing report status, event count, report artifacts, and evidence gallery |
-| Event interpretation and reporting | Artifacts and audit exist, but there is no event/report product flow | Mission-linked anomaly events, evidence screenshots, summaries, and downloadable reports | No contract, no web surface, no demo-ready reporting pipeline |
+| Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, report status, event count, evidence, and report artifact download | Delivery-oriented event / evidence / report surface | Still needs deeper summary polish and tighter customer-facing empty states |
+| Event interpretation and reporting | Mission-linked demo analysis, evidence artifacts, summaries, and downloadable reports exist | Mission-linked anomaly events, evidence screenshots, summaries, and downloadable reports | Still needs broader analysis modes and more realistic demo datasets |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state exist | Support demo operator setup and reviewer access cleanly | Still needs polish on invite feedback loops and guidance |
 | Support queue | Internal-only queue includes mission/org/site context, severity, last-observed timing, recommended next steps, and handling workflow state | Triage surface that understands analysis/report failures as first-class cases | Needs new categories and cross-linking into report/event workflows |
 | Live Ops | Internal-only monitoring exposes telemetry freshness, video availability, lease state, and control-intent history | Stable monitor-only surface that complements the demo | Still needs alignment with new dispatch/reporting story and stronger incident context |

@@ -1,8 +1,21 @@
+import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router-dom'
 
-import { DataList, EmptyState, Panel, ShellSection, StatusBadge, formatDateTime } from '../../components/ui'
-import { absoluteArtifactUrl, api } from '../../lib/api'
-import { useAuthedQuery } from '../../lib/auth-query'
+import {
+  ActionButton,
+  DataList,
+  EmptyState,
+  Panel,
+  ShellSection,
+  StatusBadge,
+  formatDateTime,
+} from '../../components/ui'
+import { ApiError, api } from '../../lib/api'
+import { useAuth } from '../../lib/auth'
+import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
+import { formatApiError, formatSupportSeverity } from '../../lib/presentation'
+import type { InspectionEvent, MissionArtifactDownload, MissionDetail } from '../../lib/types'
 
 function formatBytes(sizeBytes: number) {
   if (sizeBytes < 1024) {
@@ -14,47 +27,78 @@ function formatBytes(sizeBytes: number) {
   return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function deliveryHeadline(state: 'planning' | 'ready' | 'failed' | 'published') {
+function deliveryHeadline(state: MissionDetail['delivery']['state']) {
   if (state === 'published') {
-    return '成果已可交付'
+    return 'Mission artifacts published'
   }
   if (state === 'ready') {
-    return '任務已規劃完成'
+    return 'Mission bundle ready'
   }
   if (state === 'failed') {
-    return '交付流程失敗'
+    return 'Mission delivery failed'
   }
-  return '任務仍在規劃中'
+  return 'Mission is still planning'
 }
 
-function deliveryMessage(state: 'planning' | 'ready' | 'failed' | 'published', failureReason: string | null) {
-  if (state === 'published') {
-    return '最新成果檔已完成發布，可直接下載 mission.kmz 與 metadata。'
+function deliveryMessage(mission: MissionDetail) {
+  if (mission.delivery.state === 'published') {
+    return 'Core mission artifacts are published and available for authenticated download.'
   }
-  if (state === 'ready') {
-    return '任務已完成規劃，但成果檔尚未正式發布。'
+  if (mission.delivery.state === 'ready') {
+    return 'Planning completed, but the publish handoff has not run yet.'
   }
-  if (state === 'failed') {
-    return failureReason ?? '系統未提供更詳細的失敗原因，請聯絡內部支援。'
+  if (mission.delivery.state === 'failed') {
+    return mission.delivery.failureReason ?? 'The mission record failed before its artifact bundle could be published.'
   }
-  return '任務仍在規劃中，請稍後再查看交付狀態。'
+  return 'The route planner is still building the mission package.'
 }
 
-function nextStepSummary(state: 'planning' | 'ready' | 'failed' | 'published') {
-  if (state === 'published') {
-    return '先下載交付檔並確認版本與 checksum，之後再把成果轉交給現場或客戶。'
+function reportStatusMessage(mission: MissionDetail) {
+  if (mission.reportStatus === 'ready') {
+    return mission.latestReport?.summary ?? 'Inspection analysis completed and a report artifact is available.'
   }
-  if (state === 'ready') {
-    return '任務已完成規劃，但成果檔尚未正式發布。先回任務列表追蹤是否已完成發布。'
+  if (mission.reportStatus === 'failed') {
+    return mission.latestReport?.summary ?? 'The analysis pipeline failed to generate a usable report.'
   }
-  if (state === 'failed') {
-    return '先記錄失敗原因，再決定是否重新建立任務或請內部支援協助排查。'
+  if (mission.reportStatus === 'generating' || mission.reportStatus === 'queued') {
+    return 'Analysis has started but report generation is not finished yet.'
   }
-  return '目前不需要下載檔案。等規劃完成後再回到這裡查看交付狀態。'
+  return 'No inspection report has been generated for this mission yet.'
+}
+
+function nextStepSummary(mission: MissionDetail) {
+  if (mission.reportStatus === 'ready') {
+    return 'Review the event list, open the evidence artifacts, and export the HTML report for stakeholder handoff.'
+  }
+  if (mission.reportStatus === 'failed') {
+    return 'Use the internal reprocess controls to regenerate the demo report or simulate a no-findings pass.'
+  }
+  if (mission.delivery.state === 'published') {
+    return 'Artifacts are ready. The next step is to generate or review the inspection report.'
+  }
+  if (mission.delivery.state === 'failed') {
+    return 'Resolve mission delivery first. Reporting should not be trusted until the mission bundle is available.'
+  }
+  return 'Wait for the planning and publish steps to finish before generating the inspection report.'
+}
+
+function eventCardClass(severity: InspectionEvent['severity']) {
+  if (severity === 'critical') {
+    return 'rounded-2xl border border-red-200 bg-red-50/80 px-4 py-4'
+  }
+  if (severity === 'warning') {
+    return 'rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-4'
+  }
+  return 'rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4'
 }
 
 export function MissionDetailPage() {
   const { missionId = '' } = useParams()
+  const auth = useAuth()
+  const queryClient = useQueryClient()
+  const [analysisNotice, setAnalysisNotice] = useState<string | null>(null)
+  const [analysisError, setAnalysisError] = useState<string | null>(null)
+  const [artifactError, setArtifactError] = useState<string | null>(null)
 
   const missionQuery = useAuthedQuery({
     queryKey: ['mission', missionId],
@@ -62,11 +106,72 @@ export function MissionDetailPage() {
     enabled: Boolean(missionId),
   })
 
+  const reprocessAnalysis = useAuthedMutation({
+    mutationKey: ['mission', missionId, 'analysis', 'reprocess'],
+    mutationFn: ({ token, payload }: { token: string; payload: Parameters<typeof api.reprocessMissionAnalysis>[2] }) =>
+      api.reprocessMissionAnalysis(token, missionId, payload),
+    onSuccess: async (_report, payload) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['mission', missionId] }),
+        queryClient.invalidateQueries({ queryKey: ['missions'] }),
+        queryClient.invalidateQueries({ queryKey: ['missions', 'control-plane'] }),
+        queryClient.invalidateQueries({ queryKey: ['web-overview'] }),
+      ])
+      setAnalysisError(null)
+      setAnalysisNotice(
+        payload.mode === 'analysis_failed'
+          ? 'Recorded a demo analysis failure state for this mission.'
+          : payload.mode === 'no_findings'
+            ? 'Generated a clean no-findings demo report.'
+            : 'Generated demo events, evidence artifacts, and an inspection report.',
+      )
+    },
+  })
+
+  async function openArtifact(
+    artifact: MissionArtifactDownload | { artifactName: string; downloadUrl: string },
+    mode: 'open' | 'download',
+  ) {
+    if (!auth.session?.accessToken) {
+      setArtifactError('Session expired before the artifact request could be sent.')
+      return
+    }
+
+    try {
+      setArtifactError(null)
+      const blob = await api.fetchArtifactBlob(auth.session.accessToken, artifact.downloadUrl)
+      const objectUrl = window.URL.createObjectURL(blob)
+      if (mode === 'download') {
+        const link = document.createElement('a')
+        link.href = objectUrl
+        link.download = artifact.artifactName
+        link.click()
+      } else {
+        window.open(objectUrl, '_blank', 'noopener,noreferrer')
+      }
+      window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60_000)
+    } catch (error) {
+      const detail = error instanceof ApiError ? error.detail : undefined
+      setArtifactError(formatApiError(detail, `Unable to ${mode === 'download' ? 'download' : 'open'} artifact.`))
+    }
+  }
+
+  async function handleReprocess(mode: 'normal' | 'no_findings' | 'analysis_failed') {
+    try {
+      setAnalysisNotice(null)
+      setAnalysisError(null)
+      await reprocessAnalysis.mutateAsync({ mode })
+    } catch (error) {
+      const detail = error instanceof ApiError ? error.detail : undefined
+      setAnalysisError(formatApiError(detail, 'Unable to reprocess mission analysis.'))
+    }
+  }
+
   if (!missionId) {
     return (
       <EmptyState
-        title="找不到指定的任務"
-        body="請從任務清單重新打開這筆任務，避免使用已過期或不完整的連結。"
+        title="Mission id is missing"
+        body="Open this page from the mission index so the mission, reporting, and artifact records can be loaded together."
       />
     )
   }
@@ -74,7 +179,7 @@ export function MissionDetailPage() {
   if (missionQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">正在載入任務詳情…</p>
+        <p className="text-sm text-chrome-700">Loading mission detail and reporting context...</p>
       </Panel>
     )
   }
@@ -82,131 +187,31 @@ export function MissionDetailPage() {
   if (!missionQuery.data) {
     return (
       <EmptyState
-        title="目前無法取得任務詳情"
-        body="請重新整理頁面；如果問題持續存在，再檢查任務是否仍屬於你的組織。"
+        title="Mission detail is unavailable"
+        body="This mission could not be loaded. Verify the mission id and the current organization scope."
       />
     )
   }
 
   const mission = missionQuery.data
-  const missionKmz = mission.artifacts.find((artifact) => artifact.artifactName === 'mission.kmz')
-  const missionMeta = mission.artifacts.find((artifact) => artifact.artifactName === 'mission_meta.json')
-  const controlPlanePanel =
-    mission.route || mission.template || mission.schedule || mission.dispatch ? (
-      <Panel>
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Control plane</p>
-        <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Linked planning metadata</h2>
-        <div className="mt-4">
-          <DataList
-            rows={[
-              { label: 'Route', value: mission.route?.name ?? 'Not linked' },
-              { label: 'Route points', value: mission.route ? mission.route.pointCount : 'Not linked' },
-              { label: 'Template', value: mission.template?.name ?? 'Not linked' },
-              { label: 'Schedule', value: mission.schedule?.status ?? 'Not linked' },
-              {
-                label: 'Planned at',
-                value: mission.schedule?.plannedAt ? formatDateTime(mission.schedule.plannedAt) : 'Not scheduled',
-              },
-              { label: 'Dispatch', value: mission.dispatch?.status ?? 'Not dispatched' },
-              { label: 'Assignee', value: mission.dispatch?.assignee ?? 'Not set' },
-              { label: 'Target', value: mission.dispatch?.executionTarget ?? 'Not set' },
-              {
-                label: 'Dispatched at',
-                value: mission.dispatch?.dispatchedAt ? formatDateTime(mission.dispatch.dispatchedAt) : 'Not dispatched',
-              },
-            ]}
-          />
-        </div>
-      </Panel>
-    ) : null
-
-  const rail = (
-    <Panel>
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Delivery</p>
-      <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">
-        {deliveryHeadline(mission.delivery.state)}
-      </h2>
-      <p className="mt-2 text-sm text-chrome-700">{deliveryMessage(mission.delivery.state, mission.delivery.failureReason)}</p>
-      <div className="mt-4">
-        <DataList
-          rows={[
-            { label: '交付狀態', value: <StatusBadge status={mission.delivery.state} /> },
-            {
-              label: '發布時間',
-              value: mission.delivery.publishedAt ? formatDateTime(mission.delivery.publishedAt) : '尚未發布',
-            },
-            { label: '成果檔數量', value: mission.artifacts.length },
-            { label: '失敗原因', value: mission.delivery.failureReason ?? '—' },
-          ]}
-        />
-      </div>
-      <div className="mt-4 rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Next step</p>
-        <p className="mt-2 font-medium text-chrome-950">接下來建議這樣處理</p>
-        <p className="mt-2 text-sm text-chrome-700">{nextStepSummary(mission.delivery.state)}</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {missionKmz ? (
-            <a
-              className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
-              href={absoluteArtifactUrl(missionKmz.downloadUrl)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              下載 mission.kmz
-            </a>
-          ) : null}
-          {missionMeta ? (
-            <a
-              className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
-              href={absoluteArtifactUrl(missionMeta.downloadUrl)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              下載 metadata
-            </a>
-          ) : null}
-          <Link to="/missions" className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950">
-            返回任務列表
-          </Link>
-        </div>
-      </div>
-      <div className="mt-4 space-y-3">
-        {[missionKmz, missionMeta].filter(Boolean).map((artifact) => (
-          <a
-            key={artifact!.artifactName}
-            className="block rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4 transition hover:border-ember-300"
-            href={absoluteArtifactUrl(artifact!.downloadUrl)}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <p className="font-medium text-chrome-950">{artifact!.artifactName}</p>
-              <span className="text-xs text-chrome-500">下載</span>
-            </div>
-            <p className="mt-2 text-xs text-chrome-600">
-              版本 {artifact!.version} · {formatBytes(artifact!.sizeBytes)} · {artifact!.contentType}
-            </p>
-            <p className="mt-1 text-xs text-chrome-600">發布於 {formatDateTime(artifact!.publishedAt)}</p>
-            <p className="mt-1 break-all text-xs text-chrome-600">sha256 {artifact!.checksumSha256}</p>
-          </a>
-        ))}
-
-        {!missionKmz ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700">
-            目前還沒有 mission.kmz，請先確認任務是否已經完成發布。
-          </div>
-        ) : null}
-      </div>
-    </Panel>
+  const coreArtifacts = mission.artifacts.filter((artifact) =>
+    ['mission.kmz', 'mission_meta.json', 'inspection_report.html'].includes(artifact.artifactName),
   )
+  const latestReportArtifact = mission.latestReport?.downloadArtifact ?? null
 
   return (
     <div className="space-y-6">
       <ShellSection
         eyebrow="Mission detail"
         title={mission.missionName}
-        subtitle="查看任務基本資料、交付狀態、下載檔案與規劃輸入輸出。"
-        action={<StatusBadge status={mission.status} />}
+        subtitle="Review planning metadata, demo analysis output, evidence artifacts, and the downloadable inspection report from one mission record."
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge status={mission.status} />
+            <StatusBadge status={mission.delivery.state} />
+            <StatusBadge status={mission.reportStatus} />
+          </div>
+        }
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -214,44 +219,229 @@ export function MissionDetailPage() {
           <Panel>
             <DataList
               rows={[
-                { label: '任務 ID', value: mission.missionId },
-                { label: '組織', value: mission.organizationId ?? '未指定' },
-                { label: '場址', value: mission.siteId ?? '未指定' },
-                { label: '任務狀態', value: <StatusBadge status={mission.status} /> },
+                { label: 'Mission id', value: mission.missionId },
+                { label: 'Organization', value: mission.organizationId ?? 'Not linked' },
+                { label: 'Site', value: mission.siteId ?? 'Not linked' },
                 { label: 'Bundle', value: mission.bundleVersion },
-                { label: '建立時間', value: formatDateTime(mission.createdAt) },
+                { label: 'Created', value: formatDateTime(mission.createdAt) },
+                { label: 'Event count', value: mission.eventCount },
               ]}
             />
           </Panel>
 
-          {controlPlanePanel}
-
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Request</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">任務請求內容</h2>
-            <pre className="mt-4 overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
-              {JSON.stringify(mission.request, null, 2)}
-            </pre>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Reporting</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Inspection analysis and report</h2>
+            <p className="mt-2 text-sm text-chrome-700">{reportStatusMessage(mission)}</p>
+            <div className="mt-4">
+              <DataList
+                rows={[
+                  { label: 'Report status', value: <StatusBadge status={mission.reportStatus} /> },
+                  {
+                    label: 'Generated',
+                    value: mission.reportGeneratedAt ? formatDateTime(mission.reportGeneratedAt) : 'Not generated yet',
+                  },
+                  { label: 'Event count', value: mission.eventCount },
+                  {
+                    label: 'Report artifact',
+                    value: mission.latestReport?.downloadArtifact?.artifactName ?? 'No report artifact yet',
+                  },
+                ]}
+              />
+            </div>
+
+            {analysisNotice ? (
+              <div className="mt-4 rounded-2xl border border-moss-200 bg-moss-50/70 px-4 py-3 text-sm text-moss-900">
+                {analysisNotice}
+              </div>
+            ) : null}
+            {analysisError ? (
+              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {analysisError}
+              </div>
+            ) : null}
+
+            {auth.isInternal ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                <ActionButton onClick={() => void handleReprocess('normal')} disabled={reprocessAnalysis.isPending}>
+                  {reprocessAnalysis.isPending ? 'Reprocessing...' : 'Generate demo findings'}
+                </ActionButton>
+                <ActionButton
+                  variant="secondary"
+                  onClick={() => void handleReprocess('no_findings')}
+                  disabled={reprocessAnalysis.isPending}
+                >
+                  Generate clean report
+                </ActionButton>
+                <ActionButton
+                  variant="ghost"
+                  onClick={() => void handleReprocess('analysis_failed')}
+                  disabled={reprocessAnalysis.isPending}
+                >
+                  Simulate analysis failure
+                </ActionButton>
+              </div>
+            ) : null}
+
+            {latestReportArtifact ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                <ActionButton variant="secondary" onClick={() => void openArtifact(latestReportArtifact, 'open')}>
+                  Open report artifact
+                </ActionButton>
+                <ActionButton variant="ghost" onClick={() => void openArtifact(latestReportArtifact, 'download')}>
+                  Download report
+                </ActionButton>
+              </div>
+            ) : null}
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Response</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">系統回應摘要</h2>
-            <pre className="mt-4 overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
-              {JSON.stringify(mission.response, null, 2)}
-            </pre>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Evidence gallery</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Detected events</h2>
+            <div className="mt-4 grid gap-4">
+              {mission.events.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-chrome-300 bg-chrome-50/70 px-4 py-6">
+                  <p className="font-medium text-chrome-950">No inspection events recorded</p>
+                  <p className="mt-2 text-sm text-chrome-700">
+                    Generate a demo report to create anomaly events and evidence artifacts, or keep the mission as a clean pass.
+                  </p>
+                </div>
+              ) : (
+                mission.events.map((event) => (
+                  <div key={event.eventId} className={eventCardClass(event.severity)}>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="font-medium capitalize text-chrome-950">{event.category.replaceAll('_', ' ')}</p>
+                      <StatusBadge status={event.status} />
+                      <span className="rounded-full bg-white/80 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700">
+                        {formatSupportSeverity(event.severity)}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm text-chrome-800">{event.summary}</p>
+                    <p className="mt-2 text-xs text-chrome-600">Detected {formatDateTime(event.detectedAt)}</p>
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {event.evidenceArtifacts.map((artifact) => (
+                        <ActionButton
+                          key={artifact.artifactName}
+                          variant="secondary"
+                          onClick={() => void openArtifact(artifact, 'open')}
+                        >
+                          Open {artifact.artifactName}
+                        </ActionButton>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </Panel>
 
-          <div className="xl:hidden">{rail}</div>
+          {mission.route || mission.template || mission.schedule || mission.dispatch ? (
+            <Panel>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Control plane</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Linked planning metadata</h2>
+              <div className="mt-4">
+                <DataList
+                  rows={[
+                    { label: 'Route', value: mission.route?.name ?? 'Not linked' },
+                    { label: 'Route points', value: mission.route ? mission.route.pointCount : 'Not linked' },
+                    { label: 'Template', value: mission.template?.name ?? 'Not linked' },
+                    { label: 'Schedule', value: mission.schedule?.status ?? 'Not linked' },
+                    {
+                      label: 'Planned at',
+                      value: mission.schedule?.plannedAt ? formatDateTime(mission.schedule.plannedAt) : 'Not scheduled',
+                    },
+                    { label: 'Dispatch', value: mission.dispatch?.status ?? 'Not dispatched' },
+                    { label: 'Assignee', value: mission.dispatch?.assignee ?? 'Not set' },
+                    { label: 'Target', value: mission.dispatch?.executionTarget ?? 'Not set' },
+                  ]}
+                />
+              </div>
+            </Panel>
+          ) : null}
+
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Raw mission contract</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Planner request and response</h2>
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <pre className="overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
+                {JSON.stringify(mission.request, null, 2)}
+              </pre>
+              <pre className="overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
+                {JSON.stringify(mission.response, null, 2)}
+              </pre>
+            </div>
+          </Panel>
+        </div>
+
+        <div className="space-y-6">
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Delivery</p>
+            <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">
+              {deliveryHeadline(mission.delivery.state)}
+            </h2>
+            <p className="mt-2 text-sm text-chrome-700">{deliveryMessage(mission)}</p>
+            <div className="mt-4">
+              <DataList
+                rows={[
+                  { label: 'Delivery', value: <StatusBadge status={mission.delivery.state} /> },
+                  {
+                    label: 'Published',
+                    value: mission.delivery.publishedAt ? formatDateTime(mission.delivery.publishedAt) : 'Not published yet',
+                  },
+                  {
+                    label: 'Failure reason',
+                    value: mission.delivery.failureReason ?? 'No mission-level delivery failure recorded',
+                  },
+                ]}
+              />
+            </div>
+            <div className="mt-4 rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Next step</p>
+              <p className="mt-2 text-sm text-chrome-700">{nextStepSummary(mission)}</p>
+            </div>
+          </Panel>
+
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Artifacts</p>
+            <div className="mt-4 space-y-3">
+              {coreArtifacts.map((artifact) => (
+                <div key={artifact.artifactName} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="font-medium text-chrome-950">{artifact.artifactName}</p>
+                    <StatusBadge
+                      status={artifact.artifactName === 'inspection_report.html' ? mission.reportStatus : mission.delivery.state}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-chrome-600">
+                    v{artifact.version} | {formatBytes(artifact.sizeBytes)} | {artifact.contentType}
+                  </p>
+                  <p className="mt-1 text-xs text-chrome-600">Published {formatDateTime(artifact.publishedAt)}</p>
+                  <p className="mt-1 break-all text-xs text-chrome-600">sha256 {artifact.checksumSha256}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <ActionButton variant="secondary" onClick={() => void openArtifact(artifact, 'open')}>
+                      Open
+                    </ActionButton>
+                    <ActionButton variant="ghost" onClick={() => void openArtifact(artifact, 'download')}>
+                      Download
+                    </ActionButton>
+                  </div>
+                </div>
+              ))}
+              {artifactError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {artifactError}
+                </div>
+              ) : null}
+            </div>
+          </Panel>
 
           <div className="flex justify-end">
             <Link to="/missions" className="rounded-full border border-chrome-300 px-4 py-2 text-sm text-chrome-800">
-              返回任務列表
+              Back to missions
             </Link>
           </div>
         </div>
-
-        <div className="hidden xl:block">{rail}</div>
       </div>
     </div>
   )

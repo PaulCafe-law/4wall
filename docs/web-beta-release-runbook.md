@@ -86,6 +86,7 @@ The current rollout model is:
    - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
    - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
    - mission detail publication panel with download metadata, next-step guidance, event count, report summary, evidence/report artifacts, and linked route/template/schedule/dispatch metadata when the release touched control-plane surfaces
+   - internal-only analysis reprocess flow can generate demo findings, clean-pass output, and explicit analysis-failed output when the release touched event/report surfaces
    - team invite lifecycle, including resend / revoke
    - billing status clarity, payment note, receipt reference rendering, and reminder panels for overdue or due-soon invoices
 11. If the release touches internal ops surfaces, manually verify:

@@ -70,6 +70,8 @@ def test_mission_list_only_returns_current_org_records(client, session_factory) 
     assert missions[0]["deliveryStatus"] == "published"
     assert missions[0]["publishedAt"] is not None
     assert missions[0]["failureReason"] is None
+    assert missions[0]["reportStatus"] == "not_started"
+    assert missions[0]["eventCount"] == 0
 
 
 def test_mission_detail_includes_delivery_metadata_and_artifacts(client, session_factory) -> None:
@@ -115,6 +117,10 @@ def test_mission_detail_includes_delivery_metadata_and_artifacts(client, session
     assert detail["delivery"]["failureReason"] is None
     assert [artifact["artifactName"] for artifact in detail["artifacts"]] == ["mission.kmz", "mission_meta.json"]
     assert all(artifact["publishedAt"] for artifact in detail["artifacts"])
+    assert detail["reportStatus"] == "not_started"
+    assert detail["eventCount"] == 0
+    assert detail["latestReport"] is None
+    assert detail["events"] == []
 
 
 def test_mission_detail_returns_failure_reason_for_failed_mission(client, session_factory) -> None:
@@ -153,6 +159,8 @@ def test_mission_detail_returns_failure_reason_for_failed_mission(client, sessio
         "failureReason": "Route provider timed out for this site.",
     }
     assert detail["artifacts"] == []
+    assert detail["reportStatus"] == "not_started"
+    assert detail["eventCount"] == 0
 
 
 def test_mission_list_surfaces_failure_reason_for_failed_delivery(client, session_factory) -> None:
@@ -189,3 +197,5 @@ def test_mission_list_surfaces_failure_reason_for_failed_delivery(client, sessio
     assert missions[0]["deliveryStatus"] == "failed"
     assert missions[0]["publishedAt"] is None
     assert missions[0]["failureReason"] == "Planner could not publish artifacts."
+    assert missions[0]["reportStatus"] == "not_started"
+    assert missions[0]["eventCount"] == 0

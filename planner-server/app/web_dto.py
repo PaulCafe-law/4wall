@@ -37,6 +37,7 @@ InspectionAlertRuleKindLiteral = Literal[
 ]
 InspectionScheduleStatusLiteral = Literal["scheduled", "paused", "cancelled", "completed"]
 DispatchStatusLiteral = Literal["queued", "assigned", "sent", "accepted", "failed"]
+AnalysisReprocessModeLiteral = Literal["normal", "no_findings", "analysis_failed"]
 
 
 class MembershipDto(BaseModel):
@@ -333,6 +334,11 @@ class CreateDispatchRequestDto(BaseModel):
     executionTarget: str | None = None
     status: DispatchStatusLiteral = "queued"
     note: str | None = None
+
+
+class ReprocessMissionAnalysisRequestDto(BaseModel):
+    mode: AnalysisReprocessModeLiteral = "normal"
+    note: str | None = Field(default=None, max_length=500)
 
 
 class InspectionEventDto(BaseModel):

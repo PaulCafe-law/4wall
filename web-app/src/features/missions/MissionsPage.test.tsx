@@ -24,7 +24,7 @@ describe('MissionsPage', () => {
     apiMock.listMissions.mockReset()
   })
 
-  it('renders delivery-oriented mission summaries in the list', async () => {
+  it('renders delivery and reporting status in the mission index', async () => {
     apiMock.listMissions.mockResolvedValue([
       {
         missionId: 'mission-failed',
@@ -36,6 +36,9 @@ describe('MissionsPage', () => {
         deliveryStatus: 'failed',
         publishedAt: null,
         failureReason: 'Route provider timed out for this site.',
+        reportStatus: 'failed',
+        reportGeneratedAt: null,
+        eventCount: 0,
         createdAt: '2026-04-15T08:00:00Z',
       },
       {
@@ -48,6 +51,9 @@ describe('MissionsPage', () => {
         deliveryStatus: 'published',
         publishedAt: '2026-04-15T07:00:00Z',
         failureReason: null,
+        reportStatus: 'ready',
+        reportGeneratedAt: '2026-04-15T07:10:00Z',
+        eventCount: 2,
         createdAt: '2026-04-15T07:00:00Z',
       },
       {
@@ -60,6 +66,9 @@ describe('MissionsPage', () => {
         deliveryStatus: 'planning',
         publishedAt: null,
         failureReason: null,
+        reportStatus: 'not_started',
+        reportGeneratedAt: null,
+        eventCount: 0,
         createdAt: '2026-04-15T06:00:00Z',
       },
     ])
@@ -72,8 +81,10 @@ describe('MissionsPage', () => {
     expect(screen.getByText('Tower A Published')).toBeInTheDocument()
     expect(screen.getByText('Tower A Planning')).toBeInTheDocument()
     expect(screen.getByText('Route provider timed out for this site.')).toBeInTheDocument()
-    expect(screen.getByText('任務')).toBeInTheDocument()
-    expect(screen.getByText('1 筆任務已經完成交付')).toBeInTheDocument()
+    expect(screen.getByText('Mission delivery')).toBeInTheDocument()
+    expect(screen.getByText('Report ready')).toBeInTheDocument()
+    expect(screen.getByText('Needs review')).toBeInTheDocument()
+    expect(screen.getByText('1 mission artifact bundle(s) are published.')).toBeInTheDocument()
     expect(document.querySelectorAll('a[href^="/missions/mission-"]').length).toBe(3)
   })
 })
