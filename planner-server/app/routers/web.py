@@ -287,8 +287,10 @@ def web_overview(
     ).all()
 
     planning_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "planning")
+    ready_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "ready")
     failed_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "failed")
     published_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "published")
+    invoice_due_count = sum(1 for invoice in invoices if invoice.status == "invoice_due")
     overdue_count = sum(1 for invoice in invoices if invoice.status == "overdue")
     support_summary = _build_overview_support_summary(session, current_user, failed_count, overdue_count)
 
@@ -296,8 +298,10 @@ def web_overview(
         siteCount=len(sites),
         missionCount=len(mission_summaries),
         planningMissionCount=planning_count,
+        readyMissionCount=ready_count,
         failedMissionCount=failed_count,
         publishedMissionCount=published_count,
+        invoiceDueCount=invoice_due_count,
         overdueInvoiceCount=overdue_count,
         pendingInviteCount=len(pending_invites),
         recentMissions=mission_summaries[:4],
@@ -1036,6 +1040,7 @@ def _serialize_overview_invite(*, invite: Invite, organization: Organization | N
         organizationName=organization.name if organization is not None else None,
         email=invite.email,
         role=invite.role,
+        createdAt=invite.created_at,
         expiresAt=invite.expires_at,
     )
 

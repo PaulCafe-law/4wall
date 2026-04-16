@@ -29,8 +29,10 @@ describe('OverviewPage', () => {
       siteCount: 2,
       missionCount: 3,
       planningMissionCount: 1,
+      readyMissionCount: 1,
       failedMissionCount: 1,
       publishedMissionCount: 1,
+      invoiceDueCount: 1,
       overdueInvoiceCount: 1,
       pendingInviteCount: 1,
       recentMissions: [
@@ -116,6 +118,8 @@ describe('OverviewPage', () => {
     expect(screen.getByText('Tower A Published')).toBeInTheDocument()
     expect(screen.getByText('viewer@acme.test')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
+    expect(screen.getByText('今天優先要處理的事')).toBeInTheDocument()
+    expect(screen.getByText('最新交付成果')).toBeInTheDocument()
     expect(document.querySelector('a[href="/missions/mission-001"]')).toBeTruthy()
     expect(document.querySelector('a[href="/missions/mission-002"]')).toBeTruthy()
     expect(document.querySelector('a[href="/billing"]')).toBeTruthy()
@@ -127,8 +131,10 @@ describe('OverviewPage', () => {
       siteCount: 1,
       missionCount: 1,
       planningMissionCount: 0,
+      readyMissionCount: 0,
       failedMissionCount: 1,
       publishedMissionCount: 0,
+      invoiceDueCount: 0,
       overdueInvoiceCount: 1,
       pendingInviteCount: 0,
       recentMissions: [],

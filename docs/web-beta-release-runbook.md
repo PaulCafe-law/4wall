@@ -75,11 +75,11 @@ The current rollout model is:
 8. Manually verify self-serve signup and invite acceptance if auth surface changed.
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
-   - overview pending-action cards
-   - mission list delivery badges and failure copy
-   - mission detail publication panel
+   - overview pending-action cards, invoice reminders, and invite reminders
+   - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
+   - mission detail publication panel with download metadata
    - team invite lifecycle, including resend / revoke
-   - billing status clarity, payment note, and receipt reference rendering
+   - billing status clarity, payment note, receipt reference rendering, and reminder panels
 11. If the release touches internal ops surfaces, manually verify:
    - `Support` shows severity/category filters, mission/org/site context, last-observed timing, recommended next steps, and claim / acknowledge / resolve workflow state
    - `Live Ops` shows telemetry freshness, video availability, lease status, and monitor-only copy when data is degraded
@@ -93,8 +93,8 @@ The current rollout model is:
 5. Re-run `.github/workflows/smoke-beta.yml` against production values.
 6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
 7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
-8. Re-check the same overview / mission-delivery manual flows on production before closing the deploy.
-9. Re-check team invite lifecycle and billing clarity on production if the release touched team or billing surfaces.
+8. Re-check the same overview / mission-delivery / billing manual flows on production before closing the deploy.
+9. Re-check team invite lifecycle on production if the release touched team surfaces.
 10. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
 11. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
 

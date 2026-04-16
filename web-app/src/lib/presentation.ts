@@ -16,45 +16,54 @@ const roleLabels: Record<Role, string> = {
 }
 
 const statusLabels: Record<string, string> = {
-  ready: '已就緒',
+  ready: '準備交付',
   published: '已發布',
   planning: '規劃中',
   failed: '失敗',
   draft: '草稿',
   issued: '已開立',
-  invoice_due: '待付款',
+  invoice_due: '即將到期',
   paid: '已付款',
-  overdue: '逾期',
+  overdue: '已逾期',
   void: '已作廢',
+  open: '待處理',
+  claimed: '已接手',
+  acknowledged: '已確認',
+  resolved: '已結案',
+  fresh: '最新',
+  stale: '延遲',
+  missing: '缺失',
+  live: '直播中',
+  unavailable: '不可用',
 }
 
 const apiErrorLabels: Record<string, string> = {
   invalid_credentials: '帳號或密碼不正確。',
-  missing_refresh_cookie: '缺少工作區登入資訊，請重新登入。',
-  web_refresh_token_revoked: '工作區登入資訊已失效，請重新登入。',
+  missing_refresh_cookie: '目前沒有可用的登入工作階段，請重新登入。',
+  web_refresh_token_revoked: '登入工作階段已失效，請重新登入。',
   user_inactive: '這個帳號目前已停用。',
-  forbidden_role: '你目前的角色沒有權限執行這個動作。',
-  organization_slug_exists: '這個組織代稱已被使用。',
-  organization_not_found: '找不到這個組織。',
-  membership_not_found: '找不到這筆成員資料。',
+  forbidden_role: '你目前的角色沒有這個操作權限。',
+  organization_slug_exists: '這個組織代號已經被使用。',
+  organization_not_found: '找不到指定的組織。',
+  membership_not_found: '找不到指定的成員。',
   invite_not_found: '找不到這筆邀請。',
-  invite_not_resendable: '這筆邀請目前不能重新寄送。',
-  invite_revoked: '這筆邀請已被撤銷。',
+  invite_not_resendable: '這筆邀請目前無法重新寄送。',
+  invite_revoked: '這筆邀請已經撤銷。',
   invite_used: '這筆邀請已經完成開通。',
   invite_expired: '這筆邀請已經過期。',
-  site_not_found: '找不到這個場址。',
-  invoice_not_found: '找不到這張帳單。',
-  invalid_slug: '組織代稱只能包含小寫英數與連字號。',
-  origin_not_allowed: '目前來源不允許建立或更新工作區登入。',
-  rate_limit_exceeded: '操作太頻繁，請稍後再試。',
-  flight_not_found: '找不到這筆飛行資料。',
-  support_item_not_found: '找不到這筆支援項目。',
+  site_not_found: '找不到指定的場址。',
+  invoice_not_found: '找不到指定的帳單。',
+  invalid_slug: '組織代號只能使用小寫英數字與連字號。',
+  origin_not_allowed: '這個來源目前不允許建立或更新工作階段。',
+  rate_limit_exceeded: '嘗試次數過多，請稍後再試。',
+  flight_not_found: '找不到指定的飛行工作項。',
+  support_item_not_found: '找不到指定的支援項目。',
 }
 
 const auditActionLabels: Record<string, string> = {
   web_login: '登入',
   web_logout: '登出',
-  web_refresh: '刷新工作區登入',
+  web_refresh: '刷新工作階段',
   organization_created: '建立組織',
   organization_updated: '更新組織',
   invite_created: '建立邀請',
@@ -63,17 +72,17 @@ const auditActionLabels: Record<string, string> = {
   site_created: '建立場址',
   invoice_created: '建立帳單',
   invoice_updated: '更新帳單',
-  membership_updated: '更新成員角色',
+  membership_updated: '更新成員權限',
   'organization.detail.read_access': '讀取組織詳情',
-  'flight.control_intent_requested': '建立控制意圖',
+  'flight.control_intent_requested': '送出控制意圖',
   'flight.control_intent_acknowledged': '確認控制意圖',
-  'flight.live_ops.read_access': '讀取 Live Ops',
-  'flight.control_intent.read_access': '讀取控制意圖',
+  'flight.live_ops.read_access': '檢視 Live Ops',
+  'flight.control_intent.read_access': '檢視控制意圖',
   'flight.control_intent.write_access': '建立控制意圖',
-  'support.queue.claimed': '認領支援項目',
-  'support.queue.acknowledged': '標記支援項目已查看',
-  'support.queue.resolved': '標記支援項目已解決',
-  'support.queue.released': '釋放支援項目',
+  'support.queue.claimed': '接手支援項目',
+  'support.queue.acknowledged': '確認支援項目',
+  'support.queue.resolved': '完成支援項目',
+  'support.queue.released': '釋出支援項目',
 }
 
 const auditTargetTypeLabels: Record<string, string> = {
@@ -83,8 +92,8 @@ const auditTargetTypeLabels: Record<string, string> = {
   site: '場址',
   invoice: '帳單',
   mission: '任務',
-  flight: '飛行',
-  session: '登入工作區',
+  flight: '飛行工作項',
+  session: '登入工作階段',
   user: '使用者',
   membership: '成員資格',
   support_item: '支援項目',
@@ -92,7 +101,7 @@ const auditTargetTypeLabels: Record<string, string> = {
 
 const controlModeLabels: Record<ControlMode, string> = {
   monitor_only: '僅監看',
-  remote_control_requested: '遠端控制申請中',
+  remote_control_requested: '等待遠端接手',
   remote_control_active: '遠端控制中',
   released: '已釋放',
 }
@@ -109,33 +118,33 @@ const controlActionLabels: Record<ControlIntentAction, string> = {
 const supportSeverityLabels: Record<SupportSeverity, string> = {
   info: '資訊',
   warning: '警示',
-  critical: '重大',
+  critical: '關鍵',
 }
 
 const supportCategoryLabels: Record<SupportCategory, string> = {
-  mission_failed: '任務規劃失敗',
+  mission_failed: '任務失敗',
   battery_low: '電量偏低',
-  telemetry_stale: '遙測已過期',
+  telemetry_stale: '遙測延遲',
   bridge_alert: 'Bridge 告警',
 }
 
 const supportWorkflowLabels: Record<SupportWorkflowState, string> = {
   open: '待處理',
-  claimed: '已認領',
-  acknowledged: '已查看',
-  resolved: '已解決',
+  claimed: '已接手',
+  acknowledged: '已確認',
+  resolved: '已結案',
 }
 
 const alertLabels: Record<string, string> = {
   low_battery: '電量偏低',
-  telemetry_stale: '遙測已過期',
+  telemetry_stale: '遙測延遲',
   video_unavailable: '影像不可用',
   bridge_alert: 'Bridge 告警',
 }
 
 const flightStateLabels: Record<string, string> = {
   HOLD: '保持待命',
-  TRANSIT: '航線中',
+  TRANSIT: '飛行中',
   RETURNING_HOME: '返航中',
   LANDED: '已降落',
   UNKNOWN: '未知',
@@ -165,7 +174,7 @@ export function formatAccessMode(isInternal: boolean): string {
 }
 
 export function formatSearchMode(hasFilter: boolean): string {
-  return hasFilter ? '已套用篩選' : '全部結果'
+  return hasFilter ? '已套用篩選' : '全部資料'
 }
 
 export function formatAuditAction(action: string): string {
@@ -189,21 +198,21 @@ export function formatInvoiceStatus(status: InvoiceStatus): string {
 
 export function formatInvoiceStatusDescription(status: InvoiceStatus): string {
   if (status === 'paid') {
-    return '這張帳單已完成付款，可以對照付款備註與收據編號。'
+    return '這筆帳單已經完成付款，可對照收款註記與收據編號。'
   }
   if (status === 'overdue') {
-    return '這張帳單已逾期，請依付款說明安排後續處理。'
+    return '這筆帳單已逾期，請優先確認付款安排與收款回覆。'
   }
   if (status === 'invoice_due') {
-    return '這張帳單已到付款期限，請依付款說明完成入帳。'
+    return '這筆帳單即將到期，建議先確認付款時間與匯款資訊。'
   }
   if (status === 'issued') {
-    return '這張帳單已開立，正在等待付款。'
+    return '這筆帳單已開立，等待客戶安排付款。'
   }
   if (status === 'void') {
-    return '這張帳單已作廢，如需追蹤原因請查看備註與內部處理記錄。'
+    return '這筆帳單已作廢，請查看作廢原因與內部說明。'
   }
-  return '這張帳單仍在整理中，請依目前狀態安排後續處理。'
+  return '這筆帳單目前仍在整理中，後續會更新正式狀態。'
 }
 
 export function formatControlMode(mode: ControlMode): string {

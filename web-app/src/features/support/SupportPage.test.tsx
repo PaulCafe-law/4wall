@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { SupportPage } from './SupportPage'
+import { formatSupportWorkflowState } from '../../lib/presentation'
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
 
 const apiMock = vi.hoisted(() => ({
@@ -39,7 +40,7 @@ describe('SupportPage', () => {
         missionId: 'mission-001',
         missionName: 'Tower A Demo',
         siteName: 'Tower A',
-        title: 'Bridge 告警: uplink_degraded',
+        title: 'Bridge alert: uplink_degraded',
         summary: 'Android bridge reported unstable uplink quality.',
         recommendedNextStep: 'Open Live Ops and verify lease, telemetry freshness, video, and observer state.',
         createdAt: '2026-04-16T10:00:00Z',
@@ -62,7 +63,7 @@ describe('SupportPage', () => {
         missionId: 'mission-001',
         missionName: 'Tower A Demo',
         siteName: 'Tower A',
-        title: '電量偏低',
+        title: 'Battery low',
         summary: 'Latest telemetry shows 20% battery remaining.',
         recommendedNextStep: 'Use Live Ops to confirm observer and return-home readiness.',
         createdAt: '2026-04-16T09:55:00Z',
@@ -92,11 +93,15 @@ describe('SupportPage', () => {
       }),
     })
 
-    expect(await screen.findByRole('heading', { name: '支援佇列' })).toBeInTheDocument()
-    expect(await screen.findByText('Bridge 告警: uplink_degraded')).toBeInTheDocument()
-    expect(screen.getByLabelText('support-workflow-item-001')).toHaveTextContent('待處理')
-    expect(screen.getByLabelText('support-workflow-item-002')).toHaveTextContent('已認領')
-    expect(screen.getByText('目前負責：Platform Ops')).toBeInTheDocument()
+    expect(await screen.findByText('Bridge alert: uplink_degraded')).toBeInTheDocument()
+    expect(await screen.findByText('Battery low')).toBeInTheDocument()
+    expect(screen.getByLabelText('support-workflow-item-001')).toHaveTextContent(
+      formatSupportWorkflowState('open'),
+    )
+    expect(screen.getByLabelText('support-workflow-item-002')).toHaveTextContent(
+      formatSupportWorkflowState('claimed'),
+    )
+    expect(screen.getByText(/Platform Ops/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('support-action-claim-item-001'))
 

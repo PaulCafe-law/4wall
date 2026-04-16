@@ -8,23 +8,23 @@ import type { MissionSummary } from '../../lib/types'
 function describeMissionDelivery(mission: MissionSummary) {
   if (mission.deliveryStatus === 'published') {
     return mission.publishedAt
-      ? `成果已於 ${formatDateTime(mission.publishedAt)} 發布，可前往詳情下載。`
-      : '成果已發布，可前往詳情頁下載。'
+      ? `交付檔已於 ${formatDateTime(mission.publishedAt)} 發布，可前往任務詳情下載。`
+      : '交付檔已發布，可前往任務詳情下載。'
   }
   if (mission.deliveryStatus === 'failed') {
-    return mission.failureReason ?? '交付失敗，請查看任務詳情中的失敗原因。'
+    return mission.failureReason ?? '任務交付失敗，請查看任務詳情確認原因。'
   }
   if (mission.deliveryStatus === 'ready') {
-    return '規劃已完成，系統正在等待交付產物或下一步發布。'
+    return '任務已規劃完成，等待正式發布成果檔。'
   }
-  return '任務仍在規劃中，尚未進入交付完成狀態。'
+  return '任務仍在規劃中，成果檔尚未可下載。'
 }
 
 function sortByPriority(missions: MissionSummary[]) {
   const order: Record<MissionSummary['deliveryStatus'], number> = {
     failed: 0,
-    planning: 1,
-    ready: 2,
+    ready: 1,
+    planning: 2,
     published: 3,
   }
   return [...missions].sort((left, right) => {
@@ -45,15 +45,16 @@ export function MissionsPage() {
   const missions = missionsQuery.data ?? []
   const orderedMissions = sortByPriority(missions)
   const planningCount = missions.filter((mission) => mission.deliveryStatus === 'planning').length
+  const readyCount = missions.filter((mission) => mission.deliveryStatus === 'ready').length
   const publishedCount = missions.filter((mission) => mission.deliveryStatus === 'published').length
   const failedCount = missions.filter((mission) => mission.deliveryStatus === 'failed').length
 
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="任務工作區"
+        eyebrow="Mission delivery"
         title="任務"
-        subtitle="這裡集中管理所有任務請求、規劃狀態與交付結果。你現在可以直接從列表分辨哪些任務還在規劃、哪些已發布、哪些需要補救。"
+        subtitle="從同一頁查看規劃進度、交付狀態與失敗原因，快速判斷哪些任務需要優先處理。"
         action={
           <Link to="/missions/new" className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
             新增任務請求
@@ -63,25 +64,32 @@ export function MissionsPage() {
 
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="全部任務" value={missions.length} />
-        <Metric label="規劃中" value={planningCount} hint="仍需等待規劃完成或交付產物發布。" />
-        <Metric label="已發布" value={publishedCount} hint="成果已完成交付，可直接下載。" />
+        <Metric label="規劃中" value={planningCount} hint="仍在等待規劃結果或交付檔。" />
+        <Metric label="待交付" value={readyCount} hint="任務已規劃完成，等待發布成果。" />
         <Metric
-          label="失敗"
+          label="需要關注"
           value={failedCount}
-          hint={failedCount > 0 ? '請優先查看失敗原因與下一步處理方式。' : '目前沒有交付失敗的任務。'}
+          hint={failedCount > 0 ? '請優先查看失敗原因與後續處理方式。' : '目前沒有失敗任務。'}
         />
       </div>
 
+      {publishedCount > 0 ? (
+        <Panel className="border border-moss-200 bg-moss-50/60">
+          <p className="font-medium text-chrome-950">{publishedCount} 筆任務已經完成交付</p>
+          <p className="mt-2 text-sm text-chrome-700">可從任務詳情下載最新成果檔與 checksum。</p>
+        </Panel>
+      ) : null}
+
       {missionsQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在載入任務列表…</p>
+          <p className="text-sm text-chrome-700">正在載入任務清單…</p>
         </Panel>
       ) : null}
 
       {!missionsQuery.isLoading && missions.length === 0 ? (
         <EmptyState
           title="目前還沒有任務"
-          body="先建立第一筆任務請求，之後這裡會顯示規劃、交付與失敗狀態。"
+          body="先建立第一筆任務請求，後續的規劃、交付與失敗原因都會在這裡追蹤。"
           action={
             <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
               建立第一筆任務
@@ -103,12 +111,13 @@ export function MissionsPage() {
                     <StatusBadge status={mission.deliveryStatus} />
                     {mission.deliveryStatus !== mission.status ? <StatusBadge status={mission.status} /> : null}
                   </div>
-                  <p className="mt-2 text-sm text-chrome-700">建立時間：{formatDateTime(mission.createdAt)}</p>
-                  <p className="mt-1 text-sm text-chrome-700">Bundle：{mission.bundleVersion}</p>
                   <p className="mt-2 text-sm text-chrome-700">{describeMissionDelivery(mission)}</p>
+                  <p className="mt-2 text-xs text-chrome-500">
+                    建立於 {formatDateTime(mission.createdAt)} · Bundle {mission.bundleVersion}
+                  </p>
                 </div>
                 <span className="max-w-full break-all font-mono text-[11px] uppercase tracking-[0.24em] text-chrome-500 md:max-w-xs md:text-right">
-                  {mission.organizationId ?? '未綁定組織'}
+                  {mission.missionId}
                 </span>
               </div>
             </Panel>

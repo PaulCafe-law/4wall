@@ -195,6 +195,7 @@ export interface OverviewInvite {
   organizationName: string | null
   email: string
   role: Role
+  createdAt: string
   expiresAt: string
 }
 
@@ -208,8 +209,10 @@ export interface Overview {
   siteCount: number
   missionCount: number
   planningMissionCount: number
+  readyMissionCount: number
   failedMissionCount: number
   publishedMissionCount: number
+  invoiceDueCount: number
   overdueInvoiceCount: number
   pendingInviteCount: number
   recentMissions: MissionSummary[]
