@@ -47,6 +47,32 @@ function isDueSoon(value: string) {
   return diffMs >= 0 && diffMs <= 1000 * 60 * 60 * 24 * 7
 }
 
+function billingFocusMessage({
+  overdueCount,
+  dueSoonCount,
+  openCount,
+  settledCount,
+}: {
+  overdueCount: number
+  dueSoonCount: number
+  openCount: number
+  settledCount: number
+}) {
+  if (overdueCount > 0) {
+    return `先處理 ${overdueCount} 筆逾期帳單，確認付款安排、收款註記與客戶回覆是否一致。`
+  }
+  if (dueSoonCount > 0) {
+    return `有 ${dueSoonCount} 筆帳單在一週內到期，適合先提醒付款安排，避免直接滑入逾期。`
+  }
+  if (openCount > 0) {
+    return `目前共有 ${openCount} 筆待收款帳單，先確認每筆帳單的付款說明與收據資訊是否完整。`
+  }
+  if (settledCount > 0) {
+    return '目前沒有待收款帳單，已結清與作廢帳單可留作交付與對帳紀錄。'
+  }
+  return '等第一筆帳單建立後，這裡會顯示付款期限、收款註記與收據資訊。'
+}
+
 export function BillingPage() {
   const auth = useAuth()
   const queryClient = useQueryClient()
@@ -200,6 +226,13 @@ export function BillingPage() {
         </Panel>
       ) : null}
 
+      {overdueCount === 0 && dueSoonCount > 0 ? (
+        <Panel className="border border-amber-200 bg-amber-50/70">
+          <p className="font-medium text-chrome-950">目前有 {dueSoonCount} 筆帳單即將到期</p>
+          <p className="mt-2 text-sm text-chrome-700">建議先提醒付款安排，避免帳單直接轉成逾期狀態。</p>
+        </Panel>
+      ) : null}
+
       {!invoicesQuery.isLoading && invoices.length === 0 ? (
         <EmptyState title="目前還沒有帳單" body="等第一筆帳單建立後，付款狀態與收據資訊就會出現在這裡。" />
       ) : null}
@@ -211,6 +244,16 @@ export function BillingPage() {
       ) : null}
 
       <div className="grid gap-4">
+        {invoices.length > 0 ? (
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Focus</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">本頁建議先處理的事</h2>
+            <p className="mt-2 text-sm text-chrome-700">
+              {billingFocusMessage({ overdueCount, dueSoonCount, openCount, settledCount })}
+            </p>
+          </Panel>
+        ) : null}
+
         {invoices.map((invoice) => (
           <Panel key={invoice.invoiceId}>
             <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-start md:justify-between">

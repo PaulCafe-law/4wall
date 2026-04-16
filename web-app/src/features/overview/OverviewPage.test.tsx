@@ -162,4 +162,43 @@ describe('OverviewPage', () => {
       expect(document.querySelector('a[href="/live-ops"]')).toBeTruthy()
     })
   })
+
+  it('shows setup guidance when the workspace has sites but no missions yet', async () => {
+    apiMock.getOverview.mockResolvedValue({
+      siteCount: 1,
+      missionCount: 0,
+      planningMissionCount: 0,
+      readyMissionCount: 0,
+      failedMissionCount: 0,
+      publishedMissionCount: 0,
+      invoiceDueCount: 0,
+      overdueInvoiceCount: 0,
+      pendingInviteCount: 0,
+      recentMissions: [],
+      recentDeliveries: [],
+      recentInvoices: [],
+      pendingInvites: [],
+      supportSummary: null,
+    })
+
+    renderWithProviders(<OverviewPage />, {
+      auth: createAuthValue({
+        session: createSession({
+          memberships: [
+            {
+              membershipId: 'membership-001',
+              organizationId: 'org-001',
+              role: 'customer_admin',
+              isActive: true,
+            },
+          ],
+        }),
+        isInternal: false,
+      }),
+    })
+
+    expect(await screen.findByText('場址已就緒，下一步是建立任務')).toBeInTheDocument()
+    expect(screen.getByText('你已經有可用場址，現在可以建立第一筆任務請求，讓交付、帳務與團隊流程開始累積。')).toBeInTheDocument()
+    expect(document.querySelector('a[href="/missions/new"]')).toBeTruthy()
+  })
 })
