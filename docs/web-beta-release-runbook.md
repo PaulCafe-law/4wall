@@ -91,8 +91,9 @@ The current rollout model is:
    - billing status clarity, payment note, receipt reference rendering, and reminder panels for overdue or due-soon invoices
 11. If the release touches internal ops surfaces, manually verify:
    - `Support` shows severity/category filters, mission/org/site context, last-observed timing, recommended next steps, and claim / acknowledge / resolve workflow state
-   - `Support` includes analysis/report failure categories if the release touched event/report flows
-   - `Live Ops` shows telemetry freshness, video availability, lease status, dispatch context, and monitor-only copy when data is degraded
+   - `Support` includes analysis/report failure categories, including `report_generation_failed`, if the release touched event/report flows
+   - `Live Ops` shows telemetry freshness, video availability, lease status, dispatch context, report status, event count, report summary, and monitor-only copy when data is degraded
+   - one report-failed mission and one clean-pass mission tell the same story across mission detail, support, and live ops when the release touched event/report flows
 
 ## Promotion to Production
 
@@ -108,7 +109,10 @@ The current rollout model is:
 10. Re-check one mission detail page on production to confirm linked planning metadata still renders after dispatch if the release touched control-plane surfaces.
 11. Re-check team invite lifecycle on production if the release touched team surfaces.
 12. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
-13. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
+13. If the release touched event/report or internal-ops surfaces, confirm on production that:
+   - clean-pass missions do not surface phantom anomaly warnings
+   - report-failed missions generate a support item and a live-ops report blocker summary
+14. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

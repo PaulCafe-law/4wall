@@ -10,7 +10,13 @@ RoleLiteral = Literal["platform_admin", "ops", "customer_admin", "customer_viewe
 InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdue", "void"]
 SupportSeverityLiteral = Literal["info", "warning", "critical"]
 MissionDeliveryStateLiteral = Literal["planning", "ready", "failed", "published"]
-SupportCategoryLiteral = Literal["mission_failed", "battery_low", "telemetry_stale", "bridge_alert"]
+SupportCategoryLiteral = Literal[
+    "mission_failed",
+    "battery_low",
+    "telemetry_stale",
+    "bridge_alert",
+    "report_generation_failed",
+]
 SupportWorkflowStateLiteral = Literal["open", "claimed", "acknowledged", "resolved"]
 SupportQueueActionLiteral = Literal["claim", "acknowledge", "resolve", "release"]
 TelemetryFreshnessLiteral = Literal["fresh", "stale", "missing"]
@@ -580,6 +586,10 @@ class LiveFlightSummaryDto(BaseModel):
     video: VideoChannelDescriptorDto = Field(default_factory=VideoChannelDescriptorDto)
     controlLease: ControlLeaseDto = Field(default_factory=ControlLeaseDto)
     alerts: list[str] = Field(default_factory=list)
+    reportStatus: InspectionReportStatusLiteral = "not_started"
+    reportGeneratedAt: datetime | None = None
+    eventCount: int = 0
+    reportSummary: str | None = None
 
 
 class LiveFlightDetailDto(LiveFlightSummaryDto):

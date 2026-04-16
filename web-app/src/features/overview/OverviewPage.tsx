@@ -460,7 +460,10 @@ export function OverviewPage() {
                       </span>
                     </div>
                     <p className="mt-2 text-sm text-chrome-700">
-                      {overview.latestReportSummary.summary ?? 'No report summary available.'}
+                      {overview.latestReportSummary.summary ??
+                        (overview.latestReportSummary.eventCount === 0
+                          ? 'The latest report is a clean inspection pass with no anomaly events.'
+                          : 'No report summary available.')}
                     </p>
                   </>
                 ) : (
@@ -481,7 +484,11 @@ export function OverviewPage() {
                     <p className="mt-2 text-sm text-chrome-700">{overview.latestEventSummary.summary}</p>
                   </>
                 ) : (
-                  <p className="mt-2 text-sm text-chrome-700">No anomaly event has been recorded yet.</p>
+                  <p className="mt-2 text-sm text-chrome-700">
+                    {overview.latestReportSummary?.status === 'ready' && overview.latestReportSummary.eventCount === 0
+                      ? 'The latest completed report is a clean pass with no anomaly events.'
+                      : 'No anomaly event has been recorded yet.'}
+                  </p>
                 )}
               </div>
             </div>

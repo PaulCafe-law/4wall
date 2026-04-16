@@ -120,12 +120,22 @@ def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
     assert events_response.status_code == 202
     assert telemetry_response.status_code == 202
 
+    reprocess_response = client.post(
+        f"/v1/missions/{mission_id}/analysis/reprocess",
+        headers=ops_headers,
+        json={"mode": "normal"},
+    )
+    assert reprocess_response.status_code == 202, reprocess_response.text
+
     list_response = client.get("/v1/live-ops/flights", headers=ops_headers)
     assert list_response.status_code == 200, list_response.text
     listed = list_response.json()
     assert listed[0]["flightId"] == "flight-live-001"
     assert listed[0]["telemetryFreshness"] == "fresh"
     assert listed[0]["video"]["status"] == "live"
+    assert listed[0]["reportStatus"] == "ready"
+    assert listed[0]["eventCount"] == 2
+    assert "inspection events" in listed[0]["reportSummary"]
 
     response = client.get("/v1/live-ops/flights/flight-live-001", headers=ops_headers)
 
@@ -144,6 +154,10 @@ def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
     assert body["video"]["ageSeconds"] is not None
     assert body["controlLease"]["mode"] == "remote_control_requested"
     assert body["controlLease"]["observerReady"] is True
+    assert body["reportStatus"] == "ready"
+    assert body["eventCount"] == 2
+    assert body["reportGeneratedAt"] is not None
+    assert body["reportSummary"] is not None
     assert body["recentEvents"][0]["eventType"] in {"VIDEO_STREAM_STATE", "CONTROL_LEASE_UPDATED"}
 
     customer_response = client.get("/v1/live-ops/flights/flight-live-001", headers=admin_headers)
@@ -320,6 +334,33 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
     customer_response = client.get("/v1/support/queue", headers=admin_headers)
     assert customer_response.status_code == 403
     assert customer_response.json()["detail"] == "forbidden_role"
+
+
+def test_support_queue_includes_report_generation_failures(
+    client,
+    session_factory,
+    auth_headers,
+) -> None:
+    _, mission_id, _, _, ops_headers = _prepare_live_mission(client, session_factory)
+
+    reprocess_response = client.post(
+        f"/v1/missions/{mission_id}/analysis/reprocess",
+        headers=ops_headers,
+        json={"mode": "analysis_failed"},
+    )
+    assert reprocess_response.status_code == 202, reprocess_response.text
+
+    internal_response = client.get("/v1/support/queue", headers=ops_headers)
+    assert internal_response.status_code == 200, internal_response.text
+    items = internal_response.json()
+
+    report_item = next(item for item in items if item["category"] == "report_generation_failed")
+    assert report_item["missionId"] == mission_id
+    assert report_item["severity"] == "critical"
+    assert report_item["title"] == "Inspection report generation failed"
+    assert "analysis pipeline" in report_item["summary"].lower()
+    assert "rerun demo analysis" in report_item["recommendedNextStep"]
+    assert report_item["workflow"]["state"] == "open"
 
 
 def test_support_queue_actions_update_workflow_and_hide_resolved_items(

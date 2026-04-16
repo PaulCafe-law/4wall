@@ -144,6 +144,7 @@ const supportCategoryLabels: Record<SupportCategory, string> = {
   battery_low: 'Low battery',
   telemetry_stale: 'Telemetry stale',
   bridge_alert: 'Bridge alert',
+  report_generation_failed: 'Report generation failed',
 }
 
 const supportWorkflowLabels: Record<SupportWorkflowState, string> = {

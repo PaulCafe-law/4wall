@@ -66,14 +66,14 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
-| Overview | Overview aggregate, daily landing page, latest report summary, and latest event summary exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Still needs stronger demo-oriented prioritization and rehearsal polish |
+| Overview | Overview aggregate, daily landing page, latest report summary, latest event summary, and clean-pass fallback messaging exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Still needs stronger demo-oriented prioritization and final rehearsal polish |
 | Inspection control plane | Sites, mission request workflow, first-class route/template/schedule/dispatch models, and an initial `/control-plane` UI slice exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs stronger map presentation, editing flows, and tighter demo guidance around route -> schedule -> dispatch progression |
-| Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, report status, event count, evidence, and report artifact download | Delivery-oriented event / evidence / report surface | Still needs deeper summary polish and tighter customer-facing empty states |
+| Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, report status, event count, evidence, report artifact download, and clean-pass / analysis-failed next-step guidance | Delivery-oriented event / evidence / report surface | Still needs deeper summary polish and tighter customer-facing empty states |
 | Event interpretation and reporting | Mission-linked demo analysis, evidence artifacts, summaries, and downloadable reports exist | Mission-linked anomaly events, evidence screenshots, summaries, and downloadable reports | Still needs broader analysis modes and more realistic demo datasets |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state exist | Support demo operator setup and reviewer access cleanly | Still needs polish on invite feedback loops and guidance |
-| Support queue | Internal-only queue includes mission/org/site context, severity, last-observed timing, recommended next steps, and handling workflow state | Triage surface that understands analysis/report failures as first-class cases | Needs new categories and cross-linking into report/event workflows |
-| Live Ops | Internal-only monitoring exposes telemetry freshness, video availability, lease state, and control-intent history | Stable monitor-only surface that complements the demo | Still needs alignment with new dispatch/reporting story and stronger incident context |
-| Release process | Dual-role smoke and one checklist exist | One coherent release and demo acceptance path | Still missing demo-specific manual evidence capture for route/schedule/report flows |
+| Support queue | Internal-only queue includes mission/org/site context, severity, last-observed timing, recommended next steps, handling workflow state, and report-generation-failed categories | Triage surface that understands analysis/report failures as first-class cases | Still needs richer cross-linking into event/report workflows and rehearsal polish |
+| Live Ops | Internal-only monitoring exposes telemetry freshness, video availability, lease state, control-intent history, and report status/summary context | Stable monitor-only surface that complements the demo | Still needs stronger incident context and tighter route-to-report storytelling |
+| Release process | Dual-role smoke and one checklist exist, and docs now include report-failure / live-ops verification steps | One coherent release and demo acceptance path | Still missing final manual evidence capture discipline for the demo walkthrough |
 
 ## Phase 1 Deliverables
 
@@ -83,6 +83,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 - control-plane UI/API slices for site map, route/template, schedule, and dispatch
 - event/report UI/API slices for event list, evidence gallery, report summary, and report artifact download
 - updated support/live-ops diagnostics aligned with event/report failures
+- updated support/live-ops diagnostics aligned with event/report failures and clean-pass reporting states
 - preserve existing Phase 1 product polish on setup guidance, billing reminders, and next-step UX where it supports the demo story
 
 ## Acceptance
@@ -96,7 +97,7 @@ Phase 1 is complete when:
   - dispatch a mission
   - open mission detail and confirm linked planning metadata
 - a completed mission can show event count, evidence, summary, and downloadable report output
-- overview, missions, mission detail, support, and live ops all tell the same story for one mission lifecycle
+- overview, missions, mission detail, support, and live ops all tell the same story for one mission lifecycle, including clean-pass and report-generation-failed cases
 - customers and reviewers can understand the output without engineering translation
 - release validation and demo rehearsal can be executed from a single checklist without guessing which docs are authoritative
 
