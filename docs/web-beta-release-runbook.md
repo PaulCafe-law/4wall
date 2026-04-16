@@ -19,6 +19,7 @@ The Phase 1 demo scope and target contracts live in:
 
 - `docs/PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md`
 - `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
+- `docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md`
 
 ## Required Inputs
 
@@ -119,6 +120,7 @@ The current rollout model is:
 When the release touches the Phase 1 demo slice, capture the full screenshot and artifact package defined in:
 
 - `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
+- `docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md`
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

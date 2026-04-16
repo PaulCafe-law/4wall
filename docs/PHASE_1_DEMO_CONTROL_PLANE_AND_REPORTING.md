@@ -160,6 +160,7 @@ The minimum demo path is:
 The repeatable rehearsal path and evidence package now live in:
 
 - `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
+- `docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md`
 
 ## Acceptance
 
