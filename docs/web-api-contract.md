@@ -10,6 +10,8 @@
   - rotating refresh tokens in an HttpOnly cookie
   - same-site app/api deployment so browser auth stays same-site
 - Artifact downloads remain authenticated and must also enforce org-scoped authorization.
+- Phase 1 demo additions are contract-first. DTOs and endpoint shape are locked before every route is fully implemented.
+- Control-plane APIs stop at planning, scheduling, dispatch, and reporting metadata. They do not own active flight control.
 
 ## Session Model
 
@@ -204,6 +206,11 @@ Response also sets the `fw_refresh` cookie.
 ### GET /v1/missions/{missionId}
 
 - returns mission summary, planning status, artifact metadata, and recent flight uploads
+- Phase 1 demo rollout extends this detail shape with:
+  - route / template / schedule / dispatch metadata
+  - event count
+  - latest event summary
+  - report status and latest report summary
 
 ### POST /v1/missions/plan
 
@@ -259,6 +266,67 @@ Allowed statuses:
 - `ready`
 - `failed`
 - `archived`
+
+### Planned Phase 1 Demo Additions
+
+These endpoints are part of the Phase 1 demo rollout and should land incrementally after the contract is locked.
+
+#### Control Plane
+
+- `GET /v1/inspection/routes`
+- `POST /v1/inspection/routes`
+- `PATCH /v1/inspection/routes/{routeId}`
+- `GET /v1/inspection/templates`
+- `POST /v1/inspection/templates`
+- `PATCH /v1/inspection/templates/{templateId}`
+- `GET /v1/inspection/schedules`
+- `POST /v1/inspection/schedules`
+- `PATCH /v1/inspection/schedules/{scheduleId}`
+- `POST /v1/missions/{missionId}/dispatch`
+
+These endpoints manage:
+
+- site-linked route and template records
+- schedule definitions
+- alert configuration
+- mission-level dispatch metadata
+
+They do not send any real-time control command to Android or the aircraft.
+
+#### Event and Report Generation
+
+- `GET /v1/missions/{missionId}/events`
+- `GET /v1/missions/{missionId}/report`
+- `POST /v1/missions/{missionId}/analysis/reprocess` internal-only
+
+These endpoints manage:
+
+- mission-linked event summaries
+- evidence artifacts
+- report summary and download artifact
+- internal-only reprocessing / regeneration requests
+
+### Mission Contract Additions
+
+`MissionSummary` and `MissionDetail` should formally support:
+
+- `reportStatus`
+- `reportGeneratedAt`
+- `eventCount`
+- `latestReport`
+- `events`
+- linked `route`, `template`, `schedule`, and `dispatch` metadata
+
+### Overview Contract Additions
+
+`GET /v1/web/overview` should formally support:
+
+- `scheduledMissionCount`
+- `runningMissionCount`
+- `failedMissionCount`
+- `latestReportSummary`
+- `latestEventSummary`
+- `supportSummary`
 
 ## Flight Data Read APIs
 
