@@ -269,7 +269,7 @@ Allowed statuses:
 
 ### Phase 1 Demo Additions
 
-These endpoints are part of the Phase 1 demo rollout. The control-plane slice is now available in the first Batch 2 implementation. Event/report endpoints remain pending.
+These endpoints are part of the Phase 1 demo rollout. The control-plane slice is available from Batch 2. The first event/report slice is available from Batch 3.
 
 #### Control Plane
 
@@ -307,6 +307,12 @@ These endpoints manage:
 - evidence artifacts
 - report summary and download artifact
 - internal-only reprocessing / regeneration requests
+
+The current Batch 3 implementation is deterministic and demo-oriented:
+
+- `mode="normal"` creates demo findings, evidence artifacts, and an HTML report
+- `mode="no_findings"` creates a clean report with zero events
+- `mode="analysis_failed"` records a failed report state without evidence artifacts
 
 ### Mission Contract Additions
 

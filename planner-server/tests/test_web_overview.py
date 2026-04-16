@@ -111,6 +111,8 @@ def test_customer_overview_aggregates_missions_invoices_and_pending_invites(clie
     assert {invoice["status"] for invoice in body["recentInvoices"]} == {"invoice_due", "overdue"}
     assert body["pendingInvites"][0]["organizationName"] == "Overview Org"
     assert body["pendingInvites"][0]["createdAt"] is not None
+    assert body["latestReportSummary"] is None
+    assert body["latestEventSummary"] is None
 
 
 def test_internal_overview_includes_support_summary(client, session_factory) -> None:

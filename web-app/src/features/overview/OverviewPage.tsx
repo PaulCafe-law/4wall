@@ -53,12 +53,12 @@ function buildActionItems({
   if (failedMissionCount > 0) {
     items.push({
       key: 'failed',
-      title: `${failedMissionCount} 筆任務需要優先處理`,
+      title: `${failedMissionCount} mission record(s) need review`,
       body: isInternal
-        ? '先確認失敗原因、支援建議與後續處理人，再決定是否要重新規劃或交接。'
-        : '這些任務尚未完成交付，請先查看失敗原因並決定是否重新送件。',
+        ? 'Open Support or the mission index to review failures, stale telemetry, and dispatch follow-up.'
+        : 'Open the mission index to review failures, delivery issues, or missing artifacts.',
       to: isInternal ? '/support' : '/missions',
-      actionLabel: isInternal ? '前往支援工作台' : '查看任務',
+      actionLabel: isInternal ? 'Open Support' : 'Review missions',
       tone: 'critical',
     })
   }
@@ -66,10 +66,10 @@ function buildActionItems({
   if (readyMissionCount > 0) {
     items.push({
       key: 'ready',
-      title: `${readyMissionCount} 筆任務已完成規劃`,
-      body: '任務已準備好進入交付階段，請優先檢查內容並確認成果是否已發布。',
+      title: `${readyMissionCount} mission bundle(s) are ready`,
+      body: 'These missions have planning output but still need report generation, publish, or dispatch follow-up.',
       to: '/missions',
-      actionLabel: '檢查交付狀態',
+      actionLabel: 'Open ready missions',
       tone: 'warning',
     })
   }
@@ -77,10 +77,10 @@ function buildActionItems({
   if (planningMissionCount > 0) {
     items.push({
       key: 'planning',
-      title: `${planningMissionCount} 筆任務仍在規劃中`,
-      body: '這些任務還在等待規劃結果或成果檔，先確認是否有卡住的地方。',
+      title: `${planningMissionCount} mission(s) are still planning`,
+      body: 'Route generation or bundle assembly is still in progress. Keep these in the daily operating queue.',
       to: '/missions',
-      actionLabel: '查看規劃進度',
+      actionLabel: 'Review planning queue',
       tone: 'warning',
     })
   }
@@ -88,19 +88,19 @@ function buildActionItems({
   if (overdueInvoiceCount > 0) {
     items.push({
       key: 'overdue',
-      title: `${overdueInvoiceCount} 筆帳單已逾期`,
-      body: '先確認付款安排、匯款資訊與收款回覆，避免交付與帳務狀態脫節。',
+      title: `${overdueInvoiceCount} invoice(s) are overdue`,
+      body: 'Billing needs follow-up before the account drifts out of an operable state.',
       to: '/billing',
-      actionLabel: '查看逾期帳單',
+      actionLabel: 'Open billing',
       tone: 'critical',
     })
   } else if (invoiceDueCount > 0) {
     items.push({
       key: 'due',
-      title: `${invoiceDueCount} 筆帳單即將到期`,
-      body: '這些帳單已接近付款期限，適合先提醒客戶或對照付款說明。',
+      title: `${invoiceDueCount} invoice(s) are due soon`,
+      body: 'Keep payment tracking current so finance follow-up stays ahead of overdue work.',
       to: '/billing',
-      actionLabel: '查看到期提醒',
+      actionLabel: 'Check invoices',
       tone: 'warning',
     })
   }
@@ -108,10 +108,10 @@ function buildActionItems({
   if (pendingInviteCount > 0) {
     items.push({
       key: 'invite',
-      title: `${pendingInviteCount} 筆團隊邀請待開通`,
-      body: '確認對方是否已收到邀請連結，必要時重新寄送或撤銷後重建。',
+      title: `${pendingInviteCount} invite(s) are still pending`,
+      body: 'Team access has been issued but not accepted yet. Review the team page and resend if needed.',
       to: '/team',
-      actionLabel: '管理團隊邀請',
+      actionLabel: 'Open team access',
       tone: 'neutral',
     })
   }
@@ -130,36 +130,44 @@ function actionCardClass(tone: ActionItem['tone']) {
 }
 
 function deliverySummary(mission: MissionSummary) {
+  if (mission.reportStatus === 'ready') {
+    return `${mission.eventCount} event${mission.eventCount === 1 ? '' : 's'} recorded. Report ready${
+      mission.reportGeneratedAt ? ` | ${formatDateTime(mission.reportGeneratedAt)}` : ''
+    }.`
+  }
+  if (mission.reportStatus === 'failed') {
+    return mission.failureReason ?? 'Report generation failed for this mission.'
+  }
   if (mission.deliveryStatus === 'published') {
-    return mission.publishedAt ? `已於 ${formatDateTime(mission.publishedAt)} 發布交付檔。` : '交付檔已發布。'
+    return mission.publishedAt ? `Artifacts published ${formatDateTime(mission.publishedAt)}.` : 'Artifacts published.'
   }
   if (mission.deliveryStatus === 'failed') {
-    return mission.failureReason ?? '交付流程失敗，請查看任務詳情。'
+    return mission.failureReason ?? 'Mission delivery failed.'
   }
   if (mission.deliveryStatus === 'ready') {
-    return '任務已規劃完成，等待發布交付檔。'
+    return 'Mission bundle is ready, but publish or report generation still needs follow-up.'
   }
-  return '任務仍在規劃中，成果檔尚未可下載。'
+  return 'Mission still needs follow-up before delivery and reporting are complete.'
 }
 
 function invoiceSummary(invoice: BillingInvoice) {
   if (invoice.status === 'overdue') {
-    return `已逾期，原定付款日為 ${formatDate(invoice.dueDate)}。`
+    return `Overdue since ${formatDate(invoice.dueDate)}`
   }
   if (invoice.status === 'invoice_due') {
-    return `即將到期，付款日為 ${formatDate(invoice.dueDate)}。`
+    return `Due on ${formatDate(invoice.dueDate)}`
   }
   if (invoice.status === 'paid') {
-    return '已完成付款，可對照收款註記與收據編號。'
+    return 'Payment confirmed.'
   }
   if (invoice.status === 'void') {
-    return '這筆帳單已作廢。'
+    return 'Invoice has been voided.'
   }
-  return `目前狀態為 ${invoice.status}。`
+  return `Current status: ${invoice.status}`
 }
 
 function inviteSummary(invite: OverviewInvite) {
-  return `建立於 ${formatDateTime(invite.createdAt)}，到期日為 ${formatDate(invite.expiresAt)}。`
+  return `Created ${formatDateTime(invite.createdAt)} | expires ${formatDate(invite.expiresAt)}`
 }
 
 function buildGuidanceItem({
@@ -175,28 +183,28 @@ function buildGuidanceItem({
 }): GuidanceItem | null {
   if (siteCount === 0) {
     return {
-      title: '先建立第一個場址',
-      body: '場址是任務與交付的起點。先把第一個場址建好，之後才能穩定建立任務並追蹤成果。',
+      title: 'Start by creating a site',
+      body: 'The control plane needs a site record before routes, schedules, missions, and reports can be attached to anything concrete.',
       to: '/sites',
-      actionLabel: '建立場址',
+      actionLabel: 'Open sites',
     }
   }
 
   if (missionCount === 0) {
     return {
-      title: '場址已就緒，下一步是建立任務',
-      body: '你已經有可用場址，現在可以建立第一筆任務請求，讓交付、帳務與團隊流程開始累積。',
+      title: 'No missions exist yet',
+      body: 'Create the first mission to connect planning, dispatch, event generation, evidence, and reporting in one record.',
       to: '/missions/new',
-      actionLabel: '建立第一筆任務',
+      actionLabel: 'Create mission',
     }
   }
 
   if (!isInternal && pendingInviteCount === 0) {
     return {
-      title: '可邀請團隊一起追蹤進度',
-      body: '如果這個工作區已經開始有任務與交付，建議邀請其他同事加入，讓交付、帳務與站點資訊不只留在單一帳號。',
+      title: 'Invite the rest of the field team',
+      body: 'Add a viewer or another admin before the demo handoff so access does not depend on one account.',
       to: '/team',
-      actionLabel: '管理團隊',
+      actionLabel: 'Manage team',
     }
   }
 
@@ -214,7 +222,7 @@ export function OverviewPage() {
   if (overviewQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">正在載入首頁摘要…</p>
+        <p className="text-sm text-chrome-700">Loading overview aggregate...</p>
       </Panel>
     )
   }
@@ -222,8 +230,8 @@ export function OverviewPage() {
   if (!overviewQuery.data) {
     return (
       <EmptyState
-        title="目前無法取得首頁摘要"
-        body="請重新整理頁面；如果問題持續存在，再檢查 API 與登入工作階段是否正常。"
+        title="Overview is unavailable"
+        body="The overview aggregate could not be loaded. Verify API health and the current organization scope."
       />
     )
   }
@@ -261,73 +269,84 @@ export function OverviewPage() {
     <div className="space-y-6">
       <ShellSection
         eyebrow={auth.isInternal ? 'Internal Ops' : 'Customer Portal'}
-        title="總覽"
+        title="Overview"
         subtitle={
           auth.isInternal
-            ? '先看目前最需要處理的任務、帳務與邀請，再決定要進支援工作台、Live Ops 或個別任務。'
-            : '把今天需要注意的任務交付、帳單提醒與團隊邀請收斂在同一頁，方便快速判斷下一步。'
+            ? 'Track demo readiness, support load, and the latest reporting output without dropping into flight control.'
+            : 'Track mission progress, report generation, billing follow-up, and team access from one daily dashboard.'
         }
         action={
           <Link to="/missions/new" className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
-            新增任務請求
+            Create mission
           </Link>
         }
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <Metric label="場址數" value={overview.siteCount} hint="目前這個工作區可用的場址數量。" />
-        <Metric label="規劃中任務" value={overview.planningMissionCount} hint="仍在等待規劃結果或交付檔。" />
-        <Metric label="待交付任務" value={overview.readyMissionCount} hint="任務已規劃完成，等待正式發布成果。" />
-        <Metric label="已發布交付" value={overview.publishedMissionCount} hint="已有成果檔可供下載的任務。" />
+        <Metric label="Sites" value={overview.siteCount} hint="Available site contexts for routes and missions." />
+        <Metric label="Planning" value={overview.planningMissionCount} hint="Still generating route or bundle output." />
+        <Metric
+          label="Ready"
+          value={overview.readyMissionCount}
+          hint="Bundle is ready, but publish or reporting still needs follow-up."
+        />
+        <Metric
+          label="Published"
+          value={overview.publishedMissionCount}
+          hint="Core mission artifacts are already available."
+        />
         {auth.isInternal ? (
           <Metric
-            label="支援項目"
+            label="Open support"
             value={overview.supportSummary?.openCount ?? 0}
             hint={
               overview.supportSummary
-                ? `${overview.supportSummary.criticalCount} 筆關鍵 / ${overview.supportSummary.warningCount} 筆警示`
-                : '目前沒有需要支援的工作項。'
+                ? `${overview.supportSummary.criticalCount} critical / ${overview.supportSummary.warningCount} warning`
+                : 'No support aggregation for this scope.'
             }
           />
         ) : (
           <Metric
-            label="待處理事項"
+            label="Pending actions"
             value={customerPendingCount}
-            hint={customerPendingCount > 0 ? '把任務、帳務與邀請提醒集中在這裡。' : '目前沒有待處理的提醒。'}
+            hint={customerPendingCount > 0 ? 'Customer follow-up still required.' : 'No outstanding customer-side actions.'}
           />
         )}
       </div>
 
       {!hasAnyData ? (
         <EmptyState
-          title={guidanceItem?.title ?? '這個工作區還沒有資料'}
-          body={guidanceItem?.body ?? '先建立第一個任務請求，後續的交付、帳單與團隊邀請就會逐步出現在這裡。'}
+          title={guidanceItem?.title ?? 'No workspace data yet'}
+          body={
+            guidanceItem?.body ??
+            'Create a site, then create a mission to unlock the control-plane, reporting, and customer demo surfaces.'
+          }
           action={
             <Link
               to={guidanceItem?.to ?? '/missions/new'}
               className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white"
             >
-              {guidanceItem?.actionLabel ?? '建立第一筆任務'}
+              {guidanceItem?.actionLabel ?? 'Create mission'}
             </Link>
           }
         />
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <div className="space-y-6">
           <Panel>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Pending actions</p>
-                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">今天優先要處理的事</h2>
+                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">What needs attention now</h2>
               </div>
               {auth.isInternal ? (
                 <div className="flex flex-wrap items-center gap-4 text-sm">
                   <Link to="/support" className="text-ember-500 underline">
-                    前往支援工作台
+                    Open Support
                   </Link>
                   <Link to="/live-ops" className="text-ember-500 underline">
-                    查看 Live Ops
+                    Open Live Ops
                   </Link>
                 </div>
               ) : null}
@@ -350,7 +369,9 @@ export function OverviewPage() {
                     </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-chrome-700">目前沒有需要優先處理的提醒，可以直接查看任務或建立新的請求。</p>
+                  <p className="text-sm text-chrome-700">
+                    Nothing urgent is open right now. Use the mission index or control plane to keep the demo moving.
+                  </p>
                 )
               ) : (
                 actionItems.map((item) => (
@@ -377,18 +398,18 @@ export function OverviewPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Recent missions</p>
-                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">近期任務與交付</h2>
+                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Mission queue</h2>
               </div>
               <Link to="/missions" className="text-sm text-ember-500 underline">
-                查看全部任務
+                Open missions
               </Link>
             </div>
             <div className="mt-4 grid gap-3">
               {overview.recentMissions.length === 0 ? (
                 <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
-                  <p className="font-medium text-chrome-950">目前還沒有任務資料</p>
+                  <p className="font-medium text-chrome-950">No recent missions yet</p>
                   <p className="mt-2 text-sm text-chrome-700">
-                    先確認場址資料是否完整，然後建立第一筆任務請求。之後這裡會顯示最近任務與交付進度。
+                    Create or import a mission to start the route-to-report demo story.
                   </p>
                 </div>
               ) : (
@@ -401,10 +422,11 @@ export function OverviewPage() {
                     <div className="flex flex-wrap items-center gap-3">
                       <p className="font-medium text-chrome-950">{mission.missionName}</p>
                       <StatusBadge status={mission.deliveryStatus} />
+                      <StatusBadge status={mission.reportStatus} />
                     </div>
                     <p className="mt-2 text-sm text-chrome-700">{deliverySummary(mission)}</p>
                     <p className="mt-2 text-xs text-chrome-500">
-                      建立於 {formatDateTime(mission.createdAt)} · Bundle {mission.bundleVersion}
+                      Created {formatDateTime(mission.createdAt)} | Bundle {mission.bundleVersion}
                     </p>
                   </Link>
                 ))
@@ -417,36 +439,51 @@ export function OverviewPage() {
           <Panel>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Delivery</p>
-                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最新交付成果</h2>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Reporting</p>
+                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Latest report and anomaly</h2>
               </div>
               <Link to="/missions" className="text-sm text-ember-500 underline">
-                查看任務明細
+                Open mission detail
               </Link>
             </div>
             <div className="mt-4 grid gap-3">
-              {overview.recentDeliveries.length === 0 ? (
-                <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
-                  <p className="font-medium text-chrome-950">目前還沒有已發布的交付成果</p>
-                  <p className="mt-2 text-sm text-chrome-700">
-                    任務一旦進入發布狀態，這裡會列出最新成果。若目前只有規劃中或待交付任務，請先查看任務明細。
-                  </p>
-                </div>
-              ) : (
-                overview.recentDeliveries.map((mission) => (
-                  <Link
-                    key={mission.missionId}
-                    to={`/missions/${mission.missionId}`}
-                    className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4 transition hover:border-chrome-400"
-                  >
-                    <div className="flex flex-wrap items-center gap-3">
-                      <p className="font-medium text-chrome-950">{mission.missionName}</p>
-                      <StatusBadge status={mission.deliveryStatus} />
+              <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                <p className="font-medium text-chrome-950">Latest report</p>
+                {overview.latestReportSummary ? (
+                  <>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <StatusBadge status={overview.latestReportSummary.status} />
+                      <span className="text-sm text-chrome-700">
+                        {overview.latestReportSummary.generatedAt
+                          ? formatDateTime(overview.latestReportSummary.generatedAt)
+                          : 'Not generated yet'}
+                      </span>
                     </div>
-                    <p className="mt-2 text-sm text-chrome-700">{deliverySummary(mission)}</p>
-                  </Link>
-                ))
-              )}
+                    <p className="mt-2 text-sm text-chrome-700">
+                      {overview.latestReportSummary.summary ?? 'No report summary available.'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-chrome-700">No report summary has been generated yet.</p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                <p className="font-medium text-chrome-950">Latest anomaly event</p>
+                {overview.latestEventSummary ? (
+                  <>
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <StatusBadge status={overview.latestEventSummary.severity} />
+                      <span className="text-sm text-chrome-700">
+                        {formatDateTime(overview.latestEventSummary.detectedAt)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-sm text-chrome-700">{overview.latestEventSummary.summary}</p>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm text-chrome-700">No anomaly event has been recorded yet.</p>
+                )}
+              </div>
             </div>
           </Panel>
 
@@ -454,25 +491,25 @@ export function OverviewPage() {
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Billing</p>
-                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">帳務提醒</h2>
+                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Billing follow-up</h2>
               </div>
               <Link to="/billing" className="text-sm text-ember-500 underline">
-                查看帳單
+                Open billing
               </Link>
             </div>
             <div className="mt-4 space-y-3">
               <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
-                <p className="font-medium text-chrome-950">本頁摘要</p>
+                <p className="font-medium text-chrome-950">Snapshot</p>
                 <p className="mt-2 text-sm text-chrome-700">
                   {overview.overdueInvoiceCount > 0
-                    ? `目前有 ${overview.overdueInvoiceCount} 筆逾期帳單需要優先處理。`
+                    ? `${overview.overdueInvoiceCount} invoice(s) are overdue.`
                     : overview.invoiceDueCount > 0
-                      ? `目前有 ${overview.invoiceDueCount} 筆帳單即將到期。`
-                      : '目前沒有逾期或即將到期的帳單。'}
+                      ? `${overview.invoiceDueCount} invoice(s) are due soon.`
+                      : 'No urgent billing reminders right now.'}
                 </p>
               </div>
               {overview.recentInvoices.length === 0 ? (
-                <p className="text-sm text-chrome-700">目前還沒有帳單資料。</p>
+                <p className="text-sm text-chrome-700">No recent invoices in scope.</p>
               ) : (
                 overview.recentInvoices.map((invoice) => (
                   <div key={invoice.invoiceId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
@@ -482,7 +519,7 @@ export function OverviewPage() {
                     </div>
                     <p className="mt-2 text-sm text-chrome-700">{invoiceSummary(invoice)}</p>
                     <p className="mt-2 text-xs text-chrome-500">
-                      金額 {formatCurrency(invoice.currency, invoice.total)} · 到期日 {formatDate(invoice.dueDate)}
+                      Total {formatCurrency(invoice.currency, invoice.total)} | due {formatDate(invoice.dueDate)}
                     </p>
                   </div>
                 ))
@@ -493,21 +530,21 @@ export function OverviewPage() {
           <Panel>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Team</p>
-                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">待開通邀請</h2>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Team access</p>
+                <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Pending invites</h2>
               </div>
               <Link to="/team" className="text-sm text-ember-500 underline">
-                管理團隊
+                Open team
               </Link>
             </div>
             <div className="mt-4 grid gap-3">
               {overview.pendingInvites.length === 0 ? (
-                <p className="text-sm text-chrome-700">目前沒有待開通的團隊邀請。</p>
+                <p className="text-sm text-chrome-700">No pending invites are currently in scope.</p>
               ) : (
                 overview.pendingInvites.map((invite) => (
                   <div key={invite.inviteId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                     <p className="font-medium text-chrome-950">{invite.email}</p>
-                    <p className="mt-1 text-sm text-chrome-700">{invite.organizationName ?? '未指定組織'}</p>
+                    <p className="mt-1 text-sm text-chrome-700">{invite.organizationName ?? 'Unknown organization'}</p>
                     <p className="mt-2 text-sm text-chrome-700">{inviteSummary(invite)}</p>
                   </div>
                 ))

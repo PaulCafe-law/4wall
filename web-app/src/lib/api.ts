@@ -6,6 +6,8 @@ import type {
   DispatchRecord,
   FlightEventRecord,
   InspectionAlertRule,
+  InspectionEvent,
+  InspectionReportSummary,
   InspectionRoute,
   InspectionSchedule,
   InspectionTemplate,
@@ -75,6 +77,28 @@ async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   }
 
   return (await response.json()) as T
+}
+
+async function artifactFetch(path: string, token: string): Promise<Response> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    credentials: 'include',
+  })
+
+  if (!response.ok) {
+    let detail = response.statusText
+    try {
+      const payload = (await response.json()) as { detail?: string }
+      detail = payload.detail ?? detail
+    } catch {
+      // fall back to the response status text
+    }
+    throw new ApiError(response.status, detail)
+  }
+
+  return response
 }
 
 export interface LoginPayload {
@@ -222,6 +246,11 @@ export interface DispatchPayload {
   note?: string
 }
 
+export interface ReprocessMissionAnalysisPayload {
+  mode?: 'normal' | 'no_findings' | 'analysis_failed'
+  note?: string
+}
+
 function buildQuery(params: Record<string, string | undefined>) {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
@@ -269,6 +298,16 @@ export const api = {
   listMissions: (token: string) => apiFetch<MissionSummary[]>('/v1/missions', { token }),
   getMission: (token: string, missionId: string) =>
     apiFetch<MissionDetail>(`/v1/missions/${missionId}`, { token }),
+  getMissionEvents: (token: string, missionId: string) =>
+    apiFetch<InspectionEvent[]>(`/v1/missions/${missionId}/events`, { token }),
+  getMissionReport: (token: string, missionId: string) =>
+    apiFetch<InspectionReportSummary | null>(`/v1/missions/${missionId}/report`, { token }),
+  reprocessMissionAnalysis: (token: string, missionId: string, payload: ReprocessMissionAnalysisPayload) =>
+    apiFetch<InspectionReportSummary>(`/v1/missions/${missionId}/analysis/reprocess`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
   planMission: (token: string, payload: MissionPlanPayload) =>
     apiFetch<MissionPlanResponse>('/v1/missions/plan', {
       method: 'POST',
@@ -401,6 +440,10 @@ export const api = {
       token,
       body: JSON.stringify(payload),
     }),
+  fetchArtifactBlob: async (token: string, path: string) => {
+    const response = await artifactFetch(path, token)
+    return response.blob()
+  },
 }
 
 export function absoluteArtifactUrl(path: string): string {

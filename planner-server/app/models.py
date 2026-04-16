@@ -239,6 +239,38 @@ class DispatchRecord(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class InspectionEventRecord(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    mission_id: str = Field(foreign_key="mission.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    category: str = Field(index=True)
+    severity: str = Field(index=True)
+    summary: str
+    detected_at: datetime = Field(default_factory=utc_now, index=True)
+    status: str = Field(default="open", index=True)
+    evidence_artifact_names_json: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    source: str = Field(default="demo_analysis", index=True)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class InspectionReport(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    mission_id: str = Field(foreign_key="mission.id", index=True)
+    status: str = Field(default="not_started", index=True)
+    generated_at: datetime | None = None
+    summary: str | None = None
+    event_count: int = 0
+    artifact_name: str | None = None
+    mode: str = Field(default="normal", index=True)
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class AuditEvent(SQLModel, table=True):
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     organization_id: str | None = Field(default=None, foreign_key="organization.id", index=True)

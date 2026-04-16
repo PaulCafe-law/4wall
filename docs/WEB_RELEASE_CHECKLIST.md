@@ -50,6 +50,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
   - mission list with explicit delivery badges, publish time, failure reason, and clean customer-facing copy
   - mission detail and artifact download, including checksum, version, published timestamp, next-step guidance, event count, report summary, and linked route/template/schedule/dispatch metadata when the release touched control-plane surfaces
+  - internal-only report reprocess flow, including normal findings, clean pass, and analysis-failed modes when the release touched the event/report slice
   - billing, including due / overdue / paid / void clarity plus payment note / receipt ref rendering and reminder panels for overdue or due-soon invoices
   - team, including invite create / resend / revoke
   - organization settings update

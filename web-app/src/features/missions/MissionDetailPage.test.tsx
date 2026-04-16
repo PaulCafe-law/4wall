@@ -25,7 +25,7 @@ describe('MissionDetailPage', () => {
     apiMock.getMission.mockReset()
   })
 
-  it('renders published delivery state with artifact publication metadata', async () => {
+  it('renders published delivery, report summary, and evidence artifacts', async () => {
     apiMock.getMission.mockResolvedValue({
       missionId: 'mission-001',
       organizationId: 'org-001',
@@ -62,7 +62,60 @@ describe('MissionDetailPage', () => {
           cacheControl: 'private, max-age=60',
           publishedAt: '2026-04-14T10:15:00Z',
         },
+        {
+          artifactName: 'inspection_report.html',
+          downloadUrl: '/v1/missions/mission-001/artifacts/inspection_report.html',
+          version: 1,
+          checksumSha256: 'report123',
+          contentType: 'text/html',
+          sizeBytes: 4096,
+          cacheControl: 'private, max-age=60',
+          publishedAt: '2026-04-14T10:20:00Z',
+        },
       ],
+      reportStatus: 'ready',
+      reportGeneratedAt: '2026-04-14T10:20:00Z',
+      eventCount: 2,
+      latestReport: {
+        reportId: 'report-001',
+        missionId: 'mission-001',
+        status: 'ready',
+        generatedAt: '2026-04-14T10:20:00Z',
+        summary: '2 inspection events were generated for Tower A Delivery.',
+        eventCount: 2,
+        downloadArtifact: {
+          artifactName: 'inspection_report.html',
+          downloadUrl: '/v1/missions/mission-001/artifacts/inspection_report.html',
+          contentType: 'text/html',
+          checksumSha256: 'report123',
+          publishedAt: '2026-04-14T10:20:00Z',
+        },
+      },
+      events: [
+        {
+          eventId: 'event-001',
+          missionId: 'mission-001',
+          siteId: 'site-001',
+          category: 'material_discoloration',
+          severity: 'warning',
+          summary: 'Surface discoloration detected on the east facade.',
+          detectedAt: '2026-04-14T10:18:00Z',
+          status: 'open',
+          evidenceArtifacts: [
+            {
+              artifactName: 'evidence-event-001.svg',
+              downloadUrl: '/v1/missions/mission-001/artifacts/evidence-event-001.svg',
+              contentType: 'image/svg+xml',
+              checksumSha256: 'evidence123',
+              publishedAt: '2026-04-14T10:18:00Z',
+            },
+          ],
+        },
+      ],
+      route: null,
+      template: null,
+      schedule: null,
+      dispatch: null,
       createdAt: '2026-04-14T10:00:00Z',
     })
 
@@ -77,17 +130,17 @@ describe('MissionDetailPage', () => {
     )
 
     expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
-    expect(screen.getAllByText('成果已可交付').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('最新成果檔已完成發布，可直接下載 mission.kmz 與 metadata。').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('接下來建議這樣處理').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('下載 mission.kmz').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('下載 metadata').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('已發布').length).toBeGreaterThan(0)
+    expect(screen.getByText('Inspection analysis and report')).toBeInTheDocument()
+    expect(screen.getByText('2 inspection events were generated for Tower A Delivery.')).toBeInTheDocument()
+    expect(screen.getByText('Detected events')).toBeInTheDocument()
+    expect(screen.getByText('Surface discoloration detected on the east facade.')).toBeInTheDocument()
+    expect(screen.getAllByText('inspection_report.html').length).toBeGreaterThan(0)
     expect(screen.getAllByText('mission.kmz').length).toBeGreaterThan(0)
     expect(screen.getAllByText('mission_meta.json').length).toBeGreaterThan(0)
+    expect(screen.getByText('Next step')).toBeInTheDocument()
   })
 
-  it('renders failure reason when delivery generation failed', async () => {
+  it('renders failure reason and recovery guidance when analysis or delivery failed', async () => {
     apiMock.getMission.mockResolvedValue({
       missionId: 'mission-002',
       organizationId: 'org-001',
@@ -104,6 +157,23 @@ describe('MissionDetailPage', () => {
         failureReason: 'Route provider timed out for this site.',
       },
       artifacts: [],
+      reportStatus: 'failed',
+      reportGeneratedAt: '2026-04-14T11:10:00Z',
+      eventCount: 0,
+      latestReport: {
+        reportId: 'report-002',
+        missionId: 'mission-002',
+        status: 'failed',
+        generatedAt: '2026-04-14T11:10:00Z',
+        summary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
+        eventCount: 0,
+        downloadArtifact: null,
+      },
+      events: [],
+      route: null,
+      template: null,
+      schedule: null,
+      dispatch: null,
       createdAt: '2026-04-14T11:00:00Z',
     })
 
@@ -119,7 +189,10 @@ describe('MissionDetailPage', () => {
 
     expect(await screen.findByText('Tower B Delivery')).toBeInTheDocument()
     expect(screen.getAllByText('Route provider timed out for this site.').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('尚未發布').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('先記錄失敗原因，再決定是否重新建立任務或請內部支援協助排查。').length).toBeGreaterThan(0)
+    expect(screen.getByText('Analysis pipeline could not derive inspection events from the mission imagery.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Use the internal reprocess controls to regenerate the demo report or simulate a no-findings pass.'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('No inspection events recorded')).toBeInTheDocument()
   })
 })

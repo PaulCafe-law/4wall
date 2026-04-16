@@ -24,7 +24,12 @@ The purpose is to show:
   - `/v1/missions/{missionId}/dispatch`
   - `/control-plane`
   - mission-detail linkage for route / template / schedule / dispatch metadata
-- Batch 3 remains the event / evidence / report slice.
+- Batch 3 lands the event / evidence / report slice:
+  - `GET /v1/missions/{missionId}/events`
+  - `GET /v1/missions/{missionId}/report`
+  - `POST /v1/missions/{missionId}/analysis/reprocess` internal-only
+  - mission-detail evidence gallery, report summary, and report artifact download
+  - mission-list and overview reporting summaries
 
 ## Scope
 
@@ -91,7 +96,7 @@ These contracts are locked in Batch 1 even if endpoint rollout happens in later 
 
 ## Endpoint Rollout Shape
 
-These endpoints are Phase 1 targets. Control-plane endpoints now have a first usable slice; event/report endpoints remain pending.
+These endpoints are Phase 1 targets. Control-plane and event/report endpoints now both have a first usable slice.
 
 ### Control Plane
 

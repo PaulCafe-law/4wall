@@ -56,8 +56,8 @@ describe('BillingPage', () => {
               status: 'overdue',
               paymentInstructions: 'Bank transfer',
               attachmentRefs: [],
-              notes: '請先與客戶確認本週的付款安排。',
-              paymentNote: '已提醒客戶提供匯款資訊。',
+              notes: 'Follow up with finance.',
+              paymentNote: 'Awaiting transfer confirmation.',
               receiptRef: 'RCT-001',
               voidReason: '',
               createdAt: '2026-04-10T00:00:00Z',
@@ -101,9 +101,10 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('這筆帳單已逾期，請優先確認付款安排與收款回覆。')).toBeInTheDocument()
-    expect(screen.getByText('已提醒客戶提供匯款資訊。')).toBeInTheDocument()
+    expect(screen.getByText('Bank transfer')).toBeInTheDocument()
+    expect(screen.getByText('Awaiting transfer confirmation.')).toBeInTheDocument()
     expect(screen.getByText('RCT-001')).toBeInTheDocument()
+    expect(screen.getByText('Follow up with finance.')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '建立帳單' })).toBeInTheDocument()
   })
 
@@ -171,6 +172,8 @@ describe('BillingPage', () => {
 
     expect(await screen.findByText('目前有 1 筆帳單即將到期')).toBeInTheDocument()
     expect(screen.getByText('建議先提醒付款安排，避免帳單直接轉成逾期狀態。')).toBeInTheDocument()
-    expect(screen.getByText('有 1 筆帳單在一週內到期，適合先提醒付款安排，避免直接滑入逾期。')).toBeInTheDocument()
+    expect(
+      screen.getByText('有 1 筆帳單在一週內到期，適合先提醒付款安排，避免直接滑入逾期。'),
+    ).toBeInTheDocument()
   })
 })

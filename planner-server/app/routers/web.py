@@ -16,6 +16,7 @@ from app.deps import (
     get_settings,
     require_internal_user,
 )
+from app.inspection_reporting import latest_reporting_summaries, load_reporting_state
 from app.mission_delivery import build_artifact_map, summarize_mission_delivery
 from app.models import (
     BillingInvoice,
@@ -266,8 +267,14 @@ def web_overview(
         ).order_by(Mission.created_at.desc())
     ).all()
     mission_artifacts = build_artifact_map(session, [mission.id for mission in missions])
+    report_map, event_map, _ = load_reporting_state(session, [mission.id for mission in missions])
     mission_summaries = [
-        _serialize_mission_summary(mission, mission_artifacts.get(mission.id, []))
+        _serialize_mission_summary(
+            mission,
+            mission_artifacts.get(mission.id, []),
+            report=report_map.get(mission.id),
+            events=event_map.get(mission.id, []),
+        )
         for mission in missions
     ]
 
@@ -295,6 +302,7 @@ def web_overview(
     invoice_due_count = sum(1 for invoice in invoices if invoice.status == "invoice_due")
     overdue_count = sum(1 for invoice in invoices if invoice.status == "overdue")
     support_summary = _build_overview_support_summary(session, current_user, failed_count, overdue_count)
+    latest_report_summary, latest_event_summary = latest_reporting_summaries(session, [mission.id for mission in missions])
 
     return OverviewDto(
         siteCount=len(sites),
@@ -322,6 +330,8 @@ def web_overview(
             _serialize_overview_invite(invite=invite, organization=organization)
             for invite, organization in pending_invites[:5]
         ],
+        latestReportSummary=latest_report_summary,
+        latestEventSummary=latest_event_summary,
         supportSummary=support_summary,
     )
 
@@ -1049,7 +1059,13 @@ def _serialize_overview_invite(*, invite: Invite, organization: Organization | N
     )
 
 
-def _serialize_mission_summary(mission: Mission, artifacts: list[MissionArtifact]) -> MissionSummaryDto:
+def _serialize_mission_summary(
+    mission: Mission,
+    artifacts: list[MissionArtifact],
+    *,
+    report=None,
+    events: list | None = None,
+) -> MissionSummaryDto:
     delivery_status, published_at, failure_reason = summarize_mission_delivery(mission, artifacts)
     return MissionSummaryDto(
         missionId=mission.id,
@@ -1061,6 +1077,9 @@ def _serialize_mission_summary(mission: Mission, artifacts: list[MissionArtifact
         deliveryStatus=delivery_status,
         publishedAt=published_at,
         failureReason=failure_reason,
+        reportStatus=report.status if report is not None else "not_started",
+        reportGeneratedAt=report.generated_at if report is not None else None,
+        eventCount=len(events or []),
         createdAt=mission.created_at,
     )
 
