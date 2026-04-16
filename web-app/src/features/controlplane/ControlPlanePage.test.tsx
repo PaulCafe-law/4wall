@@ -10,6 +10,7 @@ const apiMock = vi.hoisted(() => ({
   listInspectionTemplates: vi.fn(),
   listInspectionSchedules: vi.fn(),
   listMissions: vi.fn(),
+  getMission: vi.fn(),
   createInspectionRoute: vi.fn(),
   createInspectionTemplate: vi.fn(),
   createInspectionSchedule: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock('../../lib/api', async () => {
       listInspectionTemplates: apiMock.listInspectionTemplates,
       listInspectionSchedules: apiMock.listInspectionSchedules,
       listMissions: apiMock.listMissions,
+      getMission: apiMock.getMission,
       createInspectionRoute: apiMock.createInspectionRoute,
       createInspectionTemplate: apiMock.createInspectionTemplate,
       createInspectionSchedule: apiMock.createInspectionSchedule,
@@ -107,15 +109,102 @@ describe('ControlPlanePage', () => {
         deliveryStatus: 'published',
         publishedAt: '2026-04-17T08:30:00Z',
         failureReason: null,
-        reportStatus: 'not_started',
-        reportGeneratedAt: null,
-        eventCount: 0,
+        reportStatus: 'ready',
+        reportGeneratedAt: '2026-04-17T08:45:00Z',
+        eventCount: 2,
         createdAt: '2026-04-17T08:00:00Z',
       },
     ])
+    apiMock.getMission.mockResolvedValue({
+      missionId: 'mission-001',
+      organizationId: 'org-001',
+      siteId: 'site-001',
+      requestedByUserId: 'user-1',
+      missionName: 'Tower A morning run',
+      status: 'ready',
+      bundleVersion: 'bundle-001',
+      request: {},
+      response: {},
+      delivery: {
+        state: 'published',
+        publishedAt: '2026-04-17T08:30:00Z',
+        failureReason: null,
+      },
+      artifacts: [],
+      reportStatus: 'ready',
+      reportGeneratedAt: '2026-04-17T08:45:00Z',
+      eventCount: 2,
+      latestReport: {
+        reportId: 'report-001',
+        missionId: 'mission-001',
+        status: 'ready',
+        generatedAt: '2026-04-17T08:45:00Z',
+        summary: 'Detected facade cracking and water ingress markers.',
+        eventCount: 2,
+        downloadArtifact: {
+          artifactName: 'inspection_report.html',
+          downloadUrl: '/v1/artifacts/report-001',
+          contentType: 'text/html',
+          checksumSha256: 'abc',
+          publishedAt: '2026-04-17T08:45:00Z',
+        },
+      },
+      events: [],
+      route: {
+        routeId: 'route-001',
+        organizationId: 'org-001',
+        siteId: 'site-001',
+        name: 'Tower A facade loop',
+        description: 'Facade-first route',
+        pointCount: 3,
+        waypoints: [],
+        planningParameters: {},
+        createdAt: '2026-04-17T08:00:00Z',
+        updatedAt: '2026-04-17T08:00:00Z',
+      },
+      template: {
+        templateId: 'template-001',
+        organizationId: 'org-001',
+        siteId: 'site-001',
+        routeId: 'route-001',
+        name: 'Facade standard',
+        description: 'Operator-reviewed',
+        inspectionProfile: {},
+        alertRules: [],
+        createdAt: '2026-04-17T08:00:00Z',
+        updatedAt: '2026-04-17T08:00:00Z',
+      },
+      schedule: {
+        scheduleId: 'schedule-001',
+        organizationId: 'org-001',
+        siteId: 'site-001',
+        routeId: 'route-001',
+        templateId: 'template-001',
+        plannedAt: '2026-04-18T09:00:00Z',
+        recurrence: 'One-off',
+        status: 'scheduled',
+        alertRules: [],
+        createdAt: '2026-04-17T08:00:00Z',
+        updatedAt: '2026-04-17T08:00:00Z',
+      },
+      dispatch: {
+        dispatchId: 'dispatch-001',
+        missionId: 'mission-001',
+        routeId: 'route-001',
+        templateId: 'template-001',
+        scheduleId: 'schedule-001',
+        dispatchedAt: '2026-04-17T08:40:00Z',
+        dispatchedByUserId: 'user-1',
+        assignee: 'observer-01',
+        executionTarget: 'field-team',
+        status: 'accepted',
+        note: 'Demo walkthrough ready',
+      },
+      createdAt: '2026-04-17T08:00:00Z',
+    })
   })
 
-  it('renders the control-plane slice with site context, planning assets, and dispatch workflow', async () => {
+  it('renders the control-plane slice with rehearsal guidance and evidence prompts', async () => {
     renderWithProviders(<ControlPlanePage />, {
       auth: createAuthValue({
         session: createSession({
@@ -133,10 +222,15 @@ describe('ControlPlanePage', () => {
     })
 
     expect(await screen.findByText('Control Plane')).toBeInTheDocument()
+    expect(await screen.findByText('Route-to-report walkthrough')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Tower A')).toBeInTheDocument()
     expect(screen.getAllByText('Tower A facade loop').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Facade standard').length).toBeGreaterThan(0)
-    expect(screen.getByText('Tower A morning run')).toBeInTheDocument()
+    expect(screen.getAllByText('Tower A morning run').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Dispatch mission' })).toBeEnabled()
+    expect(screen.getByText('Mission dispatch is linked')).toBeInTheDocument()
+    expect(screen.getByText('Event and report output is ready')).toBeInTheDocument()
+    expect(screen.getByText('Evidence to capture')).toBeInTheDocument()
+    expect(screen.getByText('Capture the site and planning context')).toBeInTheDocument()
   })
 })

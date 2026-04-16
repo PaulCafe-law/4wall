@@ -36,6 +36,10 @@ The purpose is to show:
   - support queue report-generation-failed category
   - live-ops reporting summary with report status, generated timestamp, event count, and report summary
   - release and rehearsal docs aligned to support/live-ops verification for reporting failures
+- Batch 5 turns the slice into a repeatable rehearsal path:
+  - control-plane walkthrough guidance for site -> route -> schedule -> dispatch -> report
+  - explicit evidence-capture prompts for the demo package
+  - a dedicated Phase 1 rehearsal script for staging and production verification
 
 ## Scope
 
@@ -152,6 +156,10 @@ The minimum demo path is:
 6. Show imagery-derived events and evidence
 7. Open the generated report summary
 8. Download the report artifact
+
+The repeatable rehearsal path and evidence package now live in:
+
+- `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
 
 ## Acceptance
 
