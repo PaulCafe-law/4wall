@@ -523,39 +523,54 @@ def create_invite(
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> InviteCreateResponseDto:
-    if "platform_admin" in current_user.global_roles or "ops" in current_user.global_roles:
-        if request.role in {"platform_admin", "ops"} and "platform_admin" not in current_user.global_roles:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
-    elif "customer_admin" in current_user.roles_for_org(organization_id):
-        ensure_customer_invite_role(request.role)
-    else:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
-
+    _ensure_invite_write_access(current_user, organization_id, request.role)
     organization = session.get(Organization, organization_id)
     if organization is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="organization_not_found")
-    raw_token = create_invite_token()
-    invite = Invite(
-        organization_id=organization_id,
-        email=request.email.lower(),
-        role=request.role,
-        token_hash=hash_invite_token(raw_token),
-        invited_by_user_id=current_user.user.id,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
-    )
-    session.add(invite)
-    session.flush()
-    record_audit(
+    invite, raw_token = _issue_invite(
         session,
-        action="invite.created",
         organization_id=organization_id,
+        email=request.email,
+        role=request.role,
         actor_user_id=current_user.user.id,
-        target_type="invite",
-        target_id=invite.id,
-        metadata={"role": invite.role, "email": invite.email},
+        audit_action="invite.created",
+        metadata={"role": request.role, "email": request.email.lower()},
     )
     session.commit()
     return InviteCreateResponseDto(invite=_serialize_invite(invite), inviteToken=raw_token)
+
+
+@router.post("/v1/invites/{invite_id}/resend", response_model=InviteCreateResponseDto)
+def resend_invite(
+    invite_id: str,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> InviteCreateResponseDto:
+    invite = session.get(Invite, invite_id)
+    if invite is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite_not_found")
+    if invite.accepted_at is not None or invite.revoked_at is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="invite_not_resendable")
+
+    _ensure_invite_write_access(current_user, invite.organization_id, invite.role)
+
+    invite.revoked_at = datetime.now(timezone.utc)
+    session.add(invite)
+    replacement_invite, raw_token = _issue_invite(
+        session,
+        organization_id=invite.organization_id,
+        email=invite.email,
+        role=invite.role,
+        actor_user_id=current_user.user.id,
+        audit_action="invite.resent",
+        metadata={
+            "email": invite.email,
+            "role": invite.role,
+            "replacedInviteId": invite.id,
+        },
+    )
+    session.commit()
+    return InviteCreateResponseDto(invite=_serialize_invite(replacement_invite), inviteToken=raw_token)
 
 
 @router.post("/v1/invites/accept", response_model=WebSessionDto)
@@ -646,12 +661,7 @@ def revoke_invite(
     invite = session.get(Invite, invite_id)
     if invite is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="invite_not_found")
-    if "platform_admin" in current_user.global_roles or "ops" in current_user.global_roles:
-        pass
-    elif "customer_admin" in current_user.roles_for_org(invite.organization_id):
-        ensure_customer_invite_role(invite.role)
-    else:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
+    _ensure_invite_write_access(current_user, invite.organization_id, invite.role)
     invite.revoked_at = datetime.now(timezone.utc)
     session.add(invite)
     record_audit(
@@ -968,10 +978,55 @@ def _serialize_invite(invite: Invite) -> InviteDto:
         organizationId=invite.organization_id,
         email=invite.email,
         role=invite.role,
+        createdAt=invite.created_at,
         expiresAt=invite.expires_at,
         acceptedAt=invite.accepted_at,
         revokedAt=invite.revoked_at,
     )
+
+
+def _ensure_invite_write_access(current_user: CurrentWebUser, organization_id: str, invite_role: str) -> None:
+    if "platform_admin" in current_user.global_roles or "ops" in current_user.global_roles:
+        if invite_role in {"platform_admin", "ops"} and "platform_admin" not in current_user.global_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
+        return
+    if "customer_admin" in current_user.roles_for_org(organization_id):
+        ensure_customer_invite_role(invite_role)
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
+
+
+def _issue_invite(
+    session: Session,
+    *,
+    organization_id: str,
+    email: str,
+    role: str,
+    actor_user_id: str,
+    audit_action: str,
+    metadata: dict[str, str],
+) -> tuple[Invite, str]:
+    raw_token = create_invite_token()
+    invite = Invite(
+        organization_id=organization_id,
+        email=email.lower(),
+        role=role,
+        token_hash=hash_invite_token(raw_token),
+        invited_by_user_id=actor_user_id,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+    )
+    session.add(invite)
+    session.flush()
+    record_audit(
+        session,
+        action=audit_action,
+        organization_id=organization_id,
+        actor_user_id=actor_user_id,
+        target_type="invite",
+        target_id=invite.id,
+        metadata=metadata,
+    )
+    return invite, raw_token
 
 
 def _serialize_overview_invite(*, invite: Invite, organization: Organization | None) -> OverviewInviteDto:

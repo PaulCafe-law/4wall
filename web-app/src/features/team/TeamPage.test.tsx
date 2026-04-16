@@ -11,6 +11,7 @@ const apiMock = vi.hoisted(() => ({
   updateMembership: vi.fn(),
   createInvite: vi.fn(),
   revokeInvite: vi.fn(),
+  resendInvite: vi.fn(),
 }))
 
 vi.mock('../../lib/api', async () => {
@@ -24,6 +25,7 @@ vi.mock('../../lib/api', async () => {
       updateMembership: apiMock.updateMembership,
       createInvite: apiMock.createInvite,
       revokeInvite: apiMock.revokeInvite,
+      resendInvite: apiMock.resendInvite,
     },
   }
 })
@@ -60,6 +62,7 @@ function buildOrganizationDetail(overrides: Record<string, unknown> = {}) {
         organizationId: 'org-1',
         email: 'pending@north.test',
         role: 'customer_viewer',
+        createdAt: '2026-04-16T08:00:00Z',
         expiresAt: '2026-04-21T10:00:00Z',
         acceptedAt: null,
         revokedAt: null,
@@ -76,6 +79,7 @@ describe('TeamPage', () => {
     apiMock.updateMembership.mockReset()
     apiMock.createInvite.mockReset()
     apiMock.revokeInvite.mockReset()
+    apiMock.resendInvite.mockReset()
   })
 
   it('renders organization settings, members, and pending invites for customer admins', async () => {
@@ -102,9 +106,10 @@ describe('TeamPage', () => {
     expect(screen.getByText('viewer@north.test')).toBeInTheDocument()
     expect(screen.getByText('pending@north.test')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'invite-team-member' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'resend-invite-invite-1' })).toBeInTheDocument()
   })
 
-  it('lets customer admins update organization settings, members, and invites', async () => {
+  it('lets customer admins update organization settings, members, and create invites', async () => {
     apiMock.getOrganization.mockResolvedValue(buildOrganizationDetail())
     apiMock.updateOrganization.mockResolvedValue({
       organizationId: 'org-1',
@@ -128,6 +133,7 @@ describe('TeamPage', () => {
         organizationId: 'org-1',
         email: 'new@north.test',
         role: 'customer_viewer',
+        createdAt: '2026-04-16T09:00:00Z',
         expiresAt: '2026-04-22T10:00:00Z',
         acceptedAt: null,
         revokedAt: null,
@@ -193,18 +199,33 @@ describe('TeamPage', () => {
 
     const inviteLinkInput = (await screen.findByLabelText('invite-link')) as HTMLInputElement
     expect(inviteLinkInput.value).toContain('/invite?token=invite-token-2')
+    expect(screen.getByText('邀請已建立，請分享最新邀請連結。')).toBeInTheDocument()
   })
 
-  it('allows customer admins to revoke pending invites', async () => {
+  it('lets customer admins resend and revoke pending invites', async () => {
     apiMock.getOrganization.mockResolvedValue(buildOrganizationDetail())
+    apiMock.resendInvite.mockResolvedValue({
+      invite: {
+        inviteId: 'invite-2',
+        organizationId: 'org-1',
+        email: 'pending@north.test',
+        role: 'customer_viewer',
+        createdAt: '2026-04-16T10:30:00Z',
+        expiresAt: '2026-04-23T10:30:00Z',
+        acceptedAt: null,
+        revokedAt: null,
+      },
+      inviteToken: 'invite-token-resent',
+    })
     apiMock.revokeInvite.mockResolvedValue({
       inviteId: 'invite-1',
       organizationId: 'org-1',
       email: 'pending@north.test',
       role: 'customer_viewer',
+      createdAt: '2026-04-16T08:00:00Z',
       expiresAt: '2026-04-21T10:00:00Z',
       acceptedAt: null,
-      revokedAt: '2026-04-15T01:00:00Z',
+      revokedAt: '2026-04-16T10:45:00Z',
     })
 
     renderWithProviders(<TeamPage />, {
@@ -222,13 +243,19 @@ describe('TeamPage', () => {
       }),
     })
 
-    expect(await screen.findByText('North Tower Builders')).toBeInTheDocument()
+    expect(await screen.findByText('pending@north.test')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'resend-invite-invite-1' }))
+    await waitFor(() => {
+      expect(apiMock.resendInvite).toHaveBeenCalledWith('test-token', 'invite-1')
+    })
+    expect(await screen.findByText('已重新寄送邀請，請改用新的邀請連結。')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'revoke-invite-invite-1' }))
-
     await waitFor(() => {
       expect(apiMock.revokeInvite).toHaveBeenCalledWith('test-token', 'invite-1')
     })
+    expect(await screen.findByText('邀請已撤銷。')).toBeInTheDocument()
   })
 
   it('shows the last-admin guard when a mutation would remove the final active customer admin', async () => {
@@ -272,7 +299,7 @@ describe('TeamPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'save-member-membership-1' }))
 
-    expect(await screen.findByText('每個組織至少需要一位啟用中的管理者。')).toBeInTheDocument()
+    expect(await screen.findByText('每個組織至少要保留一位啟用中的客戶管理者。')).toBeInTheDocument()
   })
 
   it('keeps management actions read-only for customer viewers', async () => {
@@ -298,6 +325,7 @@ describe('TeamPage', () => {
     expect(screen.queryByRole('button', { name: 'invite-team-member' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'save-organization' })).toBeDisabled()
     expect(screen.queryByLabelText('member-role-membership-1')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'resend-invite-invite-1' })).not.toBeInTheDocument()
   })
 
   it('shows a readable empty state when organization detail loading fails', async () => {
@@ -320,6 +348,6 @@ describe('TeamPage', () => {
     })
 
     expect(await screen.findByText('無法載入團隊資料')).toBeInTheDocument()
-    expect(screen.getByText('目前角色沒有執行這個操作的權限。')).toBeInTheDocument()
+    expect(screen.getByText('你目前的角色沒有權限執行這項操作。')).toBeInTheDocument()
   })
 })

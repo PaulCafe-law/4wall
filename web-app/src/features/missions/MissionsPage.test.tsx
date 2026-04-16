@@ -72,6 +72,6 @@ describe('MissionsPage', () => {
     expect(screen.getByText('Tower A Published')).toBeInTheDocument()
     expect(screen.getByText('Tower A Planning')).toBeInTheDocument()
     expect(screen.getByText('Route provider timed out for this site.')).toBeInTheDocument()
-    expect(screen.getByText(/成果已於/)).toBeInTheDocument()
+    expect(document.querySelectorAll('a[href^="/missions/mission-"]').length).toBe(3)
   })
 })

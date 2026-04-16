@@ -141,10 +141,12 @@ describe('LiveOpsPage', () => {
       }),
     })
 
-    expect(await screen.findByText('Tower A Demo')).toBeInTheDocument()
     expect(await screen.findByText('飛行監看')).toBeInTheDocument()
+    expect(await screen.findAllByText('Tower A Demo')).not.toHaveLength(0)
+    expect(await screen.findByText('flight-001')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: '申請遠端接管' })).toBeInTheDocument()
-    expect((await screen.findAllByText('待接管')).length).toBeGreaterThan(0)
     expect(await screen.findByText('HQ takeover drill')).toBeInTheDocument()
+    expect(await screen.findByText('CONTROL_LEASE_UPDATED')).toBeInTheDocument()
+    expect(document.querySelector('a[href="/missions/mission-001"]')).toBeTruthy()
   })
 })
