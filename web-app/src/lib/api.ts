@@ -3,7 +3,13 @@ import type {
   BillingInvoice,
   ControlIntent,
   ControlIntentAction,
+  DispatchRecord,
   FlightEventRecord,
+  InspectionAlertRule,
+  InspectionRoute,
+  InspectionSchedule,
+  InspectionTemplate,
+  InspectionWaypoint,
   Invite,
   InviteCreateResponse,
   LiveFlightDetail,
@@ -176,6 +182,57 @@ export interface SupportQueueActionPayload {
   note?: string
 }
 
+export interface InspectionRoutePayload {
+  organizationId: string
+  siteId: string
+  name: string
+  description?: string
+  waypoints: InspectionWaypoint[]
+  planningParameters?: Record<string, unknown>
+}
+
+export interface InspectionTemplatePayload {
+  organizationId: string
+  siteId: string
+  routeId?: string
+  name: string
+  description?: string
+  inspectionProfile?: Record<string, unknown>
+  alertRules?: Array<Partial<InspectionAlertRule> & Pick<InspectionAlertRule, 'kind'>>
+}
+
+export interface InspectionSchedulePayload {
+  organizationId: string
+  siteId: string
+  routeId?: string
+  templateId?: string
+  plannedAt?: string
+  recurrence?: string
+  status?: InspectionSchedule['status']
+  alertRules?: Array<Partial<InspectionAlertRule> & Pick<InspectionAlertRule, 'kind'>>
+}
+
+export interface DispatchPayload {
+  routeId?: string
+  templateId?: string
+  scheduleId?: string
+  assignee?: string
+  executionTarget?: string
+  status?: DispatchRecord['status']
+  note?: string
+}
+
+function buildQuery(params: Record<string, string | undefined>) {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value) {
+      search.set(key, value)
+    }
+  }
+  const serialized = search.toString()
+  return serialized ? `?${serialized}` : ''
+}
+
 export const api = {
   login: (payload: LoginPayload) =>
     apiFetch<WebSession>('/v1/web/session/login', {
@@ -282,6 +339,64 @@ export const api = {
   listSupportQueue: (token: string) => apiFetch<SupportQueueItem[]>('/v1/support/queue', { token }),
   requestSupportQueueAction: (token: string, itemId: string, payload: SupportQueueActionPayload) =>
     apiFetch<SupportQueueItem['workflow']>(`/v1/support/queue/${itemId}/actions`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  listInspectionRoutes: (token: string, filters?: { organizationId?: string; siteId?: string }) =>
+    apiFetch<InspectionRoute[]>(`/v1/inspection/routes${buildQuery(filters ?? {})}`, { token }),
+  createInspectionRoute: (token: string, payload: InspectionRoutePayload) =>
+    apiFetch<InspectionRoute>('/v1/inspection/routes', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  patchInspectionRoute: (token: string, routeId: string, payload: Partial<InspectionRoutePayload>) =>
+    apiFetch<InspectionRoute>(`/v1/inspection/routes/${routeId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  listInspectionTemplates: (
+    token: string,
+    filters?: { organizationId?: string; siteId?: string; routeId?: string },
+  ) => apiFetch<InspectionTemplate[]>(`/v1/inspection/templates${buildQuery(filters ?? {})}`, { token }),
+  createInspectionTemplate: (token: string, payload: InspectionTemplatePayload) =>
+    apiFetch<InspectionTemplate>('/v1/inspection/templates', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  patchInspectionTemplate: (token: string, templateId: string, payload: Partial<InspectionTemplatePayload>) =>
+    apiFetch<InspectionTemplate>(`/v1/inspection/templates/${templateId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  listInspectionSchedules: (
+    token: string,
+    filters?: {
+      organizationId?: string
+      siteId?: string
+      routeId?: string
+      templateId?: string
+      status?: string
+    },
+  ) => apiFetch<InspectionSchedule[]>(`/v1/inspection/schedules${buildQuery(filters ?? {})}`, { token }),
+  createInspectionSchedule: (token: string, payload: InspectionSchedulePayload) =>
+    apiFetch<InspectionSchedule>('/v1/inspection/schedules', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  patchInspectionSchedule: (token: string, scheduleId: string, payload: Partial<InspectionSchedulePayload>) =>
+    apiFetch<InspectionSchedule>(`/v1/inspection/schedules/${scheduleId}`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  dispatchMission: (token: string, missionId: string, payload: DispatchPayload) =>
+    apiFetch<DispatchRecord>(`/v1/missions/${missionId}/dispatch`, {
       method: 'POST',
       token,
       body: JSON.stringify(payload),

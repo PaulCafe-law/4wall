@@ -15,7 +15,7 @@ from app.db import create_engine_for_settings, create_session_factory, init_db
 from app.models import OperatorAccount
 from app.providers import MockRouteProvider, OsmOsrmRouteProvider, RouteProvider
 from app.rate_limit import RateLimiter
-from app.routers import auth_router, live_ops_router, missions_router, web_router
+from app.routers import auth_router, inspection_router, live_ops_router, missions_router, web_router
 from app.security import hash_password
 from app.storage import ArtifactStorage, LocalFileArtifactStorage, S3ArtifactStorage
 
@@ -96,6 +96,7 @@ def build_app(
 
     app.include_router(auth_router)
     app.include_router(missions_router)
+    app.include_router(inspection_router)
     app.include_router(live_ops_router)
     app.include_router(web_router)
 

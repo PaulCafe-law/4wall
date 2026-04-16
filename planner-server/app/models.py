@@ -94,6 +94,51 @@ class Site(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class InspectionRoute(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    name: str = Field(index=True)
+    description: str = ""
+    waypoints_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    planning_parameters_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class InspectionTemplate(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    route_id: str | None = Field(default=None, foreign_key="inspectionroute.id", index=True)
+    name: str = Field(index=True)
+    description: str = ""
+    inspection_profile_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    alert_rules_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class InspectionSchedule(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    route_id: str | None = Field(default=None, foreign_key="inspectionroute.id", index=True)
+    template_id: str | None = Field(default=None, foreign_key="inspectiontemplate.id", index=True)
+    planned_at: datetime | None = None
+    recurrence: str | None = None
+    status: str = Field(default="scheduled", index=True)
+    alert_rules_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class Mission(SQLModel, table=True):
     id: str = Field(primary_key=True)
     organization_id: str | None = Field(default=None, foreign_key="organization.id", index=True)
@@ -175,6 +220,22 @@ class BillingInvoice(SQLModel, table=True):
     created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class DispatchRecord(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    mission_id: str = Field(foreign_key="mission.id", index=True)
+    route_id: str | None = Field(default=None, foreign_key="inspectionroute.id", index=True)
+    template_id: str | None = Field(default=None, foreign_key="inspectiontemplate.id", index=True)
+    schedule_id: str | None = Field(default=None, foreign_key="inspectionschedule.id", index=True)
+    dispatched_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    assignee: str | None = None
+    execution_target: str | None = None
+    status: str = Field(default="queued", index=True)
+    note: str | None = None
+    dispatched_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
 

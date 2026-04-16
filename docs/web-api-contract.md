@@ -267,9 +267,9 @@ Allowed statuses:
 - `failed`
 - `archived`
 
-### Planned Phase 1 Demo Additions
+### Phase 1 Demo Additions
 
-These endpoints are part of the Phase 1 demo rollout and should land incrementally after the contract is locked.
+These endpoints are part of the Phase 1 demo rollout. The control-plane slice is now available in the first Batch 2 implementation. Event/report endpoints remain pending.
 
 #### Control Plane
 
@@ -292,6 +292,8 @@ These endpoints manage:
 - mission-level dispatch metadata
 
 They do not send any real-time control command to Android or the aircraft.
+
+The current slice also extends `GET /v1/missions/{missionId}` so mission detail can expose linked route / template / schedule / dispatch metadata for demo playback.
 
 #### Event and Report Generation
 

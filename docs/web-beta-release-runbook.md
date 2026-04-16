@@ -80,12 +80,12 @@ The current rollout model is:
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
    - site map and site selection flow
-   - route/template records can be viewed or edited without entering any flight-control path
-   - schedule and dispatch records show the expected planning metadata
+   - route/template records can be created, viewed, or edited without entering any flight-control path
+   - schedule and dispatch records can be created and show the expected planning metadata
    - overview pending-action cards, invoice reminders, invite reminders, and setup guidance when the workspace has no sites or no missions
    - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
    - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
-   - mission detail publication panel with download metadata, next-step guidance, event count, report summary, and evidence/report artifacts
+   - mission detail publication panel with download metadata, next-step guidance, event count, report summary, evidence/report artifacts, and linked route/template/schedule/dispatch metadata when the release touched control-plane surfaces
    - team invite lifecycle, including resend / revoke
    - billing status clarity, payment note, receipt reference rendering, and reminder panels for overdue or due-soon invoices
 11. If the release touches internal ops surfaces, manually verify:
@@ -104,9 +104,10 @@ The current rollout model is:
 7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 8. Re-check the same overview / mission-delivery / billing manual flows on production before closing the deploy.
 9. Re-check the control-plane route/template/schedule/dispatch flows on production if the release touched the Phase 1 demo surface.
-10. Re-check team invite lifecycle on production if the release touched team surfaces.
-11. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
-12. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
+10. Re-check one mission detail page on production to confirm linked planning metadata still renders after dispatch if the release touched control-plane surfaces.
+11. Re-check team invite lifecycle on production if the release touched team surfaces.
+12. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
+13. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

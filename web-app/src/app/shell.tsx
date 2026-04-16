@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import { formatRole } from '../lib/presentation'
 
 const customerLinks = [
+  { to: '/control-plane', label: 'Control Plane' },
   { to: '/', label: '總覽' },
   { to: '/sites', label: '場址' },
   { to: '/missions', label: '任務' },

@@ -14,6 +14,18 @@ The purpose is to show:
 - a credible event interpretation and report generation flow
 - without moving `planner-server` or `web-app` into the flight-critical loop
 
+## Batch Status
+
+- Batch 1 locked the contracts, demo script, and release acceptance language.
+- Batch 2 lands the first operable control-plane slice:
+  - `/v1/inspection/routes`
+  - `/v1/inspection/templates`
+  - `/v1/inspection/schedules`
+  - `/v1/missions/{missionId}/dispatch`
+  - `/control-plane`
+  - mission-detail linkage for route / template / schedule / dispatch metadata
+- Batch 3 remains the event / evidence / report slice.
+
 ## Scope
 
 ### Control Plane
@@ -79,7 +91,7 @@ These contracts are locked in Batch 1 even if endpoint rollout happens in later 
 
 ## Endpoint Rollout Shape
 
-These endpoints are Phase 1 targets. They should land incrementally after Batch 1.
+These endpoints are Phase 1 targets. Control-plane endpoints now have a first usable slice; event/report endpoints remain pending.
 
 ### Control Plane
 
