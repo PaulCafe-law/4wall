@@ -11,6 +11,8 @@ InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdu
 SupportSeverityLiteral = Literal["info", "warning", "critical"]
 MissionDeliveryStateLiteral = Literal["planning", "ready", "failed", "published"]
 SupportCategoryLiteral = Literal["mission_failed", "battery_low", "telemetry_stale", "bridge_alert"]
+SupportWorkflowStateLiteral = Literal["open", "claimed", "acknowledged", "resolved"]
+SupportQueueActionLiteral = Literal["claim", "acknowledge", "resolve", "release"]
 TelemetryFreshnessLiteral = Literal["fresh", "stale", "missing"]
 VideoAvailabilityLiteral = Literal["live", "stale", "unavailable"]
 ControlIntentActionLiteral = Literal[
@@ -371,6 +373,19 @@ class ControlIntentDto(BaseModel):
     resolutionNote: str | None = None
 
 
+class SupportWorkflowDto(BaseModel):
+    state: SupportWorkflowStateLiteral = "open"
+    assignedToUserId: str | None = None
+    assignedToDisplayName: str | None = None
+    updatedAt: datetime | None = None
+    note: str | None = None
+
+
+class SupportQueueActionRequestDto(BaseModel):
+    action: SupportQueueActionLiteral
+    note: str | None = Field(default=None, max_length=500)
+
+
 class SupportQueueItemDto(BaseModel):
     itemId: str
     category: SupportCategoryLiteral
@@ -386,3 +401,4 @@ class SupportQueueItemDto(BaseModel):
     recommendedNextStep: str
     createdAt: datetime
     lastObservedAt: datetime | None = None
+    workflow: SupportWorkflowDto = Field(default_factory=SupportWorkflowDto)

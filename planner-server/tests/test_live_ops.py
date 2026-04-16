@@ -286,34 +286,31 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
     assert internal_response.status_code == 200, internal_response.text
     items = internal_response.json()
 
-    by_title = {item["title"]: item for item in items}
-    assert "任務規劃失敗" in by_title
-    assert "電量偏低" in by_title
-    assert "遙測已過時" in by_title
-    assert "Bridge 告警: uplink_degraded" in by_title
+    by_id = {item["itemId"]: item for item in items}
+    bridge_item = next(item for item in items if item["category"] == "bridge_alert")
 
-    failed_item = by_title["任務規劃失敗"]
+    failed_item = by_id[f"mission-failed-{mission_id}"]
     assert failed_item["category"] == "mission_failed"
     assert failed_item["organizationName"] == "Acme Build"
     assert failed_item["missionName"] == "building-a-demo"
     assert failed_item["siteName"] == "Tower A"
     assert failed_item["lastObservedAt"] is not None
+    assert failed_item["workflow"]["state"] == "open"
     assert "mission request" in failed_item["recommendedNextStep"]
 
-    battery_item = by_title["電量偏低"]
+    battery_item = by_id[f"battery-{flight_id}"]
     assert battery_item["category"] == "battery_low"
     assert battery_item["severity"] == "warning"
     assert battery_item["flightId"] == flight_id
     assert battery_item["lastObservedAt"] is not None
 
-    stale_item = by_title["遙測已過時"]
+    stale_item = by_id[f"telemetry-stale-{flight_id}"]
     assert stale_item["category"] == "telemetry_stale"
     assert stale_item["severity"] == "critical"
     assert stale_item["flightId"] == flight_id
     assert stale_item["lastObservedAt"] is not None
     assert "monitor-only" in stale_item["summary"]
 
-    bridge_item = by_title["Bridge 告警: uplink_degraded"]
     assert bridge_item["category"] == "bridge_alert"
     assert bridge_item["organizationName"] == "Acme Build"
     assert bridge_item["flightId"] == flight_id
@@ -321,5 +318,88 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
     assert "lease" in bridge_item["recommendedNextStep"]
 
     customer_response = client.get("/v1/support/queue", headers=admin_headers)
+    assert customer_response.status_code == 403
+    assert customer_response.json()["detail"] == "forbidden_role"
+
+
+def test_support_queue_actions_update_workflow_and_hide_resolved_items(
+    client,
+    session_factory,
+    auth_headers,
+) -> None:
+    _, mission_id, admin_headers, _, ops_headers = _prepare_live_mission(client, session_factory)
+    flight_id = "flight-live-004"
+    now = datetime.now(timezone.utc)
+
+    with session_factory() as session:
+        mission = session.get(Mission, mission_id)
+        assert mission is not None
+        mission.status = "failed"
+        session.add(mission)
+        session.commit()
+
+    events_response = client.post(
+        f"/v1/flights/{flight_id}/events",
+        headers=auth_headers,
+        json={
+            "missionId": mission_id,
+            "events": [
+                {
+                    "eventId": "evt-bridge-alert-resolve",
+                    "type": "BRIDGE_ALERT",
+                    "timestamp": now.isoformat(),
+                    "payload": {
+                        "severity": "warning",
+                        "code": "viewer_unavailable",
+                        "summary": "Viewer stream was temporarily unavailable.",
+                    },
+                }
+            ],
+        },
+    )
+    assert events_response.status_code == 202
+
+    support_response = client.get("/v1/support/queue", headers=ops_headers)
+    assert support_response.status_code == 200, support_response.text
+    bridge_item = next(item for item in support_response.json() if item["category"] == "bridge_alert")
+    item_id = bridge_item["itemId"]
+
+    claim_response = client.post(
+        f"/v1/support/queue/{item_id}/actions",
+        headers=ops_headers,
+        json={"action": "claim"},
+    )
+    assert claim_response.status_code == 202, claim_response.text
+    assert claim_response.json()["state"] == "claimed"
+
+    after_claim = client.get("/v1/support/queue", headers=ops_headers)
+    claimed_item = next(item for item in after_claim.json() if item["itemId"] == item_id)
+    assert claimed_item["workflow"]["state"] == "claimed"
+    assert claimed_item["workflow"]["assignedToDisplayName"] == "Platform Ops"
+
+    acknowledge_response = client.post(
+        f"/v1/support/queue/{item_id}/actions",
+        headers=ops_headers,
+        json={"action": "acknowledge"},
+    )
+    assert acknowledge_response.status_code == 202
+    assert acknowledge_response.json()["state"] == "acknowledged"
+
+    resolve_response = client.post(
+        f"/v1/support/queue/{item_id}/actions",
+        headers=ops_headers,
+        json={"action": "resolve"},
+    )
+    assert resolve_response.status_code == 202
+    assert resolve_response.json()["state"] == "resolved"
+
+    after_resolve = client.get("/v1/support/queue", headers=ops_headers)
+    assert all(item["itemId"] != item_id for item in after_resolve.json())
+
+    customer_response = client.post(
+        f"/v1/support/queue/{item_id}/actions",
+        headers=admin_headers,
+        json={"action": "claim"},
+    )
     assert customer_response.status_code == 403
     assert customer_response.json()["detail"] == "forbidden_role"

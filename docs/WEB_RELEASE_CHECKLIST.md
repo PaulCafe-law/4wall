@@ -50,7 +50,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - member role update
   - member deactivate/reactivate
 - If the release touches internal ops surfaces, validate:
-  - `Support` loads with severity/category filters, mission/org/site context, last-observed timing, and recommended next step copy
+  - `Support` loads with severity/category filters, mission/org/site context, last-observed timing, recommended next step copy, and claim / acknowledge / resolve actions
   - `Live Ops` stays internal-only
   - telemetry freshness and video availability are visible in `Live Ops`
   - unavailable or stale Android data remains fail-closed and clearly presented as monitor-only
@@ -64,6 +64,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Validate the same core customer flows on production.
 - Reconfirm the explicit admin account can still open `/team`, resend an invite, and update organization settings after promotion.
 - If internal ops surfaces changed, re-check the same `Support` and `Live Ops` monitor-only states on production.
+ - If support handling changed, verify a support item can be claimed, acknowledged, and resolved without exposing customer-facing write paths.
 
 ## 4. Rollback Triggers
 

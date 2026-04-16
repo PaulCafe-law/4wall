@@ -17,7 +17,9 @@ from app.web_dto import (
     LiveFlightDetailDto,
     LiveFlightSummaryDto,
     LiveTelemetrySampleDto,
+    SupportQueueActionRequestDto,
     SupportQueueItemDto,
+    SupportWorkflowDto,
     VideoChannelDescriptorDto,
 )
 from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
@@ -35,6 +37,17 @@ VIDEO_STREAM_EVENT = "VIDEO_STREAM_STATE"
 BRIDGE_ALERT_EVENT = "BRIDGE_ALERT"
 CONTROL_INTENT_REQUESTED = "flight.control_intent_requested"
 CONTROL_INTENT_ACKNOWLEDGED = "flight.control_intent_acknowledged"
+
+SUPPORT_QUEUE_CLAIMED = "support.queue.claimed"
+SUPPORT_QUEUE_ACKNOWLEDGED = "support.queue.acknowledged"
+SUPPORT_QUEUE_RESOLVED = "support.queue.resolved"
+SUPPORT_QUEUE_RELEASED = "support.queue.released"
+SUPPORT_QUEUE_ACTIONS = [
+    SUPPORT_QUEUE_CLAIMED,
+    SUPPORT_QUEUE_ACKNOWLEDGED,
+    SUPPORT_QUEUE_RESOLVED,
+    SUPPORT_QUEUE_RELEASED,
+]
 
 
 @router.get("/v1/live-ops/flights", response_model=list[LiveFlightSummaryDto])
@@ -120,125 +133,40 @@ def list_support_queue(
     session: Session = Depends(get_session),
 ) -> list[SupportQueueItemDto]:
     del current_user
+    return _build_support_queue(session)
 
-    items: list[SupportQueueItemDto] = []
 
-    failed_missions = session.exec(
-        select(Mission)
-        .where(Mission.organization_id.is_not(None), Mission.status == "failed")
-        .order_by(Mission.created_at.desc())
-    ).all()
-    for mission in failed_missions:
-        if mission.organization_id is None:
-            continue
-        context = _support_context(session, organization_id=mission.organization_id, mission=mission)
-        created_at = _ensure_utc(mission.created_at) or mission.created_at
-        items.append(
-            SupportQueueItemDto(
-                itemId=f"mission-failed-{mission.id}",
-                category="mission_failed",
-                severity="critical",
-                organizationId=mission.organization_id,
-                organizationName=context["organizationName"],
-                missionId=mission.id,
-                missionName=context["missionName"],
-                siteName=context["siteName"],
-                title="任務規劃失敗",
-                summary=(
-                    f"{mission.mission_name} 已經進入 failed。"
-                    "請先確認 mission request、交付狀態與失敗原因，再決定是重送還是人工處理。"
-                ),
-                recommendedNextStep="打開任務明細，確認 mission request、交付狀態與 artifacts，再決定是否重送。",
-                createdAt=created_at,
-                lastObservedAt=created_at,
-            )
-        )
+@router.post("/v1/support/queue/{item_id}/actions", response_model=SupportWorkflowDto, status_code=202)
+def support_queue_action(
+    item_id: str,
+    request: SupportQueueActionRequestDto,
+    current_user: CurrentWebUser = Depends(require_internal_user),
+    session: Session = Depends(get_session),
+) -> SupportWorkflowDto:
+    item = next((candidate for candidate in _build_support_queue(session, include_resolved=True) if candidate.itemId == item_id), None)
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="support_item_not_found")
 
-    flights = session.exec(select(Flight).where(Flight.organization_id.is_not(None))).all()
-    for flight in flights:
-        if flight.organization_id is None:
-            continue
-        summary = _build_live_summary(session, flight)
-        mission = session.get(Mission, flight.mission_id)
-        context = _support_context(session, organization_id=flight.organization_id, mission=mission)
-
-        if summary.latestTelemetry is not None and summary.latestTelemetry.batteryPct < LOW_BATTERY_THRESHOLD:
-            items.append(
-                SupportQueueItemDto(
-                    itemId=f"battery-{flight.id}",
-                    category="battery_low",
-                    severity="warning",
-                    organizationId=flight.organization_id,
-                    organizationName=context["organizationName"],
-                    flightId=flight.id,
-                    missionId=flight.mission_id,
-                    missionName=context["missionName"],
-                    siteName=context["siteName"],
-                    title="電量偏低",
-                    summary=(
-                        f"最新電量僅剩 {summary.latestTelemetry.batteryPct}%。"
-                        "若飛行仍在進行，請先確認現場是否需要 HOLD 或返航。"
-                    ),
-                    recommendedNextStep="先看 Live Ops 的 lease、視訊與 observer 狀態，再決定是否請現場改成 HOLD 或返航。",
-                    createdAt=summary.latestTelemetry.timestamp,
-                    lastObservedAt=summary.latestTelemetry.timestamp,
-                )
-            )
-
-        stale_observed_at = _ensure_utc(summary.lastTelemetryAt)
-        if summary.telemetryFreshness == "stale" and stale_observed_at is not None:
-            items.append(
-                SupportQueueItemDto(
-                    itemId=f"telemetry-stale-{flight.id}",
-                    category="telemetry_stale",
-                    severity="critical",
-                    organizationId=flight.organization_id,
-                    organizationName=context["organizationName"],
-                    flightId=flight.id,
-                    missionId=flight.mission_id,
-                    missionName=context["missionName"],
-                    siteName=context["siteName"],
-                    title="遙測已過時",
-                    summary=(
-                        f"最新遙測已超過 {STALE_TELEMETRY_SECONDS} 秒未更新。"
-                        "目前 web 只能降級成 monitor-only。"
-                    ),
-                    recommendedNextStep="先確認 bridge uplink 與 observer 狀態；若現場仍在飛，優先用 Live Ops 確認 lease 與視訊是否同步失效。",
-                    createdAt=stale_observed_at,
-                    lastObservedAt=stale_observed_at,
-                )
-            )
-
-        bridge_alert = _latest_bridge_alert(session, flight.id)
-        if bridge_alert is not None:
-            payload = bridge_alert.payload_json
-            severity = _coerce_support_severity(payload.get("severity"))
-            code = str(payload.get("code", "bridge_alert"))
-            human_summary = str(
-                payload.get("summary")
-                or "Android bridge 回報了新的告警，請先確認 uplink、lease、video 與 observer 狀態。"
-            )
-            observed_at = _ensure_utc(bridge_alert.event_timestamp) or bridge_alert.event_timestamp
-            items.append(
-                SupportQueueItemDto(
-                    itemId=f"bridge-alert-{bridge_alert.id}",
-                    category="bridge_alert",
-                    severity=severity,
-                    organizationId=flight.organization_id,
-                    organizationName=context["organizationName"],
-                    flightId=flight.id,
-                    missionId=flight.mission_id,
-                    missionName=context["missionName"],
-                    siteName=context["siteName"],
-                    title=f"Bridge 告警: {code}",
-                    summary=human_summary,
-                    recommendedNextStep="打開 Live Ops，確認 lease、telemetry freshness、video 狀態與 observer 是否仍可支援現場處置。",
-                    createdAt=observed_at,
-                    lastObservedAt=observed_at,
-                )
-            )
-
-    return sorted(items, key=lambda item: _ensure_utc(item.lastObservedAt or item.createdAt) or item.createdAt, reverse=True)
+    audit_action, workflow_state = _support_action_record(request.action)
+    audit_event = record_audit(
+        session,
+        action=audit_action,
+        organization_id=item.organizationId,
+        actor_user_id=current_user.user.id,
+        target_type="support_item",
+        target_id=item_id,
+        metadata={
+            "state": workflow_state,
+            "category": item.category,
+            "missionId": item.missionId,
+            "flightId": item.flightId,
+            "assignedToUserId": current_user.user.id if workflow_state in {"claimed", "acknowledged", "resolved"} else None,
+            "assignedToDisplayName": current_user.user.display_name if workflow_state in {"claimed", "acknowledged", "resolved"} else None,
+            "note": request.note,
+        },
+    )
+    session.commit()
+    return _serialize_support_workflow(audit_event)
 
 
 def _get_org_flight(session: Session, flight_id: str) -> Flight:
@@ -276,6 +204,130 @@ def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDt
         video=video,
         controlLease=_control_lease(session, flight.id),
         alerts=_derive_alerts(session, flight, latest_sample, video),
+    )
+
+
+def _build_support_queue(session: Session, *, include_resolved: bool = False) -> list[SupportQueueItemDto]:
+    items: list[SupportQueueItemDto] = []
+
+    failed_missions = session.exec(
+        select(Mission)
+        .where(Mission.organization_id.is_not(None), Mission.status == "failed")
+        .order_by(Mission.created_at.desc())
+    ).all()
+    for mission in failed_missions:
+        if mission.organization_id is None:
+            continue
+        context = _support_context(session, organization_id=mission.organization_id, mission=mission)
+        created_at = _ensure_utc(mission.created_at) or mission.created_at
+        items.append(
+            SupportQueueItemDto(
+                itemId=f"mission-failed-{mission.id}",
+                category="mission_failed",
+                severity="critical",
+                organizationId=mission.organization_id,
+                organizationName=context["organizationName"],
+                missionId=mission.id,
+                missionName=context["missionName"],
+                siteName=context["siteName"],
+                title="任務規劃失敗",
+                summary=f"{mission.mission_name} 規劃結果失敗，請先查看 mission request、response 與 artifacts 狀態。",
+                recommendedNextStep="先開啟任務詳情確認 mission request、response 與 artifacts，再決定是否重送規劃或由內部支援介入。",
+                createdAt=created_at,
+                lastObservedAt=created_at,
+            )
+        )
+
+    flights = session.exec(select(Flight).where(Flight.organization_id.is_not(None))).all()
+    for flight in flights:
+        if flight.organization_id is None:
+            continue
+        summary = _build_live_summary(session, flight)
+        mission = session.get(Mission, flight.mission_id)
+        context = _support_context(session, organization_id=flight.organization_id, mission=mission)
+
+        if summary.latestTelemetry is not None and summary.latestTelemetry.batteryPct < LOW_BATTERY_THRESHOLD:
+            items.append(
+                SupportQueueItemDto(
+                    itemId=f"battery-{flight.id}",
+                    category="battery_low",
+                    severity="warning",
+                    organizationId=flight.organization_id,
+                    organizationName=context["organizationName"],
+                    flightId=flight.id,
+                    missionId=flight.mission_id,
+                    missionName=context["missionName"],
+                    siteName=context["siteName"],
+                    title="電量偏低",
+                    summary=f"最新遙測顯示剩餘電量 {summary.latestTelemetry.batteryPct}%，請確認 observer 與返航策略。",
+                    recommendedNextStep="先查看 Live Ops 的 lease、遙測與 observer 狀態，再決定是否要求現場 HOLD 或返航。",
+                    createdAt=summary.latestTelemetry.timestamp,
+                    lastObservedAt=summary.latestTelemetry.timestamp,
+                )
+            )
+
+        stale_observed_at = _ensure_utc(summary.lastTelemetryAt)
+        if summary.telemetryFreshness == "stale" and stale_observed_at is not None:
+            items.append(
+                SupportQueueItemDto(
+                    itemId=f"telemetry-stale-{flight.id}",
+                    category="telemetry_stale",
+                    severity="critical",
+                    organizationId=flight.organization_id,
+                    organizationName=context["organizationName"],
+                    flightId=flight.id,
+                    missionId=flight.mission_id,
+                    missionName=context["missionName"],
+                    siteName=context["siteName"],
+                    title="遙測已過期",
+                    summary=f"最新遙測距今已超過 {STALE_TELEMETRY_SECONDS} 秒，web 目前只能維持 monitor-only。",
+                    recommendedNextStep="先確認 bridge uplink、observer 與現場控制是否正常，再決定是否升級為現場介入或暫停監看。",
+                    createdAt=stale_observed_at,
+                    lastObservedAt=stale_observed_at,
+                )
+            )
+
+        bridge_alert = _latest_bridge_alert(session, flight.id)
+        if bridge_alert is not None:
+            payload = bridge_alert.payload_json
+            severity = _coerce_support_severity(payload.get("severity"))
+            code = str(payload.get("code", "bridge_alert"))
+            human_summary = str(
+                payload.get("summary")
+                or "Android bridge 回報告警，請確認 uplink、lease、video 與 observer 狀態。"
+            )
+            observed_at = _ensure_utc(bridge_alert.event_timestamp) or bridge_alert.event_timestamp
+            items.append(
+                SupportQueueItemDto(
+                    itemId=f"bridge-alert-{bridge_alert.id}",
+                    category="bridge_alert",
+                    severity=severity,
+                    organizationId=flight.organization_id,
+                    organizationName=context["organizationName"],
+                    flightId=flight.id,
+                    missionId=flight.mission_id,
+                    missionName=context["missionName"],
+                    siteName=context["siteName"],
+                    title=f"Bridge 告警: {code}",
+                    summary=human_summary,
+                    recommendedNextStep="先開啟 Live Ops 檢查 lease、telemetry freshness、video 與 observer 狀態，再決定是否升級處理。",
+                    createdAt=observed_at,
+                    lastObservedAt=observed_at,
+                )
+            )
+
+    visible_items: list[SupportQueueItemDto] = []
+    for item in items:
+        workflow = _load_support_workflow(session, item)
+        if workflow.state == "resolved" and not include_resolved:
+            continue
+        item.workflow = workflow
+        visible_items.append(item)
+
+    return sorted(
+        visible_items,
+        key=lambda item: _ensure_utc(item.lastObservedAt or item.createdAt) or item.createdAt,
+        reverse=True,
     )
 
 
@@ -392,6 +444,58 @@ def _serialize_control_intent(request_event: AuditEvent, ack_event: AuditEvent |
         acknowledgedAt=ack_event.created_at if ack_event is not None else None,
         resolutionNote=ack_metadata.get("reason"),
     )
+
+
+def _load_support_workflow(session: Session, item: SupportQueueItemDto) -> SupportWorkflowDto:
+    event = session.exec(
+        select(AuditEvent)
+        .where(
+            AuditEvent.target_type == "support_item",
+            AuditEvent.target_id == item.itemId,
+            AuditEvent.action.in_(SUPPORT_QUEUE_ACTIONS),
+        )
+        .order_by(AuditEvent.created_at.desc())
+    ).first()
+    if event is None:
+        return SupportWorkflowDto()
+
+    workflow = _serialize_support_workflow(event)
+    reference_at = _ensure_utc(item.lastObservedAt or item.createdAt)
+    if (
+        workflow.state == "resolved"
+        and workflow.updatedAt is not None
+        and reference_at is not None
+        and _ensure_utc(workflow.updatedAt) is not None
+        and _ensure_utc(workflow.updatedAt) < reference_at
+    ):
+        return SupportWorkflowDto()
+    return workflow
+
+
+def _serialize_support_workflow(event: AuditEvent) -> SupportWorkflowDto:
+    metadata = event.metadata_json
+    state = str(metadata.get("state", "open"))
+    if state not in {"open", "claimed", "acknowledged", "resolved"}:
+        state = "open"
+    return SupportWorkflowDto(
+        state=state,
+        assignedToUserId=metadata.get("assignedToUserId"),
+        assignedToDisplayName=metadata.get("assignedToDisplayName"),
+        updatedAt=event.created_at,
+        note=metadata.get("note"),
+    )
+
+
+def _support_action_record(action: str) -> tuple[str, str]:
+    if action == "claim":
+        return SUPPORT_QUEUE_CLAIMED, "claimed"
+    if action == "acknowledge":
+        return SUPPORT_QUEUE_ACKNOWLEDGED, "acknowledged"
+    if action == "resolve":
+        return SUPPORT_QUEUE_RESOLVED, "resolved"
+    if action == "release":
+        return SUPPORT_QUEUE_RELEASED, "open"
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_support_action")
 
 
 def _derive_alerts(
