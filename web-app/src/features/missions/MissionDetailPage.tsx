@@ -55,6 +55,9 @@ function deliveryMessage(mission: MissionDetail) {
 
 function reportStatusMessage(mission: MissionDetail) {
   if (mission.reportStatus === 'ready') {
+    if (mission.eventCount === 0) {
+      return mission.latestReport?.summary ?? 'Inspection analysis completed with no anomaly events. The report artifact can be used as a clean-pass handoff.'
+    }
     return mission.latestReport?.summary ?? 'Inspection analysis completed and a report artifact is available.'
   }
   if (mission.reportStatus === 'failed') {
@@ -68,6 +71,9 @@ function reportStatusMessage(mission: MissionDetail) {
 
 function nextStepSummary(mission: MissionDetail) {
   if (mission.reportStatus === 'ready') {
+    if (mission.eventCount === 0) {
+      return 'Use the HTML report as the clean inspection handoff and keep the mission as a no-findings example in the demo flow.'
+    }
     return 'Review the event list, open the evidence artifacts, and export the HTML report for stakeholder handoff.'
   }
   if (mission.reportStatus === 'failed') {
@@ -303,7 +309,11 @@ export function MissionDetailPage() {
                 <div className="rounded-2xl border border-dashed border-chrome-300 bg-chrome-50/70 px-4 py-6">
                   <p className="font-medium text-chrome-950">No inspection events recorded</p>
                   <p className="mt-2 text-sm text-chrome-700">
-                    Generate a demo report to create anomaly events and evidence artifacts, or keep the mission as a clean pass.
+                    {mission.reportStatus === 'ready'
+                      ? 'This mission currently represents a clean inspection pass. Use the report artifact as the no-findings handoff.'
+                      : mission.reportStatus === 'failed'
+                        ? 'Reporting failed before any evidence artifacts could be generated. Rerun the demo analysis from the internal controls.'
+                        : 'Generate a demo report to create anomaly events and evidence artifacts, or keep the mission as a clean pass.'}
                   </p>
                 </div>
               ) : (

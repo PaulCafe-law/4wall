@@ -58,9 +58,11 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - member deactivate/reactivate
 - If the release touches internal ops surfaces, validate:
   - `Support` loads with severity/category filters, mission/org/site context, last-observed timing, recommended next step copy, and claim / acknowledge / resolve actions
+  - `Support` includes `report_generation_failed` items when a report is reprocessed in `analysis_failed` mode
   - `Live Ops` stays internal-only
-  - telemetry freshness and video availability are visible in `Live Ops`
+  - telemetry freshness, video availability, report status, event count, and report summary are visible in `Live Ops`
   - unavailable or stale Android data remains fail-closed and clearly presented as monitor-only
+  - mission detail, support, and live ops all agree on one report-failed mission and one clean-pass mission if the release touched the event/report slice
 
 ## 3. Production Promotion
 
@@ -71,6 +73,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Validate the same core customer flows on production.
 - Reconfirm any route/template/schedule/dispatch surface touched by the release on production.
 - Reconfirm mission detail still shows linked planning metadata for one dispatched mission when the release touched control-plane surfaces.
+- Reconfirm one clean-pass mission and one report-failed mission show the same reporting state across mission detail, support, and live ops when the release touched the event/report slice.
 - Reconfirm the explicit admin account can still open `/team`, resend an invite, and update organization settings after promotion.
 - If internal ops surfaces changed, re-check the same `Support` and `Live Ops` monitor-only states on production.
  - If support handling changed, verify a support item can be claimed, acknowledged, and resolved without exposing customer-facing write paths.
@@ -95,5 +98,6 @@ Rollback immediately if any of these occur:
 - manual QA notes for customer and internal flows
 - demo-story notes for one route/template -> schedule -> dispatch -> mission-detail walkthrough when the release touches the control-plane slice
 - demo-story notes for one end-to-end route -> dispatch -> event -> report walkthrough when the release touches Phase 1 event/report features
+- evidence that a clean-pass mission and a report-failed mission were both rehearsed after deploy when the release touched event/report or internal-ops surfaces
 - confirmation that explicit admin/viewer smoke accounts still match the environment after any secret rotation
 - any rollback event, trigger, and recovery deploy ID

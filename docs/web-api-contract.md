@@ -314,6 +314,19 @@ The current Batch 3 implementation is deterministic and demo-oriented:
 - `mode="no_findings"` creates a clean report with zero events
 - `mode="analysis_failed"` records a failed report state without evidence artifacts
 
+### Internal Ops Reporting Alignment
+
+Internal-only support and live-ops surfaces must also consume the reporting state without becoming flight-control surfaces.
+
+- `SupportQueueItem.category` includes `report_generation_failed`
+- `SupportQueueItem.summary` may carry the latest report failure summary
+- `LiveFlightSummary.reportStatus` mirrors the latest mission report state
+- `LiveFlightSummary.reportGeneratedAt` records the latest generated timestamp
+- `LiveFlightSummary.eventCount` reports the latest mission event count
+- `LiveFlightSummary.reportSummary` carries the latest report summary for monitor-only triage
+
+These additions are read-only diagnostics. They do not create any direct control path.
+
 ### Mission Contract Additions
 
 `MissionSummary` and `MissionDetail` should formally support:

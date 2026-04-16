@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from app.audit import record_audit
 from app.deps import CurrentWebUser, get_session, require_internal_user
-from app.models import AuditEvent, Flight, FlightEvent, Mission, Organization, Site, TelemetryBatch
+from app.models import AuditEvent, Flight, FlightEvent, InspectionReport, Mission, Organization, Site, TelemetryBatch
 from app.web_dto import (
     ControlIntentDto,
     ControlIntentRequestDto,
@@ -179,6 +179,15 @@ def _get_org_flight(session: Session, flight_id: str) -> Flight:
 def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDto:
     mission = session.get(Mission, flight.mission_id)
     site = session.get(Site, mission.site_id) if mission is not None and mission.site_id is not None else None
+    latest_report = (
+        session.exec(
+            select(InspectionReport)
+            .where(InspectionReport.mission_id == flight.mission_id)
+            .order_by(InspectionReport.generated_at.desc(), InspectionReport.updated_at.desc(), InspectionReport.created_at.desc())
+        ).first()
+        if mission is not None
+        else None
+    )
     latest_batch = session.exec(
         select(TelemetryBatch)
         .where(TelemetryBatch.flight_id == flight.id)
@@ -204,6 +213,10 @@ def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDt
         video=video,
         controlLease=_control_lease(session, flight.id),
         alerts=_derive_alerts(session, flight, latest_sample, video),
+        reportStatus=latest_report.status if latest_report is not None else "not_started",
+        reportGeneratedAt=latest_report.generated_at if latest_report is not None else None,
+        eventCount=latest_report.event_count if latest_report is not None else 0,
+        reportSummary=latest_report.summary if latest_report is not None else None,
     )
 
 
@@ -235,6 +248,35 @@ def _build_support_queue(session: Session, *, include_resolved: bool = False) ->
                 recommendedNextStep="先開啟任務詳情確認 mission request、response 與 artifacts，再決定是否重送規劃或由內部支援介入。",
                 createdAt=created_at,
                 lastObservedAt=created_at,
+            )
+        )
+
+    failed_reports = session.exec(
+        select(InspectionReport)
+        .where(InspectionReport.status == "failed")
+        .order_by(InspectionReport.generated_at.desc(), InspectionReport.updated_at.desc(), InspectionReport.created_at.desc())
+    ).all()
+    for report in failed_reports:
+        mission = session.get(Mission, report.mission_id)
+        if mission is None or mission.organization_id is None:
+            continue
+        context = _support_context(session, organization_id=mission.organization_id, mission=mission)
+        observed_at = _ensure_utc(report.generated_at or report.updated_at or report.created_at) or report.created_at
+        items.append(
+            SupportQueueItemDto(
+                itemId=f"report-failed-{report.id}",
+                category="report_generation_failed",
+                severity="critical",
+                organizationId=mission.organization_id,
+                organizationName=context["organizationName"],
+                missionId=mission.id,
+                missionName=context["missionName"],
+                siteName=context["siteName"],
+                title="Inspection report generation failed",
+                summary=report.summary or "The reporting pipeline did not produce a usable inspection report artifact.",
+                recommendedNextStep="Open mission detail, confirm artifact readiness, and rerun demo analysis once the imagery set is available.",
+                createdAt=observed_at,
+                lastObservedAt=observed_at,
             )
         )
 

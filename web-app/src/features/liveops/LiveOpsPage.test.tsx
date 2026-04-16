@@ -33,7 +33,7 @@ describe('LiveOpsPage', () => {
     apiMock.requestControlIntent.mockReset()
   })
 
-  it('renders monitor-only flight context with freshness and intent history', async () => {
+  it('renders monitor-only flight context and reporting guidance', async () => {
     apiMock.listLiveFlights.mockResolvedValue([
       {
         flightId: 'flight-001',
@@ -75,6 +75,10 @@ describe('LiveOpsPage', () => {
           expiresAt: '2026-04-16T10:05:00Z',
         },
         alerts: ['bridge_alert'],
+        reportStatus: 'failed',
+        reportGeneratedAt: '2026-04-16T10:02:00Z',
+        eventCount: 0,
+        reportSummary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
       },
     ])
     apiMock.getLiveFlight.mockResolvedValue({
@@ -117,6 +121,10 @@ describe('LiveOpsPage', () => {
         expiresAt: '2026-04-16T10:05:00Z',
       },
       alerts: ['bridge_alert'],
+      reportStatus: 'failed',
+      reportGeneratedAt: '2026-04-16T10:02:00Z',
+      eventCount: 0,
+      reportSummary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
       recentEvents: [
         {
           eventId: 'evt-001',
@@ -151,10 +159,14 @@ describe('LiveOpsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'Live Ops' })).toBeInTheDocument()
     expect(await screen.findAllByText('Tower A Demo')).not.toHaveLength(0)
-    expect(await screen.findByText('目前以 monitor-only 為主')).toBeInTheDocument()
-    expect(await screen.findAllByText('遙測延遲')).not.toHaveLength(0)
-    expect(await screen.findAllByText('影像延遲')).not.toHaveLength(0)
-    expect(await screen.findByRole('button', { name: '申請遠端接管' })).toBeInTheDocument()
+    expect(await screen.findByText('Monitor-only degradation is active')).toBeInTheDocument()
+    expect(await screen.findAllByText('Telemetry stale')).not.toHaveLength(0)
+    expect(await screen.findAllByText('Video stale')).not.toHaveLength(0)
+    expect(await screen.findByText('Report generation failed')).toBeInTheDocument()
+    expect(
+      await screen.findAllByText('Analysis pipeline could not derive inspection events from the mission imagery.'),
+    ).not.toHaveLength(0)
+    expect(await screen.findByRole('button', { name: 'Request remote control' })).toBeInTheDocument()
     expect(await screen.findByText('HQ takeover drill')).toBeInTheDocument()
     expect(await screen.findByText('CONTROL_LEASE_UPDATED')).toBeInTheDocument()
     expect(document.querySelector('a[href="/missions/mission-001"]')).toBeTruthy()

@@ -30,6 +30,12 @@ The purpose is to show:
   - `POST /v1/missions/{missionId}/analysis/reprocess` internal-only
   - mission-detail evidence gallery, report summary, and report artifact download
   - mission-list and overview reporting summaries
+- Batch 4 hardens the demo flow for rehearsal and internal operations:
+  - mission-detail clean-pass and analysis-failed guidance
+  - overview clean-pass fallback messaging when no anomaly summary exists
+  - support queue report-generation-failed category
+  - live-ops reporting summary with report status, generated timestamp, event count, and report summary
+  - release and rehearsal docs aligned to support/live-ops verification for reporting failures
 
 ## Scope
 
@@ -56,6 +62,8 @@ The purpose is to show:
 - `Missions` as mission/report index
 - `Mission Detail` as the core event/evidence/report page
 - `Support` and `Live Ops` as internal-only supporting surfaces
+  - `Support` must surface report-generation failures as first-class triage items
+  - `Live Ops` must expose report freshness/state without crossing into the flight loop
 
 ## Contract-First Additions
 
@@ -93,6 +101,14 @@ These contracts are locked in Batch 1 even if endpoint rollout happens in later 
 - `EvidenceArtifact`
 - `InspectionEvent`
 - `InspectionReportSummary`
+
+### Internal Ops Contract Additions
+
+- `SupportQueueItem.category` includes `report_generation_failed`
+- `LiveFlightSummary.reportStatus`
+- `LiveFlightSummary.reportGeneratedAt`
+- `LiveFlightSummary.eventCount`
+- `LiveFlightSummary.reportSummary`
 
 ## Endpoint Rollout Shape
 
@@ -144,6 +160,7 @@ Phase 1 demo functionality is accepted when:
 - the web UI can demonstrate the full route-to-report story without explanation gaps
 - the data model is stable enough that later batches do not need to redesign route/schedule/event/report shapes
 - control-plane and report surfaces stay outside the flight-critical boundary
+- `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass
 - failure states remain explicit:
   - no event found
   - analysis failed

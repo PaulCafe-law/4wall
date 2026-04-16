@@ -4,7 +4,12 @@ export type CustomerRole = 'customer_admin' | 'customer_viewer'
 export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overdue' | 'void'
 
 export type SupportSeverity = 'info' | 'warning' | 'critical'
-export type SupportCategory = 'mission_failed' | 'battery_low' | 'telemetry_stale' | 'bridge_alert'
+export type SupportCategory =
+  | 'mission_failed'
+  | 'battery_low'
+  | 'telemetry_stale'
+  | 'bridge_alert'
+  | 'report_generation_failed'
 export type SupportWorkflowState = 'open' | 'claimed' | 'acknowledged' | 'resolved'
 export type SupportQueueAction = 'claim' | 'acknowledge' | 'resolve' | 'release'
 export type TelemetryFreshness = 'fresh' | 'stale' | 'missing'
@@ -433,6 +438,10 @@ export interface LiveFlightSummary {
   video: VideoChannelDescriptor
   controlLease: ControlLease
   alerts: string[]
+  reportStatus: InspectionReportStatus
+  reportGeneratedAt: string | null
+  eventCount: number
+  reportSummary: string | null
 }
 
 export interface LiveFlightDetail extends LiveFlightSummary {
