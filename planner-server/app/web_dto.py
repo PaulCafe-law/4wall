@@ -25,6 +25,18 @@ ControlIntentActionLiteral = Literal[
 ]
 ControlIntentStatusLiteral = Literal["requested", "accepted", "rejected", "superseded"]
 ControlModeLiteral = Literal["monitor_only", "remote_control_requested", "remote_control_active", "released"]
+InspectionReportStatusLiteral = Literal["not_started", "queued", "generating", "ready", "failed"]
+InspectionEventStatusLiteral = Literal["open", "reviewed", "dismissed", "confirmed"]
+InspectionWaypointKindLiteral = Literal["transit", "inspection_viewpoint", "hold"]
+InspectionAlertRuleKindLiteral = Literal[
+    "mission_failure",
+    "telemetry_stale",
+    "low_battery",
+    "analysis_failure",
+    "report_generation_failure",
+]
+InspectionScheduleStatusLiteral = Literal["scheduled", "paused", "cancelled", "completed"]
+DispatchStatusLiteral = Literal["queued", "assigned", "sent", "accepted", "failed"]
 
 
 class MembershipDto(BaseModel):
@@ -161,6 +173,108 @@ class SiteDto(BaseModel):
     updatedAt: datetime
 
 
+class EvidenceArtifactDto(BaseModel):
+    artifactName: str
+    downloadUrl: str
+    contentType: str | None = None
+    checksumSha256: str | None = None
+    publishedAt: datetime | None = None
+
+
+class InspectionWaypointDto(BaseModel):
+    kind: InspectionWaypointKindLiteral
+    lat: float
+    lng: float
+    altitudeM: float
+    label: str | None = None
+    headingDeg: float | None = None
+    dwellSeconds: int | None = None
+
+
+class InspectionAlertRuleDto(BaseModel):
+    ruleId: str
+    kind: InspectionAlertRuleKindLiteral
+    enabled: bool = True
+    threshold: float | None = None
+    note: str | None = None
+
+
+class InspectionRouteDto(BaseModel):
+    routeId: str
+    organizationId: str
+    siteId: str
+    name: str
+    description: str = ""
+    pointCount: int = 0
+    waypoints: list[InspectionWaypointDto] = Field(default_factory=list)
+    planningParameters: dict[str, Any] = Field(default_factory=dict)
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class InspectionTemplateDto(BaseModel):
+    templateId: str
+    organizationId: str
+    siteId: str
+    routeId: str | None = None
+    name: str
+    description: str = ""
+    inspectionProfile: dict[str, Any] = Field(default_factory=dict)
+    alertRules: list[InspectionAlertRuleDto] = Field(default_factory=list)
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class InspectionScheduleDto(BaseModel):
+    scheduleId: str
+    organizationId: str
+    siteId: str
+    routeId: str | None = None
+    templateId: str | None = None
+    plannedAt: datetime | None = None
+    recurrence: str | None = None
+    status: InspectionScheduleStatusLiteral = "scheduled"
+    alertRules: list[InspectionAlertRuleDto] = Field(default_factory=list)
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class DispatchRecordDto(BaseModel):
+    dispatchId: str
+    missionId: str
+    routeId: str | None = None
+    templateId: str | None = None
+    scheduleId: str | None = None
+    dispatchedAt: datetime
+    dispatchedByUserId: str | None = None
+    assignee: str | None = None
+    executionTarget: str | None = None
+    status: DispatchStatusLiteral = "queued"
+    note: str | None = None
+
+
+class InspectionEventDto(BaseModel):
+    eventId: str
+    missionId: str
+    siteId: str | None = None
+    category: str
+    severity: SupportSeverityLiteral
+    summary: str
+    detectedAt: datetime
+    status: InspectionEventStatusLiteral = "open"
+    evidenceArtifacts: list[EvidenceArtifactDto] = Field(default_factory=list)
+
+
+class InspectionReportSummaryDto(BaseModel):
+    reportId: str
+    missionId: str
+    status: InspectionReportStatusLiteral = "not_started"
+    generatedAt: datetime | None = None
+    summary: str | None = None
+    eventCount: int = 0
+    downloadArtifact: EvidenceArtifactDto | None = None
+
+
 class MissionSummaryDto(BaseModel):
     missionId: str
     organizationId: str | None = None
@@ -171,6 +285,9 @@ class MissionSummaryDto(BaseModel):
     deliveryStatus: MissionDeliveryStateLiteral
     publishedAt: datetime | None = None
     failureReason: str | None = None
+    reportStatus: InspectionReportStatusLiteral = "not_started"
+    reportGeneratedAt: datetime | None = None
+    eventCount: int = 0
     createdAt: datetime
 
 
@@ -203,6 +320,15 @@ class MissionDetailDto(BaseModel):
     response: dict[str, Any]
     delivery: MissionDeliveryDto
     artifacts: list[MissionArtifactDownloadDto] = Field(default_factory=list)
+    reportStatus: InspectionReportStatusLiteral = "not_started"
+    reportGeneratedAt: datetime | None = None
+    eventCount: int = 0
+    latestReport: InspectionReportSummaryDto | None = None
+    events: list[InspectionEventDto] = Field(default_factory=list)
+    route: InspectionRouteDto | None = None
+    template: InspectionTemplateDto | None = None
+    schedule: InspectionScheduleDto | None = None
+    dispatch: DispatchRecordDto | None = None
     createdAt: datetime
 
 
@@ -242,10 +368,21 @@ class OverviewSupportSummaryDto(BaseModel):
     warningCount: int = 0
 
 
+class OverviewEventSummaryDto(BaseModel):
+    eventId: str
+    missionId: str
+    category: str
+    severity: SupportSeverityLiteral
+    summary: str
+    detectedAt: datetime
+
+
 class OverviewDto(BaseModel):
     siteCount: int = 0
     missionCount: int = 0
     planningMissionCount: int = 0
+    scheduledMissionCount: int = 0
+    runningMissionCount: int = 0
     readyMissionCount: int = 0
     failedMissionCount: int = 0
     publishedMissionCount: int = 0
@@ -256,6 +393,8 @@ class OverviewDto(BaseModel):
     recentDeliveries: list[MissionSummaryDto] = Field(default_factory=list)
     recentInvoices: list[BillingInvoiceDto] = Field(default_factory=list)
     pendingInvites: list[OverviewInviteDto] = Field(default_factory=list)
+    latestReportSummary: InspectionReportSummaryDto | None = None
+    latestEventSummary: OverviewEventSummaryDto | None = None
     supportSummary: OverviewSupportSummaryDto | None = None
 
 

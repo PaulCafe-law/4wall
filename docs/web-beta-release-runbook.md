@@ -15,6 +15,10 @@ The release acceptance checklist lives in:
 
 - `docs/WEB_RELEASE_CHECKLIST.md`
 
+The Phase 1 demo scope and target contracts live in:
+
+- `docs/PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md`
+
 ## Required Inputs
 
 Reference these docs before shipping any `live-ops` or `support` change:
@@ -75,14 +79,19 @@ The current rollout model is:
 8. Manually verify self-serve signup and invite acceptance if auth surface changed.
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
+   - site map and site selection flow
+   - route/template records can be viewed or edited without entering any flight-control path
+   - schedule and dispatch records show the expected planning metadata
    - overview pending-action cards, invoice reminders, invite reminders, and setup guidance when the workspace has no sites or no missions
+   - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
    - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
-   - mission detail publication panel with download metadata and next-step guidance
+   - mission detail publication panel with download metadata, next-step guidance, event count, report summary, and evidence/report artifacts
    - team invite lifecycle, including resend / revoke
    - billing status clarity, payment note, receipt reference rendering, and reminder panels for overdue or due-soon invoices
 11. If the release touches internal ops surfaces, manually verify:
    - `Support` shows severity/category filters, mission/org/site context, last-observed timing, recommended next steps, and claim / acknowledge / resolve workflow state
-   - `Live Ops` shows telemetry freshness, video availability, lease status, and monitor-only copy when data is degraded
+   - `Support` includes analysis/report failure categories if the release touched event/report flows
+   - `Live Ops` shows telemetry freshness, video availability, lease status, dispatch context, and monitor-only copy when data is degraded
 
 ## Promotion to Production
 
@@ -94,9 +103,10 @@ The current rollout model is:
 6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
 7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 8. Re-check the same overview / mission-delivery / billing manual flows on production before closing the deploy.
-9. Re-check team invite lifecycle on production if the release touched team surfaces.
-10. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
-11. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
+9. Re-check the control-plane route/template/schedule/dispatch flows on production if the release touched the Phase 1 demo surface.
+10. Re-check team invite lifecycle on production if the release touched team surfaces.
+11. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
+12. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

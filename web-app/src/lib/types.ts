@@ -9,6 +9,17 @@ export type SupportWorkflowState = 'open' | 'claimed' | 'acknowledged' | 'resolv
 export type SupportQueueAction = 'claim' | 'acknowledge' | 'resolve' | 'release'
 export type TelemetryFreshness = 'fresh' | 'stale' | 'missing'
 export type VideoAvailability = 'live' | 'stale' | 'unavailable'
+export type InspectionReportStatus = 'not_started' | 'queued' | 'generating' | 'ready' | 'failed'
+export type InspectionEventStatus = 'open' | 'reviewed' | 'dismissed' | 'confirmed'
+export type InspectionWaypointKind = 'transit' | 'inspection_viewpoint' | 'hold'
+export type InspectionAlertRuleKind =
+  | 'mission_failure'
+  | 'telemetry_stale'
+  | 'low_battery'
+  | 'analysis_failure'
+  | 'report_generation_failure'
+export type InspectionScheduleStatus = 'scheduled' | 'paused' | 'cancelled' | 'completed'
+export type DispatchStatus = 'queued' | 'assigned' | 'sent' | 'accepted' | 'failed'
 
 export type ControlIntentAction =
   | 'request_remote_control'
@@ -101,6 +112,108 @@ export interface Site {
   updatedAt: string
 }
 
+export interface EvidenceArtifact {
+  artifactName: string
+  downloadUrl: string
+  contentType: string | null
+  checksumSha256: string | null
+  publishedAt: string | null
+}
+
+export interface InspectionWaypoint {
+  kind: InspectionWaypointKind
+  lat: number
+  lng: number
+  altitudeM: number
+  label: string | null
+  headingDeg: number | null
+  dwellSeconds: number | null
+}
+
+export interface InspectionAlertRule {
+  ruleId: string
+  kind: InspectionAlertRuleKind
+  enabled: boolean
+  threshold: number | null
+  note: string | null
+}
+
+export interface InspectionRoute {
+  routeId: string
+  organizationId: string
+  siteId: string
+  name: string
+  description: string
+  pointCount: number
+  waypoints: InspectionWaypoint[]
+  planningParameters: Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InspectionTemplate {
+  templateId: string
+  organizationId: string
+  siteId: string
+  routeId: string | null
+  name: string
+  description: string
+  inspectionProfile: Record<string, unknown>
+  alertRules: InspectionAlertRule[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InspectionSchedule {
+  scheduleId: string
+  organizationId: string
+  siteId: string
+  routeId: string | null
+  templateId: string | null
+  plannedAt: string | null
+  recurrence: string | null
+  status: InspectionScheduleStatus
+  alertRules: InspectionAlertRule[]
+  createdAt: string
+  updatedAt: string
+}
+
+export interface DispatchRecord {
+  dispatchId: string
+  missionId: string
+  routeId: string | null
+  templateId: string | null
+  scheduleId: string | null
+  dispatchedAt: string
+  dispatchedByUserId: string | null
+  assignee: string | null
+  executionTarget: string | null
+  status: DispatchStatus
+  note: string | null
+}
+
+export interface InspectionEvent {
+  eventId: string
+  missionId: string
+  siteId: string | null
+  category: string
+  severity: SupportSeverity
+  summary: string
+  detectedAt: string
+  status: InspectionEventStatus
+  evidenceArtifacts: EvidenceArtifact[]
+}
+
+export interface InspectionReportSummary {
+  reportId: string
+  missionId: string
+  status: InspectionReportStatus
+  generatedAt: string | null
+  summary: string | null
+  eventCount: number
+  downloadArtifact: EvidenceArtifact | null
+}
+
 export interface MissionSummary {
   missionId: string
   organizationId: string | null
@@ -111,6 +224,9 @@ export interface MissionSummary {
   deliveryStatus: 'planning' | 'ready' | 'failed' | 'published'
   publishedAt: string | null
   failureReason: string | null
+  reportStatus: InspectionReportStatus
+  reportGeneratedAt: string | null
+  eventCount: number
   createdAt: string
 }
 
@@ -143,6 +259,15 @@ export interface MissionDetail {
   response: Record<string, unknown>
   delivery: MissionDelivery
   artifacts: MissionArtifactDownload[]
+  reportStatus: InspectionReportStatus
+  reportGeneratedAt: string | null
+  eventCount: number
+  latestReport: InspectionReportSummary | null
+  events: InspectionEvent[]
+  route: InspectionRoute | null
+  template: InspectionTemplate | null
+  schedule: InspectionSchedule | null
+  dispatch: DispatchRecord | null
   createdAt: string
 }
 
@@ -205,10 +330,21 @@ export interface OverviewSupportSummary {
   warningCount: number
 }
 
+export interface OverviewEventSummary {
+  eventId: string
+  missionId: string
+  category: string
+  severity: SupportSeverity
+  summary: string
+  detectedAt: string
+}
+
 export interface Overview {
   siteCount: number
   missionCount: number
   planningMissionCount: number
+  scheduledMissionCount: number
+  runningMissionCount: number
   readyMissionCount: number
   failedMissionCount: number
   publishedMissionCount: number
@@ -219,6 +355,8 @@ export interface Overview {
   recentDeliveries: MissionSummary[]
   recentInvoices: BillingInvoice[]
   pendingInvites: OverviewInvite[]
+  latestReportSummary: InspectionReportSummary | null
+  latestEventSummary: OverviewEventSummary | null
   supportSummary: OverviewSupportSummary | null
 }
 
