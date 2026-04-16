@@ -24,6 +24,13 @@ type ActionItem = {
   tone: 'critical' | 'warning' | 'neutral'
 }
 
+type GuidanceItem = {
+  title: string
+  body: string
+  to: string
+  actionLabel: string
+}
+
 function buildActionItems({
   failedMissionCount,
   readyMissionCount,
@@ -155,6 +162,47 @@ function inviteSummary(invite: OverviewInvite) {
   return `建立於 ${formatDateTime(invite.createdAt)}，到期日為 ${formatDate(invite.expiresAt)}。`
 }
 
+function buildGuidanceItem({
+  siteCount,
+  missionCount,
+  pendingInviteCount,
+  isInternal,
+}: {
+  siteCount: number
+  missionCount: number
+  pendingInviteCount: number
+  isInternal: boolean
+}): GuidanceItem | null {
+  if (siteCount === 0) {
+    return {
+      title: '先建立第一個場址',
+      body: '場址是任務與交付的起點。先把第一個場址建好，之後才能穩定建立任務並追蹤成果。',
+      to: '/sites',
+      actionLabel: '建立場址',
+    }
+  }
+
+  if (missionCount === 0) {
+    return {
+      title: '場址已就緒，下一步是建立任務',
+      body: '你已經有可用場址，現在可以建立第一筆任務請求，讓交付、帳務與團隊流程開始累積。',
+      to: '/missions/new',
+      actionLabel: '建立第一筆任務',
+    }
+  }
+
+  if (!isInternal && pendingInviteCount === 0) {
+    return {
+      title: '可邀請團隊一起追蹤進度',
+      body: '如果這個工作區已經開始有任務與交付，建議邀請其他同事加入，讓交付、帳務與站點資訊不只留在單一帳號。',
+      to: '/team',
+      actionLabel: '管理團隊',
+    }
+  }
+
+  return null
+}
+
 export function OverviewPage() {
   const auth = useAuth()
   const overviewQuery = useAuthedQuery({
@@ -202,6 +250,12 @@ export function OverviewPage() {
     overview.missionCount > 0 ||
     overview.recentInvoices.length > 0 ||
     overview.pendingInvites.length > 0
+  const guidanceItem = buildGuidanceItem({
+    siteCount: overview.siteCount,
+    missionCount: overview.missionCount,
+    pendingInviteCount: overview.pendingInviteCount,
+    isInternal: auth.isInternal,
+  })
 
   return (
     <div className="space-y-6">
@@ -246,11 +300,14 @@ export function OverviewPage() {
 
       {!hasAnyData ? (
         <EmptyState
-          title="這個工作區還沒有資料"
-          body="先建立第一個任務請求，後續的交付、帳單與團隊邀請就會逐步出現在這裡。"
+          title={guidanceItem?.title ?? '這個工作區還沒有資料'}
+          body={guidanceItem?.body ?? '先建立第一個任務請求，後續的交付、帳單與團隊邀請就會逐步出現在這裡。'}
           action={
-            <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
-              建立第一筆任務
+            <Link
+              to={guidanceItem?.to ?? '/missions/new'}
+              className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white"
+            >
+              {guidanceItem?.actionLabel ?? '建立第一筆任務'}
             </Link>
           }
         />
@@ -277,7 +334,24 @@ export function OverviewPage() {
             </div>
             <div className="mt-4 grid gap-3">
               {actionItems.length === 0 ? (
-                <p className="text-sm text-chrome-700">目前沒有需要優先處理的提醒，可以直接查看任務或建立新的請求。</p>
+                guidanceItem ? (
+                  <div className={actionCardClass('neutral')}>
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0">
+                        <p className="font-medium text-chrome-950">{guidanceItem.title}</p>
+                        <p className="mt-1 text-sm text-chrome-700">{guidanceItem.body}</p>
+                      </div>
+                      <Link
+                        to={guidanceItem.to}
+                        className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
+                      >
+                        {guidanceItem.actionLabel}
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-chrome-700">目前沒有需要優先處理的提醒，可以直接查看任務或建立新的請求。</p>
+                )
               ) : (
                 actionItems.map((item) => (
                   <div key={item.key} className={actionCardClass(item.tone)}>
@@ -311,7 +385,12 @@ export function OverviewPage() {
             </div>
             <div className="mt-4 grid gap-3">
               {overview.recentMissions.length === 0 ? (
-                <p className="text-sm text-chrome-700">目前還沒有任務資料。</p>
+                <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
+                  <p className="font-medium text-chrome-950">目前還沒有任務資料</p>
+                  <p className="mt-2 text-sm text-chrome-700">
+                    先確認場址資料是否完整，然後建立第一筆任務請求。之後這裡會顯示最近任務與交付進度。
+                  </p>
+                </div>
               ) : (
                 overview.recentMissions.map((mission) => (
                   <Link
@@ -347,7 +426,12 @@ export function OverviewPage() {
             </div>
             <div className="mt-4 grid gap-3">
               {overview.recentDeliveries.length === 0 ? (
-                <p className="text-sm text-chrome-700">目前還沒有已發布的交付成果。</p>
+                <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
+                  <p className="font-medium text-chrome-950">目前還沒有已發布的交付成果</p>
+                  <p className="mt-2 text-sm text-chrome-700">
+                    任務一旦進入發布狀態，這裡會列出最新成果。若目前只有規劃中或待交付任務，請先查看任務明細。
+                  </p>
+                </div>
               ) : (
                 overview.recentDeliveries.map((mission) => (
                   <Link

@@ -40,6 +40,19 @@ function deliveryMessage(state: 'planning' | 'ready' | 'failed' | 'published', f
   return '任務仍在規劃中，請稍後再查看交付狀態。'
 }
 
+function nextStepSummary(state: 'planning' | 'ready' | 'failed' | 'published') {
+  if (state === 'published') {
+    return '先下載交付檔並確認版本與 checksum，之後再把成果轉交給現場或客戶。'
+  }
+  if (state === 'ready') {
+    return '任務已完成規劃，但成果檔尚未正式發布。先回任務列表追蹤是否已完成發布。'
+  }
+  if (state === 'failed') {
+    return '先記錄失敗原因，再決定是否重新建立任務或請內部支援協助排查。'
+  }
+  return '目前不需要下載檔案。等規劃完成後再回到這裡查看交付狀態。'
+}
+
 export function MissionDetailPage() {
   const { missionId = '' } = useParams()
 
@@ -98,6 +111,36 @@ export function MissionDetailPage() {
             { label: '失敗原因', value: mission.delivery.failureReason ?? '—' },
           ]}
         />
+      </div>
+      <div className="mt-4 rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Next step</p>
+        <p className="mt-2 font-medium text-chrome-950">接下來建議這樣處理</p>
+        <p className="mt-2 text-sm text-chrome-700">{nextStepSummary(mission.delivery.state)}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {missionKmz ? (
+            <a
+              className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
+              href={absoluteArtifactUrl(missionKmz.downloadUrl)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              下載 mission.kmz
+            </a>
+          ) : null}
+          {missionMeta ? (
+            <a
+              className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
+              href={absoluteArtifactUrl(missionMeta.downloadUrl)}
+              target="_blank"
+              rel="noreferrer"
+            >
+              下載 metadata
+            </a>
+          ) : null}
+          <Link to="/missions" className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950">
+            返回任務列表
+          </Link>
+        </div>
       </div>
       <div className="mt-4 space-y-3">
         {[missionKmz, missionMeta].filter(Boolean).map((artifact) => (

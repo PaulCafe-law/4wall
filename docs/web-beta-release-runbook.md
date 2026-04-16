@@ -75,11 +75,11 @@ The current rollout model is:
 8. Manually verify self-serve signup and invite acceptance if auth surface changed.
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
-   - overview pending-action cards, invoice reminders, and invite reminders
+   - overview pending-action cards, invoice reminders, invite reminders, and setup guidance when the workspace has no sites or no missions
    - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
-   - mission detail publication panel with download metadata
+   - mission detail publication panel with download metadata and next-step guidance
    - team invite lifecycle, including resend / revoke
-   - billing status clarity, payment note, receipt reference rendering, and reminder panels
+   - billing status clarity, payment note, receipt reference rendering, and reminder panels for overdue or due-soon invoices
 11. If the release touches internal ops surfaces, manually verify:
    - `Support` shows severity/category filters, mission/org/site context, last-observed timing, recommended next steps, and claim / acknowledge / resolve workflow state
    - `Live Ops` shows telemetry freshness, video availability, lease status, and monitor-only copy when data is degraded

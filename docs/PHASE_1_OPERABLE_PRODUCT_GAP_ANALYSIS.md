@@ -54,8 +54,8 @@ The main remaining gaps are product usability and operational completeness, not 
 
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
-| Overview | Backend aggregate and daily landing page now exist, including pending-action cards and invoice / invite reminders | Useful customer and internal daily landing page | Still needs richer prioritization and later-phase notification hooks |
-| Mission delivery | Mission list/detail now expose delivery state, publish time, failure reason, artifact metadata, and customer-facing delivery copy | Delivery-oriented artifact panel with clear publish state | Still missing artifact history, release notes, and customer-facing delivery summaries beyond the current mission |
+| Overview | Backend aggregate and daily landing page now exist, including pending-action cards, setup guidance, invoice reminders, and differentiated empty states | Useful customer and internal daily landing page | Still needs later-phase notification hooks and richer cross-page rollups |
+| Mission delivery | Mission list/detail now expose delivery state, publish time, failure reason, artifact metadata, customer-facing delivery copy, and explicit next-step guidance | Delivery-oriented artifact panel with clear publish state | Still missing artifact history, release notes, and customer-facing delivery summaries beyond the current mission |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state now exist | Customer self-service org settings, member role management, membership activation, and invite management | Still needs final polish on invite feedback loops and clearer customer guidance around role changes |
 | Support queue | Internal-only queue includes mission/org/site context, severity, last-observed timing, recommended next steps, and handling workflow state | Mission-centered support workspace | Still needs richer assignment/reporting history once the handling model settles |
 | Live Ops | Internal-only monitoring now exposes telemetry freshness, video availability, lease state, and control-intent history | Stable monitoring surface with explicit monitor-only degradation | Still needs richer incident history and stronger Android-backed freshness guarantees once the upstream contract hardens |
@@ -63,8 +63,8 @@ The main remaining gaps are product usability and operational completeness, not 
 
 ## Phase 1 Deliverables
 
-- customer-facing overview improvements, reminders, and polished empty states
-- mission delivery / artifact publication state improvements plus clearer download summaries
+- customer-facing overview improvements, reminders, setup guidance, and polished empty states
+- mission delivery / artifact publication state improvements plus clearer next-step and download summaries
 - team and org workflow polish, including member management
 - support and live-ops usability hardening, including triage filters, handling workflow state, and monitor-only diagnostics
 - unified release checklist and deployment evidence template
