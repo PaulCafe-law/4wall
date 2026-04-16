@@ -26,6 +26,7 @@ from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_o
 router = APIRouter(tags=["live-ops"])
 
 STALE_TELEMETRY_SECONDS = 90
+STALE_VIDEO_SECONDS = 15
 LOW_BATTERY_THRESHOLD = 25
 BRIDGE_ALERT_LOOKBACK_MINUTES = 10
 
@@ -118,10 +119,9 @@ def list_support_queue(
     current_user: CurrentWebUser = Depends(require_internal_user),
     session: Session = Depends(get_session),
 ) -> list[SupportQueueItemDto]:
-    del current_user  # internal access already enforced above
+    del current_user
 
     items: list[SupportQueueItemDto] = []
-    now = datetime.now(timezone.utc)
 
     failed_missions = session.exec(
         select(Mission)
@@ -132,6 +132,7 @@ def list_support_queue(
         if mission.organization_id is None:
             continue
         context = _support_context(session, organization_id=mission.organization_id, mission=mission)
+        created_at = _ensure_utc(mission.created_at) or mission.created_at
         items.append(
             SupportQueueItemDto(
                 itemId=f"mission-failed-{mission.id}",
@@ -144,11 +145,12 @@ def list_support_queue(
                 siteName=context["siteName"],
                 title="任務規劃失敗",
                 summary=(
-                    f"{mission.mission_name} 已標記為 failed。"
-                    "這代表交付流程未成功完成，需要立即確認規劃輸入與產出紀錄。"
+                    f"{mission.mission_name} 已經進入 failed。"
+                    "請先確認 mission request、交付狀態與失敗原因，再決定是重送還是人工處理。"
                 ),
-                recommendedNextStep="打開任務詳情，先核對 mission request、規劃回應與 artifact 產出紀錄。",
-                createdAt=_ensure_utc(mission.created_at) or mission.created_at,
+                recommendedNextStep="打開任務明細，確認 mission request、交付狀態與 artifacts，再決定是否重送。",
+                createdAt=created_at,
+                lastObservedAt=created_at,
             )
         )
 
@@ -172,18 +174,19 @@ def list_support_queue(
                     missionId=flight.mission_id,
                     missionName=context["missionName"],
                     siteName=context["siteName"],
-                    title="電量過低",
+                    title="電量偏低",
                     summary=(
-                        f"最新電量為 {summary.latestTelemetry.batteryPct}%。"
-                        "現場需要盡快確認飛行是否已進入安全收斂流程。"
+                        f"最新電量僅剩 {summary.latestTelemetry.batteryPct}%。"
+                        "若飛行仍在進行，請先確認現場是否需要 HOLD 或返航。"
                     ),
-                    recommendedNextStep="立即確認現場是否已 HOLD、返航，並由 observer 回報目前接手狀態。",
+                    recommendedNextStep="先看 Live Ops 的 lease、視訊與 observer 狀態，再決定是否請現場改成 HOLD 或返航。",
                     createdAt=summary.latestTelemetry.timestamp,
+                    lastObservedAt=summary.latestTelemetry.timestamp,
                 )
             )
 
-        last_telemetry_at = _ensure_utc(flight.last_telemetry_at)
-        if last_telemetry_at is not None and now - last_telemetry_at > timedelta(seconds=STALE_TELEMETRY_SECONDS):
+        stale_observed_at = _ensure_utc(summary.lastTelemetryAt)
+        if summary.telemetryFreshness == "stale" and stale_observed_at is not None:
             items.append(
                 SupportQueueItemDto(
                     itemId=f"telemetry-stale-{flight.id}",
@@ -195,10 +198,14 @@ def list_support_queue(
                     missionId=flight.mission_id,
                     missionName=context["missionName"],
                     siteName=context["siteName"],
-                    title="遙測中斷",
-                    summary="超過 90 秒未收到遙測。請檢查 uplink、Android bridge 與現場控制站狀態。",
-                    recommendedNextStep="先確認現場仍有目視控制與 observer 在位，再檢查 uplink、bridge 與控制站連線。",
-                    createdAt=last_telemetry_at,
+                    title="遙測已過時",
+                    summary=(
+                        f"最新遙測已超過 {STALE_TELEMETRY_SECONDS} 秒未更新。"
+                        "目前 web 只能降級成 monitor-only。"
+                    ),
+                    recommendedNextStep="先確認 bridge uplink 與 observer 狀態；若現場仍在飛，優先用 Live Ops 確認 lease 與視訊是否同步失效。",
+                    createdAt=stale_observed_at,
+                    lastObservedAt=stale_observed_at,
                 )
             )
 
@@ -209,8 +216,9 @@ def list_support_queue(
             code = str(payload.get("code", "bridge_alert"))
             human_summary = str(
                 payload.get("summary")
-                or "Android bridge 回報告警。請檢查現場 uplink、bridge 連線與控制租約狀態。"
+                or "Android bridge 回報了新的告警，請先確認 uplink、lease、video 與 observer 狀態。"
             )
+            observed_at = _ensure_utc(bridge_alert.event_timestamp) or bridge_alert.event_timestamp
             items.append(
                 SupportQueueItemDto(
                     itemId=f"bridge-alert-{bridge_alert.id}",
@@ -222,14 +230,15 @@ def list_support_queue(
                     missionId=flight.mission_id,
                     missionName=context["missionName"],
                     siteName=context["siteName"],
-                    title=f"Bridge 告警：{code}",
+                    title=f"Bridge 告警: {code}",
                     summary=human_summary,
-                    recommendedNextStep="打開飛行監看確認最新 lease、telemetry 與 video 狀態，必要時聯繫現場 observer。",
-                    createdAt=_ensure_utc(bridge_alert.event_timestamp) or bridge_alert.event_timestamp,
+                    recommendedNextStep="打開 Live Ops，確認 lease、telemetry freshness、video 狀態與 observer 是否仍可支援現場處置。",
+                    createdAt=observed_at,
+                    lastObservedAt=observed_at,
                 )
             )
 
-    return sorted(items, key=lambda item: _ensure_utc(item.createdAt) or item.createdAt, reverse=True)
+    return sorted(items, key=lambda item: _ensure_utc(item.lastObservedAt or item.createdAt) or item.createdAt, reverse=True)
 
 
 def _get_org_flight(session: Session, flight_id: str) -> Flight:
@@ -248,6 +257,8 @@ def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDt
         .order_by(TelemetryBatch.last_timestamp.desc())
     ).first()
     latest_sample = _telemetry_sample(latest_batch.payload_json[-1]) if latest_batch and latest_batch.payload_json else None
+    latest_telemetry_at = _ensure_utc(latest_batch.last_timestamp) if latest_batch is not None else _ensure_utc(flight.last_telemetry_at)
+    telemetry_age_seconds = _age_seconds(latest_telemetry_at)
     video = _video_channel(session, flight.id)
 
     return LiveFlightSummaryDto(
@@ -258,8 +269,10 @@ def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDt
         siteId=mission.site_id if mission is not None else None,
         siteName=site.name if site is not None else None,
         lastEventAt=flight.last_event_at,
-        lastTelemetryAt=flight.last_telemetry_at,
+        lastTelemetryAt=latest_telemetry_at,
         latestTelemetry=latest_sample,
+        telemetryFreshness=_telemetry_freshness(latest_sample, telemetry_age_seconds),
+        telemetryAgeSeconds=telemetry_age_seconds,
         video=video,
         controlLease=_control_lease(session, flight.id),
         alerts=_derive_alerts(session, flight, latest_sample, video),
@@ -310,14 +323,21 @@ def _video_channel(session: Session, flight_id: str) -> VideoChannelDescriptorDt
         return VideoChannelDescriptorDto()
 
     payload = event.payload_json
-    last_frame_at = payload.get("lastFrameAt")
+    last_frame_at_raw = payload.get("lastFrameAt")
+    last_frame_at = datetime.fromisoformat(str(last_frame_at_raw).replace("Z", "+00:00")) if last_frame_at_raw else None
+    video_age_seconds = _age_seconds(_ensure_utc(last_frame_at))
+    available = _as_bool(payload.get("available", False))
+    streaming = _as_bool(payload.get("streaming", False))
+
     return VideoChannelDescriptorDto(
-        available=_as_bool(payload.get("available", False)),
-        streaming=_as_bool(payload.get("streaming", False)),
+        available=available,
+        streaming=streaming,
         viewerUrl=payload.get("viewerUrl"),
         codec=payload.get("codec"),
         latencyMs=int(payload["latencyMs"]) if payload.get("latencyMs") is not None else None,
-        lastFrameAt=datetime.fromisoformat(str(last_frame_at).replace("Z", "+00:00")) if last_frame_at else None,
+        lastFrameAt=last_frame_at,
+        status=_video_status(available=available, streaming=streaming, age_seconds=video_age_seconds),
+        ageSeconds=video_age_seconds,
     )
 
 
@@ -381,14 +401,13 @@ def _derive_alerts(
     video: VideoChannelDescriptorDto,
 ) -> list[str]:
     alerts: list[str] = []
-    now = datetime.now(timezone.utc)
 
     if latest_sample is not None and latest_sample.batteryPct < LOW_BATTERY_THRESHOLD:
         alerts.append("low_battery")
-    last_telemetry_at = _ensure_utc(flight.last_telemetry_at)
-    if last_telemetry_at is not None and now - last_telemetry_at > timedelta(seconds=STALE_TELEMETRY_SECONDS):
+    latest_sample_timestamp = _ensure_utc(latest_sample.timestamp) if latest_sample is not None else None
+    if latest_sample_timestamp is not None and _is_stale(latest_sample_timestamp, STALE_TELEMETRY_SECONDS):
         alerts.append("telemetry_stale")
-    if video.available and not video.streaming:
+    if video.status != "live":
         alerts.append("video_unavailable")
     if _latest_bridge_alert(session, flight.id) is not None:
         alerts.append("bridge_alert")
@@ -397,7 +416,6 @@ def _derive_alerts(
 
 
 def _latest_bridge_alert(session: Session, flight_id: str) -> FlightEvent | None:
-    now = datetime.now(timezone.utc)
     event = session.exec(
         select(FlightEvent)
         .where(FlightEvent.flight_id == flight_id, FlightEvent.event_type == BRIDGE_ALERT_EVENT)
@@ -408,7 +426,7 @@ def _latest_bridge_alert(session: Session, flight_id: str) -> FlightEvent | None
     event_timestamp = _ensure_utc(event.event_timestamp)
     if event_timestamp is None:
         return None
-    if event_timestamp < now - timedelta(minutes=BRIDGE_ALERT_LOOKBACK_MINUTES):
+    if event_timestamp < datetime.now(timezone.utc) - timedelta(minutes=BRIDGE_ALERT_LOOKBACK_MINUTES):
         return None
     return event
 
@@ -442,3 +460,36 @@ def _ensure_utc(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _age_seconds(value: datetime | None) -> int | None:
+    if value is None:
+        return None
+    return max(int((datetime.now(timezone.utc) - value).total_seconds()), 0)
+
+
+def _is_stale(value: datetime | None, threshold_seconds: int) -> bool:
+    if value is None:
+        return False
+    age_seconds = _age_seconds(value)
+    return age_seconds is not None and age_seconds > threshold_seconds
+
+
+def _telemetry_freshness(latest_sample: LiveTelemetrySampleDto | None, age_seconds: int | None) -> str:
+    if latest_sample is None or age_seconds is None:
+        return "missing"
+    if age_seconds > STALE_TELEMETRY_SECONDS:
+        return "stale"
+    return "fresh"
+
+
+def _video_status(*, available: bool, streaming: bool, age_seconds: int | None) -> str:
+    if not available:
+        return "unavailable"
+    if not streaming:
+        return "stale"
+    if age_seconds is None:
+        return "stale"
+    if age_seconds > STALE_VIDEO_SECONDS:
+        return "stale"
+    return "live"

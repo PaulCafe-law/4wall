@@ -11,6 +11,8 @@ InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdu
 SupportSeverityLiteral = Literal["info", "warning", "critical"]
 MissionDeliveryStateLiteral = Literal["planning", "ready", "failed", "published"]
 SupportCategoryLiteral = Literal["mission_failed", "battery_low", "telemetry_stale", "bridge_alert"]
+TelemetryFreshnessLiteral = Literal["fresh", "stale", "missing"]
+VideoAvailabilityLiteral = Literal["live", "stale", "unavailable"]
 ControlIntentActionLiteral = Literal[
     "request_remote_control",
     "release_remote_control",
@@ -318,6 +320,8 @@ class VideoChannelDescriptorDto(BaseModel):
     codec: str | None = None
     latencyMs: int | None = None
     lastFrameAt: datetime | None = None
+    status: VideoAvailabilityLiteral = "unavailable"
+    ageSeconds: int | None = None
 
 
 class ControlLeaseDto(BaseModel):
@@ -339,6 +343,8 @@ class LiveFlightSummaryDto(BaseModel):
     lastEventAt: datetime | None = None
     lastTelemetryAt: datetime | None = None
     latestTelemetry: LiveTelemetrySampleDto | None = None
+    telemetryFreshness: TelemetryFreshnessLiteral = "missing"
+    telemetryAgeSeconds: int | None = None
     video: VideoChannelDescriptorDto = Field(default_factory=VideoChannelDescriptorDto)
     controlLease: ControlLeaseDto = Field(default_factory=ControlLeaseDto)
     alerts: list[str] = Field(default_factory=list)
@@ -379,3 +385,4 @@ class SupportQueueItemDto(BaseModel):
     summary: str
     recommendedNextStep: str
     createdAt: datetime
+    lastObservedAt: datetime | None = None

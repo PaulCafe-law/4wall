@@ -80,6 +80,9 @@ The current rollout model is:
    - mission detail publication panel
    - team invite lifecycle, including resend / revoke
    - billing status clarity, payment note, and receipt reference rendering
+11. If the release touches internal ops surfaces, manually verify:
+   - `Support` shows severity/category filters, mission/org/site context, last-observed timing, and recommended next steps
+   - `Live Ops` shows telemetry freshness, video availability, lease status, and monitor-only copy when data is degraded
 
 ## Promotion to Production
 
@@ -92,6 +95,7 @@ The current rollout model is:
 7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 8. Re-check the same overview / mission-delivery manual flows on production before closing the deploy.
 9. Re-check team invite lifecycle and billing clarity on production if the release touched team or billing surfaces.
+10. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 
