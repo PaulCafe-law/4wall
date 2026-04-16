@@ -20,7 +20,7 @@ import { api, ApiError } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { formatApiError } from '../../lib/presentation'
-import type { Site } from '../../lib/types'
+import type { MissionDetail, Site } from '../../lib/types'
 
 const DEFAULT_ROUTE_OFFSET = 0.00018
 
@@ -69,6 +69,138 @@ function recurrenceLabel(value: string) {
     return 'One-off'
   }
   return value
+}
+
+type RehearsalStep = {
+  key: string
+  title: string
+  status: string
+  body: string
+  to: string
+  actionLabel: string
+}
+
+type EvidencePrompt = {
+  title: string
+  body: string
+}
+
+function buildRehearsalSteps({
+  selectedSite,
+  routesCount,
+  templatesCount,
+  schedulesCount,
+  missionDetail,
+}: {
+  selectedSite: Site | null
+  routesCount: number
+  templatesCount: number
+  schedulesCount: number
+  missionDetail: MissionDetail | null
+}): RehearsalStep[] {
+  const missionReportStatus = missionDetail?.reportStatus ?? 'planning'
+  const reportBody =
+    missionDetail == null
+      ? 'Select a mission to load linked dispatch, event, and report context.'
+      : missionDetail.reportStatus === 'ready'
+        ? missionDetail.eventCount === 0
+          ? 'A clean-pass report is available. Use it as the no-findings handoff in the demo.'
+          : 'An event-backed report is available with evidence artifacts and stakeholder-ready summary text.'
+        : missionDetail.reportStatus === 'failed'
+          ? missionDetail.latestReport?.summary ?? 'The selected mission is currently demonstrating a report-generation failure.'
+          : 'The selected mission still needs report generation before the walkthrough is complete.'
+
+  return [
+    {
+      key: 'site',
+      title: 'Site context is selected',
+      status: selectedSite ? 'ready' : 'failed',
+      body: selectedSite
+        ? `${selectedSite.name} is the current site-map anchor for the demo walkthrough.`
+        : 'Select a site before starting the route-to-report rehearsal.',
+      to: '/sites',
+      actionLabel: 'Open sites',
+    },
+    {
+      key: 'route',
+      title: 'Route and template are ready',
+      status: routesCount > 0 && templatesCount > 0 ? 'ready' : 'planning',
+      body:
+        routesCount > 0 && templatesCount > 0
+          ? `${routesCount} route(s) and ${templatesCount} template(s) are available for rehearsal.`
+          : 'Create at least one route and one template so the mission can show repeatable planning metadata.',
+      to: '/control-plane',
+      actionLabel: 'Review planning assets',
+    },
+    {
+      key: 'schedule',
+      title: 'Schedule is attached',
+      status: schedulesCount > 0 ? 'ready' : 'planning',
+      body:
+        schedulesCount > 0
+          ? `${schedulesCount} schedule record(s) are available for route-to-dispatch playback.`
+          : 'Create a schedule so the demo can show when the inspection run was intended to execute.',
+      to: '/control-plane',
+      actionLabel: 'Review schedules',
+    },
+    {
+      key: 'dispatch',
+      title: 'Mission dispatch is linked',
+      status: missionDetail?.dispatch ? 'ready' : 'planning',
+      body: missionDetail?.dispatch
+        ? `Mission ${missionDetail.missionName} has dispatch metadata for ${missionDetail.dispatch.executionTarget ?? 'the field team'}.`
+        : 'Dispatch the selected mission so mission detail can show route, template, schedule, and assignee together.',
+      to: missionDetail ? `/missions/${missionDetail.missionId}` : '/missions',
+      actionLabel: missionDetail ? 'Open mission detail' : 'Open missions',
+    },
+    {
+      key: 'report',
+      title: 'Event and report output is ready',
+      status: missionReportStatus === 'not_started' ? 'planning' : missionReportStatus,
+      body: reportBody,
+      to: missionDetail ? `/missions/${missionDetail.missionId}` : '/missions',
+      actionLabel: missionDetail ? 'Review report output' : 'Select mission',
+    },
+  ]
+}
+
+function buildEvidencePrompts({
+  missionDetail,
+  isInternal,
+}: {
+  missionDetail: MissionDetail | null
+  isInternal: boolean
+}): EvidencePrompt[] {
+  const prompts: EvidencePrompt[] = [
+    {
+      title: 'Capture the site and planning context',
+      body: 'Take one screenshot showing the selected site, route card, template card, and schedule card in the control-plane page.',
+    },
+    {
+      title: 'Capture dispatch linkage',
+      body: missionDetail?.dispatch
+        ? 'Take one screenshot of mission detail showing linked route, template, schedule, and dispatch metadata.'
+        : 'After dispatching a mission, capture mission detail with linked route, template, schedule, and dispatch metadata.',
+    },
+    {
+      title: 'Capture report output',
+      body:
+        missionDetail?.reportStatus === 'ready'
+          ? missionDetail.eventCount === 0
+            ? 'Capture the clean-pass report summary and the downloadable HTML report artifact.'
+            : 'Capture the event list, evidence gallery, and the downloadable HTML report artifact.'
+          : 'Capture one report-failed or pending state before rerunning analysis, then capture the recovered report output.',
+    },
+  ]
+
+  if (isInternal) {
+    prompts.push({
+      title: 'Capture internal ops alignment',
+      body: 'Capture one report-failed mission in Support and Live Ops so the internal monitoring story matches mission detail.',
+    })
+  }
+
+  return prompts
 }
 
 export function ControlPlanePage() {
@@ -168,6 +300,24 @@ export function ControlPlanePage() {
     schedules.find((schedule) => schedule.scheduleId === dispatchScheduleId)?.scheduleId ??
     schedules[0]?.scheduleId ??
     ''
+  const selectedMissionDetailQuery = useAuthedQuery({
+    queryKey: ['mission', effectiveDispatchMissionId, 'control-plane'],
+    queryFn: (token) => api.getMission(token, effectiveDispatchMissionId),
+    enabled: Boolean(effectiveDispatchMissionId),
+    staleTime: 10_000,
+  })
+  const selectedMissionDetail = selectedMissionDetailQuery.data ?? null
+  const rehearsalSteps = buildRehearsalSteps({
+    selectedSite,
+    routesCount: routes.length,
+    templatesCount: templates.length,
+    schedulesCount: schedules.length,
+    missionDetail: selectedMissionDetail,
+  })
+  const evidencePrompts = buildEvidencePrompts({
+    missionDetail: selectedMissionDetail,
+    isInternal: auth.isInternal,
+  })
 
   const createRoute = useAuthedMutation({
     mutationKey: ['inspection', 'routes', 'create'],
@@ -397,6 +547,69 @@ export function ControlPlanePage() {
               { label: 'Notes', value: selectedSite.notes || 'No site notes yet.' },
             ]}
           />
+        </div>
+      </Panel>
+
+      <Panel>
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <div>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Demo rehearsal</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Route-to-report walkthrough</h2>
+            <p className="mt-2 text-sm text-chrome-700">
+              Use this panel to rehearse the exact story: site, route, schedule, dispatch, mission detail, event output,
+              and report artifact. It is intentionally monitor-only and planning-oriented.
+            </p>
+            <div className="mt-4 space-y-3">
+              {rehearsalSteps.map((step) => (
+                <div key={step.key} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-3">
+                        <p className="font-medium text-chrome-950">{step.title}</p>
+                        <StatusBadge status={step.status} />
+                      </div>
+                      <p className="mt-2 text-sm text-chrome-700">{step.body}</p>
+                    </div>
+                    <Link
+                      to={step.to}
+                      className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
+                    >
+                      {step.actionLabel}
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Selected mission</p>
+              <p className="mt-2 font-medium text-chrome-950">
+                {selectedMissionDetail ? selectedMissionDetail.missionName : 'No mission selected yet'}
+              </p>
+              <p className="mt-2 text-sm text-chrome-700">
+                {selectedMissionDetail
+                  ? `Report ${selectedMissionDetail.reportStatus} | ${selectedMissionDetail.eventCount} event${selectedMissionDetail.eventCount === 1 ? '' : 's'} | Dispatch ${selectedMissionDetail.dispatch?.status ?? 'not linked'}`
+                  : 'Select or create a mission so the walkthrough can verify linked planning metadata and report output.'}
+              </p>
+              {selectedMissionDetailQuery.isLoading ? (
+                <p className="mt-2 text-xs text-chrome-500">Loading mission playback state...</p>
+              ) : null}
+            </div>
+
+            <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Evidence to capture</p>
+              <div className="mt-4 space-y-3">
+                {evidencePrompts.map((prompt) => (
+                  <div key={prompt.title} className="rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-4">
+                    <p className="font-medium text-chrome-950">{prompt.title}</p>
+                    <p className="mt-2 text-sm text-chrome-700">{prompt.body}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </Panel>
 

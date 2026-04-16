@@ -66,14 +66,14 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
-| Overview | Overview aggregate, daily landing page, latest report summary, latest event summary, and clean-pass fallback messaging exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Still needs stronger demo-oriented prioritization and final rehearsal polish |
-| Inspection control plane | Sites, mission request workflow, first-class route/template/schedule/dispatch models, and an initial `/control-plane` UI slice exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs stronger map presentation, editing flows, and tighter demo guidance around route -> schedule -> dispatch progression |
+| Overview | Overview aggregate, daily landing page, latest report summary, latest event summary, and clean-pass fallback messaging exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Still needs final rehearsal polish and evidence capture discipline |
+| Inspection control plane | Sites, mission request workflow, first-class route/template/schedule/dispatch models, and a `/control-plane` walkthrough slice exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs stronger map presentation and final rehearsal proof around route -> schedule -> dispatch progression |
 | Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, report status, event count, evidence, report artifact download, and clean-pass / analysis-failed next-step guidance | Delivery-oriented event / evidence / report surface | Still needs deeper summary polish and tighter customer-facing empty states |
 | Event interpretation and reporting | Mission-linked demo analysis, evidence artifacts, summaries, and downloadable reports exist | Mission-linked anomaly events, evidence screenshots, summaries, and downloadable reports | Still needs broader analysis modes and more realistic demo datasets |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state exist | Support demo operator setup and reviewer access cleanly | Still needs polish on invite feedback loops and guidance |
 | Support queue | Internal-only queue includes mission/org/site context, severity, last-observed timing, recommended next steps, handling workflow state, and report-generation-failed categories | Triage surface that understands analysis/report failures as first-class cases | Still needs richer cross-linking into event/report workflows and rehearsal polish |
 | Live Ops | Internal-only monitoring exposes telemetry freshness, video availability, lease state, control-intent history, and report status/summary context | Stable monitor-only surface that complements the demo | Still needs stronger incident context and tighter route-to-report storytelling |
-| Release process | Dual-role smoke and one checklist exist, and docs now include report-failure / live-ops verification steps | One coherent release and demo acceptance path | Still missing final manual evidence capture discipline for the demo walkthrough |
+| Release process | Dual-role smoke and one checklist exist, docs include report-failure / live-ops verification steps, and a dedicated rehearsal script now exists | One coherent release and demo acceptance path | Still needs one successful full rehearsal package captured from staging or production |
 
 ## Phase 1 Deliverables
 
@@ -84,6 +84,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 - event/report UI/API slices for event list, evidence gallery, report summary, and report artifact download
 - updated support/live-ops diagnostics aligned with event/report failures
 - updated support/live-ops diagnostics aligned with event/report failures and clean-pass reporting states
+- a repeatable rehearsal script with explicit evidence capture for the route-to-report demo path
 - preserve existing Phase 1 product polish on setup guidance, billing reminders, and next-step UX where it supports the demo story
 
 ## Acceptance

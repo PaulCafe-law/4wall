@@ -18,6 +18,7 @@ The release acceptance checklist lives in:
 The Phase 1 demo scope and target contracts live in:
 
 - `docs/PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md`
+- `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
 
 ## Required Inputs
 
@@ -87,6 +88,7 @@ The current rollout model is:
    - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
    - mission detail publication panel with download metadata, next-step guidance, event count, report summary, evidence/report artifacts, and linked route/template/schedule/dispatch metadata when the release touched control-plane surfaces
    - internal-only analysis reprocess flow can generate demo findings, clean-pass output, and explicit analysis-failed output when the release touched event/report surfaces
+   - the control-plane walkthrough panel can be used to rehearse the route-to-report story without hidden operator knowledge
    - team invite lifecycle, including resend / revoke
    - billing status clarity, payment note, receipt reference rendering, and reminder panels for overdue or due-soon invoices
 11. If the release touches internal ops surfaces, manually verify:
@@ -113,6 +115,10 @@ The current rollout model is:
    - clean-pass missions do not surface phantom anomaly warnings
    - report-failed missions generate a support item and a live-ops report blocker summary
 14. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
+
+When the release touches the Phase 1 demo slice, capture the full screenshot and artifact package defined in:
+
+- `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
 
 Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
 

@@ -6,6 +6,7 @@ Use it together with:
 
 - [web-beta-release-runbook.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-release-runbook.md)
 - [PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md)
+- [PHASE_1_DEMO_REHEARSAL_SCRIPT.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md)
 - [WEB_THREAD_ANDROID_HANDOFF.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/WEB_THREAD_ANDROID_HANDOFF.md)
 - [WEB_THREAD_FAIL_CLOSED_BEHAVIOR.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/WEB_THREAD_FAIL_CLOSED_BEHAVIOR.md)
 
@@ -99,5 +100,6 @@ Rollback immediately if any of these occur:
 - demo-story notes for one route/template -> schedule -> dispatch -> mission-detail walkthrough when the release touches the control-plane slice
 - demo-story notes for one end-to-end route -> dispatch -> event -> report walkthrough when the release touches Phase 1 event/report features
 - evidence that a clean-pass mission and a report-failed mission were both rehearsed after deploy when the release touched event/report or internal-ops surfaces
+- the screenshot and artifact package listed in `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
 - confirmation that explicit admin/viewer smoke accounts still match the environment after any secret rotation
 - any rollback event, trigger, and recovery deploy ID
