@@ -33,6 +33,18 @@ def test_customer_overview_aggregates_missions_invoices_and_pending_invites(clie
             )
         )
         session.add(
+            BillingInvoice(
+                organization_id=org.id,
+                invoice_number=f"INV-{uuid4().hex[:6]}",
+                currency="TWD",
+                subtotal=6000,
+                tax=300,
+                total=6300,
+                due_date=datetime.now(timezone.utc) + timedelta(days=2),
+                status="invoice_due",
+            )
+        )
+        session.add(
             Invite(
                 organization_id=org.id,
                 email="viewer@overview.test",
@@ -87,14 +99,18 @@ def test_customer_overview_aggregates_missions_invoices_and_pending_invites(clie
     body = response.json()
     assert body["siteCount"] == 1
     assert body["missionCount"] == 2
+    assert body["planningMissionCount"] == 0
+    assert body["readyMissionCount"] == 0
     assert body["failedMissionCount"] == 1
     assert body["publishedMissionCount"] == 1
+    assert body["invoiceDueCount"] == 1
     assert body["overdueInvoiceCount"] == 1
     assert body["pendingInviteCount"] == 1
     assert body["supportSummary"] is None
     assert body["recentDeliveries"][0]["deliveryStatus"] == "published"
-    assert body["recentInvoices"][0]["status"] == "overdue"
+    assert {invoice["status"] for invoice in body["recentInvoices"]} == {"invoice_due", "overdue"}
     assert body["pendingInvites"][0]["organizationName"] == "Overview Org"
+    assert body["pendingInvites"][0]["createdAt"] is not None
 
 
 def test_internal_overview_includes_support_summary(client, session_factory) -> None:

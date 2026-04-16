@@ -3,6 +3,7 @@ import { vi } from 'vitest'
 
 import { TeamPage } from './TeamPage'
 import { ApiError } from '../../lib/api'
+import { formatApiError } from '../../lib/presentation'
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
 
 const apiMock = vi.hoisted(() => ({
@@ -348,6 +349,6 @@ describe('TeamPage', () => {
     })
 
     expect(await screen.findByText('無法載入團隊資料')).toBeInTheDocument()
-    expect(screen.getByText('你目前的角色沒有權限執行這個動作。')).toBeInTheDocument()
+    expect(screen.getByText(formatApiError('forbidden_role', 'fallback'))).toBeInTheDocument()
   })
 })

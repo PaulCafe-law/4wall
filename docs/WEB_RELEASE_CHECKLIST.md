@@ -41,10 +41,10 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - invite acceptance
   - customer admin deployed smoke
   - customer viewer deployed smoke if viewer smoke credentials are configured
-  - overview aggregate cards, including pending actions and recent deliveries
-  - mission list with explicit delivery badges, publish time, and failure reason
-  - mission detail and artifact download
-  - billing, including due / overdue / paid / void clarity plus payment note / receipt ref rendering
+  - overview aggregate cards, including pending actions, ready-for-delivery reminders, invoice reminders, and recent deliveries
+  - mission list with explicit delivery badges, publish time, failure reason, and clean customer-facing copy
+  - mission detail and artifact download, including checksum, version, and published timestamp
+  - billing, including due / overdue / paid / void clarity plus payment note / receipt ref rendering and reminder panels
   - team, including invite create / resend / revoke
   - organization settings update
   - member role update

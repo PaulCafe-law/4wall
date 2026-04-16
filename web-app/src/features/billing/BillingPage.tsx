@@ -26,19 +26,26 @@ import { useOrganizationChoices } from '../../lib/organization-choices'
 import { formatApiError, formatInvoiceStatusDescription } from '../../lib/presentation'
 
 const invoiceSchema = z.object({
-  organizationId: z.string().min(1, '請選擇組織。'),
+  organizationId: z.string().min(1, '請先選擇要開立帳單的組織。'),
   invoiceNumber: z.string().min(1, '請輸入帳單編號。'),
-  currency: z.string().length(3, '幣別請使用 3 碼代碼。'),
+  currency: z.string().length(3, '幣別必須是 3 碼代碼。'),
   subtotal: z.coerce.number().min(0),
   tax: z.coerce.number().min(0),
   total: z.coerce.number().min(0),
-  dueDate: z.string().min(1, '請輸入到期時間。'),
+  dueDate: z.string().min(1, '請輸入付款期限。'),
   paymentInstructions: z.string().min(1, '請輸入付款說明。'),
   notes: z.string().default(''),
 })
 
 type InvoiceFormInput = z.input<typeof invoiceSchema>
 type InvoiceFormValues = z.output<typeof invoiceSchema>
+
+function isDueSoon(value: string) {
+  const dueDate = new Date(value)
+  const now = new Date()
+  const diffMs = dueDate.getTime() - now.getTime()
+  return diffMs >= 0 && diffMs <= 1000 * 60 * 60 * 24 * 7
+}
 
 export function BillingPage() {
   const auth = useAuth()
@@ -94,6 +101,7 @@ export function BillingPage() {
 
   const invoices = invoicesQuery.data ?? []
   const overdueCount = invoices.filter((invoice) => invoice.status === 'overdue').length
+  const dueSoonCount = invoices.filter((invoice) => invoice.status === 'invoice_due' || isDueSoon(invoice.dueDate)).length
   const openCount = invoices.filter((invoice) => ['issued', 'invoice_due', 'overdue'].includes(invoice.status)).length
   const settledCount = invoices.filter((invoice) => ['paid', 'void'].includes(invoice.status)).length
 
@@ -110,16 +118,16 @@ export function BillingPage() {
     <div className="space-y-6">
       <ShellSection
         eyebrow="Billing"
-        title="帳單"
-        subtitle="查看目前帳單狀態、付款說明、付款備註與收據資訊。內部人員仍可在這裡手動建立帳單。"
+        title="帳務"
+        subtitle="在同一頁查看帳單狀態、付款說明、收款註記與收據編號。"
         action={
           auth.isInternal ? (
             <Modal
               open={isOpen}
               onOpenChange={setIsOpen}
-              title="新增帳單"
-              description="內部人員可替指定組織手動建立帳單，並提供付款說明與備註。"
-              trigger={<ActionButton>新增帳單</ActionButton>}
+              title="建立帳單"
+              description="由內部團隊替指定組織建立新的帳單。"
+              trigger={<ActionButton>建立帳單</ActionButton>}
             >
               <form className="grid gap-4" onSubmit={onSubmit}>
                 <Field label="組織" error={errors.organizationId?.message}>
@@ -149,11 +157,11 @@ export function BillingPage() {
                   <Field label="稅額" error={errors.tax?.message}>
                     <Input type="number" {...register('tax')} />
                   </Field>
-                  <Field label="總金額" error={errors.total?.message}>
+                  <Field label="總額" error={errors.total?.message}>
                     <Input type="number" {...register('total')} />
                   </Field>
                 </div>
-                <Field label="到期時間" error={errors.dueDate?.message}>
+                <Field label="付款期限" error={errors.dueDate?.message}>
                   <Input type="datetime-local" {...register('dueDate')} />
                 </Field>
                 <Field label="付款說明" error={errors.paymentInstructions?.message}>
@@ -169,7 +177,7 @@ export function BillingPage() {
                 ) : null}
                 <div className="flex justify-end">
                   <ActionButton disabled={createInvoice.isPending} type="submit">
-                    {createInvoice.isPending ? '建立中' : '建立帳單'}
+                    {createInvoice.isPending ? '建立中…' : '建立帳單'}
                   </ActionButton>
                 </div>
               </form>
@@ -178,20 +186,28 @@ export function BillingPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-4">
         <Metric label="帳單總數" value={invoices.length} />
-        <Metric label="待付款" value={openCount} hint="包含已開立、已到期未付款與逾期中的帳單。" />
-        <Metric label="已結清 / 已關閉" value={settledCount} hint={`${overdueCount} 張帳單目前為逾期狀態。`} />
+        <Metric label="待收款" value={openCount} hint="已開立、即將到期與逾期中的帳單。" />
+        <Metric label="即將到期" value={dueSoonCount} hint="建議優先提醒付款安排。" />
+        <Metric label="已結清 / 作廢" value={settledCount} hint={`${overdueCount} 筆目前已逾期。`} />
       </div>
 
-      {invoicesQuery.isLoading ? (
-        <Panel>
-          <p className="text-sm text-chrome-700">正在載入帳單資料。</p>
+      {overdueCount > 0 ? (
+        <Panel className="border border-red-200 bg-red-50/70">
+          <p className="font-medium text-chrome-950">目前有 {overdueCount} 筆逾期帳單</p>
+          <p className="mt-2 text-sm text-chrome-700">請優先確認付款說明、收款註記與客戶回覆狀態。</p>
         </Panel>
       ) : null}
 
       {!invoicesQuery.isLoading && invoices.length === 0 ? (
-        <EmptyState title="目前沒有帳單" body="建立帳單後，這裡會顯示付款狀態、付款說明與相關備註。" />
+        <EmptyState title="目前還沒有帳單" body="等第一筆帳單建立後，付款狀態與收據資訊就會出現在這裡。" />
+      ) : null}
+
+      {invoicesQuery.isLoading ? (
+        <Panel>
+          <p className="text-sm text-chrome-700">正在載入帳單資料…</p>
+        </Panel>
       ) : null}
 
       <div className="grid gap-4">
@@ -208,17 +224,17 @@ export function BillingPage() {
                 <p className="mt-2 text-sm text-chrome-700">{formatInvoiceStatusDescription(invoice.status)}</p>
               </div>
               <div className="rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-3 text-sm text-chrome-700">
-                到期日：{formatDate(invoice.dueDate)}
+                到期日 {formatDate(invoice.dueDate)}
               </div>
             </div>
 
             <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
               <DataList
                 rows={[
-                  { label: '總金額', value: formatCurrency(invoice.currency, invoice.total) },
-                  { label: '付款方式', value: invoice.paymentInstructions },
-                  { label: '付款備註', value: invoice.paymentNote || '尚未提供' },
-                  { label: '收據編號', value: invoice.receiptRef || '尚未提供' },
+                  { label: '總額', value: formatCurrency(invoice.currency, invoice.total) },
+                  { label: '付款說明', value: invoice.paymentInstructions },
+                  { label: '收款註記', value: invoice.paymentNote || '尚未填寫' },
+                  { label: '收據編號', value: invoice.receiptRef || '尚未填寫' },
                 ]}
               />
 

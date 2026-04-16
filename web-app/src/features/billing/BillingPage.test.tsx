@@ -34,8 +34,8 @@ describe('BillingPage', () => {
       }),
     })
 
-    expect(await screen.findByText('目前沒有帳單')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '新增帳單' })).not.toBeInTheDocument()
+    expect(await screen.findByText('目前還沒有帳單')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '建立帳單' })).not.toBeInTheDocument()
   })
 
   it('shows billing status clarity for internal users', async () => {
@@ -56,8 +56,8 @@ describe('BillingPage', () => {
               status: 'overdue',
               paymentInstructions: 'Bank transfer',
               attachmentRefs: [],
-              notes: '請先完成本月巡檢費用。',
-              paymentNote: '請於付款後回傳匯款末五碼。',
+              notes: '請先與客戶確認本週的付款安排。',
+              paymentNote: '已提醒客戶提供匯款資訊。',
               receiptRef: 'RCT-001',
               voidReason: '',
               createdAt: '2026-04-10T00:00:00Z',
@@ -101,9 +101,9 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('這張帳單已逾期，請依付款說明安排後續處理。')).toBeInTheDocument()
-    expect(screen.getByText('請於付款後回傳匯款末五碼。')).toBeInTheDocument()
+    expect(screen.getByText('這筆帳單已逾期，請優先確認付款安排與收款回覆。')).toBeInTheDocument()
+    expect(screen.getByText('已提醒客戶提供匯款資訊。')).toBeInTheDocument()
     expect(screen.getByText('RCT-001')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '新增帳單' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '建立帳單' })).toBeInTheDocument()
   })
 })

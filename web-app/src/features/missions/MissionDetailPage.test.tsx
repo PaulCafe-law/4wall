@@ -77,8 +77,8 @@ describe('MissionDetailPage', () => {
     )
 
     expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
-    expect(screen.getAllByText('成果與發布狀態').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('成果已正式發布，可直接下載任務包與說明檔。').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('成果已可交付').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('最新成果檔已完成發布，可直接下載 mission.kmz 與 metadata。').length).toBeGreaterThan(0)
     expect(screen.getAllByText('已發布').length).toBeGreaterThan(0)
     expect(screen.getAllByText('mission.kmz').length).toBeGreaterThan(0)
     expect(screen.getAllByText('mission_meta.json').length).toBeGreaterThan(0)

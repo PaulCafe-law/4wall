@@ -232,6 +232,7 @@ class OverviewInviteDto(BaseModel):
     organizationName: str | None = None
     email: str
     role: RoleLiteral
+    createdAt: datetime
     expiresAt: datetime
 
 
@@ -245,8 +246,10 @@ class OverviewDto(BaseModel):
     siteCount: int = 0
     missionCount: int = 0
     planningMissionCount: int = 0
+    readyMissionCount: int = 0
     failedMissionCount: int = 0
     publishedMissionCount: int = 0
+    invoiceDueCount: int = 0
     overdueInvoiceCount: int = 0
     pendingInviteCount: int = 0
     recentMissions: list[MissionSummaryDto] = Field(default_factory=list)
