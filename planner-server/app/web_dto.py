@@ -246,7 +246,10 @@ class InspectionRouteDto(BaseModel):
     siteId: str
     name: str
     description: str = ""
+    version: int = 1
     pointCount: int = 0
+    previewPolyline: list[dict[str, float]] = Field(default_factory=list)
+    estimatedDurationSec: int = 0
     waypoints: list[InspectionWaypointDto] = Field(default_factory=list)
     planningParameters: dict[str, Any] = Field(default_factory=dict)
     createdAt: datetime
@@ -262,6 +265,9 @@ class InspectionTemplateDto(BaseModel):
     description: str = ""
     inspectionProfile: dict[str, Any] = Field(default_factory=dict)
     alertRules: list[InspectionAlertRuleDto] = Field(default_factory=list)
+    evidencePolicy: str = "capture_key_frames"
+    reportMode: str = "html_report"
+    reviewMode: str = "operator_review"
     createdAt: datetime
     updatedAt: datetime
 
@@ -294,6 +300,10 @@ class InspectionScheduleDto(BaseModel):
     recurrence: str | None = None
     status: InspectionScheduleStatusLiteral = "scheduled"
     alertRules: list[InspectionAlertRuleDto] = Field(default_factory=list)
+    nextRunAt: datetime | None = None
+    lastRunAt: datetime | None = None
+    pauseReason: str | None = None
+    lastOutcome: str | None = None
     createdAt: datetime
     updatedAt: datetime
 
@@ -325,6 +335,8 @@ class DispatchRecordDto(BaseModel):
     templateId: str | None = None
     scheduleId: str | None = None
     dispatchedAt: datetime
+    acceptedAt: datetime | None = None
+    closedAt: datetime | None = None
     dispatchedByUserId: str | None = None
     assignee: str | None = None
     executionTarget: str | None = None

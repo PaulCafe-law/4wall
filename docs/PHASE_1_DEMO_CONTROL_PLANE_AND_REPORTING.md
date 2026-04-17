@@ -40,6 +40,11 @@ The purpose is to show:
   - control-plane walkthrough guidance for site -> route -> schedule -> dispatch -> report
   - explicit evidence-capture prompts for the demo package
   - a dedicated Phase 1 rehearsal script for staging and production verification
+- Batch A productizes the control-plane information architecture:
+  - `/control-plane` becomes a dashboard instead of one long CRUD surface
+  - dedicated workspaces for routes, templates, schedules, and dispatch
+  - mission detail is reorganized into planning / dispatch / execution-report sections
+  - route / template / schedule / dispatch DTOs expose product-style summary metadata needed for presentation and review
 
 ## Scope
 
@@ -100,6 +105,21 @@ These contracts are locked in Batch 1 even if endpoint rollout happens in later 
 - `InspectionSchedule`
 - `DispatchRecord`
 
+The productized control plane also expects these summary fields even when they are derived from existing JSON state:
+
+- `InspectionRoute.version`
+- `InspectionRoute.previewPolyline`
+- `InspectionRoute.estimatedDurationSec`
+- `InspectionTemplate.evidencePolicy`
+- `InspectionTemplate.reportMode`
+- `InspectionTemplate.reviewMode`
+- `InspectionSchedule.nextRunAt`
+- `InspectionSchedule.lastRunAt`
+- `InspectionSchedule.pauseReason`
+- `InspectionSchedule.lastOutcome`
+- `DispatchRecord.acceptedAt`
+- `DispatchRecord.closedAt`
+
 ### Event and Report Contracts
 
 - `EvidenceArtifact`
@@ -131,6 +151,28 @@ These endpoints are Phase 1 targets. Control-plane and event/report endpoints no
 - `PATCH /v1/inspection/schedules/{scheduleId}`
 - `POST /v1/missions/{missionId}/dispatch`
 
+### Web Workspace Shape
+
+The control plane is no longer presented as one undifferentiated form wall. Product presentation is split into:
+
+- `/control-plane`
+  - dashboard summary for site count, route/template coverage, schedule pressure, dispatch pressure, latest report, latest anomaly, and internal handoff state
+- `/control-plane/routes`
+  - route library and route creation workspace
+- `/control-plane/templates`
+  - template library and inspection policy workspace
+- `/control-plane/schedules`
+  - schedule board and execution-timing workspace
+- `/control-plane/dispatch`
+  - dispatch queue and assignment workspace
+
+`Mission Detail` remains the control-plane/report convergence page, but is intentionally split into:
+
+- planning context
+- dispatch context
+- execution and reporting context
+- evidence and artifact delivery
+
 ### Event and Report
 
 - `GET /v1/missions/{missionId}/events`
@@ -149,13 +191,15 @@ These endpoints are Phase 1 targets. Control-plane and event/report endpoints no
 The minimum demo path is:
 
 1. Select an existing site or create a site-map record
-2. Open a route/template
-3. Show schedule and alert rules
-4. Dispatch a mission
-5. Open the mission record
-6. Show imagery-derived events and evidence
-7. Open the generated report summary
-8. Download the report artifact
+2. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage
+3. Open the route workspace and review the route preview and planning summary
+4. Open the template workspace and review evidence/report policy
+5. Open the schedule workspace and show execution timing and alert coverage
+6. Open the dispatch workspace and assign a mission
+7. Open the mission record
+8. Show imagery-derived events and evidence
+9. Open the generated report summary
+10. Download the report artifact
 
 The repeatable rehearsal path and evidence package now live in:
 
@@ -167,6 +211,7 @@ The repeatable rehearsal path and evidence package now live in:
 Phase 1 demo functionality is accepted when:
 
 - the web UI can demonstrate the full route-to-report story without explanation gaps
+- the control plane reads like a real product workspace instead of a stack of unrelated forms
 - the data model is stable enough that later batches do not need to redesign route/schedule/event/report shapes
 - control-plane and report surfaces stay outside the flight-critical boundary
 - `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass

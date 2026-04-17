@@ -293,7 +293,50 @@ These endpoints manage:
 
 They do not send any real-time control command to Android or the aircraft.
 
+The productized control-plane slice also expects:
+
+- route summary fields:
+  - `version`
+  - `previewPolyline`
+  - `estimatedDurationSec`
+- template summary fields:
+  - `evidencePolicy`
+  - `reportMode`
+  - `reviewMode`
+- schedule summary fields:
+  - `nextRunAt`
+  - `lastRunAt`
+  - `pauseReason`
+  - `lastOutcome`
+- dispatch summary fields:
+  - `acceptedAt`
+  - `closedAt`
+
 The current slice also extends `GET /v1/missions/{missionId}` so mission detail can expose linked route / template / schedule / dispatch metadata for demo playback.
+
+#### Control-Plane Web Workspaces
+
+The web surface is intentionally split into product workspaces:
+
+- `/control-plane`
+  - dashboard summary for sites, routes, schedules, dispatch pressure, latest report, and latest anomalies
+- `/control-plane/routes`
+  - route library and route-creation workspace
+- `/control-plane/templates`
+  - template library and inspection-policy workspace
+- `/control-plane/schedules`
+  - schedule board and alert-coverage workspace
+- `/control-plane/dispatch`
+  - dispatch queue and assignment workspace
+
+`/missions/{missionId}` remains the convergence page for:
+
+- planning
+- dispatch
+- execution status
+- event interpretation
+- evidence
+- report delivery
 
 #### Event and Report Generation
 

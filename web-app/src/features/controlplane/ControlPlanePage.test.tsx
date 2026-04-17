@@ -1,16 +1,17 @@
-import { screen } from '@testing-library/react'
+﻿import { screen } from '@testing-library/react'
+import { Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 
 import { ControlPlanePage } from './ControlPlanePage'
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
 
 const apiMock = vi.hoisted(() => ({
+  getOverview: vi.fn(),
   listSites: vi.fn(),
   listInspectionRoutes: vi.fn(),
   listInspectionTemplates: vi.fn(),
   listInspectionSchedules: vi.fn(),
   listMissions: vi.fn(),
-  getMission: vi.fn(),
   createInspectionRoute: vi.fn(),
   createInspectionTemplate: vi.fn(),
   createInspectionSchedule: vi.fn(),
@@ -23,12 +24,12 @@ vi.mock('../../lib/api', async () => {
     ...actual,
     api: {
       ...actual.api,
+      getOverview: apiMock.getOverview,
       listSites: apiMock.listSites,
       listInspectionRoutes: apiMock.listInspectionRoutes,
       listInspectionTemplates: apiMock.listInspectionTemplates,
       listInspectionSchedules: apiMock.listInspectionSchedules,
       listMissions: apiMock.listMissions,
-      getMission: apiMock.getMission,
       createInspectionRoute: apiMock.createInspectionRoute,
       createInspectionTemplate: apiMock.createInspectionTemplate,
       createInspectionSchedule: apiMock.createInspectionSchedule,
@@ -39,9 +40,43 @@ vi.mock('../../lib/api', async () => {
 
 describe('ControlPlanePage', () => {
   beforeEach(() => {
-    for (const mock of Object.values(apiMock)) {
-      mock.mockReset()
-    }
+    for (const mock of Object.values(apiMock)) mock.mockReset()
+
+    apiMock.getOverview.mockResolvedValue({
+      siteCount: 1,
+      missionCount: 2,
+      planningMissionCount: 0,
+      scheduledMissionCount: 1,
+      runningMissionCount: 0,
+      readyMissionCount: 1,
+      failedMissionCount: 0,
+      publishedMissionCount: 1,
+      invoiceDueCount: 0,
+      overdueInvoiceCount: 0,
+      pendingInviteCount: 0,
+      recentMissions: [],
+      recentDeliveries: [],
+      recentInvoices: [],
+      pendingInvites: [],
+      latestReportSummary: {
+        reportId: 'report-001',
+        missionId: 'mission-001',
+        status: 'ready',
+        generatedAt: '2026-04-17T08:45:00Z',
+        summary: 'Detected facade cracking and water ingress markers.',
+        eventCount: 2,
+        downloadArtifact: null,
+      },
+      latestEventSummary: {
+        eventId: 'event-001',
+        missionId: 'mission-001',
+        category: 'joint_water_ingress_risk',
+        severity: 'critical',
+        summary: 'Tower A flagged a possible water ingress pattern.',
+        detectedAt: '2026-04-17T08:44:00Z',
+      },
+      supportSummary: { openCount: 1, criticalCount: 1, warningCount: 0 },
+    })
     apiMock.listSites.mockResolvedValue([
       {
         siteId: 'site-001',
@@ -62,9 +97,15 @@ describe('ControlPlanePage', () => {
         siteId: 'site-001',
         name: 'Tower A facade loop',
         description: 'Facade-first route',
+        version: 1,
         pointCount: 3,
+        previewPolyline: [
+          { lat: 25.0337, lng: 121.5643 },
+          { lat: 25.03391, lng: 121.56452 },
+        ],
+        estimatedDurationSec: 480,
         waypoints: [],
-        planningParameters: {},
+        planningParameters: { routeMode: 'site-envelope-demo' },
         createdAt: '2026-04-17T08:00:00Z',
         updatedAt: '2026-04-17T08:00:00Z',
       },
@@ -79,6 +120,9 @@ describe('ControlPlanePage', () => {
         description: 'Operator-reviewed',
         inspectionProfile: {},
         alertRules: [],
+        evidencePolicy: 'capture_key_frames',
+        reportMode: 'html_report',
+        reviewMode: 'operator_review',
         createdAt: '2026-04-17T08:00:00Z',
         updatedAt: '2026-04-17T08:00:00Z',
       },
@@ -94,6 +138,10 @@ describe('ControlPlanePage', () => {
         recurrence: 'One-off',
         status: 'scheduled',
         alertRules: [],
+        nextRunAt: '2026-04-18T09:00:00Z',
+        lastRunAt: null,
+        pauseReason: null,
+        lastOutcome: 'scheduled_for_execution',
         createdAt: '2026-04-17T08:00:00Z',
         updatedAt: '2026-04-17T08:00:00Z',
       },
@@ -115,122 +163,65 @@ describe('ControlPlanePage', () => {
         createdAt: '2026-04-17T08:00:00Z',
       },
     ])
-    apiMock.getMission.mockResolvedValue({
-      missionId: 'mission-001',
-      organizationId: 'org-001',
-      siteId: 'site-001',
-      requestedByUserId: 'user-1',
-      missionName: 'Tower A morning run',
-      status: 'ready',
-      bundleVersion: 'bundle-001',
-      request: {},
-      response: {},
-      delivery: {
-        state: 'published',
-        publishedAt: '2026-04-17T08:30:00Z',
-        failureReason: null,
-      },
-      artifacts: [],
-      reportStatus: 'ready',
-      reportGeneratedAt: '2026-04-17T08:45:00Z',
-      eventCount: 2,
-      latestReport: {
-        reportId: 'report-001',
-        missionId: 'mission-001',
-        status: 'ready',
-        generatedAt: '2026-04-17T08:45:00Z',
-        summary: 'Detected facade cracking and water ingress markers.',
-        eventCount: 2,
-        downloadArtifact: {
-          artifactName: 'inspection_report.html',
-          downloadUrl: '/v1/artifacts/report-001',
-          contentType: 'text/html',
-          checksumSha256: 'abc',
-          publishedAt: '2026-04-17T08:45:00Z',
-        },
-      },
-      events: [],
-      route: {
-        routeId: 'route-001',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        name: 'Tower A facade loop',
-        description: 'Facade-first route',
-        pointCount: 3,
-        waypoints: [],
-        planningParameters: {},
-        createdAt: '2026-04-17T08:00:00Z',
-        updatedAt: '2026-04-17T08:00:00Z',
-      },
-      template: {
-        templateId: 'template-001',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        routeId: 'route-001',
-        name: 'Facade standard',
-        description: 'Operator-reviewed',
-        inspectionProfile: {},
-        alertRules: [],
-        createdAt: '2026-04-17T08:00:00Z',
-        updatedAt: '2026-04-17T08:00:00Z',
-      },
-      schedule: {
-        scheduleId: 'schedule-001',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        routeId: 'route-001',
-        templateId: 'template-001',
-        plannedAt: '2026-04-18T09:00:00Z',
-        recurrence: 'One-off',
-        status: 'scheduled',
-        alertRules: [],
-        createdAt: '2026-04-17T08:00:00Z',
-        updatedAt: '2026-04-17T08:00:00Z',
-      },
-      dispatch: {
-        dispatchId: 'dispatch-001',
-        missionId: 'mission-001',
-        routeId: 'route-001',
-        templateId: 'template-001',
-        scheduleId: 'schedule-001',
-        dispatchedAt: '2026-04-17T08:40:00Z',
-        dispatchedByUserId: 'user-1',
-        assignee: 'observer-01',
-        executionTarget: 'field-team',
-        status: 'accepted',
-        note: 'Demo walkthrough ready',
-      },
-      createdAt: '2026-04-17T08:00:00Z',
-    })
   })
 
-  it('renders the control-plane slice with rehearsal guidance and evidence prompts', async () => {
-    renderWithProviders(<ControlPlanePage />, {
-      auth: createAuthValue({
-        session: createSession({
-          memberships: [
-            {
-              membershipId: 'membership-001',
-              organizationId: 'org-001',
-              role: 'customer_admin',
-              isActive: true,
-            },
-          ],
+  it('renders dashboard workspace with productized control-plane IA', async () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/control-plane" element={<ControlPlanePage />} />
+      </Routes>,
+      {
+        route: '/control-plane',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [
+              {
+                membershipId: 'membership-001',
+                organizationId: 'org-001',
+                role: 'customer_admin',
+                isActive: true,
+              },
+            ],
+          }),
         }),
-        isInternal: false,
-      }),
-    })
+      },
+    )
 
-    expect(await screen.findByText('控制平面')).toBeInTheDocument()
-    expect(await screen.findByText('巡檢到報表演練路徑')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('Tower A')).toBeInTheDocument()
-    expect(screen.getAllByText('Tower A facade loop').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Facade standard').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Tower A morning run').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: '建立派工' })).toBeEnabled()
-    expect(screen.getByText('已掛接任務派工')).toBeInTheDocument()
-    expect(screen.getByText('事件與報表輸出已就緒')).toBeInTheDocument()
-    expect(screen.getByText('建議截圖證據')).toBeInTheDocument()
-    expect(screen.getByText('截圖場域與規劃脈絡')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '控制平面總覽' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '總覽' })).toBeInTheDocument()
+    expect(screen.getByText('場域覆蓋與規劃密度')).toBeInTheDocument()
+    expect(screen.getByText('評審要看到的完整故事')).toBeInTheDocument()
+    expect(screen.getByText('待處理營運提醒')).toBeInTheDocument()
+    expect(await screen.findAllByText('Tower A')).toHaveLength(2)
+  })
+
+  it('renders route workspace with route library summaries', async () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/control-plane/routes" element={<ControlPlanePage />} />
+      </Routes>,
+      {
+        route: '/control-plane/routes',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [
+              {
+                membershipId: 'membership-001',
+                organizationId: 'org-001',
+                role: 'customer_admin',
+                isActive: true,
+              },
+            ],
+          }),
+        }),
+      },
+    )
+
+    expect(await screen.findByRole('heading', { level: 1, name: '航線規劃庫' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '建立航線' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
+    expect(await screen.findByText('Tower A facade loop')).toBeInTheDocument()
+    expect(screen.getByText('8 分鐘')).toBeInTheDocument()
+    expect(screen.getByText('v1')).toBeInTheDocument()
   })
 })
