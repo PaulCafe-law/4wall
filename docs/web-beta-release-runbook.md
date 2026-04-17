@@ -75,9 +75,10 @@ The current rollout model is:
 2. If the release touches `live-ops` or `support`, confirm the expected Android event contract is unchanged or already available. If not, the web surface must stay in placeholder or monitor-only state.
 3. Apply the repo-root `render.yaml` blueprint if service shape changed.
 4. Deploy `four-wall-api-staging`.
-5. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
-6. Deploy `four-wall-web-staging`.
-7. Run `.github/workflows/smoke-beta.yml` against staging.
+5. Confirm the API deploy log shows `alembic upgrade head` completed successfully.
+6. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
+7. Deploy `four-wall-web-staging`.
+8. Run `.github/workflows/smoke-beta.yml` against staging.
 8. Manually verify self-serve signup and invite acceptance if auth surface changed.
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
@@ -102,9 +103,10 @@ The current rollout model is:
 
 1. Confirm staging smoke passed.
 2. Promote the same revision to `four-wall-api`.
-3. Wait for production `/healthz` to return `200`.
-4. Promote the same revision to `four-wall-web`.
-5. Re-run `.github/workflows/smoke-beta.yml` against production values.
+3. Confirm the production API deploy log shows `alembic upgrade head` completed successfully.
+4. Wait for production `/healthz` to return `200`.
+5. Promote the same revision to `four-wall-web`.
+6. Re-run `.github/workflows/smoke-beta.yml` against production values.
 6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
 7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 8. Re-check the same overview / mission-delivery / billing manual flows on production before closing the deploy.

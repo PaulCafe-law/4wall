@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import create_engine, inspect
+
+
+def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "phase1-demo.db"
+    database_url = f"sqlite:///{db_path}"
+    monkeypatch.setenv("BUILDING_ROUTE_DATABASE_URL", database_url)
+
+    planner_server_root = Path(__file__).resolve().parents[1]
+    config = Config(str(planner_server_root / "alembic.ini"))
+    config.set_main_option("script_location", str(planner_server_root / "alembic"))
+    config.set_main_option("sqlalchemy.url", database_url)
+
+    command.upgrade(config, "head")
+
+    inspector = inspect(create_engine(database_url))
+    table_names = set(inspector.get_table_names())
+
+    assert "inspectionroute" in table_names
+    assert "inspectiontemplate" in table_names
+    assert "inspectionschedule" in table_names
+    assert "dispatchrecord" in table_names
+    assert "inspectioneventrecord" in table_names
+    assert "inspectionreport" in table_names
