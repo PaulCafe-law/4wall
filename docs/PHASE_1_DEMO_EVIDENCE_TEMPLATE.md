@@ -29,11 +29,12 @@ Mark each step as `passed`, `partial`, or `failed`.
 
 | Step | Result | Notes |
 |---|---|---|
-| Open `Overview` |  |  |
-| Open `Control Plane` |  |  |
-| Show site context |  |  |
-| Show route / template / schedule |  |  |
-| Dispatch a mission |  |  |
+| Open `Control Plane` dashboard |  |  |
+| Show site workspace |  |  |
+| Show route workspace |  |  |
+| Show template workspace |  |  |
+| Show schedule workspace |  |  |
+| Show dispatch workspace |  |  |
 | Open `Mission Detail` |  |  |
 | Show event / evidence / report output |  |  |
 | Show `Support` and `Live Ops` alignment |  |  |
@@ -44,9 +45,13 @@ Attach or reference the exact artifacts collected during rehearsal.
 
 | Evidence Item | Path / URL / Attachment Ref | Notes |
 |---|---|---|
-| `Overview` screenshot |  |  |
-| `Control Plane` screenshot |  |  |
-| Dispatch success screenshot |  |  |
+| `Control Plane` dashboard screenshot |  |  |
+| Site workspace screenshot |  |  |
+| Route workspace screenshot |  |  |
+| Template workspace screenshot |  |  |
+| Schedule workspace screenshot |  |  |
+| Dispatch queue screenshot |  |  |
+| Dispatch board screenshot |  |  |
 | `Mission Detail` screenshot for event-backed report |  |  |
 | `Mission Detail` screenshot for clean-pass report |  |  |
 | `Support` screenshot for report failure |  |  |
@@ -88,7 +93,12 @@ Confirm whether the same mission story is visible across all required surfaces.
 
 | Surface | Result | Notes |
 |---|---|---|
-| `Overview` |  |  |
+| `Control Plane` dashboard |  |  |
+| Site workspace |  |  |
+| Route workspace |  |  |
+| Template workspace |  |  |
+| Schedule workspace |  |  |
+| Dispatch workspace |  |  |
 | `Missions` |  |  |
 | `Mission Detail` |  |  |
 | `Support` |  |  |

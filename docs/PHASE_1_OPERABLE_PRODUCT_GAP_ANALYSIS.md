@@ -26,6 +26,7 @@ The current `main` branch already has:
 - mission detail linkage for route / template / schedule / dispatch metadata
 - a first event/report slice with mission-linked demo analysis, evidence artifacts, report summaries, and downloadable HTML report output
 - persisted schedule/dispatch lifecycle fields for `nextRunAt`, `lastRunAt`, `pauseReason`, `lastOutcome`, `acceptedAt`, and `closedAt`
+- screenshot-friendly control-plane guidance, Chinese-first copy, and rehearsal/evidence docs aligned to the full product control-plane story
 
 The main gap is no longer basic web scaffolding. The main gap is that the product still lacks the demo-critical story:
 
@@ -70,7 +71,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
 | Overview | Overview aggregate, daily landing page, latest report summary, latest event summary, and clean-pass fallback messaging exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Still needs final rehearsal polish and evidence capture discipline |
-| Inspection control plane | Sites, site-map detail, active route/template summaries, first-class route/template/schedule/dispatch models, dashboard/workspace IA, persisted schedule/dispatch lifecycle fields, and a dedicated control-plane dashboard/alert-center read model exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs stronger execution-state storytelling polish and rehearsal evidence captured from staging |
+| Inspection control plane | Sites, site-map detail, active route/template summaries, first-class route/template/schedule/dispatch models, dashboard/workspace IA, persisted schedule/dispatch lifecycle fields, screenshot-friendly workspace guidance, and a dedicated control-plane dashboard/alert-center read model exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs one fully captured rehearsal evidence package from staging or production |
 | Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, report status, event count, evidence, report artifact download, and clean-pass / analysis-failed next-step guidance | Delivery-oriented event / evidence / report surface | Still needs deeper summary polish and tighter customer-facing empty states |
 | Event interpretation and reporting | Mission-linked demo analysis, evidence artifacts, summaries, and downloadable reports exist | Mission-linked anomaly events, evidence screenshots, summaries, and downloadable reports | Still needs broader analysis modes and more realistic demo datasets |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state exist | Support demo operator setup and reviewer access cleanly | Still needs polish on invite feedback loops and guidance |
@@ -111,6 +112,7 @@ Phase 1 is complete when:
 - schedule cards expose persisted next-run, last-run, pause-reason, and last-outcome state
 - dispatch cards expose persisted assignee, execution target, accepted time, closed time, and handoff status
 - control-plane dashboard exposes recent alerts and execution summaries without forcing operators to cross-check overview, support, and live ops manually
+- the control-plane dashboard, site workspace, route workspace, template workspace, schedule workspace, and dispatch workspace each have a screenshot-quality presentation state for plan review
 - a completed mission can show event count, evidence, summary, and downloadable report output
 - overview, missions, mission detail, support, and live ops all tell the same story for one mission lifecycle, including clean-pass and report-generation-failed cases
 - customers and reviewers can understand the output without engineering translation

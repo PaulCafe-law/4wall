@@ -46,8 +46,10 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - customer viewer deployed smoke if viewer smoke credentials are configured
   - site map read path and site selection
   - route/template create or edit path if the release touched control-plane surfaces
+  - site workspace shows map version, zones, launch points, viewpoints, and active route/template summaries if the release touched control-plane surfaces
   - schedule create, pause/resume, cancel/complete, and `lastOutcome` / `lastDispatchedAt` visibility if the release touched control-plane surfaces
   - dispatch create, send/accept/complete/fail transitions, assignee / execution target / handoff note rendering, and dispatch board visibility if the release touched control-plane surfaces
+  - control-plane dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace each render screenshot-ready guidance and match the rehearsal script if the release touched control-plane surfaces
   - overview aggregate cards, including pending actions, ready-for-delivery reminders, invoice reminders, recent deliveries, and setup guidance when a workspace has no sites or no missions
   - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
   - mission list with explicit delivery badges, publish time, failure reason, and clean customer-facing copy
@@ -102,6 +104,7 @@ Rollback immediately if any of these occur:
 - Render deploy IDs for staging and production
 - manual QA notes for customer and internal flows
 - demo-story notes for one route/template -> schedule -> dispatch -> mission-detail walkthrough when the release touches the control-plane slice
+- screenshot references for the control-plane dashboard, site workspace, route workspace, template workspace, schedule workspace, and dispatch workspace when the release touches the control-plane slice
 - demo-story notes for one end-to-end route -> dispatch -> event -> report walkthrough when the release touches Phase 1 event/report features
 - evidence that a clean-pass mission and a report-failed mission were both rehearsed after deploy when the release touched event/report or internal-ops surfaces
 - the screenshot and artifact package listed in `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`

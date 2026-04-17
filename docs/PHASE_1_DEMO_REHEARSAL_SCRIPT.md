@@ -10,7 +10,7 @@ Use it when preparing:
 - internal rehearsal runs
 - staging and production evidence capture after deploy
 
-The goal is to make the route-to-report story repeatable without hidden operator knowledge.
+The goal is to make the complete product control-plane story repeatable without hidden operator knowledge.
 
 After a successful run, record the output in:
 
@@ -20,86 +20,120 @@ After a successful run, record the output in:
 
 - `Beta Smoke` is green for the target environment.
 - One `customer_admin` account can access:
-  - `Overview`
   - `Control Plane`
+  - `Sites`
   - `Missions`
   - `Mission Detail`
 - One internal account can access:
   - `Support`
   - `Live Ops`
 - At least one site exists.
-- At least one mission can be used as the demo record.
+- At least one route, template, schedule, and dispatch-capable mission exist for the selected site.
 
 ## Core Demo Story
 
 Run the story in this order:
 
-1. Open `Overview`
-2. Open `Control Plane`
-3. Show site context
-4. Show route, template, and schedule
-5. Dispatch a mission record
-6. Open `Mission Detail`
-7. Show event/evidence/report output
-8. Show internal `Support` and `Live Ops` alignment
+1. Open the `Control Plane` dashboard
+2. Open the site workspace and show map context
+3. Open the route workspace
+4. Open the template workspace
+5. Open the schedule workspace
+6. Open the dispatch workspace
+7. Open `Mission Detail`
+8. Show event/evidence/report output
+9. Show internal `Support` and `Live Ops` alignment
 
 ## Step-by-Step Rehearsal
 
-### 1. Overview
+### 1. Control Plane Dashboard
 
 Show:
 
-- scheduled / running / failed mission cards
+- site / route / template / schedule / dispatch coverage
+- recent alerts
+- recent execution summaries
 - latest report summary
 - latest anomaly summary or clean-pass fallback
-- pending actions
 
 Capture evidence:
 
-- one screenshot of the dashboard cards
+- one screenshot of the control-plane dashboard cards
+- one screenshot that includes recent alerts and recent execution summaries
 
-### 2. Control Plane Site Context
+### 2. Site Workspace
 
 Show:
 
 - selected site
 - address and coordinates
-- site notes
+- site-map version, zones, launch points, viewpoints
+- active route/template coverage
 
 Capture evidence:
 
-- one screenshot of the site context card
+- one screenshot of the site workspace
 
-### 3. Route / Template / Schedule
+### 3. Route Workspace
 
 Show:
 
 - at least one route
-- at least one template
-- at least one schedule
-- the route-to-report walkthrough panel
+- route version
+- estimated duration
+- preview polyline or route summary
 
 Capture evidence:
 
-- one screenshot showing route, template, and schedule cards together
+- one screenshot of the route workspace
 
-### 4. Dispatch
+### 4. Template Workspace
+
+Show:
+
+- at least one template
+- inspection policy
+- evidence policy
+- report mode
+
+Capture evidence:
+
+- one screenshot of the template workspace
+
+### 5. Schedule Workspace
+
+Show:
+
+- at least one schedule
+- next run
+- pause reason
+- last outcome
+- alert coverage
+
+Capture evidence:
+
+- one screenshot of the schedule workspace
+
+### 6. Dispatch Workspace
 
 Show:
 
 - dispatch action on the selected mission
 - linked route / template / schedule values
 - dispatch target and assignee
+- accepted / completed / failed transitions if available
 
 Capture evidence:
 
-- one screenshot of the dispatch success state
+- one screenshot of the dispatch queue
+- one screenshot of the dispatch board
 
-### 5. Mission Detail
+### 7. Mission Detail
 
 Show:
 
 - linked route / template / schedule / dispatch metadata
+- execution summary
 - delivery panel
 - report summary
 - evidence gallery or clean-pass state
@@ -110,12 +144,13 @@ Capture evidence:
 - one screenshot of the linked planning metadata
 - one screenshot of the report/evidence section
 
-### 6. Internal Alignment
+### 8. Internal Alignment
 
 For internal rehearsal only, show:
 
 - `Support` item for report-generation failure when using `analysis_failed`
-- `Live Ops` report status, event count, and summary
+- `Support` item for `dispatch_blocked` if a dispatch handoff is intentionally left incomplete
+- `Live Ops` report status, execution summary, event count, and summary
 
 Capture evidence:
 
@@ -152,9 +187,13 @@ Keep the following artifacts after rehearsal:
 
 - environment name
 - commit SHA
-- one `Overview` screenshot
-- one `Control Plane` screenshot
-- one dispatch screenshot
+- one `Control Plane` dashboard screenshot
+- one site workspace screenshot
+- one route workspace screenshot
+- one template workspace screenshot
+- one schedule workspace screenshot
+- one dispatch queue screenshot
+- one dispatch board screenshot
 - one `Mission Detail` screenshot for normal findings
 - one `Mission Detail` screenshot for clean pass
 - one `Support` screenshot for report failure
