@@ -8,6 +8,7 @@ from uuid import uuid4
 from sqlmodel import Session, select
 
 from app.models import InspectionEventRecord, InspectionReport, Mission, MissionArtifact
+from app.inspection_control import mission_status_for_report
 from app.web_dto import (
     EvidenceArtifactDto,
     InspectionEventDto,
@@ -157,6 +158,8 @@ def reprocess_demo_analysis(
     generated_events: list[InspectionEventRecord] = []
 
     if mode == "analysis_failed":
+        mission.status = mission_status_for_report(report_status="failed", current_status=mission.status)
+        session.add(mission)
         report = InspectionReport(
             organization_id=mission.organization_id or "",
             mission_id=mission.id,
@@ -247,6 +250,8 @@ def reprocess_demo_analysis(
             size_bytes=report_artifact.size_bytes,
         )
     )
+    mission.status = mission_status_for_report(report_status=report.status, current_status=mission.status)
+    session.add(mission)
     return report
 
 

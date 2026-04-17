@@ -8,7 +8,17 @@ from sqlmodel import Session, select
 
 from app.audit import record_audit
 from app.deps import CurrentWebUser, get_current_web_user, get_session
-from app.inspection_control import normalize_alert_rules, serialize_dispatch, serialize_route, serialize_schedule, serialize_template
+from app.inspection_control import (
+    mark_schedule_dispatched,
+    mission_status_for_dispatch,
+    normalize_alert_rules,
+    normalize_dispatch_state,
+    normalize_schedule_state,
+    serialize_dispatch,
+    serialize_route,
+    serialize_schedule,
+    serialize_template,
+)
 from app.models import DispatchRecord, InspectionRoute, InspectionSchedule, InspectionTemplate, Mission, Site
 from app.web_dto import (
     CreateDispatchRequestDto,
@@ -19,6 +29,7 @@ from app.web_dto import (
     InspectionRouteDto,
     InspectionScheduleDto,
     InspectionTemplateDto,
+    UpdateDispatchRequestDto,
     UpdateInspectionRouteRequestDto,
     UpdateInspectionScheduleRequestDto,
     UpdateInspectionTemplateRequestDto,
@@ -256,6 +267,7 @@ def create_schedule(
         created_by_user_id=current_user.user.id,
         updated_by_user_id=current_user.user.id,
     )
+    normalize_schedule_state(schedule)
     session.add(schedule)
     session.flush()
     record_audit(
@@ -301,12 +313,15 @@ def patch_schedule(
         schedule.planned_at = request.plannedAt
     if request.recurrence is not None:
         schedule.recurrence = request.recurrence
+    previous_status = schedule.status
     if request.status is not None:
         schedule.status = request.status
+    if request.pauseReason is not None:
+        schedule.pause_reason = request.pauseReason or None
     if request.alertRules is not None:
         schedule.alert_rules_json = normalize_alert_rules([alert_rule.model_dump(mode="json") for alert_rule in request.alertRules])
     schedule.updated_by_user_id = current_user.user.id
-    schedule.updated_at = datetime.now(timezone.utc)
+    normalize_schedule_state(schedule)
     session.add(schedule)
     record_audit(
         session,
@@ -315,9 +330,46 @@ def patch_schedule(
         actor_user_id=current_user.user.id,
         target_type="inspection_schedule",
         target_id=schedule.id,
+        metadata={
+            "previousStatus": previous_status,
+            "status": schedule.status,
+            "pauseReason": schedule.pause_reason,
+            "nextRunAt": schedule.next_run_at.isoformat() if schedule.next_run_at else None,
+            "lastOutcome": schedule.last_outcome,
+        },
     )
     session.commit()
     return serialize_schedule(schedule)
+
+
+@router.get("/v1/inspection/dispatch", response_model=list[DispatchRecordDto])
+def list_dispatches(
+    organizationId: str | None = None,
+    siteId: str | None = None,
+    missionId: str | None = None,
+    scheduleId: str | None = None,
+    statusFilter: str | None = Query(default=None, alias="status"),
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> list[DispatchRecordDto]:
+    statement = (
+        select(DispatchRecord)
+        .join(Mission, Mission.id == DispatchRecord.mission_id)
+        .where(Mission.organization_id.is_not(None))
+    )
+    statement = apply_org_read_scope(statement, Mission.organization_id, current_user)
+    if organizationId is not None:
+        statement = statement.where(DispatchRecord.organization_id == organizationId)
+    if siteId is not None:
+        statement = statement.where(Mission.site_id == siteId)
+    if missionId is not None:
+        statement = statement.where(DispatchRecord.mission_id == missionId)
+    if scheduleId is not None:
+        statement = statement.where(DispatchRecord.schedule_id == scheduleId)
+    if statusFilter is not None:
+        statement = statement.where(DispatchRecord.status == statusFilter)
+    dispatches = session.exec(statement.order_by(DispatchRecord.updated_at.desc(), DispatchRecord.dispatched_at.desc())).all()
+    return [serialize_dispatch(dispatch) for dispatch in dispatches]
 
 
 @router.post("/v1/missions/{mission_id}/dispatch", response_model=DispatchRecordDto)
@@ -359,11 +411,15 @@ def dispatch_mission(
     dispatch.status = request.status
     dispatch.note = request.note
     dispatch.dispatched_at = datetime.now(timezone.utc)
-    dispatch.updated_at = dispatch.dispatched_at
+    normalize_dispatch_state(dispatch, changed_at=dispatch.dispatched_at)
     session.add(dispatch)
 
-    mission.status = _mission_status_for_dispatch(dispatch.status)
+    mission.status = mission_status_for_dispatch(dispatch.status)
     session.add(mission)
+    if request.scheduleId is not None:
+        schedule = _require_schedule(session, request.scheduleId, organization_id=mission.organization_id, site_id=mission.site_id)
+        mark_schedule_dispatched(schedule, changed_at=dispatch.dispatched_at)
+        session.add(schedule)
     record_audit(
         session,
         action="mission.dispatched",
@@ -377,6 +433,83 @@ def dispatch_mission(
             "templateId": dispatch.template_id,
             "scheduleId": dispatch.schedule_id,
             "status": dispatch.status,
+        },
+    )
+    session.commit()
+    return serialize_dispatch(dispatch)
+
+
+@router.patch("/v1/inspection/dispatch/{dispatch_id}", response_model=DispatchRecordDto)
+def patch_dispatch(
+    dispatch_id: str,
+    request: UpdateDispatchRequestDto,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> DispatchRecordDto:
+    dispatch = session.get(DispatchRecord, dispatch_id)
+    if dispatch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_not_found")
+
+    mission = session.get(Mission, dispatch.mission_id)
+    if mission is None or mission.organization_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
+    ensure_org_write_access(session, current_user, mission.organization_id, action="mission.dispatch_update_access")
+    if mission.site_id is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mission_site_required_for_dispatch")
+
+    next_route_id = request.routeId if request.routeId is not None else dispatch.route_id
+    next_template_id = request.templateId if request.templateId is not None else dispatch.template_id
+    next_schedule_id = request.scheduleId if request.scheduleId is not None else dispatch.schedule_id
+    _validate_schedule_links(
+        session,
+        organization_id=mission.organization_id,
+        site_id=mission.site_id,
+        route_id=next_route_id,
+        template_id=next_template_id,
+    )
+    if next_schedule_id is not None:
+        _require_schedule(session, next_schedule_id, organization_id=mission.organization_id, site_id=mission.site_id)
+
+    previous_status = dispatch.status
+    if request.routeId is not None:
+        dispatch.route_id = request.routeId
+    if request.templateId is not None:
+        dispatch.template_id = request.templateId
+    if request.scheduleId is not None:
+        dispatch.schedule_id = request.scheduleId
+    if request.assignee is not None:
+        dispatch.assignee = request.assignee
+    if request.executionTarget is not None:
+        dispatch.execution_target = request.executionTarget
+    if request.status is not None:
+        dispatch.status = request.status
+    if request.note is not None:
+        dispatch.note = request.note
+    normalize_dispatch_state(dispatch)
+    session.add(dispatch)
+
+    if dispatch.schedule_id is not None:
+        schedule = _require_schedule(session, dispatch.schedule_id, organization_id=mission.organization_id, site_id=mission.site_id)
+        if dispatch.status in {"assigned", "sent", "accepted", "completed"}:
+            mark_schedule_dispatched(schedule, changed_at=dispatch.updated_at)
+            session.add(schedule)
+
+    mission.status = mission_status_for_dispatch(dispatch.status)
+    session.add(mission)
+    record_audit(
+        session,
+        action="mission.dispatch_updated",
+        organization_id=mission.organization_id,
+        actor_user_id=current_user.user.id,
+        target_type="mission",
+        target_id=mission.id,
+        metadata={
+            "dispatchId": dispatch.id,
+            "previousStatus": previous_status,
+            "status": dispatch.status,
+            "assignee": dispatch.assignee,
+            "executionTarget": dispatch.execution_target,
+            "scheduleId": dispatch.schedule_id,
         },
     )
     session.commit()
@@ -449,9 +582,3 @@ def _validate_schedule_links(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="template_route_mismatch")
 
 
-def _mission_status_for_dispatch(dispatch_status: str) -> str:
-    if dispatch_status == "queued":
-        return "scheduled"
-    if dispatch_status == "failed":
-        return "failed"
-    return "dispatched"

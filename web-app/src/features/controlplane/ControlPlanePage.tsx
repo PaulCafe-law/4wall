@@ -154,6 +154,26 @@ function selectedSiteHint(site: Site | null) {
   if (!site) return '尚未建立場域。請先建立 site，控制平面才有具體的地圖與排程脈絡。'
   return `${site.name} | ${site.address}`
 }
+
+function dispatchTransitionCopy(status: string) {
+  switch (status) {
+    case 'queued':
+      return '等待指派'
+    case 'assigned':
+      return '已指派'
+    case 'sent':
+      return '已送出'
+    case 'accepted':
+      return '已接受'
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '已失敗'
+    default:
+      return status
+  }
+}
+
 export function ControlPlanePage() {
   const auth = useAuth()
   const location = useLocation()
@@ -164,6 +184,9 @@ export function ControlPlanePage() {
   const [routeName, setRouteName] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [plannedAt, setPlannedAt] = useState('')
+  const [schedulePauseReason, setSchedulePauseReason] = useState('Weather hold before launch window.')
+  const [dispatchAssignee, setDispatchAssignee] = useState('observer-01')
+  const [dispatchExecutionTarget, setDispatchExecutionTarget] = useState('field-team')
   const [dispatchNote, setDispatchNote] = useState('')
   const [routeError, setRouteError] = useState<string | null>(null)
   const [templateError, setTemplateError] = useState<string | null>(null)
@@ -195,6 +218,11 @@ export function ControlPlanePage() {
     queryFn: (token) => api.listInspectionSchedules(token),
     staleTime: 10_000,
   })
+  const dispatchesQuery = useAuthedQuery({
+    queryKey: ['inspection', 'dispatch', selectedSiteId],
+    queryFn: (token) => api.listInspectionDispatches(token, selectedSiteId ? { siteId: selectedSiteId } : undefined),
+    staleTime: 10_000,
+  })
   const missionsQuery = useAuthedQuery({
     queryKey: ['missions', 'control-plane'],
     queryFn: api.listMissions,
@@ -205,6 +233,7 @@ export function ControlPlanePage() {
   const routes = routesQuery.data ?? []
   const templates = templatesQuery.data ?? []
   const schedules = schedulesQuery.data ?? []
+  const dispatches = dispatchesQuery.data ?? []
   const missions = missionsQuery.data ?? []
   const overview = overviewQuery.data
 
@@ -216,6 +245,12 @@ export function ControlPlanePage() {
   const siteTemplates = templates.filter((template) => !effectiveSiteId || template.siteId === effectiveSiteId)
   const siteSchedules = schedules.filter((schedule) => !effectiveSiteId || schedule.siteId === effectiveSiteId)
   const siteMissions = missions.filter((mission) => !effectiveSiteId || mission.siteId === effectiveSiteId)
+  const siteDispatches = dispatches.filter(
+    (dispatch) =>
+      !effectiveSiteId ||
+      siteMissions.some((mission) => mission.missionId === dispatch.missionId && mission.siteId === effectiveSiteId),
+  )
+  const dispatchByMissionId = new Map(siteDispatches.map((dispatch) => [dispatch.missionId, dispatch]))
   const siteCoverage = sites.map((site) => ({
     site,
     routeCount: routes.filter((route) => route.siteId === site.siteId).length,
@@ -272,6 +307,21 @@ export function ControlPlanePage() {
     },
   })
 
+  const updateSchedule = useAuthedMutation({
+    mutationKey: ['inspection', 'schedules', 'update'],
+    mutationFn: ({
+      token,
+      payload,
+    }: {
+      token: string
+      payload: { scheduleId: string; body: Parameters<typeof api.patchInspectionSchedule>[2] }
+    }) => api.patchInspectionSchedule(token, payload.scheduleId, payload.body),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['inspection', 'schedules'] })
+      setScheduleError(null)
+    },
+  })
+
   const dispatchMission = useAuthedMutation({
     mutationKey: ['inspection', 'dispatch'],
     mutationFn: ({
@@ -285,8 +335,8 @@ export function ControlPlanePage() {
           routeId: siteRoutes[0]?.routeId,
           templateId: siteTemplates[0]?.templateId,
           scheduleId: siteSchedules[0]?.scheduleId,
-          assignee: 'observer-01',
-          executionTarget: 'field-team',
+          assignee: dispatchAssignee.trim() || undefined,
+          executionTarget: dispatchExecutionTarget.trim() || undefined,
         status: 'assigned',
         note: dispatchNote.trim() || undefined,
       }),
@@ -295,8 +345,30 @@ export function ControlPlanePage() {
         queryClient.invalidateQueries({ queryKey: ['missions'] }),
         queryClient.invalidateQueries({ queryKey: ['mission'] }),
         queryClient.invalidateQueries({ queryKey: ['web-overview'] }),
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'dispatch'] }),
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'schedules'] }),
       ])
       setDispatchNote('')
+      setDispatchError(null)
+    },
+  })
+
+  const updateDispatch = useAuthedMutation({
+    mutationKey: ['inspection', 'dispatch', 'update'],
+    mutationFn: ({
+      token,
+      payload,
+    }: {
+      token: string
+      payload: { dispatchId: string; body: Parameters<typeof api.patchInspectionDispatch>[2] }
+    }) => api.patchInspectionDispatch(token, payload.dispatchId, payload.body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'dispatch'] }),
+        queryClient.invalidateQueries({ queryKey: ['missions'] }),
+        queryClient.invalidateQueries({ queryKey: ['mission'] }),
+        queryClient.invalidateQueries({ queryKey: ['web-overview'] }),
+      ])
       setDispatchError(null)
     },
   })
@@ -395,12 +467,54 @@ export function ControlPlanePage() {
     }
   }
 
+  async function handleScheduleTransition(
+    scheduleId: string,
+    status: 'scheduled' | 'paused' | 'cancelled' | 'completed',
+  ) {
+    try {
+      setScheduleError(null)
+      await updateSchedule.mutateAsync({
+        scheduleId,
+        body: {
+          status,
+          pauseReason: status === 'paused' ? schedulePauseReason.trim() || 'Paused from control-plane workspace.' : '',
+        },
+      })
+    } catch (error) {
+      setScheduleError(
+        formatApiError(error instanceof ApiError ? error.detail : undefined, '更新排程狀態失敗。'),
+      )
+    }
+  }
+
   async function handleDispatchMission(missionId: string) {
     try {
       await dispatchMission.mutateAsync({ missionId })
     } catch (error) {
       setDispatchError(
         formatApiError(error instanceof ApiError ? error.detail : undefined, '建立派工失敗。'),
+      )
+    }
+  }
+
+  async function handleDispatchTransition(
+    dispatchId: string,
+    status: 'assigned' | 'sent' | 'accepted' | 'completed' | 'failed',
+  ) {
+    try {
+      setDispatchError(null)
+      await updateDispatch.mutateAsync({
+        dispatchId,
+        body: {
+          status,
+          assignee: dispatchAssignee.trim() || undefined,
+          executionTarget: dispatchExecutionTarget.trim() || undefined,
+          note: dispatchNote.trim() || undefined,
+        },
+      })
+    } catch (error) {
+      setDispatchError(
+        formatApiError(error instanceof ApiError ? error.detail : undefined, '更新派工狀態失敗。'),
       )
     }
   }
@@ -417,7 +531,7 @@ export function ControlPlanePage() {
           />
           <Metric
             label="待派工任務"
-            value={siteMissions.filter((item) => item.status === 'planning' || item.status === 'ready').length}
+            value={siteDispatches.filter((item) => ['queued', 'assigned', 'sent'].includes(item.status)).length}
             hint="等候 dispatch 與 handoff"
           />
           <Metric
@@ -754,6 +868,13 @@ export function ControlPlanePage() {
                 ))}
               </Select>
             </Field>
+            <Field label="暫停原因預設值" hint="供 schedule board 的 pause action 重用。">
+              <Input
+                value={schedulePauseReason}
+                onChange={(event) => setSchedulePauseReason(event.target.value)}
+                placeholder="例如：Weather hold before launch window."
+              />
+            </Field>
             <Field label="排程政策" hint="Batch A 先用單次或簡化 recurrence 展示控制平面的核心訊息。">
               <TextArea readOnly value="status=scheduled; recurrence=每週一 09:00; alertCoverage=mission_failure/analysis_failure/report_generation_failure" />
             </Field>
@@ -801,10 +922,51 @@ export function ControlPlanePage() {
                     </div>
                     <StatusBadge status={schedule.status} />
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
                     <Metric label="最近結果" value={schedule.lastOutcome ?? 'scheduled_for_execution'} />
                     <Metric label="暫停原因" value={schedule.pauseReason ?? '無'} />
+                    <Metric
+                      label="最近派工"
+                      value={schedule.lastDispatchedAt ? formatDateTime(schedule.lastDispatchedAt) : '尚未派工'}
+                    />
                     <Metric label="告警規則" value={schedule.alertRules.length} />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {schedule.status !== 'paused' ? (
+                      <ActionButton
+                        variant="secondary"
+                        disabled={!canWriteSelectedSite || updateSchedule.isPending}
+                        onClick={() => void handleScheduleTransition(schedule.scheduleId, 'paused')}
+                      >
+                        暫停排程
+                      </ActionButton>
+                    ) : (
+                      <ActionButton
+                        variant="secondary"
+                        disabled={!canWriteSelectedSite || updateSchedule.isPending}
+                        onClick={() => void handleScheduleTransition(schedule.scheduleId, 'scheduled')}
+                      >
+                        恢復排程
+                      </ActionButton>
+                    )}
+                    {schedule.status !== 'completed' ? (
+                      <ActionButton
+                        variant="secondary"
+                        disabled={!canWriteSelectedSite || updateSchedule.isPending}
+                        onClick={() => void handleScheduleTransition(schedule.scheduleId, 'completed')}
+                      >
+                        標記完成
+                      </ActionButton>
+                    ) : null}
+                    {schedule.status !== 'cancelled' ? (
+                      <ActionButton
+                        variant="secondary"
+                        disabled={!canWriteSelectedSite || updateSchedule.isPending}
+                        onClick={() => void handleScheduleTransition(schedule.scheduleId, 'cancelled')}
+                      >
+                        取消排程
+                      </ActionButton>
+                    ) : null}
                   </div>
                 </div>
               ))
@@ -824,6 +986,20 @@ export function ControlPlanePage() {
           </p>
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">建立派工</h2>
           <div className="mt-4 grid gap-4">
+            <Field label="負責人">
+              <Input
+                value={dispatchAssignee}
+                onChange={(event) => setDispatchAssignee(event.target.value)}
+                placeholder="例如：observer-01"
+              />
+            </Field>
+            <Field label="執行對象">
+              <Input
+                value={dispatchExecutionTarget}
+                onChange={(event) => setDispatchExecutionTarget(event.target.value)}
+                placeholder="例如：field-team"
+              />
+            </Field>
             <Field label="派工說明">
               <TextArea
                 value={dispatchNote}
@@ -831,6 +1007,20 @@ export function ControlPlanePage() {
                 placeholder="例如：由 observer-01 進行現場執行與回報。"
               />
             </Field>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Metric label="綁定航線" value={siteRoutes[0]?.name ?? '尚未建立'} />
+              <Metric label="綁定模板" value={siteTemplates[0]?.name ?? '尚未建立'} />
+              <Metric
+                label="綁定排程"
+                value={
+                  siteSchedules[0]
+                    ? siteSchedules[0].nextRunAt
+                      ? formatDateTime(siteSchedules[0].nextRunAt)
+                      : recurrenceLabel(siteSchedules[0].recurrence)
+                    : '尚未建立'
+                }
+              />
+            </div>
             {dispatchError ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 {dispatchError}
@@ -842,54 +1032,178 @@ export function ControlPlanePage() {
           </div>
         </Panel>
 
-        <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            dispatch queue
-          </p>
-          <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">任務佇列</h2>
-          <div className="mt-4 space-y-4">
-            {siteMissions.length === 0 ? (
-              <EmptyState
-                title="目前沒有任務"
-                body="先建立任務，派工工作區才會出現可指派的 mission。"
-              />
-            ) : (
-              siteMissions.map((mission) => (
-                <div
-                  key={mission.missionId}
-                  className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-medium text-chrome-950">{mission.missionName}</p>
-                      <p className="mt-1 text-sm text-chrome-700">
-                        mission {mission.status} / report {mission.reportStatus}
-                      </p>
+        <div className="space-y-6">
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+              dispatch queue
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">任務佇列</h2>
+            <div className="mt-4 space-y-4">
+              {siteMissions.length === 0 ? (
+                <EmptyState
+                  title="目前沒有任務"
+                  body="先建立任務，派工工作區才會出現可指派的 mission。"
+                />
+              ) : (
+                siteMissions.map((mission) => {
+                  const dispatch = dispatchByMissionId.get(mission.missionId)
+                  return (
+                    <div
+                      key={mission.missionId}
+                      className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-chrome-950">{mission.missionName}</p>
+                          <p className="mt-1 text-sm text-chrome-700">
+                            mission {mission.status} / report {mission.reportStatus}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <StatusBadge status={mission.status} />
+                          {dispatch ? <StatusBadge status={dispatch.status} /> : null}
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-4">
+                        <Metric label="建立時間" value={formatDateTime(mission.createdAt)} />
+                        <Metric
+                          label="負責人"
+                          value={dispatch?.assignee ?? (dispatchAssignee.trim() || '尚未指定')}
+                        />
+                        <Metric
+                          label="執行對象"
+                          value={dispatch?.executionTarget ?? (dispatchExecutionTarget.trim() || '尚未指定')}
+                        />
+                        <Metric
+                          label="最新派工"
+                          value={dispatch ? dispatchTransitionCopy(dispatch.status) : '尚未建立派工'}
+                        />
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {!dispatch ? (
+                          <ActionButton
+                            disabled={
+                              !canWriteSelectedSite ||
+                              dispatchMission.isPending ||
+                              !siteRoutes[0] ||
+                              !siteTemplates[0] ||
+                              !siteSchedules[0]
+                            }
+                            onClick={() => void handleDispatchMission(mission.missionId)}
+                          >
+                            {dispatchMission.isPending ? '派工中…' : '建立派工'}
+                          </ActionButton>
+                        ) : null}
+                        {dispatch?.status === 'queued' || dispatch?.status === 'assigned' ? (
+                          <ActionButton
+                            variant="secondary"
+                            disabled={!canWriteSelectedSite || updateDispatch.isPending}
+                            onClick={() => void handleDispatchTransition(dispatch.dispatchId, 'sent')}
+                          >
+                            標記已送出
+                          </ActionButton>
+                        ) : null}
+                        {dispatch?.status === 'sent' ? (
+                          <ActionButton
+                            variant="secondary"
+                            disabled={!canWriteSelectedSite || updateDispatch.isPending}
+                            onClick={() => void handleDispatchTransition(dispatch.dispatchId, 'accepted')}
+                          >
+                            接受派工
+                          </ActionButton>
+                        ) : null}
+                        {dispatch?.status === 'accepted' ? (
+                          <ActionButton
+                            variant="secondary"
+                            disabled={!canWriteSelectedSite || updateDispatch.isPending}
+                            onClick={() => void handleDispatchTransition(dispatch.dispatchId, 'completed')}
+                          >
+                            標記完成
+                          </ActionButton>
+                        ) : null}
+                        {dispatch && !['completed', 'failed'].includes(dispatch.status) ? (
+                          <ActionButton
+                            variant="secondary"
+                            disabled={!canWriteSelectedSite || updateDispatch.isPending}
+                            onClick={() => void handleDispatchTransition(dispatch.dispatchId, 'failed')}
+                          >
+                            標記失敗
+                          </ActionButton>
+                        ) : null}
+                        <Link
+                          to={`/missions/${mission.missionId}`}
+                          className="inline-flex items-center justify-center rounded-full border border-chrome-300 px-4 py-2 text-sm font-medium text-chrome-950 transition hover:border-chrome-500"
+                        >
+                          查看任務詳情
+                        </Link>
+                      </div>
                     </div>
-                    <StatusBadge status={mission.status} />
-                  </div>
-                  <p className="mt-3 text-xs text-chrome-600">
-                    建立時間 {formatDateTime(mission.createdAt)}
-                  </p>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <ActionButton
-                      disabled={!canWriteSelectedSite || dispatchMission.isPending}
-                      onClick={() => void handleDispatchMission(mission.missionId)}
+                  )
+                })
+              )}
+            </div>
+          </Panel>
+
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+              active dispatch board
+            </p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">派工看板</h2>
+            <div className="mt-4 space-y-4">
+              {siteDispatches.length === 0 ? (
+                <EmptyState
+                  title="目前沒有派工紀錄"
+                  body="建立派工後，這裡會顯示 assignee、execution target、接受與關閉時間，以及與 mission/report 的對齊狀態。"
+                />
+              ) : (
+                siteDispatches.map((dispatch) => {
+                  const mission = siteMissions.find((item) => item.missionId === dispatch.missionId)
+                  return (
+                    <div
+                      key={dispatch.dispatchId}
+                      className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4"
                     >
-                      {dispatchMission.isPending ? '派工中…' : '建立派工'}
-                    </ActionButton>
-                    <Link
-                      to={`/missions/${mission.missionId}`}
-                      className="inline-flex items-center justify-center rounded-full border border-chrome-300 px-4 py-2 text-sm font-medium text-chrome-950 transition hover:border-chrome-500"
-                    >
-                      查看任務詳情
-                    </Link>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </Panel>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-medium text-chrome-950">
+                            {mission?.missionName ?? dispatch.missionId}
+                          </p>
+                          <p className="mt-1 text-sm text-chrome-700">
+                            {dispatch.assignee ?? '未指派'} / {dispatch.executionTarget ?? '未指定執行對象'}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <StatusBadge status={dispatch.status} />
+                          {mission ? <StatusBadge status={mission.status} /> : null}
+                        </div>
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-4">
+                        <Metric label="派工建立" value={formatDateTime(dispatch.dispatchedAt)} />
+                        <Metric
+                          label="接受時間"
+                          value={dispatch.acceptedAt ? formatDateTime(dispatch.acceptedAt) : '尚未接受'}
+                        />
+                        <Metric
+                          label="關閉時間"
+                          value={dispatch.closedAt ? formatDateTime(dispatch.closedAt) : '尚未關閉'}
+                        />
+                        <Metric label="最後更新" value={formatDateTime(dispatch.lastUpdatedAt)} />
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-3">
+                        <Metric label="route" value={dispatch.routeId ?? '未綁定'} />
+                        <Metric label="template" value={dispatch.templateId ?? '未綁定'} />
+                        <Metric label="schedule" value={dispatch.scheduleId ?? '未綁定'} />
+                      </div>
+                      <div className="mt-4 rounded-2xl border border-chrome-200 bg-white px-4 py-3 text-sm text-chrome-700">
+                        {dispatch.note ?? '目前沒有 handoff note。'}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          </Panel>
+        </div>
       </div>
     )
   }

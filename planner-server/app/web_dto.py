@@ -46,7 +46,7 @@ InspectionAlertRuleKindLiteral = Literal[
     "report_generation_failure",
 ]
 InspectionScheduleStatusLiteral = Literal["scheduled", "paused", "cancelled", "completed"]
-DispatchStatusLiteral = Literal["queued", "assigned", "sent", "accepted", "failed"]
+DispatchStatusLiteral = Literal["queued", "assigned", "sent", "accepted", "completed", "failed"]
 AnalysisReprocessModeLiteral = Literal["normal", "no_findings", "analysis_failed"]
 
 
@@ -416,6 +416,7 @@ class InspectionScheduleDto(BaseModel):
     alertRules: list[InspectionAlertRuleDto] = Field(default_factory=list)
     nextRunAt: datetime | None = None
     lastRunAt: datetime | None = None
+    lastDispatchedAt: datetime | None = None
     pauseReason: str | None = None
     lastOutcome: str | None = None
     createdAt: datetime
@@ -439,6 +440,7 @@ class UpdateInspectionScheduleRequestDto(BaseModel):
     plannedAt: datetime | None = None
     recurrence: str | None = None
     status: InspectionScheduleStatusLiteral | None = None
+    pauseReason: str | None = None
     alertRules: list[InspectionAlertRuleInputDto] | None = None
 
 
@@ -451,6 +453,7 @@ class DispatchRecordDto(BaseModel):
     dispatchedAt: datetime
     acceptedAt: datetime | None = None
     closedAt: datetime | None = None
+    lastUpdatedAt: datetime
     dispatchedByUserId: str | None = None
     assignee: str | None = None
     executionTarget: str | None = None
@@ -465,6 +468,16 @@ class CreateDispatchRequestDto(BaseModel):
     assignee: str | None = None
     executionTarget: str | None = None
     status: DispatchStatusLiteral = "queued"
+    note: str | None = None
+
+
+class UpdateDispatchRequestDto(BaseModel):
+    routeId: str | None = None
+    templateId: str | None = None
+    scheduleId: str | None = None
+    assignee: str | None = None
+    executionTarget: str | None = None
+    status: DispatchStatusLiteral | None = None
     note: str | None = None
 
 

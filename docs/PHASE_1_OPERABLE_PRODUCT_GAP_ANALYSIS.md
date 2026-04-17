@@ -25,6 +25,7 @@ The current `main` branch already has:
 - site-detail workspaces with site-map context, launch points, viewpoints, and active route/template summaries
 - mission detail linkage for route / template / schedule / dispatch metadata
 - a first event/report slice with mission-linked demo analysis, evidence artifacts, report summaries, and downloadable HTML report output
+- persisted schedule/dispatch lifecycle fields for `nextRunAt`, `lastRunAt`, `pauseReason`, `lastOutcome`, `acceptedAt`, and `closedAt`
 
 The main gap is no longer basic web scaffolding. The main gap is that the product still lacks the demo-critical story:
 
@@ -69,7 +70,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 | Area | Current State | Phase 1 Target | Gap |
 |---|---|---|---|
 | Overview | Overview aggregate, daily landing page, latest report summary, latest event summary, and clean-pass fallback messaging exist | Demo dashboard for scheduled/running/failed missions, latest events, latest reports, and support state | Still needs final rehearsal polish and evidence capture discipline |
-| Inspection control plane | Sites, site-map detail, active route/template summaries, first-class route/template/schedule/dispatch models, dashboard/workspace IA, and mission-detail convergence sections exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs fuller schedule/dispatch lifecycle depth, alert center, and execution-summary read models |
+| Inspection control plane | Sites, site-map detail, active route/template summaries, first-class route/template/schedule/dispatch models, dashboard/workspace IA, mission-detail convergence sections, and persisted schedule/dispatch lifecycle fields exist | Site-map, route/template, schedule, alert, mission-record, and dispatch surface | Still needs alert center and execution-summary read models |
 | Mission delivery | Mission list/detail expose delivery state, publish time, failure reason, report status, event count, evidence, report artifact download, and clean-pass / analysis-failed next-step guidance | Delivery-oriented event / evidence / report surface | Still needs deeper summary polish and tighter customer-facing empty states |
 | Event interpretation and reporting | Mission-linked demo analysis, evidence artifacts, summaries, and downloadable reports exist | Mission-linked anomaly events, evidence screenshots, summaries, and downloadable reports | Still needs broader analysis modes and more realistic demo datasets |
 | Team management | Team reads, invites, org rename, role management, member activation, invite resend, and clearer pending-invite state exist | Support demo operator setup and reviewer access cleanly | Still needs polish on invite feedback loops and guidance |
@@ -85,6 +86,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 - overview and mission contract additions for event/report summaries
 - control-plane UI/API slices for site map, route/template, schedule, and dispatch
 - productized control-plane IA with dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace
+- schedule lifecycle transitions with persisted run-state fields and dispatch lifecycle transitions with persisted accepted/closed timestamps
 - event/report UI/API slices for event list, evidence gallery, report summary, and report artifact download
 - updated support/live-ops diagnostics aligned with event/report failures
 - updated support/live-ops diagnostics aligned with event/report failures and clean-pass reporting states
@@ -102,7 +104,11 @@ Phase 1 is complete when:
   - review dashboard coverage
   - create or inspect route/template/schedule
   - dispatch a mission
+  - pause or resume a schedule without losing its next-run context
+  - accept, complete, or fail a dispatch from the dispatch board
   - open mission detail and confirm linked planning and dispatch metadata
+- schedule cards expose persisted next-run, last-run, pause-reason, and last-outcome state
+- dispatch cards expose persisted assignee, execution target, accepted time, closed time, and handoff status
 - a completed mission can show event count, evidence, summary, and downloadable report output
 - overview, missions, mission detail, support, and live ops all tell the same story for one mission lifecycle, including clean-pass and report-generation-failed cases
 - customers and reviewers can understand the output without engineering translation

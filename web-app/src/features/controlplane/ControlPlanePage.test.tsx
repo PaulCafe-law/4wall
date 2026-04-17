@@ -11,11 +11,14 @@ const apiMock = vi.hoisted(() => ({
   listInspectionRoutes: vi.fn(),
   listInspectionTemplates: vi.fn(),
   listInspectionSchedules: vi.fn(),
+  listInspectionDispatches: vi.fn(),
   listMissions: vi.fn(),
   createInspectionRoute: vi.fn(),
   createInspectionTemplate: vi.fn(),
   createInspectionSchedule: vi.fn(),
+  patchInspectionSchedule: vi.fn(),
   dispatchMission: vi.fn(),
+  patchInspectionDispatch: vi.fn(),
 }))
 
 vi.mock('../../lib/api', async () => {
@@ -29,11 +32,14 @@ vi.mock('../../lib/api', async () => {
       listInspectionRoutes: apiMock.listInspectionRoutes,
       listInspectionTemplates: apiMock.listInspectionTemplates,
       listInspectionSchedules: apiMock.listInspectionSchedules,
+      listInspectionDispatches: apiMock.listInspectionDispatches,
       listMissions: apiMock.listMissions,
       createInspectionRoute: apiMock.createInspectionRoute,
       createInspectionTemplate: apiMock.createInspectionTemplate,
       createInspectionSchedule: apiMock.createInspectionSchedule,
+      patchInspectionSchedule: apiMock.patchInspectionSchedule,
       dispatchMission: apiMock.dispatchMission,
+      patchInspectionDispatch: apiMock.patchInspectionDispatch,
     },
   }
 })
@@ -86,6 +92,34 @@ describe('ControlPlanePage', () => {
         address: 'Taipei',
         location: { lat: 25.03391, lng: 121.56452 },
         notes: 'North facade priority',
+        siteMap: {
+          siteId: 'site-001',
+          baseMapType: 'satellite',
+          center: { lat: 25.03391, lng: 121.56452 },
+          zoom: 18,
+          zones: [],
+          launchPoints: [],
+          viewpoints: [],
+          updatedAt: '2026-04-17T08:00:00Z',
+        },
+        activeRouteCount: 1,
+        activeTemplateCount: 1,
+        activeRoutes: [
+          {
+            routeId: 'route-001',
+            name: 'Tower A facade loop',
+            version: 1,
+            estimatedDurationSec: 480,
+          },
+        ],
+        activeTemplates: [
+          {
+            templateId: 'template-001',
+            name: 'Facade standard',
+            reportMode: 'html_report',
+            evidencePolicy: 'capture_key_frames',
+          },
+        ],
         createdAt: '2026-04-17T08:00:00Z',
         updatedAt: '2026-04-17T08:00:00Z',
       },
@@ -140,10 +174,29 @@ describe('ControlPlanePage', () => {
         alertRules: [],
         nextRunAt: '2026-04-18T09:00:00Z',
         lastRunAt: null,
+        lastDispatchedAt: '2026-04-17T08:30:00Z',
         pauseReason: null,
         lastOutcome: 'scheduled_for_execution',
         createdAt: '2026-04-17T08:00:00Z',
         updatedAt: '2026-04-17T08:00:00Z',
+      },
+    ])
+    apiMock.listInspectionDispatches.mockResolvedValue([
+      {
+        dispatchId: 'dispatch-001',
+        missionId: 'mission-001',
+        routeId: 'route-001',
+        templateId: 'template-001',
+        scheduleId: 'schedule-001',
+        dispatchedAt: '2026-04-17T08:31:00Z',
+        acceptedAt: '2026-04-17T08:33:00Z',
+        closedAt: null,
+        lastUpdatedAt: '2026-04-17T08:33:00Z',
+        dispatchedByUserId: 'user-001',
+        assignee: 'observer-01',
+        executionTarget: 'field-team',
+        status: 'accepted',
+        note: 'Ready for field handoff',
       },
     ])
     apiMock.listMissions.mockResolvedValue([
@@ -152,7 +205,7 @@ describe('ControlPlanePage', () => {
         organizationId: 'org-001',
         siteId: 'site-001',
         missionName: 'Tower A morning run',
-        status: 'ready',
+        status: 'running',
         bundleVersion: 'bundle-001',
         deliveryStatus: 'published',
         publishedAt: '2026-04-17T08:30:00Z',
@@ -223,5 +276,38 @@ describe('ControlPlanePage', () => {
     expect(await screen.findByText('Tower A facade loop')).toBeInTheDocument()
     expect(screen.getByText('8 分鐘')).toBeInTheDocument()
     expect(screen.getByText('v1')).toBeInTheDocument()
+  })
+
+  it('renders schedule and dispatch workspaces with lifecycle fields', async () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/control-plane/dispatch" element={<ControlPlanePage />} />
+      </Routes>,
+      {
+        route: '/control-plane/dispatch',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [
+              {
+                membershipId: 'membership-001',
+                organizationId: 'org-001',
+                role: 'customer_admin',
+                isActive: true,
+              },
+            ],
+          }),
+        }),
+      },
+    )
+
+    expect(await screen.findByRole('heading', { level: 1, name: '派工與任務佇列' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '建立派工' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '任務佇列' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '派工看板' })).toBeInTheDocument()
+    expect(await screen.findAllByText('Tower A morning run')).toHaveLength(2)
+    expect(screen.getByDisplayValue('observer-01')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('field-team')).toBeInTheDocument()
+    expect(await screen.findByText('Ready for field handoff')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '標記完成' })).toBeInTheDocument()
   })
 })

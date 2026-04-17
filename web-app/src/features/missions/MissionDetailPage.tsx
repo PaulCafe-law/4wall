@@ -240,6 +240,11 @@ export function MissionDetailPage() {
                   <div className="mt-3 space-y-2 text-sm text-chrome-700">
                     <p>{mission.schedule.recurrence ?? '單次排程'}</p>
                     <p>下次執行 {mission.schedule.nextRunAt ? formatDateTime(mission.schedule.nextRunAt) : '尚未設定'}</p>
+                    <p>最近執行 {mission.schedule.lastRunAt ? formatDateTime(mission.schedule.lastRunAt) : '尚未執行'}</p>
+                    <p>
+                      最近派工 {mission.schedule.lastDispatchedAt ? formatDateTime(mission.schedule.lastDispatchedAt) : '尚未派工'}
+                    </p>
+                    <p>暫停原因 {mission.schedule.pauseReason ?? '無'}</p>
                     <p>最近結果 {mission.schedule.lastOutcome ?? '尚未執行'}</p>
                   </div>
                 ) : (
@@ -269,6 +274,14 @@ export function MissionDetailPage() {
                     {
                       label: '接受時間',
                       value: mission.dispatch.acceptedAt ? formatDateTime(mission.dispatch.acceptedAt) : '尚未接受',
+                    },
+                    {
+                      label: '關閉時間',
+                      value: mission.dispatch.closedAt ? formatDateTime(mission.dispatch.closedAt) : '尚未關閉',
+                    },
+                    {
+                      label: '最後更新',
+                      value: formatDateTime(mission.dispatch.lastUpdatedAt),
                     },
                     { label: '派工備註', value: mission.dispatch.note ?? '沒有 handoff note' },
                   ]}

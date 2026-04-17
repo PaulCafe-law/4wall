@@ -93,6 +93,31 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     )
     assert schedule_response.status_code == 200, schedule_response.text
     schedule_id = schedule_response.json()["scheduleId"]
+    assert schedule_response.json()["nextRunAt"] == "2026-04-18T09:00:00Z"
+    assert schedule_response.json()["lastOutcome"] == "scheduled_for_execution"
+
+    paused_schedule = client.patch(
+        f"/v1/inspection/schedules/{schedule_id}",
+        headers=headers,
+        json={
+            "status": "paused",
+            "pauseReason": "Weather hold before launch window.",
+        },
+    )
+    assert paused_schedule.status_code == 200, paused_schedule.text
+    assert paused_schedule.json()["status"] == "paused"
+    assert paused_schedule.json()["pauseReason"] == "Weather hold before launch window."
+    assert paused_schedule.json()["nextRunAt"] is None
+
+    resumed_schedule = client.patch(
+        f"/v1/inspection/schedules/{schedule_id}",
+        headers=headers,
+        json={"status": "scheduled"},
+    )
+    assert resumed_schedule.status_code == 200, resumed_schedule.text
+    assert resumed_schedule.json()["status"] == "scheduled"
+    assert resumed_schedule.json()["pauseReason"] is None
+    assert resumed_schedule.json()["nextRunAt"] == "2026-04-18T09:00:00Z"
 
     payload = valid_request_payload()
     payload["organizationId"] = org_id
@@ -116,17 +141,51 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     )
     assert dispatch_response.status_code == 200, dispatch_response.text
     assert dispatch_response.json()["status"] == "assigned"
+    assert dispatch_response.json()["acceptedAt"] is None
+    assert dispatch_response.json()["closedAt"] is None
+
+    dispatch_id = dispatch_response.json()["dispatchId"]
+    dispatch_list = client.get(
+        f"/v1/inspection/dispatch?siteId={site_id}",
+        headers=headers,
+    )
+    assert dispatch_list.status_code == 200, dispatch_list.text
+    assert len(dispatch_list.json()) == 1
+    assert dispatch_list.json()[0]["dispatchId"] == dispatch_id
+
+    accepted_dispatch = client.patch(
+        f"/v1/inspection/dispatch/{dispatch_id}",
+        headers=headers,
+        json={"status": "accepted", "note": "Field team accepted handoff."},
+    )
+    assert accepted_dispatch.status_code == 200, accepted_dispatch.text
+    assert accepted_dispatch.json()["status"] == "accepted"
+    assert accepted_dispatch.json()["acceptedAt"] is not None
+    assert accepted_dispatch.json()["closedAt"] is None
+
+    completed_dispatch = client.patch(
+        f"/v1/inspection/dispatch/{dispatch_id}",
+        headers=headers,
+        json={"status": "completed", "note": "Field execution finished."},
+    )
+    assert completed_dispatch.status_code == 200, completed_dispatch.text
+    assert completed_dispatch.json()["status"] == "completed"
+    assert completed_dispatch.json()["acceptedAt"] is not None
+    assert completed_dispatch.json()["closedAt"] is not None
 
     mission_detail = client.get(f"/v1/missions/{mission_id}", headers=headers)
 
     assert mission_detail.status_code == 200, mission_detail.text
     body = mission_detail.json()
-    assert body["status"] == "dispatched"
+    assert body["status"] == "completed"
     assert body["route"]["routeId"] == route_id
     assert body["template"]["templateId"] == template_id
     assert body["schedule"]["scheduleId"] == schedule_id
+    assert body["schedule"]["lastDispatchedAt"] is not None
     assert body["dispatch"]["assignee"] == "observer-01"
     assert body["dispatch"]["executionTarget"] == "field-team"
+    assert body["dispatch"]["acceptedAt"] is not None
+    assert body["dispatch"]["closedAt"] is not None
 
 
 def test_customer_viewer_can_read_but_not_write_control_plane_records(client, session_factory) -> None:

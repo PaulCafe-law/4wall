@@ -322,7 +322,7 @@ Allowed statuses:
 
 ### Phase 1 Demo Additions
 
-These endpoints are part of the Phase 1 demo rollout. The control-plane slice is available from Batch 2. The first event/report slice is available from Batch 3.
+These endpoints are part of the Phase 1 demo rollout. The control-plane slice is available from Batch 2. The first event/report slice is available from Batch 3. Batch C formalizes stored schedule and dispatch lifecycle state instead of relying on inferred timestamps and placeholder outcomes.
 
 #### Control Plane
 
@@ -335,14 +335,17 @@ These endpoints are part of the Phase 1 demo rollout. The control-plane slice is
 - `GET /v1/inspection/schedules`
 - `POST /v1/inspection/schedules`
 - `PATCH /v1/inspection/schedules/{scheduleId}`
+- `GET /v1/inspection/dispatch`
 - `POST /v1/missions/{missionId}/dispatch`
+- `PATCH /v1/inspection/dispatch/{dispatchId}`
 
 These endpoints manage:
 
 - site-linked route and template records
 - schedule definitions
 - alert configuration
-- mission-level dispatch metadata
+- mission-level dispatch metadata and handoff state
+- persisted schedule lifecycle fields
 
 They do not send any real-time control command to Android or the aircraft.
 
@@ -367,9 +370,36 @@ The productized control-plane slice also expects:
   - `lastRunAt`
   - `pauseReason`
   - `lastOutcome`
+  - `lastDispatchedAt`
 - dispatch summary fields:
   - `acceptedAt`
   - `closedAt`
+  - `lastUpdatedAt`
+  - `status`
+  - `assignee`
+  - `executionTarget`
+
+Batch C also makes these lifecycle rules explicit:
+
+- schedule states remain:
+  - `scheduled`
+  - `paused`
+  - `cancelled`
+  - `completed`
+- dispatch states become:
+  - `queued`
+  - `assigned`
+  - `sent`
+  - `accepted`
+  - `completed`
+  - `failed`
+- mission status aligns with dispatch and reporting progression:
+  - `queued` dispatch -> mission `scheduled`
+  - `assigned` / `sent` dispatch -> mission `dispatched`
+  - `accepted` dispatch -> mission `running`
+  - `completed` dispatch -> mission `completed`
+  - ready report after completion -> mission `report_ready`
+  - failed dispatch or failed reporting -> mission `failed`
 
 The current slice also extends `GET /v1/missions/{missionId}` so mission detail can expose linked route / template / schedule / dispatch metadata for demo playback.
 
@@ -386,9 +416,9 @@ The web surface is intentionally split into product workspaces:
 - `/control-plane/templates`
   - template library and inspection-policy workspace
 - `/control-plane/schedules`
-  - schedule board and alert-coverage workspace
+  - schedule board and alert-coverage workspace with pause / resume / cancel / complete actions
 - `/control-plane/dispatch`
-  - dispatch queue and assignment workspace
+  - dispatch queue and assignment workspace with handoff note, assignee, execution target, and status transitions
 
 `/missions/{missionId}` remains the convergence page for:
 
@@ -398,6 +428,15 @@ The web surface is intentionally split into product workspaces:
 - event interpretation
 - evidence
 - report delivery
+
+Batch C requires mission detail to show schedule and dispatch lifecycle context without falling back to raw JSON:
+
+- schedule next run
+- schedule last run
+- schedule pause reason
+- dispatch accepted time
+- dispatch closed time
+- mission lifecycle state aligned with dispatch/report progress
 
 #### Event and Report Generation
 

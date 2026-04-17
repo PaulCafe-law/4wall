@@ -66,6 +66,10 @@ def test_internal_user_can_reprocess_analysis_and_read_generated_report(client, 
     assert report_response.status_code == 200, report_response.text
     assert report_response.json()["status"] == "ready"
 
+    mission_detail_response = client.get(f"/v1/missions/{mission_id}", headers=admin_headers)
+    assert mission_detail_response.status_code == 200, mission_detail_response.text
+    assert mission_detail_response.json()["status"] == "ready"
+
     overview_response = client.get("/v1/web/overview", headers=admin_headers)
     assert overview_response.status_code == 200, overview_response.text
     overview = overview_response.json()
@@ -176,3 +180,7 @@ def test_analysis_failure_mode_sets_failed_report_without_events(client, session
     events_response = client.get(f"/v1/missions/{mission_id}/events", headers=admin_headers)
     assert events_response.status_code == 200, events_response.text
     assert events_response.json() == []
+
+    mission_detail_response = client.get(f"/v1/missions/{mission_id}", headers=admin_headers)
+    assert mission_detail_response.status_code == 200, mission_detail_response.text
+    assert mission_detail_response.json()["status"] == "failed"

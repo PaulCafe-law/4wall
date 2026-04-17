@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlmodel import Session, select
@@ -143,55 +144,161 @@ def serialize_template_summary(template: InspectionTemplate) -> SiteTemplateSumm
 
 
 def serialize_schedule(schedule: InspectionSchedule) -> InspectionScheduleDto:
-    next_run_at = schedule.planned_at if schedule.status == "scheduled" else None
-    last_run_at = schedule.updated_at if schedule.status in {"completed", "cancelled"} else None
-    pause_reason = "Paused from control-plane workspace" if schedule.status == "paused" else None
-    if schedule.status == "completed":
-        last_outcome = "completed"
-    elif schedule.status == "cancelled":
-        last_outcome = "cancelled"
-    elif schedule.status == "paused":
-        last_outcome = "paused"
-    else:
-        last_outcome = "scheduled_for_execution"
-
     return InspectionScheduleDto(
         scheduleId=schedule.id,
         organizationId=schedule.organization_id,
         siteId=schedule.site_id,
         routeId=schedule.route_id,
         templateId=schedule.template_id,
-        plannedAt=schedule.planned_at,
+        plannedAt=_as_utc(schedule.planned_at) if schedule.planned_at is not None else None,
         recurrence=schedule.recurrence,
         status=schedule.status,
         alertRules=[InspectionAlertRuleDto.model_validate(alert_rule) for alert_rule in schedule.alert_rules_json],
-        nextRunAt=next_run_at,
-        lastRunAt=last_run_at,
-        pauseReason=pause_reason,
-        lastOutcome=last_outcome,
-        createdAt=schedule.created_at,
-        updatedAt=schedule.updated_at,
+        nextRunAt=_as_utc(schedule.next_run_at) if schedule.next_run_at is not None else None,
+        lastRunAt=_as_utc(schedule.last_run_at) if schedule.last_run_at is not None else None,
+        lastDispatchedAt=_as_utc(schedule.last_dispatched_at) if schedule.last_dispatched_at is not None else None,
+        pauseReason=schedule.pause_reason,
+        lastOutcome=schedule.last_outcome,
+        createdAt=_as_utc(schedule.created_at),
+        updatedAt=_as_utc(schedule.updated_at),
     )
 
 
 def serialize_dispatch(dispatch: DispatchRecord) -> DispatchRecordDto:
-    accepted_at = dispatch.updated_at if dispatch.status == "accepted" else None
-    closed_at = dispatch.updated_at if dispatch.status == "failed" else None
     return DispatchRecordDto(
         dispatchId=dispatch.id,
         missionId=dispatch.mission_id,
         routeId=dispatch.route_id,
         templateId=dispatch.template_id,
         scheduleId=dispatch.schedule_id,
-        dispatchedAt=dispatch.dispatched_at,
-        acceptedAt=accepted_at,
-        closedAt=closed_at,
+        dispatchedAt=_as_utc(dispatch.dispatched_at),
+        acceptedAt=_as_utc(dispatch.accepted_at) if dispatch.accepted_at is not None else None,
+        closedAt=_as_utc(dispatch.closed_at) if dispatch.closed_at is not None else None,
+        lastUpdatedAt=_as_utc(dispatch.updated_at),
         dispatchedByUserId=dispatch.dispatched_by_user_id,
         assignee=dispatch.assignee,
         executionTarget=dispatch.execution_target,
         status=dispatch.status,
         note=dispatch.note,
     )
+
+
+def normalize_schedule_state(
+    schedule: InspectionSchedule,
+    *,
+    changed_at: datetime | None = None,
+) -> InspectionSchedule:
+    changed_at = _as_utc(changed_at or datetime.now(timezone.utc))
+    schedule.updated_at = changed_at
+
+    if schedule.status == "scheduled":
+        schedule.pause_reason = None
+        schedule.next_run_at = schedule.planned_at or _derive_follow_up_run(changed_at, schedule.recurrence)
+        schedule.last_outcome = "scheduled_for_execution"
+        return schedule
+
+    if schedule.status == "paused":
+        schedule.next_run_at = None
+        schedule.pause_reason = schedule.pause_reason or "Paused from control-plane workspace"
+        schedule.last_outcome = "paused"
+        return schedule
+
+    if schedule.status == "cancelled":
+        schedule.next_run_at = None
+        schedule.last_run_at = changed_at
+        schedule.pause_reason = None
+        schedule.last_outcome = "cancelled"
+        return schedule
+
+    if schedule.status == "completed":
+        schedule.last_run_at = changed_at
+        schedule.pause_reason = None
+        schedule.last_outcome = "completed"
+        schedule.next_run_at = _derive_follow_up_run(schedule.planned_at or changed_at, schedule.recurrence)
+        return schedule
+
+    return schedule
+
+
+def mark_schedule_dispatched(
+    schedule: InspectionSchedule | None,
+    *,
+    changed_at: datetime | None = None,
+) -> InspectionSchedule | None:
+    if schedule is None:
+        return None
+    changed_at = _as_utc(changed_at or datetime.now(timezone.utc))
+    schedule.last_dispatched_at = changed_at
+    schedule.updated_at = changed_at
+    if schedule.status == "scheduled":
+        schedule.last_outcome = "dispatch_created"
+    return schedule
+
+
+def normalize_dispatch_state(
+    dispatch: DispatchRecord,
+    *,
+    changed_at: datetime | None = None,
+) -> DispatchRecord:
+    changed_at = _as_utc(changed_at or datetime.now(timezone.utc))
+    dispatch.updated_at = changed_at
+
+    if dispatch.status == "accepted":
+        dispatch.accepted_at = dispatch.accepted_at or changed_at
+        dispatch.closed_at = None
+    elif dispatch.status == "completed":
+        dispatch.accepted_at = dispatch.accepted_at or changed_at
+        dispatch.closed_at = changed_at
+    elif dispatch.status == "failed":
+        dispatch.closed_at = changed_at
+    else:
+        dispatch.closed_at = None
+
+    return dispatch
+
+
+def mission_status_for_dispatch(dispatch_status: str) -> str:
+    if dispatch_status == "queued":
+        return "scheduled"
+    if dispatch_status in {"assigned", "sent"}:
+        return "dispatched"
+    if dispatch_status == "accepted":
+        return "running"
+    if dispatch_status == "completed":
+        return "completed"
+    if dispatch_status == "failed":
+        return "failed"
+    return "dispatched"
+
+
+def mission_status_for_report(*, report_status: str, current_status: str) -> str:
+    if report_status == "ready" and current_status == "completed":
+        return "report_ready"
+    if report_status == "failed":
+        return "failed"
+    return current_status
+
+
+def _derive_follow_up_run(base: datetime, recurrence: str | None) -> datetime | None:
+    if not recurrence:
+        return None
+
+    normalized = recurrence.strip().lower()
+    if any(token in normalized for token in ("hourly", "每小時")):
+        return _as_utc(base + timedelta(hours=1))
+    if any(token in normalized for token in ("daily", "每日", "每天")):
+        return _as_utc(base + timedelta(days=1))
+    if any(token in normalized for token in ("weekly", "每週", "每周")):
+        return _as_utc(base + timedelta(days=7))
+    if any(token in normalized for token in ("monthly", "每月")):
+        return _as_utc(base + timedelta(days=30))
+    return None
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def load_mission_control_plane(

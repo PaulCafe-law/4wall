@@ -49,6 +49,11 @@ The purpose is to show:
   - site records now carry `SiteMap`, `SiteZone`, `LaunchPoint`, and `InspectionViewpoint` metadata
   - `/sites/{siteId}` becomes the site-detail workspace for map context, launch points, viewpoints, and active routes/templates
   - route preview, route duration, and template policy summaries are exposed directly from the site workspace
+- Batch C formalizes schedule and dispatch lifecycle handling:
+  - schedules persist `nextRunAt`, `lastRunAt`, `pauseReason`, and `lastOutcome` instead of deriving them ad hoc
+  - the schedule workspace becomes a lifecycle board with pause / resume / cancel / complete actions
+  - dispatch records persist `acceptedAt` and `closedAt`, and gain a first-class dispatch board with assignment and status transitions
+  - mission state now tracks dispatch progression more explicitly: `scheduled`, `dispatched`, `running`, `completed`, `failed`, and `report_ready`
 
 ## Scope
 
@@ -130,8 +135,10 @@ The productized control plane also expects these summary fields even when they a
 - `InspectionSchedule.lastRunAt`
 - `InspectionSchedule.pauseReason`
 - `InspectionSchedule.lastOutcome`
+- `InspectionSchedule.lastDispatchedAt`
 - `DispatchRecord.acceptedAt`
 - `DispatchRecord.closedAt`
+- `DispatchRecord.lastUpdatedAt`
 
 ### Event and Report Contracts
 
@@ -162,7 +169,9 @@ These endpoints are Phase 1 targets. Control-plane and event/report endpoints no
 - `GET /v1/inspection/schedules`
 - `POST /v1/inspection/schedules`
 - `PATCH /v1/inspection/schedules/{scheduleId}`
+- `GET /v1/inspection/dispatch`
 - `POST /v1/missions/{missionId}/dispatch`
+- `PATCH /v1/inspection/dispatch/{dispatchId}`
 
 ### Web Workspace Shape
 
@@ -177,9 +186,9 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 - `/control-plane/templates`
   - template library and inspection policy workspace
 - `/control-plane/schedules`
-  - schedule board and execution-timing workspace
+  - schedule board and execution-timing workspace with pause / resume / cancel / complete actions
 - `/control-plane/dispatch`
-  - dispatch queue and assignment workspace
+  - dispatch queue and assignment workspace with accepted / completed / failed handoff transitions
 
 `Mission Detail` remains the control-plane/report convergence page, but is intentionally split into:
 
@@ -187,6 +196,10 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 - dispatch context
 - execution and reporting context
 - evidence and artifact delivery
+
+Batch C adds one more requirement to that convergence page:
+
+- schedule lifecycle and dispatch lifecycle must agree with mission status without requiring the operator to cross-check raw JSON
 
 ### Event and Report
 
@@ -231,6 +244,14 @@ Phase 1 demo functionality is accepted when:
 - the data model is stable enough that later batches do not need to redesign route/schedule/event/report shapes
 - control-plane and report surfaces stay outside the flight-critical boundary
 - `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass
+- schedule cards show next run, last run, pause reason, and last outcome without inferred placeholder values
+- dispatch cards show assignee, execution target, accepted time, closed time, and current handoff state
+- mission detail reflects dispatch lifecycle transitions directly:
+  - `queued` -> mission `scheduled`
+  - `assigned` / `sent` -> mission `dispatched`
+  - `accepted` -> mission `running`
+  - `completed` -> mission `completed`
+  - ready report after mission completion -> mission `report_ready`
 - failure states remain explicit:
   - no event found
   - analysis failed

@@ -24,7 +24,7 @@ export type InspectionAlertRuleKind =
   | 'analysis_failure'
   | 'report_generation_failure'
 export type InspectionScheduleStatus = 'scheduled' | 'paused' | 'cancelled' | 'completed'
-export type DispatchStatus = 'queued' | 'assigned' | 'sent' | 'accepted' | 'failed'
+export type DispatchStatus = 'queued' | 'assigned' | 'sent' | 'accepted' | 'completed' | 'failed'
 
 export type ControlIntentAction =
   | 'request_remote_control'
@@ -261,6 +261,7 @@ export interface InspectionSchedule {
   alertRules: InspectionAlertRule[]
   nextRunAt: string | null
   lastRunAt: string | null
+  lastDispatchedAt: string | null
   pauseReason: string | null
   lastOutcome: string | null
   createdAt: string
@@ -276,6 +277,7 @@ export interface DispatchRecord {
   dispatchedAt: string
   acceptedAt: string | null
   closedAt: string | null
+  lastUpdatedAt: string
   dispatchedByUserId: string | null
   assignee: string | null
   executionTarget: string | null
