@@ -86,7 +86,7 @@ for (const viewport of viewports) {
 
     await expect(sidebar).toBeVisible()
     await expect(navs).toHaveCount(2)
-    await expect(page.getByRole('link', { name: '稽核記錄' })).toBeVisible()
+    await expect(page.getByRole('link', { name: '稽核紀錄' })).toBeVisible()
 
     const [sidebarBox, mainBox] = await Promise.all([sidebar.boundingBox(), main.boundingBox()])
     const navBoxes = await Promise.all((await navs.all()).map((nav) => nav.boundingBox()))
