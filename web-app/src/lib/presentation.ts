@@ -9,164 +9,165 @@ import type {
 } from './types'
 
 const roleLabels: Record<Role, string> = {
-  platform_admin: 'Platform admin',
-  ops: 'Operations',
-  customer_admin: 'Customer admin',
-  customer_viewer: 'Customer viewer',
+  platform_admin: '平台管理員',
+  ops: '營運人員',
+  customer_admin: '客戶管理員',
+  customer_viewer: '客戶檢視者',
 }
 
 const statusLabels: Record<string, string> = {
-  ready: 'Ready',
-  published: 'Published',
-  planning: 'Planning',
-  failed: 'Failed',
-  draft: 'Draft',
-  issued: 'Issued',
-  invoice_due: 'Due soon',
-  paid: 'Paid',
-  overdue: 'Overdue',
-  void: 'Voided',
-  open: 'Open',
-  claimed: 'Claimed',
-  acknowledged: 'Acknowledged',
-  resolved: 'Resolved',
-  fresh: 'Fresh',
-  stale: 'Stale',
-  missing: 'Missing',
-  live: 'Live',
-  unavailable: 'Unavailable',
-  scheduled: 'Scheduled',
-  paused: 'Paused',
-  cancelled: 'Cancelled',
-  completed: 'Completed',
-  queued: 'Queued',
-  generating: 'Generating',
-  not_started: 'Not started',
-  assigned: 'Assigned',
-  sent: 'Sent',
-  accepted: 'Accepted',
-  dismissed: 'Dismissed',
-  confirmed: 'Confirmed',
-  reviewed: 'Reviewed',
+  ready: '已就緒',
+  published: '已發布',
+  planning: '規劃中',
+  failed: '失敗',
+  draft: '草稿',
+  issued: '已開立',
+  invoice_due: '即將到期',
+  paid: '已付款',
+  overdue: '已逾期',
+  void: '已作廢',
+  open: '待處理',
+  claimed: '已認領',
+  acknowledged: '已確認',
+  resolved: '已解決',
+  fresh: '最新',
+  stale: '過期',
+  missing: '缺失',
+  live: '即時',
+  unavailable: '不可用',
+  scheduled: '已排程',
+  paused: '已暫停',
+  cancelled: '已取消',
+  completed: '已完成',
+  queued: '佇列中',
+  generating: '產生中',
+  not_started: '尚未開始',
+  assigned: '已指派',
+  sent: '已送出',
+  accepted: '已接受',
+  dismissed: '已忽略',
+  confirmed: '已確認',
+  reviewed: '已複核',
 }
 
 const apiErrorLabels: Record<string, string> = {
-  invalid_credentials: 'Email or password is incorrect.',
-  missing_refresh_cookie: 'No refresh cookie is present.',
-  web_refresh_token_revoked: 'Refresh token has been revoked.',
-  user_inactive: 'This user account is inactive.',
-  forbidden_role: 'Your role does not have access to this action.',
-  organization_slug_exists: 'Organization slug already exists.',
-  organization_not_found: 'Organization not found.',
-  membership_not_found: 'Membership not found.',
-  invite_not_found: 'Invite not found.',
-  invite_not_resendable: 'This invite cannot be resent.',
-  invite_revoked: 'This invite has been revoked.',
-  invite_used: 'This invite has already been used.',
-  invite_expired: 'This invite has expired.',
-  site_not_found: 'Site not found.',
-  invoice_not_found: 'Invoice not found.',
-  invalid_slug: 'Organization slug contains invalid characters.',
-  origin_not_allowed: 'This browser origin is not allowed.',
-  rate_limit_exceeded: 'Too many attempts. Try again in a moment.',
-  flight_not_found: 'Flight not found.',
-  support_item_not_found: 'Support item not found.',
+  invalid_credentials: '帳號或密碼不正確。',
+  missing_refresh_cookie: '目前沒有可用的重新整理 cookie。',
+  web_refresh_token_revoked: '登入憑證已被撤銷。',
+  user_inactive: '此使用者帳號已停用。',
+  forbidden_role: '你的角色無權執行此操作。',
+  organization_slug_exists: '組織代稱已存在。',
+  organization_not_found: '找不到組織。',
+  organization_requires_customer_admin: '每個組織至少要保留一位啟用中的客戶管理員。',
+  membership_not_found: '找不到成員資料。',
+  invite_not_found: '找不到邀請紀錄。',
+  invite_not_resendable: '這筆邀請目前不能重寄。',
+  invite_revoked: '這筆邀請已被撤銷。',
+  invite_used: '這筆邀請已經使用過。',
+  invite_expired: '這筆邀請已經過期。',
+  site_not_found: '找不到場域。',
+  invoice_not_found: '找不到帳單。',
+  invalid_slug: '組織代稱包含不合法字元。',
+  origin_not_allowed: '目前瀏覽器來源不被允許。',
+  rate_limit_exceeded: '嘗試次數過多，請稍後再試。',
+  flight_not_found: '找不到飛行紀錄。',
+  support_item_not_found: '找不到支援項目。',
 }
 
 const auditActionLabels: Record<string, string> = {
-  web_login: 'Web login',
-  web_logout: 'Web logout',
-  web_refresh: 'Session refresh',
-  organization_created: 'Organization created',
-  organization_updated: 'Organization updated',
-  invite_created: 'Invite created',
-  invite_resent: 'Invite resent',
-  invite_accepted: 'Invite accepted',
-  invite_revoked: 'Invite revoked',
-  site_created: 'Site created',
-  site_updated: 'Site updated',
-  invoice_created: 'Invoice created',
-  invoice_updated: 'Invoice updated',
-  membership_updated: 'Membership updated',
-  'organization.detail.read_access': 'Organization detail viewed',
-  'flight.control_intent_requested': 'Control intent requested',
-  'flight.control_intent_acknowledged': 'Control intent acknowledged',
-  'flight.live_ops.read_access': 'Live Ops viewed',
-  'flight.control_intent.read_access': 'Control intents viewed',
-  'flight.control_intent.write_access': 'Control intent created',
-  'support.queue.claimed': 'Support item claimed',
-  'support.queue.acknowledged': 'Support item acknowledged',
-  'support.queue.resolved': 'Support item resolved',
-  'support.queue.released': 'Support item released',
-  'inspection.analysis_reprocessed': 'Analysis reprocessed',
-  'inspection.report_generated': 'Inspection report generated',
-  'inspection.report_failed': 'Inspection report failed',
+  web_login: '網站登入',
+  web_logout: '網站登出',
+  web_refresh: '工作階段更新',
+  organization_created: '建立組織',
+  organization_updated: '更新組織',
+  invite_created: '建立邀請',
+  invite_resent: '重寄邀請',
+  invite_accepted: '接受邀請',
+  invite_revoked: '撤銷邀請',
+  site_created: '建立場域',
+  site_updated: '更新場域',
+  invoice_created: '建立帳單',
+  invoice_updated: '更新帳單',
+  membership_updated: '更新成員權限',
+  'organization.detail.read_access': '檢視組織詳情',
+  'flight.control_intent_requested': '提出控制意圖',
+  'flight.control_intent_acknowledged': '確認控制意圖',
+  'flight.live_ops.read_access': '檢視即時營運',
+  'flight.control_intent.read_access': '檢視控制意圖',
+  'flight.control_intent.write_access': '建立控制意圖',
+  'support.queue.claimed': '認領支援項目',
+  'support.queue.acknowledged': '確認支援項目',
+  'support.queue.resolved': '解決支援項目',
+  'support.queue.released': '釋放支援項目',
+  'inspection.analysis_reprocessed': '重新產生分析結果',
+  'inspection.report_generated': '產生巡檢報表',
+  'inspection.report_failed': '巡檢報表產生失敗',
 }
 
 const auditTargetTypeLabels: Record<string, string> = {
-  system: 'System',
-  organization: 'Organization',
-  invite: 'Invite',
-  site: 'Site',
-  invoice: 'Invoice',
-  mission: 'Mission',
-  flight: 'Flight',
-  session: 'Session',
-  user: 'User',
-  membership: 'Membership',
-  support_item: 'Support item',
+  system: '系統',
+  organization: '組織',
+  invite: '邀請',
+  site: '場域',
+  invoice: '帳單',
+  mission: '任務',
+  flight: '飛行',
+  session: '工作階段',
+  user: '使用者',
+  membership: '成員',
+  support_item: '支援項目',
 }
 
 const controlModeLabels: Record<ControlMode, string> = {
-  monitor_only: 'Monitor only',
-  remote_control_requested: 'Remote control requested',
-  remote_control_active: 'Remote control active',
-  released: 'Released',
+  monitor_only: '僅監看',
+  remote_control_requested: '已申請遠端接管',
+  remote_control_active: '遠端接管中',
+  released: '已釋放',
 }
 
 const controlActionLabels: Record<ControlIntentAction, string> = {
-  request_remote_control: 'Request remote control',
-  release_remote_control: 'Release remote control',
-  pause_mission: 'Pause mission',
-  resume_mission: 'Resume mission',
-  hold: 'Hold',
-  return_to_home: 'Return to home',
+  request_remote_control: '申請遠端接管',
+  release_remote_control: '釋放遠端接管',
+  pause_mission: '暫停任務',
+  resume_mission: '恢復任務',
+  hold: '保持待命',
+  return_to_home: '返航',
 }
 
 const supportSeverityLabels: Record<SupportSeverity, string> = {
-  info: 'Info',
-  warning: 'Warning',
-  critical: 'Critical',
+  info: '資訊',
+  warning: '警示',
+  critical: '嚴重',
 }
 
 const supportCategoryLabels: Record<SupportCategory, string> = {
-  mission_failed: 'Mission failed',
-  battery_low: 'Low battery',
-  telemetry_stale: 'Telemetry stale',
-  bridge_alert: 'Bridge alert',
-  report_generation_failed: 'Report generation failed',
+  mission_failed: '任務失敗',
+  battery_low: '電量過低',
+  telemetry_stale: '遙測過期',
+  bridge_alert: '橋接告警',
+  report_generation_failed: '報表產生失敗',
 }
 
 const supportWorkflowLabels: Record<SupportWorkflowState, string> = {
-  open: 'Open',
-  claimed: 'Claimed',
-  acknowledged: 'Acknowledged',
-  resolved: 'Resolved',
+  open: '待處理',
+  claimed: '已認領',
+  acknowledged: '已確認',
+  resolved: '已解決',
 }
 
 const alertLabels: Record<string, string> = {
-  low_battery: 'Low battery',
-  telemetry_stale: 'Telemetry stale',
-  video_unavailable: 'Video unavailable',
-  bridge_alert: 'Bridge alert',
+  low_battery: '電量過低',
+  telemetry_stale: '遙測過期',
+  video_unavailable: '影像不可用',
+  bridge_alert: '橋接告警',
 }
 
 const flightStateLabels: Record<string, string> = {
-  HOLD: 'Hold',
-  TRANSIT: 'Transit',
-  RETURNING_HOME: 'Returning home',
-  LANDED: 'Landed',
-  UNKNOWN: 'Unknown',
+  HOLD: '待命',
+  TRANSIT: '移動中',
+  RETURNING_HOME: '返航中',
+  LANDED: '已降落',
+  UNKNOWN: '未知',
 }
 
 export function formatRole(role: Role): string {
@@ -185,15 +186,15 @@ export function formatApiError(detail: string | undefined, fallback: string): st
 }
 
 export function formatBoolean(value: boolean): string {
-  return value ? 'Yes' : 'No'
+  return value ? '是' : '否'
 }
 
 export function formatAccessMode(isInternal: boolean): string {
-  return isInternal ? 'Internal access' : 'Customer access'
+  return isInternal ? '內部存取' : '客戶存取'
 }
 
 export function formatSearchMode(hasFilter: boolean): string {
-  return hasFilter ? 'Filtered' : 'All records'
+  return hasFilter ? '已篩選' : '全部資料'
 }
 
 export function formatAuditAction(action: string): string {
@@ -202,7 +203,7 @@ export function formatAuditAction(action: string): string {
 
 export function formatAuditTargetType(targetType: string | null): string {
   if (!targetType) {
-    return 'System'
+    return '系統'
   }
   return auditTargetTypeLabels[targetType] ?? targetType
 }
@@ -217,21 +218,21 @@ export function formatInvoiceStatus(status: InvoiceStatus): string {
 
 export function formatInvoiceStatusDescription(status: InvoiceStatus): string {
   if (status === 'paid') {
-    return 'Invoice has been settled and confirmed.'
+    return '帳單已完成付款並確認入帳。'
   }
   if (status === 'overdue') {
-    return 'Invoice is overdue and needs follow-up.'
+    return '帳單已逾期，需要儘快追蹤處理。'
   }
   if (status === 'invoice_due') {
-    return 'Invoice is due soon and should be tracked.'
+    return '帳單即將到期，請提前追蹤付款進度。'
   }
   if (status === 'issued') {
-    return 'Invoice has been issued to the customer.'
+    return '帳單已開立並送交客戶。'
   }
   if (status === 'void') {
-    return 'Invoice has been voided and should not be paid.'
+    return '帳單已作廢，不需付款。'
   }
-  return 'Invoice is still being prepared or reviewed.'
+  return '帳單仍在整理或審核流程中。'
 }
 
 export function formatControlMode(mode: ControlMode): string {

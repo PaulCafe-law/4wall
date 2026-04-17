@@ -26,13 +26,13 @@ import { useOrganizationChoices } from '../../lib/organization-choices'
 import { formatApiError, formatInvoiceStatusDescription } from '../../lib/presentation'
 
 const invoiceSchema = z.object({
-  organizationId: z.string().min(1, '請先選擇要開立帳單的組織。'),
+  organizationId: z.string().min(1, '請選擇組織。'),
   invoiceNumber: z.string().min(1, '請輸入帳單編號。'),
   currency: z.string().length(3, '幣別必須是 3 碼代碼。'),
   subtotal: z.coerce.number().min(0),
   tax: z.coerce.number().min(0),
   total: z.coerce.number().min(0),
-  dueDate: z.string().min(1, '請輸入付款期限。'),
+  dueDate: z.string().min(1, '請輸入到期時間。'),
   paymentInstructions: z.string().min(1, '請輸入付款說明。'),
   notes: z.string().default(''),
 })
@@ -59,18 +59,18 @@ function billingFocusMessage({
   settledCount: number
 }) {
   if (overdueCount > 0) {
-    return `先處理 ${overdueCount} 筆逾期帳單，確認付款安排、收款註記與客戶回覆是否一致。`
+    return `目前有 ${overdueCount} 張帳單已逾期，請優先追蹤付款與回覆。`
   }
   if (dueSoonCount > 0) {
-    return `有 ${dueSoonCount} 筆帳單在一週內到期，適合先提醒付款安排，避免直接滑入逾期。`
+    return `目前有 ${dueSoonCount} 張帳單即將到期，建議提前確認付款進度。`
   }
   if (openCount > 0) {
-    return `目前共有 ${openCount} 筆待收款帳單，先確認每筆帳單的付款說明與收據資訊是否完整。`
+    return `目前仍有 ${openCount} 張已開立帳單待追蹤，請維持付款說明與收款紀錄一致。`
   }
   if (settledCount > 0) {
-    return '目前沒有待收款帳單，已結清與作廢帳單可留作交付與對帳紀錄。'
+    return '近期帳務狀態穩定，已完成付款與作廢的帳單都可直接作為營運紀錄。'
   }
-  return '等第一筆帳單建立後，這裡會顯示付款期限、收款註記與收據資訊。'
+  return '目前尚未建立帳單。若要展示 beta 可營運的帳務流程，請先新增一張帳單。'
 }
 
 export function BillingPage() {
@@ -120,7 +120,7 @@ export function BillingPage() {
       tax: 0,
       total: 0,
       dueDate: '',
-      paymentInstructions: 'Bank transfer',
+      paymentInstructions: '銀行轉帳',
       notes: '',
     },
   })
@@ -136,23 +136,23 @@ export function BillingPage() {
       await createInvoice.mutateAsync(values)
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setError('root', { message: formatApiError(detail, '建立帳單失敗，請稍後再試。') })
+      setError('root', { message: formatApiError(detail, '無法建立帳單，請稍後再試。') })
     }
   })
 
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Billing"
+        eyebrow="帳務"
         title="帳務"
-        subtitle="在同一頁查看帳單狀態、付款說明、收款註記與收據編號。"
+        subtitle="查看帳單狀態、付款說明與到期提醒，確保 beta 期間的帳務流程維持可營運狀態。"
         action={
           auth.isInternal ? (
             <Modal
               open={isOpen}
               onOpenChange={setIsOpen}
               title="建立帳單"
-              description="由內部團隊替指定組織建立新的帳單。"
+              description="為指定組織建立一張新帳單。"
               trigger={<ActionButton>建立帳單</ActionButton>}
             >
               <form className="grid gap-4" onSubmit={onSubmit}>
@@ -187,7 +187,7 @@ export function BillingPage() {
                     <Input type="number" {...register('total')} />
                   </Field>
                 </div>
-                <Field label="付款期限" error={errors.dueDate?.message}>
+                <Field label="到期時間" error={errors.dueDate?.message}>
                   <Input type="datetime-local" {...register('dueDate')} />
                 </Field>
                 <Field label="付款說明" error={errors.paymentInstructions?.message}>
@@ -203,7 +203,7 @@ export function BillingPage() {
                 ) : null}
                 <div className="flex justify-end">
                   <ActionButton disabled={createInvoice.isPending} type="submit">
-                    {createInvoice.isPending ? '建立中…' : '建立帳單'}
+                    {createInvoice.isPending ? '建立中…' : '送出帳單'}
                   </ActionButton>
                 </div>
               </form>
@@ -214,27 +214,27 @@ export function BillingPage() {
 
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="帳單總數" value={invoices.length} />
-        <Metric label="待收款" value={openCount} hint="已開立、即將到期與逾期中的帳單。" />
-        <Metric label="即將到期" value={dueSoonCount} hint="建議優先提醒付款安排。" />
-        <Metric label="已結清 / 作廢" value={settledCount} hint={`${overdueCount} 筆目前已逾期。`} />
+        <Metric label="待追蹤" value={openCount} hint="已開立且仍需持續追蹤的帳單。" />
+        <Metric label="即將到期" value={dueSoonCount} hint="近期需要跟催付款的帳單。" />
+        <Metric label="已結清 / 已作廢" value={settledCount} hint={`${overdueCount} 張逾期帳單。`} />
       </div>
 
       {overdueCount > 0 ? (
         <Panel className="border border-red-200 bg-red-50/70">
-          <p className="font-medium text-chrome-950">目前有 {overdueCount} 筆逾期帳單</p>
-          <p className="mt-2 text-sm text-chrome-700">請優先確認付款說明、收款註記與客戶回覆狀態。</p>
+          <p className="font-medium text-chrome-950">目前有 {overdueCount} 張帳單已逾期</p>
+          <p className="mt-2 text-sm text-chrome-700">請優先檢查付款狀態與客戶回覆，避免影響後續營運節奏。</p>
         </Panel>
       ) : null}
 
       {overdueCount === 0 && dueSoonCount > 0 ? (
         <Panel className="border border-amber-200 bg-amber-50/70">
-          <p className="font-medium text-chrome-950">目前有 {dueSoonCount} 筆帳單即將到期</p>
-          <p className="mt-2 text-sm text-chrome-700">建議先提醒付款安排，避免帳單直接轉成逾期狀態。</p>
+          <p className="font-medium text-chrome-950">目前有 {dueSoonCount} 張帳單即將到期</p>
+          <p className="mt-2 text-sm text-chrome-700">請提早確認付款進度，避免這些帳單變成逾期案件。</p>
         </Panel>
       ) : null}
 
       {!invoicesQuery.isLoading && invoices.length === 0 ? (
-        <EmptyState title="目前還沒有帳單" body="等第一筆帳單建立後，付款狀態與收據資訊就會出現在這裡。" />
+        <EmptyState title="目前還沒有帳單" body="如果要展示 beta 可營運的帳務流程，請先建立第一張帳單。" />
       ) : null}
 
       {invoicesQuery.isLoading ? (
@@ -246,8 +246,8 @@ export function BillingPage() {
       <div className="grid gap-4">
         {invoices.length > 0 ? (
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Focus</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">本頁建議先處理的事</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">帳務重點</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">現在需要跟進什麼</h2>
             <p className="mt-2 text-sm text-chrome-700">
               {billingFocusMessage({ overdueCount, dueSoonCount, openCount, settledCount })}
             </p>
@@ -267,7 +267,7 @@ export function BillingPage() {
                 <p className="mt-2 text-sm text-chrome-700">{formatInvoiceStatusDescription(invoice.status)}</p>
               </div>
               <div className="rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-3 text-sm text-chrome-700">
-                到期日 {formatDate(invoice.dueDate)}
+                到期日：{formatDate(invoice.dueDate)}
               </div>
             </div>
 
@@ -276,8 +276,8 @@ export function BillingPage() {
                 rows={[
                   { label: '總額', value: formatCurrency(invoice.currency, invoice.total) },
                   { label: '付款說明', value: invoice.paymentInstructions },
-                  { label: '收款註記', value: invoice.paymentNote || '尚未填寫' },
-                  { label: '收據編號', value: invoice.receiptRef || '尚未填寫' },
+                  { label: '付款註記', value: invoice.paymentNote || '尚未記錄' },
+                  { label: '收據編號', value: invoice.receiptRef || '尚未記錄' },
                 ]}
               />
 

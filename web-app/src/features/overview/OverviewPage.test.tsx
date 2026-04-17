@@ -146,11 +146,11 @@ describe('OverviewPage', () => {
     })
 
     expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
-    expect(screen.getByText('What needs attention now')).toBeInTheDocument()
+    expect(screen.getByText('現在需要注意什麼')).toBeInTheDocument()
     expect(screen.getByText('viewer@acme.test')).toBeInTheDocument()
     expect(screen.getByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('Latest report')).toBeInTheDocument()
-    expect(screen.getByText('Latest anomaly event')).toBeInTheDocument()
+    expect(screen.getByText('最新報表')).toBeInTheDocument()
+    expect(screen.getByText('最新異常事件')).toBeInTheDocument()
     expect(screen.getByText('2 inspection events were generated for Tower A Published.')).toBeInTheDocument()
     expect(screen.getByText('Surface discoloration detected on the east facade.')).toBeInTheDocument()
     expect(document.querySelector('a[href="/missions/mission-001"]')).toBeTruthy()
@@ -194,9 +194,9 @@ describe('OverviewPage', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getAllByText('Open Support').length).toBeGreaterThan(0)
-      expect(screen.getByText('Open Live Ops')).toBeInTheDocument()
-      expect(screen.getByText('Track demo readiness, support load, and the latest reporting output without dropping into flight control.')).toBeInTheDocument()
+      expect(screen.getAllByText('前往支援工作台').length).toBeGreaterThan(0)
+      expect(screen.getByText('前往即時營運')).toBeInTheDocument()
+      expect(screen.getByText('從同一個每日工作面板追蹤 demo 準備度、支援負載與最新報表輸出。')).toBeInTheDocument()
     })
   })
 
@@ -238,10 +238,10 @@ describe('OverviewPage', () => {
       }),
     })
 
-    expect(await screen.findByText('No missions exist yet')).toBeInTheDocument()
+    expect(await screen.findByText('目前還沒有任務')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Create the first mission to connect planning, dispatch, event generation, evidence, and reporting in one record.',
+        '建立第一筆任務後，才會串起規劃、派工、事件、證據與報表整體流程。',
       ),
     ).toBeInTheDocument()
     expect(document.querySelector('a[href="/missions/new"]')).toBeTruthy()

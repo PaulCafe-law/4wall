@@ -8,8 +8,8 @@ import { ApiError } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 
 const loginSchema = z.object({
-  email: z.string().email('請輸入有效的電子郵件地址'),
-  password: z.string().min(8, '密碼至少需要 8 個字元'),
+  email: z.string().email('請輸入有效的電子郵件地址。'),
+  password: z.string().min(8, '密碼至少需要 8 個字元。'),
 })
 
 type LoginFormValues = z.infer<typeof loginSchema>
@@ -21,7 +21,7 @@ function formatLoginError(detail?: string) {
   if (detail === 'rate_limit_exceeded') {
     return '登入嘗試次數過多，請稍後再試。'
   }
-  return '登入失敗，請確認帳號密碼後再試一次。'
+  return '登入失敗，請確認帳號資訊後再試一次。'
 }
 
 export function LoginPage() {
@@ -62,22 +62,22 @@ export function LoginPage() {
       <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-[minmax(0,1fr)_24rem]">
         <Panel className="flex flex-col justify-between overflow-hidden bg-chrome-950 text-white">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-ember-300">Customer Portal</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-ember-300">客戶入口</p>
             <h1 className="mt-4 font-display text-5xl font-semibold tracking-[-0.05em]">
-              管理場址、任務、成果交付與團隊存取
+              管理場域、任務、成果交付與團隊存取
             </h1>
             <p className="mt-4 max-w-2xl text-base text-chrome-200">
-              客戶管理者可直接建立組織並開始使用；若你是由內部團隊邀請加入，也可以透過邀請連結完成開通。
+              這個工作區整合任務追蹤、巡檢報表、控制平面與帳務資訊。客戶管理者可直接建立組織，受邀成員則可透過邀請連結完成開通。
             </p>
           </div>
           <div className="mt-10 grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-300">場址與任務</p>
-              <p className="mt-2 text-sm text-chrome-100">集中管理場址資料、任務請求與目前進度。</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-300">場域與任務</p>
+              <p className="mt-2 text-sm text-chrome-100">集中管理場域資料、任務需求與目前進度。</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-300">成果交付</p>
-              <p className="mt-2 text-sm text-chrome-100">下載最新任務成果、查看交付狀態與失敗原因。</p>
+              <p className="mt-2 text-sm text-chrome-100">下載最新巡檢成果、查看交付狀態與失敗原因。</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-300">團隊存取</p>
@@ -87,7 +87,7 @@ export function LoginPage() {
         </Panel>
 
         <Panel className="self-start">
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">Account Access</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">帳號存取</p>
           <h2 className="mt-3 font-display text-3xl font-semibold text-chrome-950">登入</h2>
           <p className="mt-2 text-sm text-chrome-700">輸入你的帳號密碼以進入工作區。</p>
 

@@ -34,26 +34,26 @@ const workflowOrder: Record<SupportWorkflowState, number> = {
 }
 
 const categoryOptions: Array<{ value: 'all' | SupportCategory; label: string }> = [
-  { value: 'all', label: 'All categories' },
-  { value: 'mission_failed', label: 'Mission failed' },
-  { value: 'report_generation_failed', label: 'Report failed' },
-  { value: 'telemetry_stale', label: 'Telemetry stale' },
-  { value: 'bridge_alert', label: 'Bridge alert' },
-  { value: 'battery_low', label: 'Low battery' },
+  { value: 'all', label: '全部類別' },
+  { value: 'mission_failed', label: '任務失敗' },
+  { value: 'report_generation_failed', label: '報表失敗' },
+  { value: 'telemetry_stale', label: '遙測延遲' },
+  { value: 'bridge_alert', label: 'Bridge 告警' },
+  { value: 'battery_low', label: '低電量' },
 ]
 
 const severityOptions: Array<{ value: 'all' | SupportSeverity; label: string }> = [
-  { value: 'all', label: 'All severities' },
-  { value: 'critical', label: 'Critical' },
-  { value: 'warning', label: 'Warning' },
-  { value: 'info', label: 'Info' },
+  { value: 'all', label: '全部等級' },
+  { value: 'critical', label: '嚴重' },
+  { value: 'warning', label: '警告' },
+  { value: 'info', label: '資訊' },
 ]
 
 const workflowOptions: Array<{ value: 'all' | SupportWorkflowState; label: string }> = [
-  { value: 'all', label: 'All states' },
-  { value: 'open', label: 'Open' },
-  { value: 'claimed', label: 'Claimed' },
-  { value: 'acknowledged', label: 'Acknowledged' },
+  { value: 'all', label: '全部狀態' },
+  { value: 'open', label: '待處理' },
+  { value: 'claimed', label: '已認領' },
+  { value: 'acknowledged', label: '已確認' },
 ]
 
 function severityBadgeClass(severity: SupportSeverity) {
@@ -100,15 +100,15 @@ function byPriority(items: SupportQueueItem[]) {
 
 function actionLabel(action: SupportQueueAction) {
   if (action === 'claim') {
-    return 'Claim'
+    return '認領'
   }
   if (action === 'acknowledge') {
-    return 'Acknowledge'
+    return '確認'
   }
   if (action === 'resolve') {
-    return 'Resolve'
+    return '結案'
   }
-  return 'Release'
+  return '釋出'
 }
 
 function availableActions(state: SupportWorkflowState): SupportQueueAction[] {
@@ -172,25 +172,25 @@ export function SupportPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Internal support"
-        title="Support"
-        subtitle="Triage mission failures, report-generation blockers, bridge alerts, and telemetry issues without leaving the internal ops surface."
+        eyebrow="內部支援"
+        title="支援工作台"
+        subtitle="在內部營運介面中分流任務失敗、報表阻塞、bridge 告警與遙測異常，不必離開支援工作台。"
       />
 
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <Metric label="Open items" value={items.length} />
-        <Metric label="Critical" value={criticalCount} hint="Highest-priority incidents that can block the demo path." />
-        <Metric label="Warnings" value={warningCount} hint="Operational issues that still need follow-up." />
-        <Metric label="Claimed" value={claimedCount} />
-        <Metric label="Acknowledged" value={acknowledgedCount} />
-        <Metric label="Report blockers" value={reportFailureCount + bridgeAlertCount} hint="Report failures plus bridge alerts." />
+        <Metric label="待處理項目" value={items.length} />
+        <Metric label="嚴重事件" value={criticalCount} hint="可能阻塞 demo 路徑的最高優先問題。" />
+        <Metric label="警告事件" value={warningCount} hint="仍需後續處理的營運問題。" />
+        <Metric label="已認領" value={claimedCount} />
+        <Metric label="已確認" value={acknowledgedCount} />
+        <Metric label="報表阻塞" value={reportFailureCount + bridgeAlertCount} hint="報表失敗與 bridge 告警總和。" />
       </div>
 
       <Panel>
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Filters</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Sort by urgency and workflow state</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">篩選器</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">依緊急程度與工作流狀態排序</h2>
           </div>
           <div className="flex flex-wrap gap-2">
             {severityOptions.map((option) => (
@@ -233,21 +233,21 @@ export function SupportPage() {
 
       {supportQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">Loading internal support queue...</p>
+          <p className="text-sm text-chrome-700">正在載入內部支援佇列…</p>
         </Panel>
       ) : null}
 
       {!supportQuery.isLoading && items.length === 0 ? (
         <EmptyState
-          title="No support items are open"
-          body="Mission failures, bridge alerts, telemetry drift, and report-generation failures will appear here once the internal surfaces detect them."
+          title="目前沒有待處理的支援項目"
+          body="當內部頁面偵測到任務失敗、bridge 告警、遙測飄移或報表失敗時，項目就會出現在這裡。"
         />
       ) : null}
 
       {!supportQuery.isLoading && items.length > 0 && filteredItems.length === 0 ? (
         <EmptyState
-          title="No items match the active filters"
-          body="Clear one or more filters to see the rest of the queue."
+          title="目前沒有符合篩選條件的項目"
+          body="請清除部分篩選條件，以查看佇列中的其他項目。"
         />
       ) : null}
 
@@ -275,24 +275,24 @@ export function SupportPage() {
 
                   <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
                     <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
-                      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Context</p>
+                      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">事件脈絡</p>
                       <div className="mt-3 space-y-2 text-sm text-chrome-700">
-                        <p>Organization: {item.organizationName ?? item.organizationId}</p>
-                        {item.missionId ? <p>Mission: {item.missionName ?? item.missionId}</p> : null}
-                        {item.siteName ? <p>Site: {item.siteName}</p> : null}
-                        {item.flightId ? <p>Flight: {item.flightId}</p> : null}
-                        <p>Created: {formatDateTime(item.createdAt)}</p>
-                        {item.lastObservedAt ? <p>Last observed: {formatDateTime(item.lastObservedAt)}</p> : null}
+                        <p>組織：{item.organizationName ?? item.organizationId}</p>
+                        {item.missionId ? <p>任務：{item.missionName ?? item.missionId}</p> : null}
+                        {item.siteName ? <p>場域：{item.siteName}</p> : null}
+                        {item.flightId ? <p>飛行工作階段：{item.flightId}</p> : null}
+                        <p>建立時間：{formatDateTime(item.createdAt)}</p>
+                        {item.lastObservedAt ? <p>最近觀測：{formatDateTime(item.lastObservedAt)}</p> : null}
                       </div>
                     </div>
 
                     <div className="rounded-2xl border border-ember-200 bg-ember-50/70 px-4 py-4">
-                      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-500">Handling</p>
+                      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-500">處理狀態</p>
                       <div className="mt-3 space-y-2 text-sm text-chrome-800">
                         <p>{item.recommendedNextStep}</p>
-                        {item.workflow.assignedToDisplayName ? <p>Owner: {item.workflow.assignedToDisplayName}</p> : null}
-                        {item.workflow.updatedAt ? <p>Updated: {formatDateTime(item.workflow.updatedAt)}</p> : null}
-                        {item.workflow.note ? <p>Note: {item.workflow.note}</p> : null}
+                        {item.workflow.assignedToDisplayName ? <p>負責人：{item.workflow.assignedToDisplayName}</p> : null}
+                        {item.workflow.updatedAt ? <p>更新時間：{formatDateTime(item.workflow.updatedAt)}</p> : null}
+                        {item.workflow.note ? <p>備註：{item.workflow.note}</p> : null}
                       </div>
                     </div>
                   </div>
@@ -304,7 +304,7 @@ export function SupportPage() {
                       to="/live-ops"
                       className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
                     >
-                      Open Live Ops
+                      開啟即時營運
                     </Link>
                   ) : null}
                   {item.missionId ? (
@@ -312,7 +312,7 @@ export function SupportPage() {
                       to={`/missions/${item.missionId}`}
                       className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
                     >
-                      Open mission
+                      開啟任務
                     </Link>
                   ) : null}
                   {actions.map((action) => (
@@ -324,7 +324,7 @@ export function SupportPage() {
                       disabled={isBusy}
                       onClick={() => supportAction.mutate({ itemId: item.itemId, action })}
                     >
-                      {isBusy ? 'Working...' : actionLabel(action)}
+                      {isBusy ? '處理中…' : actionLabel(action)}
                     </ActionButton>
                   ))}
                 </div>

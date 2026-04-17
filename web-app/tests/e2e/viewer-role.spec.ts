@@ -80,8 +80,8 @@ test('customer viewer can browse but cannot see site mutation controls or intern
 
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByRole('link', { name: '組織' })).toHaveCount(0)
-  await page.getByRole('link', { name: '場址' }).click()
+  await page.getByRole('link', { name: '場域' }).click()
 
   await expect(page.getByRole('link', { name: /Viewer Site/i })).toBeVisible()
-  await expect(page.getByRole('button', { name: '新增場址' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '新增場域' })).toHaveCount(0)
 })

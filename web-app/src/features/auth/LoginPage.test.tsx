@@ -17,8 +17,8 @@ describe('LoginPage', () => {
     await user.type(screen.getByLabelText('密碼'), '123')
     await user.click(screen.getByRole('button', { name: '登入工作區' }))
 
-    expect(await screen.findByText('請輸入有效的電子郵件地址')).toBeInTheDocument()
-    expect(await screen.findByText('密碼至少需要 8 個字元')).toBeInTheDocument()
+    expect(await screen.findByText('請輸入有效的電子郵件地址。')).toBeInTheDocument()
+    expect(await screen.findByText('密碼至少需要 8 個字元。')).toBeInTheDocument()
   })
 
   it('shows self-serve and invite entry points', () => {
