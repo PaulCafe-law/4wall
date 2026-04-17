@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 
 from app.audit import record_audit
 from app.corridor import CorridorGenerator
+from app.control_plane_read_models import build_mission_execution_summary
 from app.deps import (
     CurrentActor,
     CurrentWebUser,
@@ -257,6 +258,7 @@ def get_mission_detail(
         template=template,
         schedule=schedule,
         dispatch=dispatch,
+        executionSummary=build_mission_execution_summary(session, mission),
         createdAt=mission.created_at,
     )
 

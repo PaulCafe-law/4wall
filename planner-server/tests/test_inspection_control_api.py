@@ -391,3 +391,140 @@ def test_site_detail_returns_site_map_context_and_active_route_template_summarie
     assert patched["name"] == "Tower A Updated"
     assert patched["siteMap"]["baseMapType"] == "hybrid"
     assert patched["siteMap"]["version"] == 3
+
+
+def test_control_plane_dashboard_and_alerts_surface_execution_lifecycle(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Dashboard Org")
+        org_id = org.id
+        seed_user(
+            session,
+            email="admin@dashboard.test",
+            password=PASSWORD,
+            org_roles=[(org_id, "customer_admin")],
+        )
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@dashboard.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "name": "Tower A",
+            "address": "Taipei",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "notes": "",
+        },
+    )
+    assert site_response.status_code == 200, site_response.text
+    site_id = site_response.json()["siteId"]
+
+    route_response = client.post(
+        "/v1/inspection/routes",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "name": "Tower A facade loop",
+            "description": "Demo envelope",
+            "planningParameters": {"routeMode": "site-envelope-demo", "routeVersion": 2},
+            "waypoints": [
+                {
+                    "kind": "transit",
+                    "lat": 25.0337,
+                    "lng": 121.5643,
+                    "altitudeM": 40,
+                    "label": "ingress",
+                },
+                {
+                    "kind": "inspection_viewpoint",
+                    "lat": 25.03391,
+                    "lng": 121.56452,
+                    "altitudeM": 32,
+                    "label": "facade",
+                    "dwellSeconds": 18,
+                },
+            ],
+        },
+    )
+    assert route_response.status_code == 200, route_response.text
+    route_id = route_response.json()["routeId"]
+
+    template_response = client.post(
+        "/v1/inspection/templates",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "routeId": route_id,
+            "name": "Facade standard",
+            "description": "Operator reviewed",
+            "inspectionProfile": {"profile": "facade-standard"},
+            "alertRules": [{"kind": "mission_failure"}],
+        },
+    )
+    assert template_response.status_code == 200, template_response.text
+    template_id = template_response.json()["templateId"]
+
+    schedule_response = client.post(
+        "/v1/inspection/schedules",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "routeId": route_id,
+            "templateId": template_id,
+            "plannedAt": "2026-04-18T09:00:00Z",
+            "status": "scheduled",
+            "alertRules": [{"kind": "report_generation_failure"}],
+        },
+    )
+    assert schedule_response.status_code == 200, schedule_response.text
+    schedule_id = schedule_response.json()["scheduleId"]
+
+    payload = valid_request_payload()
+    payload["organizationId"] = org_id
+    payload["siteId"] = site_id
+    plan_response = client.post("/v1/missions/plan", headers=headers, json=payload)
+    assert plan_response.status_code == 200, plan_response.text
+    mission_id = plan_response.json()["missionId"]
+
+    dispatch_response = client.post(
+        f"/v1/missions/{mission_id}/dispatch",
+        headers=headers,
+        json={
+            "routeId": route_id,
+            "templateId": template_id,
+            "scheduleId": schedule_id,
+            "assignee": "observer-01",
+            "executionTarget": "field-team",
+            "status": "failed",
+            "note": "Observer handoff missing.",
+        },
+    )
+    assert dispatch_response.status_code == 200, dispatch_response.text
+
+    dashboard_response = client.get("/v1/control-plane/dashboard", headers=headers)
+    assert dashboard_response.status_code == 200, dashboard_response.text
+    dashboard = dashboard_response.json()
+
+    assert dashboard["siteCount"] == 1
+    assert dashboard["activeRouteCount"] == 1
+    assert dashboard["activeTemplateCount"] == 1
+    assert dashboard["dispatchPendingCount"] == 0
+    assert dashboard["failedMissionCount"] == 1
+    assert dashboard["alertSummary"]["openCount"] >= 1
+    assert dashboard["recentExecutionSummaries"][0]["missionId"] == mission_id
+    assert dashboard["recentExecutionSummaries"][0]["phase"] == "failed"
+    assert dashboard["recentExecutionSummaries"][0]["failureReason"] == "Observer handoff missing."
+
+    alerts_response = client.get("/v1/control-plane/alerts", headers=headers)
+    assert alerts_response.status_code == 200, alerts_response.text
+    alerts = alerts_response.json()
+
+    dispatch_alert = next(item for item in alerts if item["category"] == "dispatch_blocked")
+    assert dispatch_alert["missionId"] == mission_id
+    assert dispatch_alert["severity"] == "critical"
+    assert dispatch_alert["title"] == "派工受阻"
+    assert "dispatch" in dispatch_alert["summary"].lower()

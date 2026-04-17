@@ -121,6 +121,16 @@ def test_mission_detail_includes_delivery_metadata_and_artifacts(client, session
     assert detail["eventCount"] == 0
     assert detail["latestReport"] is None
     assert detail["events"] == []
+    assert detail["executionSummary"] == {
+        "missionId": mission_id,
+        "phase": "draft",
+        "telemetryFreshness": "missing",
+        "lastTelemetryAt": None,
+        "lastImageryAt": None,
+        "reportStatus": "not_started",
+        "eventCount": 0,
+        "failureReason": None,
+    }
 
 
 def test_mission_detail_returns_failure_reason_for_failed_mission(client, session_factory) -> None:
@@ -161,6 +171,16 @@ def test_mission_detail_returns_failure_reason_for_failed_mission(client, sessio
     assert detail["artifacts"] == []
     assert detail["reportStatus"] == "not_started"
     assert detail["eventCount"] == 0
+    assert detail["executionSummary"] == {
+        "missionId": "msn_failed_delivery",
+        "phase": "failed",
+        "telemetryFreshness": "missing",
+        "lastTelemetryAt": None,
+        "lastImageryAt": None,
+        "reportStatus": "not_started",
+        "eventCount": 0,
+        "failureReason": "Route provider timed out for this site.",
+    }
 
 
 def test_mission_list_surfaces_failure_reason_for_failed_delivery(client, session_factory) -> None:

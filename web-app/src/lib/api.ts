@@ -3,6 +3,7 @@ import type {
   BillingInvoice,
   ControlIntent,
   ControlIntentAction,
+  ControlPlaneDashboard,
   DispatchRecord,
   FlightEventRecord,
   InspectionAlertRule,
@@ -23,6 +24,7 @@ import type {
   OrganizationDetail,
   OrganizationSummary,
   Site,
+  AlertCenterItem,
   SupportQueueItem,
   SupportQueueAction,
   TelemetryBatchRecord,
@@ -346,6 +348,10 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getOverview: (token: string) => apiFetch<Overview>('/v1/web/overview', { token }),
+  getControlPlaneDashboard: (token: string) =>
+    apiFetch<ControlPlaneDashboard>('/v1/control-plane/dashboard', { token }),
+  listControlPlaneAlerts: (token: string) =>
+    apiFetch<AlertCenterItem[]>('/v1/control-plane/alerts', { token }),
   listSites: (token: string) => apiFetch<Site[]>('/v1/sites', { token }),
   getSite: (token: string, siteId: string) => apiFetch<Site>(`/v1/sites/${siteId}`, { token }),
   createSite: (token: string, payload: SitePayload) =>

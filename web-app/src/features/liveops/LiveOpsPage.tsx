@@ -404,12 +404,17 @@ function FlightSummaryPanel({ flight }: { flight: LiveFlightDetail }) {
             { label: '任務', value: flight.missionId },
             { label: '場域', value: flight.siteName ?? '未知場域' },
             { label: '最近一次遙測', value: flight.lastTelemetryAt ? formatDateTime(flight.lastTelemetryAt) : '尚無遙測資料' },
+            { label: '最近一次影像', value: flight.lastImageryAt ? formatDateTime(flight.lastImageryAt) : '尚無影像資料' },
             {
               label: '遙測新鮮度',
               value: `${freshnessLabels[flight.telemetryFreshness]} / ${formatAgeSeconds(flight.telemetryAgeSeconds)}`,
             },
             { label: '最近一次飛行事件', value: flight.lastEventAt ? formatDateTime(flight.lastEventAt) : '尚無飛行事件' },
             { label: '租約模式', value: formatControlMode(flight.controlLease.mode) },
+            {
+              label: '執行階段',
+              value: flight.executionSummary ? formatStatus(flight.executionSummary.phase) : '尚未建立執行摘要',
+            },
           ]}
         />
       </div>
@@ -450,7 +455,15 @@ function ReportingPanel({ flight }: { flight: LiveFlightDetail }) {
           rows={[
             { label: '報表狀態', value: <StatusBadge status={flight.reportStatus} /> },
             { label: '產出時間', value: flight.reportGeneratedAt ? formatDateTime(flight.reportGeneratedAt) : '尚未產出' },
+            {
+              label: '執行階段',
+              value: flight.executionSummary ? <StatusBadge status={flight.executionSummary.phase} /> : '尚未建立執行摘要',
+            },
             { label: '事件數量', value: flight.eventCount },
+            {
+              label: '執行失敗原因',
+              value: flight.executionSummary?.failureReason ?? '目前沒有執行層級失敗原因',
+            },
             { label: '摘要', value: flight.reportSummary ?? '尚無報表摘要' },
           ]}
         />

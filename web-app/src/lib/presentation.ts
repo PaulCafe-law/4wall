@@ -20,6 +20,7 @@ const statusLabels: Record<string, string> = {
   published: '已發布',
   planning: '規劃中',
   failed: '失敗',
+  running: '執行中',
   draft: '草稿',
   issued: '已開立',
   invoice_due: '即將到期',
@@ -39,6 +40,7 @@ const statusLabels: Record<string, string> = {
   paused: '已暫停',
   cancelled: '已取消',
   completed: '已完成',
+  report_ready: '報表已就緒',
   queued: '佇列中',
   generating: '產生中',
   not_started: '尚未開始',
@@ -146,6 +148,7 @@ const supportCategoryLabels: Record<SupportCategory, string> = {
   telemetry_stale: '遙測過期',
   bridge_alert: '橋接告警',
   report_generation_failed: '報表產生失敗',
+  dispatch_blocked: '派工阻塞',
 }
 
 const supportWorkflowLabels: Record<SupportWorkflowState, string> = {

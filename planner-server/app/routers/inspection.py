@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 
 from app.audit import record_audit
 from app.deps import CurrentWebUser, get_current_web_user, get_session
+from app.control_plane_read_models import build_control_plane_alerts, build_control_plane_dashboard
 from app.inspection_control import (
     mark_schedule_dispatched,
     mission_status_for_dispatch,
@@ -21,6 +22,8 @@ from app.inspection_control import (
 )
 from app.models import DispatchRecord, InspectionRoute, InspectionSchedule, InspectionTemplate, Mission, Site
 from app.web_dto import (
+    AlertCenterItemDto,
+    ControlPlaneDashboardDto,
     CreateDispatchRequestDto,
     CreateInspectionRouteRequestDto,
     CreateInspectionScheduleRequestDto,
@@ -38,6 +41,22 @@ from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_o
 
 
 router = APIRouter(tags=["inspection"])
+
+
+@router.get("/v1/control-plane/dashboard", response_model=ControlPlaneDashboardDto)
+def get_control_plane_dashboard(
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> ControlPlaneDashboardDto:
+    return build_control_plane_dashboard(session, current_user)
+
+
+@router.get("/v1/control-plane/alerts", response_model=list[AlertCenterItemDto])
+def list_control_plane_alerts(
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> list[AlertCenterItemDto]:
+    return build_control_plane_alerts(session, current_user)
 
 
 @router.get("/v1/inspection/routes", response_model=list[InspectionRouteDto])

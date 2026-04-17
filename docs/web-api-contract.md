@@ -322,7 +322,7 @@ Allowed statuses:
 
 ### Phase 1 Demo Additions
 
-These endpoints are part of the Phase 1 demo rollout. The control-plane slice is available from Batch 2. The first event/report slice is available from Batch 3. Batch C formalizes stored schedule and dispatch lifecycle state instead of relying on inferred timestamps and placeholder outcomes.
+These endpoints are part of the Phase 1 demo rollout. The control-plane slice is available from Batch 2. The first event/report slice is available from Batch 3. Batch C formalizes stored schedule and dispatch lifecycle state instead of relying on inferred timestamps and placeholder outcomes. Batch D adds first-class alert-center and execution-summary read models so control-plane, mission detail, support, and live ops do not infer state independently.
 
 #### Control Plane
 
@@ -419,6 +419,10 @@ The web surface is intentionally split into product workspaces:
   - schedule board and alert-coverage workspace with pause / resume / cancel / complete actions
 - `/control-plane/dispatch`
   - dispatch queue and assignment workspace with handoff note, assignee, execution target, and status transitions
+- `/v1/control-plane/dashboard`
+  - dashboard aggregate for site coverage, route/template counts, schedule pressure, dispatch pressure, latest report/event state, recent alerts, and recent execution summaries
+- `/v1/control-plane/alerts`
+  - alert-center feed for mission failure, telemetry stale, low battery, bridge alerts, report failures, and dispatch blockers
 
 `/missions/{missionId}` remains the convergence page for:
 
@@ -437,6 +441,10 @@ Batch C requires mission detail to show schedule and dispatch lifecycle context 
 - dispatch accepted time
 - dispatch closed time
 - mission lifecycle state aligned with dispatch/report progress
+
+Batch D adds one more convergence requirement:
+
+- mission detail must expose an explicit `executionSummary` block with `phase`, `telemetryFreshness`, `lastTelemetryAt`, `lastImageryAt`, `reportStatus`, `eventCount`, and `failureReason`
 
 #### Event and Report Generation
 
@@ -462,11 +470,48 @@ The current Batch 3 implementation is deterministic and demo-oriented:
 Internal-only support and live-ops surfaces must also consume the reporting state without becoming flight-control surfaces.
 
 - `SupportQueueItem.category` includes `report_generation_failed`
+- `SupportQueueItem.category` includes `dispatch_blocked`
 - `SupportQueueItem.summary` may carry the latest report failure summary
 - `LiveFlightSummary.reportStatus` mirrors the latest mission report state
 - `LiveFlightSummary.reportGeneratedAt` records the latest generated timestamp
 - `LiveFlightSummary.eventCount` reports the latest mission event count
 - `LiveFlightSummary.reportSummary` carries the latest report summary for monitor-only triage
+- `LiveFlightSummary.lastImageryAt` mirrors the latest evidence-side artifact activity
+- `LiveFlightSummary.executionSummary` mirrors the mission execution read model
+
+### Control-Plane Dashboard Contract
+
+`GET /v1/control-plane/dashboard` should formally support:
+
+- `siteCount`
+- `activeRouteCount`
+- `activeTemplateCount`
+- `scheduledMissionCount`
+- `dispatchPendingCount`
+- `runningMissionCount`
+- `failedMissionCount`
+- `latestReportSummary`
+- `latestEventSummary`
+- `alertSummary`
+- `recentAlerts`
+- `recentExecutionSummaries`
+
+`GET /v1/control-plane/alerts` returns `AlertCenterItem[]`, where each item includes:
+
+- `alertId`
+- `category`
+- `severity`
+- `organizationId`
+- `organizationName`
+- `missionId`
+- `missionName`
+- `siteId`
+- `siteName`
+- `title`
+- `summary`
+- `recommendedNextStep`
+- `status`
+- `lastObservedAt`
 
 These additions are read-only diagnostics. They do not create any direct control path.
 
@@ -480,6 +525,18 @@ These additions are read-only diagnostics. They do not create any direct control
 - `latestReport`
 - `events`
 - linked `route`, `template`, `schedule`, and `dispatch` metadata
+- `executionSummary`
+
+`MissionExecutionSummary` formally includes:
+
+- `missionId`
+- `phase`
+- `telemetryFreshness`
+- `lastTelemetryAt`
+- `lastImageryAt`
+- `reportStatus`
+- `eventCount`
+- `failureReason`
 
 ### Overview Contract Additions
 
