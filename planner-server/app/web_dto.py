@@ -34,6 +34,10 @@ ControlModeLiteral = Literal["monitor_only", "remote_control_requested", "remote
 InspectionReportStatusLiteral = Literal["not_started", "queued", "generating", "ready", "failed"]
 InspectionEventStatusLiteral = Literal["open", "reviewed", "dismissed", "confirmed"]
 InspectionWaypointKindLiteral = Literal["transit", "inspection_viewpoint", "hold"]
+SiteMapBaseMapLiteral = Literal["satellite", "roadmap", "hybrid"]
+SiteZoneKindLiteral = Literal["inspection_boundary", "priority_facade", "restricted_area", "staging_area"]
+LaunchPointKindLiteral = Literal["primary", "backup"]
+InspectionViewpointPurposeLiteral = Literal["overview", "facade", "detail"]
 InspectionAlertRuleKindLiteral = Literal[
     "mission_failure",
     "telemetry_stale",
@@ -151,6 +155,109 @@ class UpdateMembershipRequestDto(BaseModel):
     isActive: bool | None = None
 
 
+class SiteZoneDto(BaseModel):
+    zoneId: str
+    label: str
+    kind: SiteZoneKindLiteral = "inspection_boundary"
+    polygon: list[dict[str, float]] = Field(default_factory=list)
+    note: str | None = None
+    isActive: bool = True
+
+
+class SiteZoneInputDto(BaseModel):
+    zoneId: str | None = None
+    label: str = Field(min_length=1)
+    kind: SiteZoneKindLiteral = "inspection_boundary"
+    polygon: list[dict[str, float]] = Field(default_factory=list)
+    note: str | None = None
+    isActive: bool = True
+
+
+class LaunchPointDto(BaseModel):
+    launchPointId: str
+    label: str
+    kind: LaunchPointKindLiteral = "primary"
+    lat: float
+    lng: float
+    headingDeg: float | None = None
+    altitudeM: float | None = None
+    isActive: bool = True
+
+
+class LaunchPointInputDto(BaseModel):
+    launchPointId: str | None = None
+    label: str = Field(min_length=1)
+    kind: LaunchPointKindLiteral = "primary"
+    lat: float
+    lng: float
+    headingDeg: float | None = None
+    altitudeM: float | None = None
+    isActive: bool = True
+
+
+class InspectionViewpointDto(BaseModel):
+    viewpointId: str
+    label: str
+    purpose: InspectionViewpointPurposeLiteral = "facade"
+    lat: float
+    lng: float
+    headingDeg: float | None = None
+    altitudeM: float | None = None
+    distanceToFacadeM: float | None = None
+    isActive: bool = True
+
+
+class InspectionViewpointInputDto(BaseModel):
+    viewpointId: str | None = None
+    label: str = Field(min_length=1)
+    purpose: InspectionViewpointPurposeLiteral = "facade"
+    lat: float
+    lng: float
+    headingDeg: float | None = None
+    altitudeM: float | None = None
+    distanceToFacadeM: float | None = None
+    isActive: bool = True
+
+
+class SiteMapDto(BaseModel):
+    baseMapType: SiteMapBaseMapLiteral = "satellite"
+    center: dict[str, float]
+    zoom: int = 18
+    version: int = 1
+    zones: list[SiteZoneDto] = Field(default_factory=list)
+    launchPoints: list[LaunchPointDto] = Field(default_factory=list)
+    viewpoints: list[InspectionViewpointDto] = Field(default_factory=list)
+
+
+class SiteMapInputDto(BaseModel):
+    baseMapType: SiteMapBaseMapLiteral = "satellite"
+    center: dict[str, float]
+    zoom: int = 18
+    version: int = 1
+    zones: list[SiteZoneInputDto] = Field(default_factory=list)
+    launchPoints: list[LaunchPointInputDto] = Field(default_factory=list)
+    viewpoints: list[InspectionViewpointInputDto] = Field(default_factory=list)
+
+
+class SiteRouteSummaryDto(BaseModel):
+    routeId: str
+    name: str
+    version: int = 1
+    pointCount: int = 0
+    estimatedDurationSec: int = 0
+    updatedAt: datetime
+
+
+class SiteTemplateSummaryDto(BaseModel):
+    templateId: str
+    routeId: str | None = None
+    name: str
+    evidencePolicy: str = "capture_key_frames"
+    reportMode: str = "html_report"
+    reviewMode: str = "operator_review"
+    updatedAt: datetime
+
+
 class SiteRequestDto(BaseModel):
     organizationId: str
     name: str = Field(min_length=1)
@@ -158,6 +265,7 @@ class SiteRequestDto(BaseModel):
     address: str = Field(min_length=1)
     location: dict[str, float]
     notes: str = ""
+    siteMap: SiteMapInputDto | None = None
 
 
 class SitePatchRequestDto(BaseModel):
@@ -166,6 +274,7 @@ class SitePatchRequestDto(BaseModel):
     address: str | None = Field(default=None, min_length=1)
     location: dict[str, float] | None = None
     notes: str | None = None
+    siteMap: SiteMapInputDto | None = None
 
 
 class SiteDto(BaseModel):
@@ -176,6 +285,11 @@ class SiteDto(BaseModel):
     address: str
     location: dict[str, float]
     notes: str
+    siteMap: SiteMapDto
+    activeRouteCount: int = 0
+    activeTemplateCount: int = 0
+    activeRoutes: list[SiteRouteSummaryDto] = Field(default_factory=list)
+    activeTemplates: list[SiteTemplateSummaryDto] = Field(default_factory=list)
     createdAt: datetime
     updatedAt: datetime
 

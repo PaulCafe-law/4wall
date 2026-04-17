@@ -28,3 +28,9 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "dispatchrecord" in table_names
     assert "inspectioneventrecord" in table_names
     assert "inspectionreport" in table_names
+
+    site_columns = {column["name"] for column in inspector.get_columns("site")}
+    assert "map_config_json" in site_columns
+    assert "zones_json" in site_columns
+    assert "launch_points_json" in site_columns
+    assert "viewpoints_json" in site_columns

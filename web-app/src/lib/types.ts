@@ -102,6 +102,75 @@ export interface OrganizationDetail {
   pendingInvites: Invite[]
 }
 
+export type SiteMapBaseMap = 'satellite' | 'roadmap' | 'hybrid'
+export type SiteZoneKind = 'inspection_boundary' | 'priority_facade' | 'restricted_area' | 'staging_area'
+export type LaunchPointKind = 'primary' | 'backup'
+export type InspectionViewpointPurpose = 'overview' | 'facade' | 'detail'
+
+export interface SiteZone {
+  zoneId: string
+  label: string
+  kind: SiteZoneKind
+  polygon: Array<{ lat: number; lng: number }>
+  note: string | null
+  isActive: boolean
+}
+
+export interface LaunchPoint {
+  launchPointId: string
+  label: string
+  kind: LaunchPointKind
+  lat: number
+  lng: number
+  headingDeg: number | null
+  altitudeM: number | null
+  isActive: boolean
+}
+
+export interface InspectionViewpoint {
+  viewpointId: string
+  label: string
+  purpose: InspectionViewpointPurpose
+  lat: number
+  lng: number
+  headingDeg: number | null
+  altitudeM: number | null
+  distanceToFacadeM: number | null
+  isActive: boolean
+}
+
+export interface SiteMap {
+  baseMapType: SiteMapBaseMap
+  center: {
+    lat: number
+    lng: number
+  }
+  zoom: number
+  version: number
+  zones: SiteZone[]
+  launchPoints: LaunchPoint[]
+  viewpoints: InspectionViewpoint[]
+}
+
+export interface SiteRouteSummary {
+  routeId: string
+  name: string
+  version: number
+  pointCount: number
+  estimatedDurationSec: number
+  updatedAt: string
+}
+
+export interface SiteTemplateSummary {
+  templateId: string
+  routeId: string | null
+  name: string
+  evidencePolicy: string
+  reportMode: string
+  reviewMode: string
+  updatedAt: string
+}
+
 export interface Site {
   siteId: string
   organizationId: string
@@ -113,6 +182,11 @@ export interface Site {
     lng: number
   }
   notes: string
+  siteMap: SiteMap
+  activeRouteCount: number
+  activeTemplateCount: number
+  activeRoutes: SiteRouteSummary[]
+  activeTemplates: SiteTemplateSummary[]
   createdAt: string
   updatedAt: string
 }

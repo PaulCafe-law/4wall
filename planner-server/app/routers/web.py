@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import re
+from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, or_
@@ -17,12 +18,15 @@ from app.deps import (
     require_internal_user,
 )
 from app.inspection_reporting import latest_reporting_summaries, load_reporting_state
+from app.inspection_control import serialize_route_summary, serialize_template_summary
 from app.mission_delivery import build_artifact_map, summarize_mission_delivery
 from app.models import (
     BillingInvoice,
     Flight,
     FlightEvent,
     Invite,
+    InspectionRoute,
+    InspectionTemplate,
     Mission,
     MissionArtifact,
     Organization,
@@ -64,6 +68,10 @@ from app.web_dto import (
     SiteDto,
     SitePatchRequestDto,
     SiteRequestDto,
+    SiteMapDto,
+    SiteZoneDto,
+    LaunchPointDto,
+    InspectionViewpointDto,
     UpdateInvoiceRequestDto,
     UpdateMembershipRequestDto,
     UpdateOrganizationRequestDto,
@@ -86,6 +94,7 @@ STALE_TELEMETRY_SECONDS = 90
 LOW_BATTERY_THRESHOLD = 25
 BRIDGE_ALERT_LOOKBACK_MINUTES = 10
 BRIDGE_ALERT_EVENT = "BRIDGE_ALERT"
+SITE_MAP_DEFAULT_OFFSET = 0.00012
 
 
 @router.post("/v1/web/session/login", response_model=WebSessionDto)
@@ -712,7 +721,7 @@ def list_sites(
                 func.lower(Site.address).like(pattern),
             )
         )
-    return [_serialize_site(site) for site in session.exec(statement).all()]
+    return [_serialize_site(session, site) for site in session.exec(statement).all()]
 
 
 @router.post("/v1/sites", response_model=SiteDto)
@@ -722,6 +731,12 @@ def create_site(
     session: Session = Depends(get_session),
 ) -> SiteDto:
     ensure_org_write_access(session, current_user, request.organizationId, action="site.create_access")
+    site_map = _build_site_map_payload(
+        lat=request.location["lat"],
+        lng=request.location["lng"],
+        site_name=request.name,
+        payload=request.siteMap.model_dump(mode="json") if request.siteMap is not None else None,
+    )
     site = Site(
         organization_id=request.organizationId,
         name=request.name,
@@ -729,6 +744,10 @@ def create_site(
         address=request.address,
         lat=request.location["lat"],
         lng=request.location["lng"],
+        map_config_json=site_map["mapConfig"],
+        zones_json=site_map["zones"],
+        launch_points_json=site_map["launchPoints"],
+        viewpoints_json=site_map["viewpoints"],
         notes=request.notes,
         created_by_user_id=current_user.user.id,
         updated_by_user_id=current_user.user.id,
@@ -744,7 +763,7 @@ def create_site(
         target_id=site.id,
     )
     session.commit()
-    return _serialize_site(site)
+    return _serialize_site(session, site)
 
 
 @router.get("/v1/sites/{site_id}", response_model=SiteDto)
@@ -757,7 +776,7 @@ def get_site(
     if site is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="site_not_found")
     ensure_org_read_access(session, current_user, site.organization_id, action="site.read_access")
-    return _serialize_site(site)
+    return _serialize_site(session, site)
 
 
 @router.patch("/v1/sites/{site_id}", response_model=SiteDto)
@@ -780,6 +799,27 @@ def patch_site(
     if request.location is not None:
         site.lat = request.location["lat"]
         site.lng = request.location["lng"]
+    if request.siteMap is not None:
+        site_map = _build_site_map_payload(
+            lat=request.location["lat"] if request.location is not None else site.lat,
+            lng=request.location["lng"] if request.location is not None else site.lng,
+            site_name=request.name or site.name,
+            payload=request.siteMap.model_dump(mode="json"),
+        )
+        site.map_config_json = site_map["mapConfig"]
+        site.zones_json = site_map["zones"]
+        site.launch_points_json = site_map["launchPoints"]
+        site.viewpoints_json = site_map["viewpoints"]
+    elif request.location is not None and not site.map_config_json:
+        site_map = _build_site_map_payload(
+            lat=site.lat,
+            lng=site.lng,
+            site_name=request.name or site.name,
+        )
+        site.map_config_json = site_map["mapConfig"]
+        site.zones_json = site_map["zones"]
+        site.launch_points_json = site_map["launchPoints"]
+        site.viewpoints_json = site_map["viewpoints"]
     if request.notes is not None:
         site.notes = request.notes
     site.updated_by_user_id = current_user.user.id
@@ -794,7 +834,7 @@ def patch_site(
         target_id=site.id,
     )
     session.commit()
-    return _serialize_site(site)
+    return _serialize_site(session, site)
 
 
 @router.get("/v1/billing/invoices", response_model=list[BillingInvoiceDto])
@@ -1084,7 +1124,114 @@ def _serialize_mission_summary(
     )
 
 
-def _serialize_site(site: Site) -> SiteDto:
+def _default_site_map(lat: float, lng: float, site_name: str) -> dict[str, object]:
+    return {
+        "mapConfig": {
+            "baseMapType": "satellite",
+            "center": {"lat": lat, "lng": lng},
+            "zoom": 18,
+            "version": 1,
+        },
+        "zones": [
+            {
+                "zoneId": f"zone-{uuid4().hex[:8]}",
+                "label": f"{site_name} 巡檢邊界",
+                "kind": "inspection_boundary",
+                "polygon": [
+                    {"lat": lat - SITE_MAP_DEFAULT_OFFSET, "lng": lng - SITE_MAP_DEFAULT_OFFSET},
+                    {"lat": lat - SITE_MAP_DEFAULT_OFFSET, "lng": lng + SITE_MAP_DEFAULT_OFFSET},
+                    {"lat": lat + SITE_MAP_DEFAULT_OFFSET, "lng": lng + SITE_MAP_DEFAULT_OFFSET},
+                    {"lat": lat + SITE_MAP_DEFAULT_OFFSET, "lng": lng - SITE_MAP_DEFAULT_OFFSET},
+                ],
+                "note": "Demo-ready inspection boundary around the site centroid.",
+                "isActive": True,
+            }
+        ],
+        "launchPoints": [
+            {
+                "launchPointId": f"launch-{uuid4().hex[:8]}",
+                "label": f"{site_name} 主要起降點",
+                "kind": "primary",
+                "lat": lat,
+                "lng": lng,
+                "headingDeg": 180,
+                "altitudeM": 12,
+                "isActive": True,
+            }
+        ],
+        "viewpoints": [
+            {
+                "viewpointId": f"view-{uuid4().hex[:8]}",
+                "label": f"{site_name} 主立面視角",
+                "purpose": "facade",
+                "lat": lat + (SITE_MAP_DEFAULT_OFFSET / 2),
+                "lng": lng + (SITE_MAP_DEFAULT_OFFSET / 2),
+                "headingDeg": 225,
+                "altitudeM": 32,
+                "distanceToFacadeM": 12,
+                "isActive": True,
+            }
+        ],
+    }
+
+
+def _build_site_map_payload(
+    *,
+    lat: float,
+    lng: float,
+    site_name: str,
+    payload: dict | None = None,
+) -> dict[str, object]:
+    default_map = _default_site_map(lat, lng, site_name)
+    payload = payload or {}
+    map_config = payload.get("baseMapType")
+    center = payload.get("center")
+    zoom = payload.get("zoom")
+    version = payload.get("version")
+    zones = payload.get("zones")
+    launch_points = payload.get("launchPoints")
+    viewpoints = payload.get("viewpoints")
+    return {
+        "mapConfig": {
+            "baseMapType": str(map_config or default_map["mapConfig"]["baseMapType"]),
+            "center": center or {"lat": lat, "lng": lng},
+            "zoom": int(zoom or default_map["mapConfig"]["zoom"]),
+            "version": int(version or default_map["mapConfig"]["version"]),
+        },
+        "zones": zones or default_map["zones"],
+        "launchPoints": launch_points or default_map["launchPoints"],
+        "viewpoints": viewpoints or default_map["viewpoints"],
+    }
+
+
+def _serialize_site_map(site: Site) -> SiteMapDto:
+    site_map = _build_site_map_payload(lat=site.lat, lng=site.lng, site_name=site.name)
+    map_config = site.map_config_json or site_map["mapConfig"]
+    zones = site.zones_json or site_map["zones"]
+    launch_points = site.launch_points_json or site_map["launchPoints"]
+    viewpoints = site.viewpoints_json or site_map["viewpoints"]
+    return SiteMapDto(
+        baseMapType=map_config.get("baseMapType", "satellite"),
+        center=map_config.get("center", {"lat": site.lat, "lng": site.lng}),
+        zoom=int(map_config.get("zoom", 18)),
+        version=int(map_config.get("version", 1)),
+        zones=[SiteZoneDto.model_validate(zone) for zone in zones],
+        launchPoints=[LaunchPointDto.model_validate(point) for point in launch_points],
+        viewpoints=[InspectionViewpointDto.model_validate(viewpoint) for viewpoint in viewpoints],
+    )
+
+
+def _serialize_site(session: Session, site: Site) -> SiteDto:
+    routes = session.exec(
+        select(InspectionRoute)
+        .where(InspectionRoute.site_id == site.id)
+        .order_by(InspectionRoute.updated_at.desc(), InspectionRoute.created_at.desc())
+    ).all()
+    templates = session.exec(
+        select(InspectionTemplate)
+        .where(InspectionTemplate.site_id == site.id)
+        .order_by(InspectionTemplate.updated_at.desc(), InspectionTemplate.created_at.desc())
+    ).all()
     return SiteDto(
         siteId=site.id,
         organizationId=site.organization_id,
@@ -1093,6 +1240,11 @@ def _serialize_site(site: Site) -> SiteDto:
         address=site.address,
         location={"lat": site.lat, "lng": site.lng},
         notes=site.notes,
+        siteMap=_serialize_site_map(site),
+        activeRouteCount=len(routes),
+        activeTemplateCount=len(templates),
+        activeRoutes=[serialize_route_summary(route) for route in routes[:4]],
+        activeTemplates=[serialize_template_summary(template) for template in templates[:4]],
         createdAt=site.created_at,
         updatedAt=site.updated_at,
     )

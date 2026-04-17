@@ -58,6 +58,48 @@ test('customer viewer can browse but cannot see site mutation controls or intern
           address: 'Taipei',
           location: { lat: 25.03391, lng: 121.56452 },
           notes: '',
+          siteMap: {
+            baseMapType: 'satellite',
+            center: { lat: 25.03391, lng: 121.56452 },
+            zoom: 18,
+            version: 1,
+            zones: [
+              {
+                zoneId: 'zone-1',
+                label: 'Viewer Site Inspection Zone',
+                kind: 'inspection_boundary',
+                polygon: [
+                  { lat: 25.03381, lng: 121.56442 },
+                  { lat: 25.03381, lng: 121.56462 },
+                  { lat: 25.03401, lng: 121.56462 },
+                  { lat: 25.03401, lng: 121.56442 },
+                ],
+              },
+            ],
+            launchPoints: [
+              {
+                launchPointId: 'launch-1',
+                label: 'Viewer Site Launch',
+                kind: 'primary',
+                location: { lat: 25.03375, lng: 121.56433 },
+                headingDeg: 180,
+              },
+            ],
+            viewpoints: [
+              {
+                viewpointId: 'view-1',
+                label: 'Viewer Site Facade',
+                purpose: 'facade_overview',
+                location: { lat: 25.03411, lng: 121.56471 },
+                altitudeM: 35,
+                distanceToFacadeM: 12,
+              },
+            ],
+          },
+          activeRouteCount: 0,
+          activeTemplateCount: 0,
+          activeRoutes: [],
+          activeTemplates: [],
           createdAt: '2026-04-10T00:00:00Z',
           updatedAt: '2026-04-10T00:00:00Z',
         },
