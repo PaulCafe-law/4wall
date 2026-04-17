@@ -14,7 +14,7 @@ import {
 import { ApiError, api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
-import { formatApiError } from '../../lib/presentation'
+import { formatApiError, formatStatus } from '../../lib/presentation'
 import type { InspectionEvent, MissionArtifactDownload, MissionDetail } from '../../lib/types'
 
 function formatBytes(sizeBytes: number) {
@@ -33,7 +33,7 @@ function deliveryHeadline(state: MissionDetail['delivery']['state']) {
 function reportStatusMessage(mission: MissionDetail) {
   if (mission.reportStatus === 'ready') {
     return mission.eventCount === 0
-      ? mission.latestReport?.summary ?? '目前已產生 clean-pass 巡檢報表，可作為無異常版本交付。'
+      ? mission.latestReport?.summary ?? '目前已產生無異常巡檢報表，可作為無異常版本交付。'
       : mission.latestReport?.summary ?? '目前已產生含異常事件的巡檢報表。'
   }
   if (mission.reportStatus === 'failed') {
@@ -98,10 +98,10 @@ export function MissionDetailPage() {
       setAnalysisError(null)
       setAnalysisNotice(
         payload.mode === 'analysis_failed'
-          ? '已切換成 demo 失敗版本，可用於展示 analysis/reporting failure story。'
+          ? '已切換成示範失敗版本，可用於展示分析與報表失敗的營運故事。'
           : payload.mode === 'no_findings'
-            ? '已切換成 clean-pass 版本，可用於展示無異常巡檢報表。'
-            : '已產生 demo 異常版本，事件、證據與報表會同步更新。',
+            ? '已切換成無異常版本，可用於展示無異常巡檢報表。'
+            : '已產生示範異常版本，事件、證據與報表會同步更新。',
       )
     },
   })
@@ -145,7 +145,7 @@ export function MissionDetailPage() {
       await reprocessAnalysis.mutateAsync({ mode })
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setAnalysisError(formatApiError(detail, '觸發 demo 分析流程失敗。'))
+      setAnalysisError(formatApiError(detail, '觸發示範分析流程失敗。'))
     }
   }
 
@@ -177,7 +177,7 @@ export function MissionDetailPage() {
       <ShellSection
         eyebrow="任務詳情"
         title={mission.missionName}
-        subtitle="從單一任務頁面檢視規劃資料、派工責任、執行狀態、demo 分析輸出、證據檔案，以及可下載的巡檢報表。"
+        subtitle="從單一任務頁面檢視規劃資料、派工責任、執行狀態、示範分析輸出、證據檔案，以及可下載的巡檢報表。"
         action={
           <div className="flex flex-wrap gap-2">
             <StatusBadge status={mission.status} />
@@ -190,9 +190,7 @@ export function MissionDetailPage() {
       <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <div className="space-y-6">
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              planning background
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">任務背景</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">規劃與任務背景</h2>
             <div className="mt-4">
               <DataList
@@ -209,9 +207,7 @@ export function MissionDetailPage() {
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              planning linkage
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">控制平面串接</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">控制平面規劃串接</h2>
             <div className="mt-4 grid gap-4 lg:grid-cols-3">
               <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
@@ -259,9 +255,7 @@ export function MissionDetailPage() {
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              dispatch ownership
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">派工責任</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">派工與執行責任</h2>
             {mission.dispatch ? (
               <div className="mt-4">
@@ -287,24 +281,22 @@ export function MissionDetailPage() {
                       label: '最後更新',
                       value: formatDateTime(mission.dispatch.lastUpdatedAt),
                     },
-                    { label: '派工備註', value: mission.dispatch.note ?? '沒有 handoff note' },
+                    { label: '派工備註', value: mission.dispatch.note ?? '目前沒有交接備註' },
                   ]}
                 />
               </div>
             ) : (
               <div className="mt-4">
-                <EmptyState
-                  title="目前沒有派工紀錄"
-                  body="派工工作區建立 dispatch 後，這裡會顯示執行對象、責任人與 handoff note。"
-                />
-              </div>
-            )}
+                  <EmptyState
+                    title="目前沒有派工紀錄"
+                    body="派工工作區建立派工後，這裡會顯示執行對象、責任人與交接備註。"
+                  />
+                </div>
+              )}
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              execution and reporting
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">執行與報表</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">執行與報表狀態</h2>
             <div className="mt-4 space-y-4">
               {mission.executionSummary ? (
@@ -412,15 +404,13 @@ export function MissionDetailPage() {
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              detected events
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">事件與證據</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">偵測到的事件</h2>
             <div className="mt-4 space-y-4">
               {mission.events.length === 0 ? (
                 <EmptyState
                   title="目前沒有巡檢事件"
-                  body="可以產生 demo 報表建立異常事件與證據檔案，或保留這筆任務作為無異常版本。"
+                  body="可以產生示範報表建立異常事件與證據檔案，或保留這筆任務作為無異常版本。"
                 />
               ) : (
                 mission.events.map((event) => (
@@ -428,7 +418,7 @@ export function MissionDetailPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-2xl font-semibold text-chrome-950">{event.category}</p>
                       <span className="rounded-full bg-white px-3 py-1 text-sm text-chrome-700">
-                        {event.status}
+                        {formatStatus(event.status)}
                       </span>
                       <span className="rounded-full bg-white px-3 py-1 text-sm text-chrome-700">
                         {severityLabel(event.severity)}
@@ -458,17 +448,15 @@ export function MissionDetailPage() {
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              raw contracts
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">原始契約</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">規劃請求與回應</h2>
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
               <div className="rounded-2xl border border-chrome-200 bg-chrome-950 px-4 py-4 text-sm text-chrome-50">
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">request</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">請求</p>
                 <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all">{requestJson}</pre>
               </div>
               <div className="rounded-2xl border border-chrome-200 bg-chrome-950 px-4 py-4 text-sm text-chrome-50">
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">response</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">回應</p>
                 <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all">{responseJson}</pre>
               </div>
             </div>
@@ -477,9 +465,7 @@ export function MissionDetailPage() {
 
         <div className="space-y-6">
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              delivery
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成果交付</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
               {deliveryHeadline(mission.delivery.state)}
             </h2>
@@ -505,9 +491,7 @@ export function MissionDetailPage() {
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              latest report
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">最新報表</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">巡檢分析與報表</h2>
             <div className="mt-4">
               <DataList
@@ -528,9 +512,7 @@ export function MissionDetailPage() {
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              artifacts
-            </p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成果檔案</p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">成果檔案</h2>
             <div className="mt-4 space-y-4">
               {mission.artifacts.length === 0 ? (

@@ -58,6 +58,10 @@ The purpose is to show:
   - `/v1/control-plane/dashboard` becomes the single aggregate for route/template coverage, schedule pressure, dispatch pressure, latest report/event state, recent alerts, and recent execution summaries
   - `/v1/control-plane/alerts` becomes the control-plane alert center for telemetry stale, battery low, bridge alerts, report failures, mission failures, and dispatch blockers
   - `Mission Detail`, `Support`, and `Live Ops` now consume the same `executionSummary` language instead of inferring lifecycle state per page
+- Batch E hardens the product presentation layer:
+  - control-plane and mission-detail copy is normalized to a single Chinese product narrative
+  - every control-plane workspace now includes screenshot and next-step guidance for rehearsal
+  - the rehearsal script and evidence package are rewritten around the complete product control-plane story instead of the earlier CRUD demo slice
 
 ## Scope
 
@@ -234,17 +238,17 @@ Batch D adds another:
 
 The minimum demo path is:
 
-1. Select an existing site or create a site-map record
+1. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage plus recent alerts
 2. Open the site-detail workspace and show map context, launch points, viewpoints, and active route/template coverage
-3. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage
-4. Open the route workspace and review the route preview and planning summary
-5. Open the template workspace and review evidence/report policy
-6. Open the schedule workspace and show execution timing and alert coverage
-7. Open the dispatch workspace and assign a mission
-8. Open the mission record
-9. Show imagery-derived events and evidence
-10. Open the generated report summary
-11. Download the report artifact
+3. Open the route workspace and review route preview, duration, and versioned planning summary
+4. Open the template workspace and review inspection policy, evidence policy, and report mode
+5. Open the schedule workspace and show next run, pause reason, last outcome, and alert coverage
+6. Open the dispatch workspace and show assignment, execution target, accepted/closed timing, and mission linkage
+7. Open the mission record
+8. Show execution summary, imagery-derived events, and evidence
+9. Open the generated report summary
+10. Download the report artifact
+11. Cross-check the same mission state in `Support` and `Live Ops`
 
 The repeatable rehearsal path and evidence package now live in:
 
@@ -257,6 +261,7 @@ Phase 1 demo functionality is accepted when:
 
 - the web UI can demonstrate the full route-to-report story without explanation gaps
 - the control plane reads like a real product workspace instead of a stack of unrelated forms
+- the control-plane dashboard, site workspace, route workspace, schedule workspace, and dispatch workspace each produce a screenshot that can stand on its own in a plan-review deck
 - the data model is stable enough that later batches do not need to redesign route/schedule/event/report shapes
 - control-plane and report surfaces stay outside the flight-critical boundary
 - `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass

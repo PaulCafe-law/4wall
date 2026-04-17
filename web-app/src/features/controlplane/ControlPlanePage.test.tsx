@@ -264,10 +264,11 @@ describe('ControlPlanePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: '控制平面總覽' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '總覽' })).toBeInTheDocument()
-    expect(await screen.findByText('場域覆蓋與規劃密度')).toBeInTheDocument()
-    expect(await screen.findByText('評審要看到的完整故事')).toBeInTheDocument()
-    expect(await screen.findByText('最近告警')).toBeInTheDocument()
-    expect(await screen.findByText('最近執行狀態')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '場域覆蓋與規劃密度' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '評審要看到的完整故事' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '先用總覽把控制平面講成一個持續運作的工作台' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '最近告警' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '最近執行狀態' })).toBeInTheDocument()
     expect(
       await screen.findByText('The control plane is still waiting for a valid assignee before handoff.'),
     ).toBeInTheDocument()

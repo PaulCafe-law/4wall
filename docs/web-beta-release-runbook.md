@@ -83,8 +83,10 @@ The current rollout model is:
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
    - site map and site selection flow
+   - site workspace shows map version, zones, launch points, viewpoints, and active route/template summaries if the release touched control-plane surfaces
    - route/template records can be created, viewed, or edited without entering any flight-control path
    - schedule and dispatch records can be created and show the expected planning metadata
+   - control-plane dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace each match the current rehearsal script and provide screenshot-ready presentation copy if the release touched control-plane surfaces
    - overview pending-action cards, invoice reminders, invite reminders, and setup guidance when the workspace has no sites or no missions
    - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
    - mission list delivery badges, clean failure copy, and ready-to-deliver summaries

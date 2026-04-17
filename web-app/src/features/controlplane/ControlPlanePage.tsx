@@ -38,6 +38,15 @@ type Workspace = {
   description: string
 }
 
+type WorkspacePresentationGuide = {
+  eyebrow: string
+  title: string
+  summary: string
+  evidenceTargets: string[]
+  screenshotHint: string
+  nextStep: string
+}
+
 const WORKSPACES: Workspace[] = [
   {
     key: 'dashboard',
@@ -59,7 +68,7 @@ const WORKSPACES: Workspace[] = [
     path: '/control-plane/templates',
     label: '模板',
     title: '巡檢模板庫',
-    description: '把 inspection profile、證據政策、報表模式與 review mode 收斂到同一個模板面。',
+    description: '把巡檢策略、證據政策、報表模式與審閱模式收斂到同一個模板面。',
   },
   {
     key: 'schedules',
@@ -73,9 +82,57 @@ const WORKSPACES: Workspace[] = [
     path: '/control-plane/dispatch',
     label: '派工',
     title: '派工與任務佇列',
-    description: '以任務為單位管理指派、執行目標與 handoff note；派工只定義責任歸屬，不進飛行控制迴路。',
+    description: '以任務為單位管理指派、執行目標與交接備註；派工只定義責任歸屬，不進飛行控制迴路。',
   },
 ]
+
+const WORKSPACE_GUIDES: Record<WorkspaceKey, WorkspacePresentationGuide> = {
+  dashboard: {
+    eyebrow: '展示重點',
+    title: '先用總覽把控制平面講成一個持續運作的工作台',
+    summary:
+      '這一頁要回答評審兩個問題：目前有哪些場域與規劃資產、目前有哪些排程壓力與營運風險。畫面不該像報表首頁，而要像一個規劃、排程、派工、監看與交付的總控制台。',
+    evidenceTargets: ['場域覆蓋與規劃密度', '最近告警', '最近執行狀態'],
+    screenshotHint: '建議截一張包含核心 KPI、最近告警與最近執行狀態的總覽圖。',
+    nextStep: '接著切到場域或航線工作區，讓評審看到這些摘要是如何對應到具體的控制平面資產。',
+  },
+  routes: {
+    eyebrow: '展示重點',
+    title: '航線工作區要讓人看見可重用的巡檢路徑資產',
+    summary:
+      '重點不是單次建立表單，而是航線版本、預估時間、預覽折線與場域上下文可以被後續模板、排程與任務重用。',
+    evidenceTargets: ['建立航線表單', '航線庫', '預估時間與預覽折線摘要'],
+    screenshotHint: '建議同框截到建立表單與右側航線庫，讓畫面同時呈現建立與重用兩件事。',
+    nextStep: '建立或選定一條航線後，切到模板工作區，把巡檢策略、證據與報表政策掛上去。',
+  },
+  templates: {
+    eyebrow: '展示重點',
+    title: '模板工作區負責把巡檢政策固定下來',
+    summary:
+      '模板不是附屬欄位。它定義巡檢策略、證據政策、報表模式與審閱模式，讓同一條航線可以因不同營運需求而有不同輸出。',
+    evidenceTargets: ['建立模板表單', '模板庫', '證據政策與報表模式'],
+    screenshotHint: '建議截一張能同時看見模板策略欄位與既有模板摘要的畫面。',
+    nextStep: '模板建立後，切到排程工作區，展示何時執行、暫停原因與最近結果。',
+  },
+  schedules: {
+    eyebrow: '展示重點',
+    title: '排程工作區要講清楚何時執行、為何暫停、最近結果如何',
+    summary:
+      '這一頁用來展示 lifecycle，而不是單純顯示 plannedAt。評審應該能直接看到 nextRunAt、lastRunAt、pauseReason、lastOutcome 與最近派工狀態。',
+    evidenceTargets: ['建立排程表單', '排程看板', 'nextRunAt / pauseReason / lastOutcome'],
+    screenshotHint: '建議截一張排程看板，至少包含一筆已排程資料與可執行的暫停/恢復動作。',
+    nextStep: '排程狀態說明清楚後，切到派工工作區，展示任務交接與責任歸屬。',
+  },
+  dispatch: {
+    eyebrow: '展示重點',
+    title: '派工工作區要把任務責任與交接狀態說清楚',
+    summary:
+      '這裡展示的是任務層級的交接，不是飛行控制。畫面應該讓人看見負責人、執行對象、接受時間、關閉時間與交接備註如何與任務/報表狀態對齊。',
+    evidenceTargets: ['建立派工表單', '任務佇列', '派工看板'],
+    screenshotHint: '建議截一張同時包含任務佇列與派工看板的畫面，證明 dispatch 是正式 lifecycle，而不是一個按鈕。',
+    nextStep: '完成派工後，直接打開任務詳情，展示規劃、執行、事件與報表如何匯流。',
+  },
+}
 
 const DEFAULT_ROUTE_OFFSET = 0.00018
 
@@ -135,8 +192,8 @@ function buildDemoWaypoints(
 
 function defaultAlertRules() {
   return [
-    { kind: 'mission_failure' as const, enabled: true, note: '任務失敗時建立 support item。' },
-    { kind: 'analysis_failure' as const, enabled: true, note: '分析失敗時通知 internal ops。' },
+    { kind: 'mission_failure' as const, enabled: true, note: '任務失敗時建立支援項目。' },
+    { kind: 'analysis_failure' as const, enabled: true, note: '分析失敗時通知內部營運。' },
     {
       kind: 'report_generation_failure' as const,
       enabled: true,
@@ -158,6 +215,14 @@ function recurrenceLabel(value: string | null) {
 function selectedSiteHint(site: Site | null) {
   if (!site) return '尚未建立場域。請先建立 site，控制平面才有具體的地圖與排程脈絡。'
   return `${site.name} | ${site.address}`
+}
+
+function eyebrowLabel(label: string) {
+  return (
+    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+      {label}
+    </p>
+  )
 }
 
 function dispatchTransitionCopy(status: string) {
@@ -193,7 +258,7 @@ export function ControlPlanePage() {
   const [routeName, setRouteName] = useState('')
   const [templateName, setTemplateName] = useState('')
   const [plannedAt, setPlannedAt] = useState('')
-  const [schedulePauseReason, setSchedulePauseReason] = useState('Weather hold before launch window.')
+  const [schedulePauseReason, setSchedulePauseReason] = useState('天候不佳，暫停起飛窗口。')
   const [dispatchAssignee, setDispatchAssignee] = useState('observer-01')
   const [dispatchExecutionTarget, setDispatchExecutionTarget] = useState('field-team')
   const [dispatchNote, setDispatchNote] = useState('')
@@ -245,6 +310,7 @@ export function ControlPlanePage() {
   const dispatches = dispatchesQuery.data ?? []
   const missions = missionsQuery.data ?? []
   const dashboard = dashboardQuery.data
+  const workspaceGuide = WORKSPACE_GUIDES[workspace.key]
 
   const effectiveSiteId = sites.find((site) => site.siteId === selectedSiteId)?.siteId ?? sites[0]?.siteId ?? ''
   const selectedSite = sites.find((site) => site.siteId === effectiveSiteId) ?? null
@@ -260,6 +326,7 @@ export function ControlPlanePage() {
       siteMissions.some((mission) => mission.missionId === dispatch.missionId && mission.siteId === effectiveSiteId),
   )
   const dispatchByMissionId = new Map(siteDispatches.map((dispatch) => [dispatch.missionId, dispatch]))
+  const missionById = new Map(missions.map((mission) => [mission.missionId, mission]))
   const siteCoverage = sites.map((site) => ({
     site,
     routeCount: routes.filter((route) => route.siteId === site.siteId).length,
@@ -453,7 +520,7 @@ export function ControlPlanePage() {
         siteId: selectedSite.siteId,
         routeId: siteRoutes[0].routeId,
         name: templateName.trim(),
-        description: '將 inspection profile、證據政策、報表模式與 review mode 固定下來。',
+        description: '將巡檢策略、證據政策、報表模式與審閱模式固定下來。',
         inspectionProfile: {
           profile: 'facade-standard',
           evidencePolicy: 'capture_key_frames',
@@ -507,7 +574,7 @@ export function ControlPlanePage() {
         scheduleId,
         body: {
           status,
-          pauseReason: status === 'paused' ? schedulePauseReason.trim() || 'Paused from control-plane workspace.' : '',
+          pauseReason: status === 'paused' ? schedulePauseReason.trim() || '由控制平面工作區手動暫停。' : '',
         },
       })
     } catch (error) {
@@ -548,16 +615,49 @@ export function ControlPlanePage() {
       )
     }
   }
+
+  function renderWorkspaceGuide() {
+    return (
+      <Panel>
+        <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr_0.9fr]">
+          <div>
+            {eyebrowLabel(workspaceGuide.eyebrow)}
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
+              {workspaceGuide.title}
+            </h2>
+            <p className="mt-2 text-sm text-chrome-700">{workspaceGuide.summary}</p>
+          </div>
+          <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+            <p className="font-medium text-chrome-950">這頁要交代的證據</p>
+            <div className="mt-3 space-y-2">
+              {workspaceGuide.evidenceTargets.map((item) => (
+                <div key={item} className="flex items-start gap-3 text-sm text-chrome-700">
+                  <span className="mt-1 h-2 w-2 rounded-full bg-chrome-950" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+            <p className="font-medium text-chrome-950">建議截圖與下一步</p>
+            <p className="mt-3 text-sm text-chrome-700">{workspaceGuide.screenshotHint}</p>
+            <p className="mt-3 text-sm text-chrome-700">{workspaceGuide.nextStep}</p>
+          </div>
+        </div>
+      </Panel>
+    )
+  }
+
   function renderDashboard() {
     return (
       <div className="space-y-6">
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Metric label="場域數" value={dashboard?.siteCount ?? sites.length} hint="以 site map 為規劃脈絡" />
+          <Metric label="場域數" value={dashboard?.siteCount ?? sites.length} hint="以場域地圖作為規劃脈絡" />
           <Metric label="啟用航線" value={dashboard?.activeRouteCount ?? routes.length} hint="可重用的巡檢航線版本" />
           <Metric
             label="啟用模板"
             value={dashboard?.activeTemplateCount ?? templates.length}
-            hint="inspection profile、證據與報表政策"
+            hint="巡檢策略、證據與報表政策"
           />
           <Metric
             label="已排程"
@@ -582,15 +682,13 @@ export function ControlPlanePage() {
           <Metric
             label="待處理告警"
             value={dashboard?.alertSummary.openCount ?? 0}
-            hint={`critical ${dashboard?.alertSummary.criticalCount ?? 0} / warning ${dashboard?.alertSummary.warningCount ?? 0}`}
+            hint={`嚴重 ${dashboard?.alertSummary.criticalCount ?? 0} / 警示 ${dashboard?.alertSummary.warningCount ?? 0}`}
           />
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              site coverage
-            </p>
+            {eyebrowLabel('場域覆蓋')}
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
               場域覆蓋與規劃密度
             </h2>
@@ -636,35 +734,47 @@ export function ControlPlanePage() {
 
           <div className="space-y-6">
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                selected site
-              </p>
+              {eyebrowLabel('場域摘要')}
               <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">目前場域</h2>
               <p className="mt-2 text-sm text-chrome-700">{selectedSiteHint(selectedSite)}</p>
               {selectedSite ? (
                 <dl className="mt-4 grid gap-3">
                   <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                      coordinates
-                    </dt>
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">座標</dt>
                     <dd className="mt-2 text-sm text-chrome-900">
                       {selectedSite.location.lat}, {selectedSite.location.lng}
                     </dd>
                   </div>
                   <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3">
-                    <dt className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                      notes
-                    </dt>
+                    <dt className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">備註</dt>
                     <dd className="mt-2 text-sm text-chrome-900">{selectedSite.notes || '尚未補充場域說明。'}</dd>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <Metric label="地圖版本" value={selectedSite.siteMap.version ?? 1} />
+                    <Metric label="區域" value={selectedSite.siteMap.zones.length} />
+                    <Metric label="起降點" value={selectedSite.siteMap.launchPoints.length} />
+                    <Metric label="視角點" value={selectedSite.siteMap.viewpoints.length} />
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <Link
+                      to={`/sites/${selectedSite.siteId}`}
+                      className="inline-flex items-center justify-center rounded-full border border-chrome-300 px-4 py-2 text-sm font-medium text-chrome-950 transition hover:border-chrome-500"
+                    >
+                      開啟場域工作區
+                    </Link>
+                    <Link
+                      to="/control-plane/routes"
+                      className="inline-flex items-center justify-center rounded-full border border-chrome-300 px-4 py-2 text-sm font-medium text-chrome-950 transition hover:border-chrome-500"
+                    >
+                      查看航線工作區
+                    </Link>
                   </div>
                 </dl>
               ) : null}
             </Panel>
 
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                reporting
-              </p>
+              {eyebrowLabel('異常與報表')}
               <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最近異常與報表</h2>
               <div className="mt-4 grid gap-3">
                 <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
@@ -682,16 +792,14 @@ export function ControlPlanePage() {
                 <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                   <p className="font-medium text-chrome-950">營運提醒</p>
                   <p className="mt-2 text-sm text-chrome-700">
-                    open {dashboard?.alertSummary.openCount ?? 0} / critical {dashboard?.alertSummary.criticalCount ?? 0}
+                    待處理 {dashboard?.alertSummary.openCount ?? 0} / 嚴重 {dashboard?.alertSummary.criticalCount ?? 0}
                   </p>
                 </div>
               </div>
             </Panel>
 
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                alert center
-              </p>
+              {eyebrowLabel('告警中心')}
               <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最近告警</h2>
               <div className="mt-4 space-y-3">
                 {dashboard?.recentAlerts.length ? (
@@ -713,7 +821,11 @@ export function ControlPlanePage() {
                         </span>
                       </div>
                       <p className="mt-2 text-sm text-chrome-700">{alert.summary}</p>
+                      <p className="mt-2 text-sm text-chrome-700">
+                        建議下一步：{alert.recommendedNextStep}
+                      </p>
                       <p className="mt-2 text-xs text-chrome-500">
+                        {alert.siteName ?? '未指定場域'} / {alert.missionName ?? '未指定任務'} /{' '}
                         {alert.lastObservedAt ? formatDateTime(alert.lastObservedAt) : '尚未記錄觀測時間'}
                       </p>
                     </div>
@@ -721,7 +833,7 @@ export function ControlPlanePage() {
                 ) : (
                   <EmptyState
                     title="目前沒有告警"
-                    body="alert center 會收斂 telemetry、dispatch、mission 與 reporting 的異常。"
+                    body="告警中心會收斂遙測、派工、任務與報表的異常。"
                   />
                 )}
               </div>
@@ -730,9 +842,7 @@ export function ControlPlanePage() {
         </div>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            execution summaries
-          </p>
+          {eyebrowLabel('執行摘要')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最近執行狀態</h2>
           <div className="mt-4 grid gap-3 lg:grid-cols-3">
             {dashboard?.recentExecutionSummaries.length ? (
@@ -743,7 +853,7 @@ export function ControlPlanePage() {
                 >
                   <div className="flex items-center justify-between gap-3">
                     <Link to={`/missions/${summary.missionId}`} className="font-medium text-chrome-950 underline underline-offset-4">
-                      {summary.missionId}
+                      {missionById.get(summary.missionId)?.missionName ?? summary.missionId}
                     </Link>
                     <StatusBadge status={summary.phase} />
                   </div>
@@ -767,9 +877,7 @@ export function ControlPlanePage() {
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            walkthrough
-          </p>
+          {eyebrowLabel('演示流程')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
             評審要看到的完整故事
           </h2>
@@ -779,9 +887,7 @@ export function ControlPlanePage() {
                 key={item.key}
                 className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4"
               >
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                  step {index + 1}
-                </p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">步驟 {index + 1}</p>
                 <p className="mt-2 font-medium text-chrome-950">{item.title}</p>
                 <p className="mt-2 text-sm text-chrome-700">{item.description}</p>
               </div>
@@ -796,9 +902,7 @@ export function ControlPlanePage() {
     return (
       <div className="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            create route
-          </p>
+          {eyebrowLabel('航線建立')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">建立航線</h2>
           <div className="mt-4 grid gap-4">
             <Field label="航線名稱">
@@ -818,7 +922,7 @@ export function ControlPlanePage() {
               </Select>
             </Field>
             <Field label="建立邏輯" hint="用場域座標生成示範航線，供排程、派工與任務回溯使用。">
-              <TextArea readOnly value="site map -> route preview -> mission bundle" />
+              <TextArea readOnly value="場域地圖 -> 航線預覽 -> 任務封裝" />
             </Field>
             {routeError ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -837,9 +941,7 @@ export function ControlPlanePage() {
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            route library
-          </p>
+          {eyebrowLabel('航線資產')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">航線庫</h2>
           <div className="mt-4 space-y-4">
             {siteRoutes.length === 0 ? (
@@ -882,9 +984,7 @@ export function ControlPlanePage() {
     return (
       <div className="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            create template
-          </p>
+          {eyebrowLabel('模板建立')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">建立模板</h2>
           <div className="mt-4 grid gap-4">
             <Field label="模板名稱">
@@ -900,10 +1000,10 @@ export function ControlPlanePage() {
                 ))}
               </Select>
             </Field>
-            <Field label="模板說明" hint="固定 inspection profile、alert rules、evidence policy 與 report mode。">
+            <Field label="模板說明" hint="固定巡檢策略、告警規則、證據政策與報表模式。">
               <TextArea
                 readOnly
-                value="inspectionProfile=facade-standard; evidencePolicy=capture_key_frames; reportMode=html_report"
+                value="巡檢策略 = facade-standard；證據政策 = capture_key_frames；報表模式 = html_report"
               />
             </Field>
             {templateError ? (
@@ -923,9 +1023,7 @@ export function ControlPlanePage() {
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            template library
-          </p>
+          {eyebrowLabel('模板資產')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">模板庫</h2>
           <div className="mt-4 space-y-4">
             {siteTemplates.length === 0 ? (
@@ -966,9 +1064,7 @@ export function ControlPlanePage() {
     return (
       <div className="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            create schedule
-          </p>
+          {eyebrowLabel('排程建立')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">建立排程</h2>
           <div className="mt-4 grid gap-4">
             <Field label="預計執行時間">
@@ -988,15 +1084,15 @@ export function ControlPlanePage() {
                 ))}
               </Select>
             </Field>
-            <Field label="暫停原因預設值" hint="供 schedule board 的 pause action 重用。">
+            <Field label="暫停原因預設值" hint="供排程看板的暫停動作重用。">
               <Input
                 value={schedulePauseReason}
                 onChange={(event) => setSchedulePauseReason(event.target.value)}
-                placeholder="例如：Weather hold before launch window."
+                placeholder="例如：天候不佳，暫停起飛窗口。"
               />
             </Field>
-            <Field label="排程政策" hint="Batch A 先用單次或簡化 recurrence 展示控制平面的核心訊息。">
-              <TextArea readOnly value="status=scheduled; recurrence=每週一 09:00; alertCoverage=mission_failure/analysis_failure/report_generation_failure" />
+            <Field label="排程政策" hint="先用單次或簡化 recurrence 展示控制平面的核心訊息。">
+              <TextArea readOnly value="狀態 = 已排程；週期 = 每週一 09:00；告警覆蓋 = 任務失敗 / 分析失敗 / 報表失敗" />
             </Field>
             {scheduleError ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1015,9 +1111,7 @@ export function ControlPlanePage() {
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            schedule board
-          </p>
+          {eyebrowLabel('排程看板')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">排程看板</h2>
           <div className="mt-4 space-y-4">
             {siteSchedules.length === 0 ? (
@@ -1101,9 +1195,7 @@ export function ControlPlanePage() {
     return (
       <div className="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-            dispatch controls
-          </p>
+          {eyebrowLabel('派工設定')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">建立派工</h2>
           <div className="mt-4 grid gap-4">
             <Field label="負責人">
@@ -1147,16 +1239,14 @@ export function ControlPlanePage() {
               </div>
             ) : null}
             <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4 text-sm text-chrome-700">
-              派工只定義任務執行責任與 handoff note，不代表 web 或 server 端進入飛行控制迴路。
+              派工只定義任務執行責任與交接備註，不代表 web 或 server 端進入飛行控制迴路。
             </div>
           </div>
         </Panel>
 
         <div className="space-y-6">
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              dispatch queue
-            </p>
+            {eyebrowLabel('任務佇列')}
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">任務佇列</h2>
             <div className="mt-4 space-y-4">
               {siteMissions.length === 0 ? (
@@ -1242,10 +1332,10 @@ export function ControlPlanePage() {
                           </ActionButton>
                         ) : null}
                         {dispatch && !['completed', 'failed'].includes(dispatch.status) ? (
-                          <ActionButton
-                            variant="secondary"
-                            disabled={!canWriteSelectedSite || updateDispatch.isPending}
-                            onClick={() => void handleDispatchTransition(dispatch.dispatchId, 'failed')}
+                      <ActionButton
+                        variant="secondary"
+                        disabled={!canWriteSelectedSite || updateDispatch.isPending}
+                        onClick={() => void handleDispatchTransition(dispatch.dispatchId, 'failed')}
                           >
                             標記失敗
                           </ActionButton>
@@ -1265,9 +1355,7 @@ export function ControlPlanePage() {
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-              active dispatch board
-            </p>
+            {eyebrowLabel('派工看板')}
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">派工看板</h2>
             <div className="mt-4 space-y-4">
               {siteDispatches.length === 0 ? (
@@ -1315,7 +1403,7 @@ export function ControlPlanePage() {
                         <Metric label="schedule" value={dispatch.scheduleId ?? '未綁定'} />
                       </div>
                       <div className="mt-4 rounded-2xl border border-chrome-200 bg-white px-4 py-3 text-sm text-chrome-700">
-                        {dispatch.note ?? '目前沒有 handoff note。'}
+                        {dispatch.note ?? '目前沒有交接備註。'}
                       </div>
                     </div>
                   )
@@ -1331,7 +1419,7 @@ export function ControlPlanePage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="control plane"
+        eyebrow="自主巡檢控制平面"
         title={workspace.title}
         subtitle={workspace.description}
         action={
@@ -1362,6 +1450,8 @@ export function ControlPlanePage() {
           ))}
         </div>
       </Panel>
+
+      {renderWorkspaceGuide()}
 
       {workspace.key === 'dashboard' ? renderDashboard() : null}
       {workspace.key === 'routes' ? renderRoutesWorkspace() : null}
