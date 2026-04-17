@@ -45,6 +45,10 @@ The purpose is to show:
   - dedicated workspaces for routes, templates, schedules, and dispatch
   - mission detail is reorganized into planning / dispatch / execution-report sections
   - route / template / schedule / dispatch DTOs expose product-style summary metadata needed for presentation and review
+- Batch B formalizes site-map context and site-linked route reuse:
+  - site records now carry `SiteMap`, `SiteZone`, `LaunchPoint`, and `InspectionViewpoint` metadata
+  - `/sites/{siteId}` becomes the site-detail workspace for map context, launch points, viewpoints, and active routes/templates
+  - route preview, route duration, and template policy summaries are exposed directly from the site workspace
 
 ## Scope
 
@@ -98,6 +102,10 @@ These contracts are locked in Batch 1 even if endpoint rollout happens in later 
 
 ### Control Plane Contracts
 
+- `SiteMap`
+- `SiteZone`
+- `LaunchPoint`
+- `InspectionViewpoint`
 - `InspectionWaypoint`
 - `InspectionRoute`
 - `InspectionTemplate`
@@ -107,6 +115,11 @@ These contracts are locked in Batch 1 even if endpoint rollout happens in later 
 
 The productized control plane also expects these summary fields even when they are derived from existing JSON state:
 
+- `Site.siteMap`
+- `Site.activeRouteCount`
+- `Site.activeTemplateCount`
+- `Site.activeRoutes`
+- `Site.activeTemplates`
 - `InspectionRoute.version`
 - `InspectionRoute.previewPolyline`
 - `InspectionRoute.estimatedDurationSec`
@@ -157,6 +170,8 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 
 - `/control-plane`
   - dashboard summary for site count, route/template coverage, schedule pressure, dispatch pressure, latest report, latest anomaly, and internal handoff state
+- `/sites/{siteId}`
+  - site-detail workspace for map context, zones, launch points, viewpoints, and active route/template coverage
 - `/control-plane/routes`
   - route library and route creation workspace
 - `/control-plane/templates`
@@ -191,15 +206,16 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 The minimum demo path is:
 
 1. Select an existing site or create a site-map record
-2. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage
-3. Open the route workspace and review the route preview and planning summary
-4. Open the template workspace and review evidence/report policy
-5. Open the schedule workspace and show execution timing and alert coverage
-6. Open the dispatch workspace and assign a mission
-7. Open the mission record
-8. Show imagery-derived events and evidence
-9. Open the generated report summary
-10. Download the report artifact
+2. Open the site-detail workspace and show map context, launch points, viewpoints, and active route/template coverage
+3. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage
+4. Open the route workspace and review the route preview and planning summary
+5. Open the template workspace and review evidence/report policy
+6. Open the schedule workspace and show execution timing and alert coverage
+7. Open the dispatch workspace and assign a mission
+8. Open the mission record
+9. Show imagery-derived events and evidence
+10. Open the generated report summary
+11. Download the report artifact
 
 The repeatable rehearsal path and evidence package now live in:
 

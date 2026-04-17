@@ -87,6 +87,10 @@ class Site(SQLModel, table=True):
     address: str
     lat: float
     lng: float
+    map_config_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    zones_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    launch_points_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    viewpoints_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     notes: str = ""
     created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")

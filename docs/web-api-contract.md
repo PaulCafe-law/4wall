@@ -186,11 +186,64 @@ Response also sets the `fw_refresh` cookie.
 
 ### GET /v1/sites/{siteId}
 
-- returns site profile, recent missions, and invoice summary
+- returns site profile plus:
+  - `siteMap`
+  - `activeRouteCount`
+  - `activeTemplateCount`
+  - `activeRoutes`
+  - `activeTemplates`
 
 ### PATCH /v1/sites/{siteId}
 
 - internal, `ops`, or `customer_admin`
+
+#### Site Map Contract Additions
+
+`Site` is no longer just an address-book record. The productized control plane expects every site response to support:
+
+- `siteMap.baseMapType`
+- `siteMap.center`
+- `siteMap.zoom`
+- `siteMap.version`
+- `siteMap.zones[]`
+- `siteMap.launchPoints[]`
+- `siteMap.viewpoints[]`
+- `activeRouteCount`
+- `activeTemplateCount`
+- `activeRoutes[]`
+- `activeTemplates[]`
+
+`SiteZone` should support:
+
+- `zoneId`
+- `label`
+- `kind`
+- `polygon`
+- `note`
+- `isActive`
+
+`LaunchPoint` should support:
+
+- `launchPointId`
+- `label`
+- `kind`
+- `lat`
+- `lng`
+- `headingDeg`
+- `altitudeM`
+- `isActive`
+
+`InspectionViewpoint` should support:
+
+- `viewpointId`
+- `label`
+- `purpose`
+- `lat`
+- `lng`
+- `headingDeg`
+- `altitudeM`
+- `distanceToFacadeM`
+- `isActive`
 
 ## Missions
 
@@ -295,6 +348,12 @@ They do not send any real-time control command to Android or the aircraft.
 
 The productized control-plane slice also expects:
 
+- site summary fields:
+  - `siteMap`
+  - `activeRouteCount`
+  - `activeTemplateCount`
+  - `activeRoutes`
+  - `activeTemplates`
 - route summary fields:
   - `version`
   - `previewPolyline`
@@ -320,6 +379,8 @@ The web surface is intentionally split into product workspaces:
 
 - `/control-plane`
   - dashboard summary for sites, routes, schedules, dispatch pressure, latest report, and latest anomalies
+- `/sites/{siteId}`
+  - site-detail workspace for map context, zones, launch points, viewpoints, and active route/template coverage
 - `/control-plane/routes`
   - route library and route-creation workspace
 - `/control-plane/templates`

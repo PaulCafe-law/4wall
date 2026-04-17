@@ -130,6 +130,64 @@ export interface SitePayload {
     lng: number
   }
   notes?: string
+  siteMap?: SiteMapPayload
+}
+
+export interface SiteZonePayload {
+  zoneId?: string
+  label: string
+  kind: 'inspection_boundary' | 'priority_facade' | 'restricted_area' | 'staging_area'
+  polygon: Array<{ lat: number; lng: number }>
+  note?: string | null
+  isActive?: boolean
+}
+
+export interface LaunchPointPayload {
+  launchPointId?: string
+  label: string
+  kind: 'primary' | 'backup'
+  lat: number
+  lng: number
+  headingDeg?: number | null
+  altitudeM?: number | null
+  isActive?: boolean
+}
+
+export interface InspectionViewpointPayload {
+  viewpointId?: string
+  label: string
+  purpose: 'overview' | 'facade' | 'detail'
+  lat: number
+  lng: number
+  headingDeg?: number | null
+  altitudeM?: number | null
+  distanceToFacadeM?: number | null
+  isActive?: boolean
+}
+
+export interface SiteMapPayload {
+  baseMapType: 'satellite' | 'roadmap' | 'hybrid'
+  center: {
+    lat: number
+    lng: number
+  }
+  zoom: number
+  version: number
+  zones: SiteZonePayload[]
+  launchPoints: LaunchPointPayload[]
+  viewpoints: InspectionViewpointPayload[]
+}
+
+export interface SitePatchPayload {
+  name?: string
+  externalRef?: string
+  address?: string
+  location?: {
+    lat: number
+    lng: number
+  }
+  notes?: string
+  siteMap?: SiteMapPayload
 }
 
 export interface MissionPlanPayload {
@@ -292,6 +350,12 @@ export const api = {
   createSite: (token: string, payload: SitePayload) =>
     apiFetch<Site>('/v1/sites', {
       method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  patchSite: (token: string, siteId: string, payload: SitePatchPayload) =>
+    apiFetch<Site>(`/v1/sites/${siteId}`, {
+      method: 'PATCH',
       token,
       body: JSON.stringify(payload),
     }),

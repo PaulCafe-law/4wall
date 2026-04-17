@@ -15,6 +15,8 @@ from app.web_dto import (
     InspectionScheduleDto,
     InspectionTemplateDto,
     InspectionWaypointDto,
+    SiteRouteSummaryDto,
+    SiteTemplateSummaryDto,
 )
 
 
@@ -75,6 +77,10 @@ def _estimate_route_duration_seconds(waypoints: list[dict], planning_parameters:
 
 
 def serialize_route(route: InspectionRoute) -> InspectionRouteDto:
+    estimated_duration = _estimate_route_duration_seconds(
+        route.waypoints_json,
+        route.planning_parameters_json,
+    )
     return InspectionRouteDto(
         routeId=route.id,
         organizationId=route.organization_id,
@@ -84,10 +90,7 @@ def serialize_route(route: InspectionRoute) -> InspectionRouteDto:
         version=int(route.planning_parameters_json.get("routeVersion") or 1),
         pointCount=len(route.waypoints_json),
         previewPolyline=_preview_polyline(route.waypoints_json),
-        estimatedDurationSec=_estimate_route_duration_seconds(
-            route.waypoints_json,
-            route.planning_parameters_json,
-        ),
+        estimatedDurationSec=estimated_duration,
         waypoints=[InspectionWaypointDto.model_validate(waypoint) for waypoint in route.waypoints_json],
         planningParameters=route.planning_parameters_json,
         createdAt=route.created_at,
@@ -109,6 +112,32 @@ def serialize_template(template: InspectionTemplate) -> InspectionTemplateDto:
         reportMode=str(template.inspection_profile_json.get("reportMode") or "html_report"),
         reviewMode=str(template.inspection_profile_json.get("reviewMode") or "operator_review"),
         createdAt=template.created_at,
+        updatedAt=template.updated_at,
+    )
+
+
+def serialize_route_summary(route: InspectionRoute) -> SiteRouteSummaryDto:
+    return SiteRouteSummaryDto(
+        routeId=route.id,
+        name=route.name,
+        version=int(route.planning_parameters_json.get("routeVersion") or 1),
+        pointCount=len(route.waypoints_json),
+        estimatedDurationSec=_estimate_route_duration_seconds(
+            route.waypoints_json,
+            route.planning_parameters_json,
+        ),
+        updatedAt=route.updated_at,
+    )
+
+
+def serialize_template_summary(template: InspectionTemplate) -> SiteTemplateSummaryDto:
+    return SiteTemplateSummaryDto(
+        templateId=template.id,
+        routeId=template.route_id,
+        name=template.name,
+        evidencePolicy=str(template.inspection_profile_json.get("evidencePolicy") or "capture_key_frames"),
+        reportMode=str(template.inspection_profile_json.get("reportMode") or "html_report"),
+        reviewMode=str(template.inspection_profile_json.get("reviewMode") or "operator_review"),
         updatedAt=template.updated_at,
     )
 

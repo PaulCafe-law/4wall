@@ -212,3 +212,123 @@ def test_customer_viewer_can_read_but_not_write_control_plane_records(client, se
     assert list_response.status_code == 200, list_response.text
     assert len(list_response.json()) == 1
     assert create_response.status_code == 403
+
+
+def test_site_detail_returns_site_map_context_and_active_route_template_summaries(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Site Detail Org")
+        org_id = org.id
+        seed_user(
+            session,
+            email="admin@site-detail.test",
+            password=PASSWORD,
+            org_roles=[(org_id, "customer_admin")],
+        )
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@site-detail.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "name": "Tower A",
+            "externalRef": "tower-a",
+            "address": "Taipei",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "notes": "Facade demo site",
+        },
+    )
+    assert site_response.status_code == 200, site_response.text
+    site = site_response.json()
+    site_id = site["siteId"]
+    assert site["siteMap"]["baseMapType"] == "satellite"
+    assert len(site["siteMap"]["zones"]) == 1
+    assert len(site["siteMap"]["launchPoints"]) == 1
+    assert len(site["siteMap"]["viewpoints"]) == 1
+
+    route_response = client.post(
+        "/v1/inspection/routes",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "name": "Tower A facade loop",
+            "description": "Demo envelope",
+            "planningParameters": {"routeMode": "site-envelope-demo", "routeVersion": 2},
+            "waypoints": [
+                {
+                    "kind": "transit",
+                    "lat": 25.0337,
+                    "lng": 121.5643,
+                    "altitudeM": 40,
+                    "label": "ingress",
+                },
+                {
+                    "kind": "inspection_viewpoint",
+                    "lat": 25.03391,
+                    "lng": 121.56452,
+                    "altitudeM": 32,
+                    "label": "facade",
+                    "dwellSeconds": 18,
+                },
+            ],
+        },
+    )
+    assert route_response.status_code == 200, route_response.text
+    route_id = route_response.json()["routeId"]
+
+    template_response = client.post(
+        "/v1/inspection/templates",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "routeId": route_id,
+            "name": "Facade standard",
+            "description": "Operator reviewed",
+            "inspectionProfile": {
+                "profile": "facade-standard",
+                "evidencePolicy": "capture_key_frames",
+                "reportMode": "html_report",
+                "reviewMode": "operator_review",
+            },
+            "alertRules": [{"kind": "mission_failure"}],
+        },
+    )
+    assert template_response.status_code == 200, template_response.text
+
+    detail_response = client.get(f"/v1/sites/{site_id}", headers=headers)
+    assert detail_response.status_code == 200, detail_response.text
+    detail = detail_response.json()
+
+    assert detail["activeRouteCount"] == 1
+    assert detail["activeTemplateCount"] == 1
+    assert detail["activeRoutes"][0]["routeId"] == route_id
+    assert detail["activeRoutes"][0]["version"] == 2
+    assert detail["activeRoutes"][0]["estimatedDurationSec"] > 0
+    assert detail["activeTemplates"][0]["name"] == "Facade standard"
+    assert detail["activeTemplates"][0]["reportMode"] == "html_report"
+
+    patch_response = client.patch(
+        f"/v1/sites/{site_id}",
+        headers=headers,
+        json={
+            "name": "Tower A Updated",
+            "location": {"lat": 25.034, "lng": 121.565},
+            "siteMap": {
+                "baseMapType": "hybrid",
+                "center": {"lat": 25.034, "lng": 121.565},
+                "zoom": 19,
+                "version": 3,
+                "zones": detail["siteMap"]["zones"],
+                "launchPoints": detail["siteMap"]["launchPoints"],
+                "viewpoints": detail["siteMap"]["viewpoints"],
+            },
+        },
+    )
+    assert patch_response.status_code == 200, patch_response.text
+    patched = patch_response.json()
+    assert patched["name"] == "Tower A Updated"
+    assert patched["siteMap"]["baseMapType"] == "hybrid"
+    assert patched["siteMap"]["version"] == 3
