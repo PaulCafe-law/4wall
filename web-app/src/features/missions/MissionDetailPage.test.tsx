@@ -150,6 +150,7 @@ describe('MissionDetailPage', () => {
         alertRules: [],
         nextRunAt: '2026-04-18T09:00:00Z',
         lastRunAt: null,
+        lastDispatchedAt: '2026-04-17T08:40:00Z',
         pauseReason: null,
         lastOutcome: 'scheduled_for_execution',
         createdAt: '2026-04-17T08:00:00Z',
@@ -164,6 +165,7 @@ describe('MissionDetailPage', () => {
         dispatchedAt: '2026-04-17T08:40:00Z',
         acceptedAt: '2026-04-17T08:42:00Z',
         closedAt: null,
+        lastUpdatedAt: '2026-04-17T08:42:00Z',
         dispatchedByUserId: 'user-1',
         assignee: 'observer-01',
         executionTarget: 'field-team',
@@ -196,5 +198,7 @@ describe('MissionDetailPage', () => {
     expect(screen.getByText('Surface discoloration detected on the east facade.')).toBeInTheDocument()
     expect(screen.getAllByText('2 inspection events were generated for Tower A Delivery.')).toHaveLength(2)
     expect(screen.getByText('observer-01')).toBeInTheDocument()
+    expect(screen.getByText(/最近派工/)).toBeInTheDocument()
+    expect(screen.getByText(/最後更新/)).toBeInTheDocument()
   })
 })

@@ -46,8 +46,8 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - customer viewer deployed smoke if viewer smoke credentials are configured
   - site map read path and site selection
   - route/template create or edit path if the release touched control-plane surfaces
-  - schedule create or edit path if the release touched control-plane surfaces
-  - dispatch path if the release touched control-plane surfaces
+  - schedule create, pause/resume, cancel/complete, and `lastOutcome` / `lastDispatchedAt` visibility if the release touched control-plane surfaces
+  - dispatch create, send/accept/complete/fail transitions, assignee / execution target / handoff note rendering, and dispatch board visibility if the release touched control-plane surfaces
   - overview aggregate cards, including pending actions, ready-for-delivery reminders, invoice reminders, recent deliveries, and setup guidance when a workspace has no sites or no missions
   - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
   - mission list with explicit delivery badges, publish time, failure reason, and clean customer-facing copy
@@ -74,6 +74,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Re-run `.github/workflows/smoke-beta.yml` against production values.
 - Validate the same core customer flows on production.
 - Reconfirm any route/template/schedule/dispatch surface touched by the release on production.
+- Reconfirm schedule lifecycle and dispatch board state transitions on production if the release touched control-plane surfaces.
 - Reconfirm mission detail still shows linked planning metadata for one dispatched mission when the release touched control-plane surfaces.
 - Reconfirm one clean-pass mission and one report-failed mission show the same reporting state across mission detail, support, and live ops when the release touched the event/report slice.
 - Reconfirm the explicit admin account can still open `/team`, resend an invite, and update organization settings after promotion.

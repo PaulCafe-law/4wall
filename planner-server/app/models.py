@@ -136,6 +136,11 @@ class InspectionSchedule(SQLModel, table=True):
     planned_at: datetime | None = None
     recurrence: str | None = None
     status: str = Field(default="scheduled", index=True)
+    next_run_at: datetime | None = None
+    last_run_at: datetime | None = None
+    last_dispatched_at: datetime | None = None
+    pause_reason: str | None = None
+    last_outcome: str | None = None
     alert_rules_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
@@ -240,6 +245,8 @@ class DispatchRecord(SQLModel, table=True):
     status: str = Field(default="queued", index=True)
     note: str | None = None
     dispatched_at: datetime = Field(default_factory=utc_now)
+    accepted_at: datetime | None = None
+    closed_at: datetime | None = None
     updated_at: datetime = Field(default_factory=utc_now)
 
 

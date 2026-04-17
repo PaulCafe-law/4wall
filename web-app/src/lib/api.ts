@@ -291,6 +291,7 @@ export interface InspectionSchedulePayload {
   plannedAt?: string
   recurrence?: string
   status?: InspectionSchedule['status']
+  pauseReason?: string
   alertRules?: Array<Partial<InspectionAlertRule> & Pick<InspectionAlertRule, 'kind'>>
 }
 
@@ -498,9 +499,25 @@ export const api = {
       token,
       body: JSON.stringify(payload),
     }),
+  listInspectionDispatches: (
+    token: string,
+    filters?: {
+      organizationId?: string
+      siteId?: string
+      missionId?: string
+      scheduleId?: string
+      status?: string
+    },
+  ) => apiFetch<DispatchRecord[]>(`/v1/inspection/dispatch${buildQuery(filters ?? {})}`, { token }),
   dispatchMission: (token: string, missionId: string, payload: DispatchPayload) =>
     apiFetch<DispatchRecord>(`/v1/missions/${missionId}/dispatch`, {
       method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  patchInspectionDispatch: (token: string, dispatchId: string, payload: Partial<DispatchPayload>) =>
+    apiFetch<DispatchRecord>(`/v1/inspection/dispatch/${dispatchId}`, {
+      method: 'PATCH',
       token,
       body: JSON.stringify(payload),
     }),
