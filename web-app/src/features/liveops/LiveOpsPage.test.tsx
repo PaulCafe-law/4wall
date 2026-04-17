@@ -157,16 +157,16 @@ describe('LiveOpsPage', () => {
       }),
     })
 
-    expect(await screen.findByRole('heading', { name: 'Live Ops' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '即時營運' })).toBeInTheDocument()
     expect(await screen.findAllByText('Tower A Demo')).not.toHaveLength(0)
-    expect(await screen.findByText('Monitor-only degradation is active')).toBeInTheDocument()
-    expect(await screen.findAllByText('Telemetry stale')).not.toHaveLength(0)
-    expect(await screen.findAllByText('Video stale')).not.toHaveLength(0)
-    expect(await screen.findByText('Report generation failed')).toBeInTheDocument()
+    expect(await screen.findByText('監看模式已降級')).toBeInTheDocument()
+    expect(await screen.findAllByText('遙測延遲')).not.toHaveLength(0)
+    expect(await screen.findAllByText('影像延遲')).not.toHaveLength(0)
+    expect(await screen.findByText('報表產生失敗')).toBeInTheDocument()
     expect(
       await screen.findAllByText('Analysis pipeline could not derive inspection events from the mission imagery.'),
     ).not.toHaveLength(0)
-    expect(await screen.findByRole('button', { name: 'Request remote control' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '申請遠端接管' })).toBeInTheDocument()
     expect(await screen.findByText('HQ takeover drill')).toBeInTheDocument()
     expect(await screen.findByText('CONTROL_LEASE_UPDATED')).toBeInTheDocument()
     expect(document.querySelector('a[href="/missions/mission-001"]')).toBeTruthy()

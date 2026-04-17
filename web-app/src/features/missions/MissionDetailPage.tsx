@@ -29,63 +29,65 @@ function formatBytes(sizeBytes: number) {
 
 function deliveryHeadline(state: MissionDetail['delivery']['state']) {
   if (state === 'published') {
-    return 'Mission artifacts published'
+    return '任務成果已發布'
   }
   if (state === 'ready') {
-    return 'Mission bundle ready'
+    return '任務封裝已就緒'
   }
   if (state === 'failed') {
-    return 'Mission delivery failed'
+    return '任務交付失敗'
   }
-  return 'Mission is still planning'
+  return '任務仍在規劃中'
 }
 
 function deliveryMessage(mission: MissionDetail) {
   if (mission.delivery.state === 'published') {
-    return 'Core mission artifacts are published and available for authenticated download.'
+    return '核心任務成果已發布，可供授權使用者下載。'
   }
   if (mission.delivery.state === 'ready') {
-    return 'Planning completed, but the publish handoff has not run yet.'
+    return '規劃已完成，但成果發布交接尚未執行。'
   }
   if (mission.delivery.state === 'failed') {
-    return mission.delivery.failureReason ?? 'The mission record failed before its artifact bundle could be published.'
+    return mission.delivery.failureReason ?? '這筆任務在成果封裝發布前就已失敗。'
   }
-  return 'The route planner is still building the mission package.'
+  return '路徑規劃器仍在產生任務封裝。'
 }
 
 function reportStatusMessage(mission: MissionDetail) {
   if (mission.reportStatus === 'ready') {
     if (mission.eventCount === 0) {
-      return mission.latestReport?.summary ?? 'Inspection analysis completed with no anomaly events. The report artifact can be used as a clean-pass handoff.'
+      return (
+        mission.latestReport?.summary ?? '巡檢分析已完成，未偵測到異常事件。這份報表可作為無異常交付版本。'
+      )
     }
-    return mission.latestReport?.summary ?? 'Inspection analysis completed and a report artifact is available.'
+    return mission.latestReport?.summary ?? '巡檢分析已完成，且已有可下載的報表檔案。'
   }
   if (mission.reportStatus === 'failed') {
-    return mission.latestReport?.summary ?? 'The analysis pipeline failed to generate a usable report.'
+    return mission.latestReport?.summary ?? '分析流程未能產生可用的巡檢報表。'
   }
   if (mission.reportStatus === 'generating' || mission.reportStatus === 'queued') {
-    return 'Analysis has started but report generation is not finished yet.'
+    return '分析已開始，但報表產生尚未完成。'
   }
-  return 'No inspection report has been generated for this mission yet.'
+  return '這筆任務目前尚未產生巡檢報表。'
 }
 
 function nextStepSummary(mission: MissionDetail) {
   if (mission.reportStatus === 'ready') {
     if (mission.eventCount === 0) {
-      return 'Use the HTML report as the clean inspection handoff and keep the mission as a no-findings example in the demo flow.'
+      return '請將 HTML 報表作為無異常交付版本，並保留這筆任務作為 clean-pass demo 範例。'
     }
-    return 'Review the event list, open the evidence artifacts, and export the HTML report for stakeholder handoff.'
+    return '請檢視事件清單、開啟證據檔案，並匯出 HTML 報表供利害關係人交付使用。'
   }
   if (mission.reportStatus === 'failed') {
-    return 'Use the internal reprocess controls to regenerate the demo report or simulate a no-findings pass.'
+    return '請使用內部重跑控制重新產生 demo 報表，或切換成無異常版本。'
   }
   if (mission.delivery.state === 'published') {
-    return 'Artifacts are ready. The next step is to generate or review the inspection report.'
+    return '成果已就緒，下一步是產生或檢視巡檢報表。'
   }
   if (mission.delivery.state === 'failed') {
-    return 'Resolve mission delivery first. Reporting should not be trusted until the mission bundle is available.'
+    return '請先解決任務交付問題，在任務封裝可用前不應信任報表流程。'
   }
-  return 'Wait for the planning and publish steps to finish before generating the inspection report.'
+  return '請等待規劃與發布步驟完成，再進行報表產生。'
 }
 
 function eventCardClass(severity: InspectionEvent['severity']) {
@@ -126,10 +128,10 @@ export function MissionDetailPage() {
       setAnalysisError(null)
       setAnalysisNotice(
         payload.mode === 'analysis_failed'
-          ? 'Recorded a demo analysis failure state for this mission.'
+          ? '已將這筆任務切換成 demo 用的分析失敗狀態。'
           : payload.mode === 'no_findings'
-            ? 'Generated a clean no-findings demo report.'
-            : 'Generated demo events, evidence artifacts, and an inspection report.',
+            ? '已產生無異常的 demo 報表。'
+            : '已產生 demo 事件、證據檔案與巡檢報表。',
       )
     },
   })
@@ -139,7 +141,7 @@ export function MissionDetailPage() {
     mode: 'open' | 'download',
   ) {
     if (!auth.session?.accessToken) {
-      setArtifactError('Session expired before the artifact request could be sent.')
+      setArtifactError('工作階段已過期，無法發送成果檔案請求。')
       return
     }
 
@@ -158,7 +160,7 @@ export function MissionDetailPage() {
       window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 60_000)
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setArtifactError(formatApiError(detail, `Unable to ${mode === 'download' ? 'download' : 'open'} artifact.`))
+      setArtifactError(formatApiError(detail, `無法${mode === 'download' ? '下載' : '開啟'}成果檔案。`))
     }
   }
 
@@ -169,15 +171,15 @@ export function MissionDetailPage() {
       await reprocessAnalysis.mutateAsync({ mode })
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setAnalysisError(formatApiError(detail, 'Unable to reprocess mission analysis.'))
+      setAnalysisError(formatApiError(detail, '無法重新產生任務分析結果。'))
     }
   }
 
   if (!missionId) {
     return (
       <EmptyState
-        title="Mission id is missing"
-        body="Open this page from the mission index so the mission, reporting, and artifact records can be loaded together."
+        title="缺少任務編號"
+        body="請從任務清單開啟此頁，才能一次載入任務、報表與成果檔案資料。"
       />
     )
   }
@@ -185,7 +187,7 @@ export function MissionDetailPage() {
   if (missionQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">Loading mission detail and reporting context...</p>
+        <p className="text-sm text-chrome-700">正在載入任務詳情與報表脈絡…</p>
       </Panel>
     )
   }
@@ -193,8 +195,8 @@ export function MissionDetailPage() {
   if (!missionQuery.data) {
     return (
       <EmptyState
-        title="Mission detail is unavailable"
-        body="This mission could not be loaded. Verify the mission id and the current organization scope."
+        title="目前無法載入任務詳情"
+        body="找不到這筆任務，請確認任務編號與目前組織範圍。"
       />
     )
   }
@@ -208,9 +210,9 @@ export function MissionDetailPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Mission detail"
+        eyebrow="任務詳情"
         title={mission.missionName}
-        subtitle="Review planning metadata, demo analysis output, evidence artifacts, and the downloadable inspection report from one mission record."
+        subtitle="從單一任務頁面檢視規劃資料、demo 分析輸出、證據檔案，以及可下載的巡檢報表。"
         action={
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={mission.status} />
@@ -225,32 +227,32 @@ export function MissionDetailPage() {
           <Panel>
             <DataList
               rows={[
-                { label: 'Mission id', value: mission.missionId },
-                { label: 'Organization', value: mission.organizationId ?? 'Not linked' },
-                { label: 'Site', value: mission.siteId ?? 'Not linked' },
-                { label: 'Bundle', value: mission.bundleVersion },
-                { label: 'Created', value: formatDateTime(mission.createdAt) },
-                { label: 'Event count', value: mission.eventCount },
+                { label: '任務編號', value: mission.missionId },
+                { label: '組織', value: mission.organizationId ?? '尚未掛接' },
+                { label: '場域', value: mission.siteId ?? '尚未掛接' },
+                { label: '封裝版本', value: mission.bundleVersion },
+                { label: '建立時間', value: formatDateTime(mission.createdAt) },
+                { label: '事件數量', value: mission.eventCount },
               ]}
             />
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Reporting</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Inspection analysis and report</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">報表流程</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">巡檢分析與報表</h2>
             <p className="mt-2 text-sm text-chrome-700">{reportStatusMessage(mission)}</p>
             <div className="mt-4">
               <DataList
                 rows={[
-                  { label: 'Report status', value: <StatusBadge status={mission.reportStatus} /> },
+                  { label: '報表狀態', value: <StatusBadge status={mission.reportStatus} /> },
                   {
-                    label: 'Generated',
-                    value: mission.reportGeneratedAt ? formatDateTime(mission.reportGeneratedAt) : 'Not generated yet',
+                    label: '產生時間',
+                    value: mission.reportGeneratedAt ? formatDateTime(mission.reportGeneratedAt) : '尚未產生',
                   },
-                  { label: 'Event count', value: mission.eventCount },
+                  { label: '事件數量', value: mission.eventCount },
                   {
-                    label: 'Report artifact',
-                    value: mission.latestReport?.downloadArtifact?.artifactName ?? 'No report artifact yet',
+                    label: '報表檔案',
+                    value: mission.latestReport?.downloadArtifact?.artifactName ?? '目前沒有報表檔案',
                   },
                 ]}
               />
@@ -270,21 +272,21 @@ export function MissionDetailPage() {
             {auth.isInternal ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 <ActionButton onClick={() => void handleReprocess('normal')} disabled={reprocessAnalysis.isPending}>
-                  {reprocessAnalysis.isPending ? 'Reprocessing...' : 'Generate demo findings'}
+                  {reprocessAnalysis.isPending ? '重新產生中…' : '產生 demo 異常'}
                 </ActionButton>
                 <ActionButton
                   variant="secondary"
                   onClick={() => void handleReprocess('no_findings')}
                   disabled={reprocessAnalysis.isPending}
                 >
-                  Generate clean report
+                  產生無異常報表
                 </ActionButton>
                 <ActionButton
                   variant="ghost"
                   onClick={() => void handleReprocess('analysis_failed')}
                   disabled={reprocessAnalysis.isPending}
                 >
-                  Simulate analysis failure
+                  模擬分析失敗
                 </ActionButton>
               </div>
             ) : null}
@@ -292,28 +294,28 @@ export function MissionDetailPage() {
             {latestReportArtifact ? (
               <div className="mt-5 flex flex-wrap gap-2">
                 <ActionButton variant="secondary" onClick={() => void openArtifact(latestReportArtifact, 'open')}>
-                  Open report artifact
+                  開啟報表檔案
                 </ActionButton>
                 <ActionButton variant="ghost" onClick={() => void openArtifact(latestReportArtifact, 'download')}>
-                  Download report
+                  下載報表
                 </ActionButton>
               </div>
             ) : null}
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Evidence gallery</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Detected events</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">證據圖庫</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">偵測到的事件</h2>
             <div className="mt-4 grid gap-4">
               {mission.events.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-chrome-300 bg-chrome-50/70 px-4 py-6">
-                  <p className="font-medium text-chrome-950">No inspection events recorded</p>
+                  <p className="font-medium text-chrome-950">目前沒有巡檢事件</p>
                   <p className="mt-2 text-sm text-chrome-700">
                     {mission.reportStatus === 'ready'
-                      ? 'This mission currently represents a clean inspection pass. Use the report artifact as the no-findings handoff.'
+                      ? '這筆任務目前代表無異常巡檢，可直接用報表作為 clean-pass 交付版本。'
                       : mission.reportStatus === 'failed'
-                        ? 'Reporting failed before any evidence artifacts could be generated. Rerun the demo analysis from the internal controls.'
-                        : 'Generate a demo report to create anomaly events and evidence artifacts, or keep the mission as a clean pass.'}
+                        ? '報表流程在產生證據檔案前失敗了，請從內部控制重跑 demo 分析。'
+                        : '可以產生 demo 報表建立異常事件與證據檔案，或保留這筆任務作為無異常版本。'}
                   </p>
                 </div>
               ) : (
@@ -327,7 +329,7 @@ export function MissionDetailPage() {
                       </span>
                     </div>
                     <p className="mt-3 text-sm text-chrome-800">{event.summary}</p>
-                    <p className="mt-2 text-xs text-chrome-600">Detected {formatDateTime(event.detectedAt)}</p>
+                    <p className="mt-2 text-xs text-chrome-600">偵測時間 {formatDateTime(event.detectedAt)}</p>
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       {event.evidenceArtifacts.map((artifact) => (
@@ -336,7 +338,7 @@ export function MissionDetailPage() {
                           variant="secondary"
                           onClick={() => void openArtifact(artifact, 'open')}
                         >
-                          Open {artifact.artifactName}
+                          開啟 {artifact.artifactName}
                         </ActionButton>
                       ))}
                     </div>
@@ -348,22 +350,22 @@ export function MissionDetailPage() {
 
           {mission.route || mission.template || mission.schedule || mission.dispatch ? (
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Control plane</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Linked planning metadata</h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">控制平面</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">掛接中的規劃資料</h2>
               <div className="mt-4">
                 <DataList
                   rows={[
-                    { label: 'Route', value: mission.route?.name ?? 'Not linked' },
-                    { label: 'Route points', value: mission.route ? mission.route.pointCount : 'Not linked' },
-                    { label: 'Template', value: mission.template?.name ?? 'Not linked' },
-                    { label: 'Schedule', value: mission.schedule?.status ?? 'Not linked' },
+                    { label: '航線', value: mission.route?.name ?? '尚未掛接' },
+                    { label: '航線點位', value: mission.route ? mission.route.pointCount : '尚未掛接' },
+                    { label: '模板', value: mission.template?.name ?? '尚未掛接' },
+                    { label: '排程', value: mission.schedule?.status ?? '尚未掛接' },
                     {
-                      label: 'Planned at',
-                      value: mission.schedule?.plannedAt ? formatDateTime(mission.schedule.plannedAt) : 'Not scheduled',
+                      label: '預定時間',
+                      value: mission.schedule?.plannedAt ? formatDateTime(mission.schedule.plannedAt) : '未排程',
                     },
-                    { label: 'Dispatch', value: mission.dispatch?.status ?? 'Not dispatched' },
-                    { label: 'Assignee', value: mission.dispatch?.assignee ?? 'Not set' },
-                    { label: 'Target', value: mission.dispatch?.executionTarget ?? 'Not set' },
+                    { label: '派工', value: mission.dispatch?.status ?? '尚未派工' },
+                    { label: '執行人員', value: mission.dispatch?.assignee ?? '未設定' },
+                    { label: '執行目標', value: mission.dispatch?.executionTarget ?? '未設定' },
                   ]}
                 />
               </div>
@@ -371,8 +373,8 @@ export function MissionDetailPage() {
           ) : null}
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Raw mission contract</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Planner request and response</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">原始任務契約</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">規劃請求與回應</h2>
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
               <pre className="overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
                 {JSON.stringify(mission.request, null, 2)}
@@ -386,7 +388,7 @@ export function MissionDetailPage() {
 
         <div className="space-y-6">
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Delivery</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成果交付</p>
             <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">
               {deliveryHeadline(mission.delivery.state)}
             </h2>
@@ -394,26 +396,26 @@ export function MissionDetailPage() {
             <div className="mt-4">
               <DataList
                 rows={[
-                  { label: 'Delivery', value: <StatusBadge status={mission.delivery.state} /> },
+                  { label: '交付狀態', value: <StatusBadge status={mission.delivery.state} /> },
                   {
-                    label: 'Published',
-                    value: mission.delivery.publishedAt ? formatDateTime(mission.delivery.publishedAt) : 'Not published yet',
+                    label: '發布時間',
+                    value: mission.delivery.publishedAt ? formatDateTime(mission.delivery.publishedAt) : '尚未發布',
                   },
                   {
-                    label: 'Failure reason',
-                    value: mission.delivery.failureReason ?? 'No mission-level delivery failure recorded',
+                    label: '失敗原因',
+                    value: mission.delivery.failureReason ?? '目前沒有任務層級的交付失敗紀錄',
                   },
                 ]}
               />
             </div>
             <div className="mt-4 rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Next step</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">下一步</p>
               <p className="mt-2 text-sm text-chrome-700">{nextStepSummary(mission)}</p>
             </div>
           </Panel>
 
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Artifacts</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成果檔案</p>
             <div className="mt-4 space-y-3">
               {coreArtifacts.map((artifact) => (
                 <div key={artifact.artifactName} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
@@ -424,16 +426,16 @@ export function MissionDetailPage() {
                     />
                   </div>
                   <p className="mt-2 text-xs text-chrome-600">
-                    v{artifact.version} | {formatBytes(artifact.sizeBytes)} | {artifact.contentType}
+                    v{artifact.version}｜{formatBytes(artifact.sizeBytes)}｜{artifact.contentType}
                   </p>
-                  <p className="mt-1 text-xs text-chrome-600">Published {formatDateTime(artifact.publishedAt)}</p>
+                  <p className="mt-1 text-xs text-chrome-600">發布時間 {formatDateTime(artifact.publishedAt)}</p>
                   <p className="mt-1 break-all text-xs text-chrome-600">sha256 {artifact.checksumSha256}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <ActionButton variant="secondary" onClick={() => void openArtifact(artifact, 'open')}>
-                      Open
+                      開啟
                     </ActionButton>
                     <ActionButton variant="ghost" onClick={() => void openArtifact(artifact, 'download')}>
-                      Download
+                      下載
                     </ActionButton>
                   </div>
                 </div>
@@ -448,7 +450,7 @@ export function MissionDetailPage() {
 
           <div className="flex justify-end">
             <Link to="/missions" className="rounded-full border border-chrome-300 px-4 py-2 text-sm text-chrome-800">
-              Back to missions
+              返回任務清單
             </Link>
           </div>
         </div>

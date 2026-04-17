@@ -26,9 +26,9 @@ import { useOrganizationChoices } from '../../lib/organization-choices'
 import { formatApiError, formatSearchMode } from '../../lib/presentation'
 
 const siteSchema = z.object({
-  organizationId: z.string().min(1, '請選擇組織'),
-  name: z.string().min(1, '場址名稱不可為空'),
-  address: z.string().min(1, '地址不可為空'),
+  organizationId: z.string().min(1, '請選擇組織。'),
+  name: z.string().min(1, '請輸入場域名稱。'),
+  address: z.string().min(1, '請輸入場域地址。'),
   externalRef: z.string().optional(),
   lat: z.coerce.number(),
   lng: z.coerce.number(),
@@ -94,8 +94,7 @@ export function SitesPage() {
     const haystack = `${site.name} ${site.address} ${site.externalRef ?? ''}`.toLowerCase()
     return haystack.includes(deferredSearch.toLowerCase())
   })
-  const selectedSite =
-    filteredSites.find((site) => site.siteId === siteId) ?? filteredSites[0] ?? null
+  const selectedSite = filteredSites.find((site) => site.siteId === siteId) ?? filteredSites[0] ?? null
 
   const onSubmit = handleSubmit(async (values) => {
     try {
@@ -103,13 +102,13 @@ export function SitesPage() {
       reset()
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setError('root', { message: formatApiError(detail, '無法建立場址，請稍後再試。') })
+      setError('root', { message: formatApiError(detail, '無法建立場域，請稍後再試。') })
     }
   })
 
   const rail = selectedSite ? (
     <Panel>
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">場址明細</p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">場域摘要</p>
       <h2 className="mt-3 font-display text-2xl font-semibold text-chrome-950">{selectedSite.name}</h2>
       <div className="mt-4">
         <DataList
@@ -117,20 +116,20 @@ export function SitesPage() {
             { label: '地址', value: selectedSite.address },
             { label: '外部參考', value: selectedSite.externalRef ?? '未設定' },
             {
-              label: '位置',
+              label: '座標',
               value: `${selectedSite.location.lat.toFixed(5)}, ${selectedSite.location.lng.toFixed(5)}`,
             },
-            { label: '更新時間', value: formatDate(selectedSite.updatedAt) },
-            { label: '備註', value: selectedSite.notes || '尚無備註' },
+            { label: '更新日期', value: formatDate(selectedSite.updatedAt) },
+            { label: '備註', value: selectedSite.notes || '目前沒有備註' },
           ]}
         />
       </div>
     </Panel>
   ) : (
     <Panel>
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">尚未選取場址</p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">尚未選擇場域</p>
       <p className="mt-3 text-sm text-chrome-700">
-        選取場址後，就能查看地址、位置與備註。若你有可寫入權限，也可以直接建立新場址。
+        從左側選取場域，即可查看地址、座標與附註，也可以直接建立新的場域作為控制平面起點。
       </p>
     </Panel>
   )
@@ -139,16 +138,16 @@ export function SitesPage() {
     <div className="space-y-6">
       <ShellSection
         eyebrow="客戶工作區"
-        title="場址"
-        subtitle="先整理場址資料，再在任務請求中指定作業地點、組織與對應的地址資訊。"
+        title="場域"
+        subtitle="管理所有任務與控制平面的場域背景資料，後續的航線、排程與巡檢紀錄都會掛接在場域之下。"
         action={
           choices.length > 0 ? (
             <Modal
               open={isOpen}
               onOpenChange={setIsOpen}
-              title="建立場址"
-              description="建立完成後，這個場址就能在後續的任務請求中被選取。"
-              trigger={<ActionButton>新增場址</ActionButton>}
+              title="建立場域"
+              description="建立新的場域後，就能作為任務與控制平面的基礎資料。"
+              trigger={<ActionButton>新增場域</ActionButton>}
             >
               <form className="space-y-4" onSubmit={onSubmit}>
                 <Field label="組織" error={errors.organizationId?.message}>
@@ -160,7 +159,7 @@ export function SitesPage() {
                     ))}
                   </Select>
                 </Field>
-                <Field label="場址名稱" error={errors.name?.message}>
+                <Field label="場域名稱" error={errors.name?.message}>
                   <Input {...register('name')} />
                 </Field>
                 <Field label="地址" error={errors.address?.message}>
@@ -187,7 +186,7 @@ export function SitesPage() {
                 ) : null}
                 <div className="flex justify-end">
                   <ActionButton disabled={createSite.isPending} type="submit">
-                    {createSite.isPending ? '建立中…' : '建立場址'}
+                    {createSite.isPending ? '建立中…' : '建立場域'}
                   </ActionButton>
                 </div>
               </form>
@@ -197,9 +196,9 @@ export function SitesPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="可見場址" value={filteredSites.length} hint="依目前角色範圍顯示可查看的場址。" />
-        <Metric label="可寫入組織" value={choices.length} hint="若為 0，代表目前是唯讀權限。" />
-        <Metric label="搜尋模式" value={formatSearchMode(Boolean(deferredSearch))} hint="輸入名稱、地址或外部參考即可篩選。" />
+        <Metric label="可見場域" value={filteredSites.length} hint="目前篩選條件下可查看的場域數量。" />
+        <Metric label="可寫組織" value={choices.length} hint="至少要有一個可寫組織，才能新增場域。" />
+        <Metric label="搜尋模式" value={formatSearchMode(Boolean(deferredSearch))} hint="可用場域名稱或地址快速篩選。" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -207,32 +206,28 @@ export function SitesPage() {
           <Panel>
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">搜尋場址</p>
-                <p className="mt-1 text-sm text-chrome-700">可依名稱、地址或外部參考進行搜尋。</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">搜尋場域</p>
+                <p className="mt-1 text-sm text-chrome-700">可依場域名稱、地址或外部參考搜尋。</p>
               </div>
               <div className="w-full md:w-80">
-                <Input
-                  placeholder="搜尋場址"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
+                <Input placeholder="搜尋場域" value={search} onChange={(event) => setSearch(event.target.value)} />
               </div>
             </div>
           </Panel>
 
           {sitesQuery.isLoading ? (
             <Panel>
-              <p className="text-sm text-chrome-700">正在載入場址…</p>
+              <p className="text-sm text-chrome-700">正在載入場域資料…</p>
             </Panel>
           ) : null}
 
           {!sitesQuery.isLoading && filteredSites.length === 0 ? (
             <EmptyState
-              title={allSites.length === 0 ? '尚無場址' : '找不到符合條件的場址'}
+              title={allSites.length === 0 ? '目前還沒有場域' : '找不到符合條件的場域'}
               body={
                 allSites.length === 0
-                  ? '先建立第一個場址，之後就能在新增任務請求時指定它。'
-                  : '請調整搜尋條件，或清空關鍵字後重新查看全部場址。'
+                  ? '先建立第一個場域，之後才能掛接任務、控制平面與巡檢報表。'
+                  : '請調整搜尋條件，或建立新的場域資料。'
               }
             />
           ) : null}

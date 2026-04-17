@@ -200,7 +200,7 @@ describe('TeamPage', () => {
 
     const inviteLinkInput = (await screen.findByLabelText('invite-link')) as HTMLInputElement
     expect(inviteLinkInput.value).toContain('/invite?token=invite-token-2')
-    expect(screen.getByText('邀請已建立，請分享最新邀請連結。')).toBeInTheDocument()
+    expect(screen.getByText('邀請已建立，可直接分享最新邀請連結。')).toBeInTheDocument()
   })
 
   it('lets customer admins resend and revoke pending invites', async () => {
@@ -250,7 +250,7 @@ describe('TeamPage', () => {
     await waitFor(() => {
       expect(apiMock.resendInvite).toHaveBeenCalledWith('test-token', 'invite-1')
     })
-    expect(await screen.findByText('已重新寄送邀請，請改用新的邀請連結。')).toBeInTheDocument()
+    expect(await screen.findByText('邀請已重寄，最新連結可再次分享。')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'revoke-invite-invite-1' }))
     await waitFor(() => {
@@ -300,7 +300,9 @@ describe('TeamPage', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: 'save-member-membership-1' }))
 
-    expect(await screen.findByText('每個組織至少要保留一位啟用中的客戶管理者。')).toBeInTheDocument()
+    expect(
+      await screen.findByText('至少要保留一位啟用中的客戶管理員，不能把最後一位管理員降權或停用。'),
+    ).toBeInTheDocument()
   })
 
   it('keeps management actions read-only for customer viewers', async () => {
@@ -348,7 +350,7 @@ describe('TeamPage', () => {
       }),
     })
 
-    expect(await screen.findByText('無法載入團隊資料')).toBeInTheDocument()
+    expect(await screen.findByText('目前無法載入團隊資料')).toBeInTheDocument()
     expect(screen.getByText(formatApiError('forbidden_role', 'fallback'))).toBeInTheDocument()
   })
 })

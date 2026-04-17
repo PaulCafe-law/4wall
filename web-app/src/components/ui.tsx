@@ -85,7 +85,7 @@ export function EmptyState({
   return (
     <Panel className="border-dashed border-chrome-300 bg-chrome-50/80 text-center">
       <div className="mx-auto flex max-w-xl flex-col items-center gap-4 py-10">
-        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">Empty state</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">空狀態</p>
         <h2 className="font-display text-2xl font-semibold text-chrome-950">{title}</h2>
         <p className="text-sm text-chrome-700 md:text-base">{body}</p>
         {action}

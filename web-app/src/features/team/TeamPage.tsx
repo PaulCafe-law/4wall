@@ -25,7 +25,7 @@ import { formatApiError, formatBoolean, formatRole, formatRoleOption } from '../
 import type { InviteCreateResponse, OrganizationMember } from '../../lib/types'
 
 const inviteSchema = z.object({
-  email: z.string().email('請輸入有效的電子郵件。'),
+  email: z.string().email('請輸入有效的電子郵件地址。'),
   role: z.enum(['customer_admin', 'customer_viewer']),
 })
 
@@ -52,7 +52,7 @@ function buildInviteUrl(inviteToken: string) {
 
 function formatTeamError(detail: string | undefined, fallback: string) {
   if (detail === 'organization_requires_customer_admin') {
-    return '每個組織至少要保留一位啟用中的客戶管理者。'
+    return '至少要保留一位啟用中的客戶管理員，不能把最後一位管理員降權或停用。'
   }
   return formatApiError(detail, fallback)
 }
@@ -76,20 +76,20 @@ function describeInviteState(expiresAt: string): InviteState {
     return {
       label: '已過期',
       tone: 'critical',
-      description: '這筆邀請已過期，若仍需要加入，請重新寄送新的邀請連結。',
+      description: '這筆邀請已過期，必須重新寄送新的邀請連結。',
     }
   }
   if (remainingMs <= 24 * 60 * 60 * 1000) {
     return {
       label: '即將到期',
       tone: 'warning',
-      description: '這筆邀請會在 24 小時內失效，建議確認對方是否已完成開通。',
+      description: '這筆邀請會在 24 小時內過期，若對方尚未開通，建議盡快重寄。',
     }
   }
   return {
-    label: '等待接受',
+    label: '有效中',
     tone: 'neutral',
-    description: '對方尚未完成開通，可直接複製最新邀請連結或重新寄送。',
+    description: '這筆邀請仍然有效，可等待對方完成開通。',
   }
 }
 
@@ -141,7 +141,7 @@ export function TeamPage() {
     onSuccess: async (response) => {
       setLatestInvite(response)
       setCopyState('idle')
-      setInviteNotice('邀請已建立，請分享最新邀請連結。')
+      setInviteNotice('邀請已建立，可直接分享最新邀請連結。')
       await queryClient.invalidateQueries({ queryKey: ['organization', selectedId] })
       setIsInviteModalOpen(false)
     },
@@ -171,7 +171,7 @@ export function TeamPage() {
     onSuccess: async (response) => {
       setLatestInvite(response)
       setCopyState('idle')
-      setInviteNotice('已重新寄送邀請，請改用新的邀請連結。')
+      setInviteNotice('邀請已重寄，最新連結可再次分享。')
       await queryClient.invalidateQueries({ queryKey: ['organization', selectedId] })
     },
     onSettled: () => {
@@ -186,7 +186,7 @@ export function TeamPage() {
     onSuccess: async () => {
       setOrganizationNameDraft(null)
       setOrganizationError(null)
-      setOrganizationNotice('組織設定已更新。')
+      setOrganizationNotice('組織名稱已更新。')
       await queryClient.invalidateQueries({ queryKey: ['organization', selectedId] })
       await queryClient.invalidateQueries({ queryKey: ['organizations'] })
     },
@@ -269,7 +269,7 @@ export function TeamPage() {
       reset()
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setError('root', { message: formatTeamError(detail, '建立邀請失敗，請稍後再試。') })
+      setError('root', { message: formatTeamError(detail, '無法建立邀請，請稍後再試。') })
     }
   })
 
@@ -329,7 +329,7 @@ export function TeamPage() {
       await updateOrganization.mutateAsync({ name: nextName })
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setOrganizationError(formatTeamError(detail, '更新組織設定失敗，請稍後再試。'))
+      setOrganizationError(formatTeamError(detail, '無法更新組織名稱，請稍後再試。'))
       setOrganizationNotice(null)
     }
   }
@@ -369,7 +369,7 @@ export function TeamPage() {
       const detail = error instanceof ApiError ? error.detail : undefined
       setMemberErrors((current) => ({
         ...current,
-        [member.membershipId]: formatTeamError(detail, '更新成員設定失敗，請稍後再試。'),
+        [member.membershipId]: formatTeamError(detail, '無法更新成員設定，請稍後再試。'),
       }))
     }
   }
@@ -377,7 +377,7 @@ export function TeamPage() {
   if (choicesLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">正在載入組織與成員資料。</p>
+        <p className="text-sm text-chrome-700">正在載入可見組織…</p>
       </Panel>
     )
   }
@@ -385,8 +385,8 @@ export function TeamPage() {
   if (!choices.length) {
     return (
       <EmptyState
-        title="目前沒有可查看的組織"
-        body="請先加入組織，或請內部團隊協助建立與指派你的帳號權限。"
+        title="目前沒有可存取的組織"
+        body="請先建立組織，或由管理者邀請你加入既有組織。"
       />
     )
   }
@@ -395,8 +395,8 @@ export function TeamPage() {
     const detail = detailQuery.error instanceof ApiError ? detailQuery.error.detail : undefined
     return (
       <EmptyState
-        title="無法載入團隊資料"
-        body={formatTeamError(detail, '目前無法取得組織與成員資料，請稍後再試。')}
+        title="目前無法載入團隊資料"
+        body={formatTeamError(detail, '無法取得組織團隊資料，請稍後再試。')}
       />
     )
   }
@@ -404,16 +404,16 @@ export function TeamPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Team And Access"
+        eyebrow="團隊與存取"
         title="團隊"
-        subtitle="管理組織名稱、成員角色、啟用狀態與待接受邀請。客戶管理者可建立與重新寄送邀請，客戶檢視者則維持只讀。"
+        subtitle="管理組織名稱、成員角色、啟用狀態，以及可分享的邀請連結。"
         action={
           canManageOrganization ? (
             <Modal
               open={isInviteModalOpen}
               onOpenChange={setIsInviteModalOpen}
-              title="新增團隊邀請"
-              description="建立新的邀請連結後，可直接分享給待加入成員。對方完成開通後，會依指定角色加入目前組織。"
+              title="建立邀請"
+              description="建立新的團隊邀請並取得可分享的開通連結。"
               trigger={
                 <ActionButton aria-label="invite-team-member" type="button">
                   邀請成員
@@ -437,7 +437,7 @@ export function TeamPage() {
                 ) : null}
                 <div className="flex justify-end">
                   <ActionButton aria-label="submit-invite" disabled={createInvite.isPending} type="submit">
-                    {createInvite.isPending ? '建立中' : '建立邀請'}
+                    {createInvite.isPending ? '建立中…' : '送出邀請'}
                   </ActionButton>
                 </div>
               </form>
@@ -462,10 +462,10 @@ export function TeamPage() {
         <Panel>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Latest Invite</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最新邀請連結</h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">最新邀請</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">可分享的邀請連結</h2>
               <p className="mt-2 text-sm text-chrome-700">
-                {latestInvite.invite.email} · {formatRole(latestInvite.invite.role)}
+                {latestInvite.invite.email}｜{formatRole(latestInvite.invite.role)}
               </p>
             </div>
             <div className="flex gap-2">
@@ -476,7 +476,7 @@ export function TeamPage() {
                 variant="secondary"
                 onClick={() => void handleCopyInviteLink()}
               >
-                複製邀請連結
+                複製連結
               </ActionButton>
               <ActionButton
                 aria-label="dismiss-latest-invite"
@@ -505,10 +505,10 @@ export function TeamPage() {
                 copyState === 'copied'
                   ? '邀請連結已複製。'
                   : copyState === 'unavailable'
-                    ? '目前環境不支援自動複製，請手動複製下方連結。'
+                    ? '目前瀏覽器不支援直接複製，請手動複製下方連結。'
                     : copyState === 'failed'
                       ? '複製失敗，請手動複製下方連結。'
-                      : '請分享這個連結給待加入成員。'
+                      : '可直接把這個連結分享給新成員。'
               }
             >
               <Input aria-label="invite-link" readOnly value={latestInviteUrl} />
@@ -527,7 +527,7 @@ export function TeamPage() {
 
       {detailQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在載入組織與團隊詳情。</p>
+          <p className="text-sm text-chrome-700">正在載入組織與團隊資料…</p>
         </Panel>
       ) : null}
 
@@ -535,12 +535,12 @@ export function TeamPage() {
         <>
           <div className="grid gap-4 md:grid-cols-4">
             <Metric label="成員總數" value={detailQuery.data.members.length} />
-            <Metric label="啟用中成員" value={activeMemberCount} />
-            <Metric label="啟用中管理者" value={activeAdminCount} />
+            <Metric label="啟用成員" value={activeMemberCount} />
+            <Metric label="啟用管理員" value={activeAdminCount} />
             <Metric
               label="待接受邀請"
               value={detailQuery.data.pendingInvites.length}
-              hint={canManageOrganization ? '可重新寄送或撤銷邀請。' : '僅可查看目前邀請狀態。'}
+              hint={canManageOrganization ? '可查看與重寄目前尚未接受的邀請。' : '目前可唯讀查看邀請狀態。'}
             />
           </div>
 
@@ -549,14 +549,12 @@ export function TeamPage() {
               <Panel>
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                      Organization Settings
-                    </p>
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">組織設定</p>
                     <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
                       {detailQuery.data.name}
                     </h2>
                     <p className="mt-2 text-sm text-chrome-700">
-                      維護組織名稱與基本設定，這些資訊會出現在任務、帳單與團隊流程中。
+                      調整組織名稱與查看啟用狀態。只有具備寫入權限的客戶管理員可以修改。
                     </p>
                   </div>
                 </div>
@@ -564,7 +562,7 @@ export function TeamPage() {
                 <form className="mt-4 grid gap-4" onSubmit={(event) => void handleOrganizationSave(event)}>
                   <Field
                     label="組織名稱"
-                    hint={canManageOrganization ? '更新後會同步反映在所有客戶向頁面。' : '你目前只有檢視權限。'}
+                    hint={canManageOrganization ? '修改後會立即同步到網站其他頁面。' : '你目前只有檢視權限。'}
                     error={organizationError ?? undefined}
                   >
                     <Input
@@ -589,7 +587,7 @@ export function TeamPage() {
                       disabled={!canManageOrganization || updateOrganization.isPending}
                       type="submit"
                     >
-                      {updateOrganization.isPending ? '儲存中' : '儲存組織設定'}
+                      {updateOrganization.isPending ? '儲存中…' : '儲存組織設定'}
                     </ActionButton>
                   </div>
                 </form>
@@ -598,8 +596,8 @@ export function TeamPage() {
                   <DataList
                     rows={[
                       { label: 'Slug', value: detailQuery.data.slug },
-                      { label: '啟用中', value: formatBoolean(detailQuery.data.isActive) },
-                      { label: '可編輯', value: formatBoolean(canManageOrganization) },
+                      { label: '啟用狀態', value: formatBoolean(detailQuery.data.isActive) },
+                      { label: '可寫入', value: formatBoolean(canManageOrganization) },
                     ]}
                   />
                 </div>
@@ -607,12 +605,10 @@ export function TeamPage() {
 
               <Panel>
                 <div className="flex flex-col gap-2">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                    Members And Roles
-                  </p>
-                  <h2 className="font-display text-2xl font-semibold text-chrome-950">成員與角色</h2>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成員與角色</p>
+                  <h2 className="font-display text-2xl font-semibold text-chrome-950">成員管理</h2>
                   <p className="text-sm text-chrome-700">
-                    客戶管理者可調整成員角色與啟用狀態；客戶檢視者僅能查看目前的分工與狀態。
+                    可調整成員角色與啟用狀態。系統會保護最後一位啟用中的客戶管理員，不允許直接移除。
                   </p>
                 </div>
 
@@ -694,7 +690,7 @@ export function TeamPage() {
                               variant={changed ? 'primary' : 'secondary'}
                               onClick={() => void handleMemberSave(member)}
                             >
-                              {isSaving ? '儲存中' : '儲存成員設定'}
+                              {isSaving ? '儲存中…' : '儲存成員設定'}
                             </ActionButton>
                           </div>
                         ) : null}
@@ -707,7 +703,7 @@ export function TeamPage() {
                   {roleSummary.map(([role, count]) => (
                     <div key={role} className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4">
                       <p className="font-medium text-chrome-950">{role}</p>
-                      <p className="mt-2 text-sm text-chrome-700">{count} 位</p>
+                      <p className="mt-2 text-sm text-chrome-700">{count} 人</p>
                     </div>
                   ))}
                 </div>
@@ -715,14 +711,14 @@ export function TeamPage() {
             </div>
 
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Pending Invites</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">待接受邀請</h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">待接受邀請</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">邀請管理</h2>
               <p className="mt-2 text-sm text-chrome-700">
-                這裡會集中顯示尚未完成開通的邀請。管理者可重新寄送新的邀請連結，或撤銷不再需要的邀請。
+                可查看邀請是否有效、是否即將到期，並依需要重寄或撤銷。
               </p>
               {inviteActionErrorDetail ? (
                 <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {formatTeamError(inviteActionErrorDetail, '團隊邀請操作失敗，請稍後再試。')}
+                  {formatTeamError(inviteActionErrorDetail, '無法處理邀請，請稍後再試。')}
                 </div>
               ) : null}
               <div className="mt-4 grid gap-3">
@@ -752,9 +748,9 @@ export function TeamPage() {
                         <div className="mt-3">
                           <DataList
                             rows={[
-                              { label: '最近寄送', value: formatDateTime(invite.createdAt) },
+                              { label: '建立時間', value: formatDateTime(invite.createdAt) },
                               { label: '到期時間', value: formatDateTime(invite.expiresAt) },
-                              { label: '狀態說明', value: inviteState.description },
+                              { label: '目前狀態', value: inviteState.description },
                             ]}
                           />
                         </div>
@@ -770,7 +766,7 @@ export function TeamPage() {
                                 void resendInvite.mutateAsync({ inviteId: invite.inviteId })
                               }}
                             >
-                              {isResendPending ? '重新寄送中' : '重新寄送'}
+                              {isResendPending ? '重寄中…' : '重寄邀請'}
                             </ActionButton>
                             <ActionButton
                               aria-label={`revoke-invite-${invite.inviteId}`}
@@ -782,7 +778,7 @@ export function TeamPage() {
                                 void revokeInvite.mutateAsync({ inviteId: invite.inviteId })
                               }}
                             >
-                              {isRevokePending ? '撤銷中' : '撤銷邀請'}
+                              {isRevokePending ? '撤銷中…' : '撤銷邀請'}
                             </ActionButton>
                           </div>
                         ) : null}

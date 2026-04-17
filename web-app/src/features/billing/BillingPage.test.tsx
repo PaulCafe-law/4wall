@@ -170,10 +170,8 @@ describe('BillingPage', () => {
       }),
     })
 
-    expect(await screen.findByText('目前有 1 筆帳單即將到期')).toBeInTheDocument()
-    expect(screen.getByText('建議先提醒付款安排，避免帳單直接轉成逾期狀態。')).toBeInTheDocument()
-    expect(
-      screen.getByText('有 1 筆帳單在一週內到期，適合先提醒付款安排，避免直接滑入逾期。'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('目前有 1 張帳單即將到期')).toBeInTheDocument()
+    expect(screen.getByText('請提早確認付款進度，避免這些帳單變成逾期案件。')).toBeInTheDocument()
+    expect(screen.getByText('目前有 1 張帳單即將到期，建議提前確認付款進度。')).toBeInTheDocument()
   })
 })

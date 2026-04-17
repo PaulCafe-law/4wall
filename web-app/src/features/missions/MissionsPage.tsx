@@ -7,25 +7,25 @@ import type { MissionSummary } from '../../lib/types'
 
 function describeMission(mission: MissionSummary) {
   if (mission.reportStatus === 'ready') {
-    return `${mission.eventCount} event${mission.eventCount === 1 ? '' : 's'} recorded. Report ready${
-      mission.reportGeneratedAt ? ` | ${formatDateTime(mission.reportGeneratedAt)}` : ''
-    }.`
+    return `${mission.eventCount} 筆事件已記錄，報表已完成${
+      mission.reportGeneratedAt ? `｜${formatDateTime(mission.reportGeneratedAt)}` : ''
+    }。`
   }
   if (mission.reportStatus === 'failed') {
-    return mission.failureReason ?? 'Mission delivery succeeded, but report generation failed.'
+    return mission.failureReason ?? '任務成果已完成，但報表產生失敗。'
   }
   if (mission.deliveryStatus === 'failed') {
-    return mission.failureReason ?? 'Mission delivery failed before artifacts or reporting could finish.'
+    return mission.failureReason ?? '任務在成果或報表完成前就已失敗。'
   }
   if (mission.deliveryStatus === 'published') {
     return mission.publishedAt
-      ? `Core artifacts published ${formatDateTime(mission.publishedAt)}. Reporting has not started yet.`
-      : 'Core artifacts are published. Reporting has not started yet.'
+      ? `核心成果已於 ${formatDateTime(mission.publishedAt)} 發布，報表流程尚未開始。`
+      : '核心成果已發布，報表流程尚未開始。'
   }
   if (mission.deliveryStatus === 'ready') {
-    return 'Mission bundle is ready, but the publish step has not run yet.'
+    return '任務封裝已就緒，但發布步驟尚未完成。'
   }
-  return 'Mission is still in planning.'
+  return '任務仍在規劃中。'
 }
 
 function sortByPriority(missions: MissionSummary[]) {
@@ -70,46 +70,46 @@ export function MissionsPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Mission delivery"
-        title="Missions"
-        subtitle="Track delivery state, inspection events, and generated reports without leaving the mission index."
+        eyebrow="任務交付"
+        title="任務"
+        subtitle="在任務清單中直接追蹤交付狀態、巡檢事件與報表產出，不需要離開任務索引頁。"
         action={
           <Link to="/missions/new" className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
-            Create mission
+            建立任務
           </Link>
         }
       />
 
       <div className="grid gap-4 md:grid-cols-5">
-        <Metric label="Total missions" value={missions.length} />
-        <Metric label="Planning" value={planningCount} hint="Still building route or bundle artifacts." />
-        <Metric label="Ready" value={readyCount} hint="Planning finished, waiting for publish or dispatch." />
-        <Metric label="Report ready" value={reportReadyCount} hint="Event analysis and report export are available." />
-        <Metric label="Needs review" value={failedCount} hint="Delivery or reporting requires follow-up." />
+        <Metric label="任務總數" value={missions.length} />
+        <Metric label="規劃中" value={planningCount} hint="仍在產生航線或封裝成果。" />
+        <Metric label="已就緒" value={readyCount} hint="規劃完成，等待發布或派工。" />
+        <Metric label="報表已完成" value={reportReadyCount} hint="事件分析與報表匯出都已可用。" />
+        <Metric label="待檢查" value={failedCount} hint="交付或報表流程仍需追蹤處理。" />
       </div>
 
       {publishedCount > 0 ? (
         <Panel className="border border-moss-200 bg-moss-50/60">
-          <p className="font-medium text-chrome-950">{publishedCount} mission artifact bundle(s) are published.</p>
+          <p className="font-medium text-chrome-950">已有 {publishedCount} 筆任務成果完成發布。</p>
           <p className="mt-2 text-sm text-chrome-700">
-            Open a mission to review events, evidence artifacts, and downloadable inspection reports.
+            開啟任務即可查看事件、證據檔案與可下載的巡檢報表。
           </p>
         </Panel>
       ) : null}
 
       {missionsQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">Loading mission delivery records...</p>
+          <p className="text-sm text-chrome-700">正在載入任務交付紀錄…</p>
         </Panel>
       ) : null}
 
       {!missionsQuery.isLoading && missions.length === 0 ? (
         <EmptyState
-          title="No missions yet"
-          body="Create the first mission to connect route planning, dispatch metadata, evidence artifacts, and inspection reports."
+          title="目前還沒有任務"
+          body="建立第一筆任務後，才能串起航線規劃、派工資料、證據檔案與巡檢報表。"
           action={
             <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
-              Create mission
+              建立任務
             </Link>
           }
         />
@@ -131,7 +131,7 @@ export function MissionsPage() {
                   </div>
                   <p className="mt-2 text-sm text-chrome-700">{describeMission(mission)}</p>
                   <p className="mt-2 text-xs text-chrome-500">
-                    Created {formatDateTime(mission.createdAt)} | Bundle {mission.bundleVersion} | Events {mission.eventCount}
+                    建立於 {formatDateTime(mission.createdAt)}｜封裝版本 {mission.bundleVersion}｜事件 {mission.eventCount}
                   </p>
                 </div>
                 <span className="max-w-full break-all font-mono text-[11px] uppercase tracking-[0.24em] text-chrome-500 md:max-w-xs md:text-right">

@@ -102,7 +102,7 @@ describe('SupportPage', () => {
       formatSupportWorkflowState('claimed'),
     )
     expect(screen.getByText(/Platform Ops/)).toBeInTheDocument()
-    expect(screen.getByText('Report blockers')).toBeInTheDocument()
+    expect(screen.getByText('報表阻塞')).toBeInTheDocument()
 
     fireEvent.click(screen.getByLabelText('support-action-claim-item-001'))
 

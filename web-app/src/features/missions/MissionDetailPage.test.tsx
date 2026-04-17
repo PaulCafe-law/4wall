@@ -130,14 +130,14 @@ describe('MissionDetailPage', () => {
     )
 
     expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
-    expect(screen.getByText('Inspection analysis and report')).toBeInTheDocument()
+    expect(screen.getByText('巡檢分析與報表')).toBeInTheDocument()
     expect(screen.getByText('2 inspection events were generated for Tower A Delivery.')).toBeInTheDocument()
-    expect(screen.getByText('Detected events')).toBeInTheDocument()
+    expect(screen.getByText('偵測到的事件')).toBeInTheDocument()
     expect(screen.getByText('Surface discoloration detected on the east facade.')).toBeInTheDocument()
     expect(screen.getAllByText('inspection_report.html').length).toBeGreaterThan(0)
     expect(screen.getAllByText('mission.kmz').length).toBeGreaterThan(0)
     expect(screen.getAllByText('mission_meta.json').length).toBeGreaterThan(0)
-    expect(screen.getByText('Next step')).toBeInTheDocument()
+    expect(screen.getByText('下一步')).toBeInTheDocument()
   })
 
   it('renders failure reason and recovery guidance when analysis or delivery failed', async () => {
@@ -191,8 +191,8 @@ describe('MissionDetailPage', () => {
     expect(screen.getAllByText('Route provider timed out for this site.').length).toBeGreaterThan(0)
     expect(screen.getByText('Analysis pipeline could not derive inspection events from the mission imagery.')).toBeInTheDocument()
     expect(
-      screen.getByText('Use the internal reprocess controls to regenerate the demo report or simulate a no-findings pass.'),
+      screen.getByText('請使用內部重跑控制重新產生 demo 報表，或切換成無異常版本。'),
     ).toBeInTheDocument()
-    expect(screen.getByText('No inspection events recorded')).toBeInTheDocument()
+    expect(screen.getByText('目前沒有巡檢事件')).toBeInTheDocument()
   })
 })
