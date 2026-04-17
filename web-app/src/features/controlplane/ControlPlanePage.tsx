@@ -20,7 +20,12 @@ import {
 import { ApiError, api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
-import { formatApiError } from '../../lib/presentation'
+import {
+  formatApiError,
+  formatStatus,
+  formatSupportCategory,
+  formatSupportSeverity,
+} from '../../lib/presentation'
 import type { Site } from '../../lib/types'
 
 type WorkspaceKey = 'dashboard' | 'routes' | 'templates' | 'schedules' | 'dispatch'
@@ -174,6 +179,10 @@ function dispatchTransitionCopy(status: string) {
   }
 }
 
+function executionSummaryHint(summary: { telemetryFreshness: string; reportStatus: string; eventCount: number }) {
+  return `遙測 ${formatStatus(summary.telemetryFreshness)} / 報表 ${formatStatus(summary.reportStatus)} / 事件 ${summary.eventCount}`
+}
+
 export function ControlPlanePage() {
   const auth = useAuth()
   const location = useLocation()
@@ -193,9 +202,9 @@ export function ControlPlanePage() {
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [dispatchError, setDispatchError] = useState<string | null>(null)
 
-  const overviewQuery = useAuthedQuery({
-    queryKey: ['web-overview', 'control-plane'],
-    queryFn: (token) => api.getOverview(token),
+  const dashboardQuery = useAuthedQuery({
+    queryKey: ['control-plane-dashboard'],
+    queryFn: (token) => api.getControlPlaneDashboard(token),
     staleTime: 10_000,
   })
   const sitesQuery = useAuthedQuery({
@@ -235,7 +244,7 @@ export function ControlPlanePage() {
   const schedules = schedulesQuery.data ?? []
   const dispatches = dispatchesQuery.data ?? []
   const missions = missionsQuery.data ?? []
-  const overview = overviewQuery.data
+  const dashboard = dashboardQuery.data
 
   const effectiveSiteId = sites.find((site) => site.siteId === selectedSiteId)?.siteId ?? sites[0]?.siteId ?? ''
   const selectedSite = sites.find((site) => site.siteId === effectiveSiteId) ?? null
@@ -269,7 +278,10 @@ export function ControlPlanePage() {
       payload: Parameters<typeof api.createInspectionRoute>[1]
     }) => api.createInspectionRoute(token, payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['inspection', 'routes'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'routes'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+      ])
       setRouteName('')
       setRouteError(null)
     },
@@ -285,7 +297,10 @@ export function ControlPlanePage() {
       payload: Parameters<typeof api.createInspectionTemplate>[1]
     }) => api.createInspectionTemplate(token, payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['inspection', 'templates'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'templates'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+      ])
       setTemplateName('')
       setTemplateError(null)
     },
@@ -301,7 +316,10 @@ export function ControlPlanePage() {
       payload: Parameters<typeof api.createInspectionSchedule>[1]
     }) => api.createInspectionSchedule(token, payload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['inspection', 'schedules'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'schedules'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+      ])
       setPlannedAt('')
       setScheduleError(null)
     },
@@ -317,7 +335,11 @@ export function ControlPlanePage() {
       payload: { scheduleId: string; body: Parameters<typeof api.patchInspectionSchedule>[2] }
     }) => api.patchInspectionSchedule(token, payload.scheduleId, payload.body),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['inspection', 'schedules'] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'schedules'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-alerts'] }),
+      ])
       setScheduleError(null)
     },
   })
@@ -345,8 +367,12 @@ export function ControlPlanePage() {
         queryClient.invalidateQueries({ queryKey: ['missions'] }),
         queryClient.invalidateQueries({ queryKey: ['mission'] }),
         queryClient.invalidateQueries({ queryKey: ['web-overview'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-alerts'] }),
         queryClient.invalidateQueries({ queryKey: ['inspection', 'dispatch'] }),
         queryClient.invalidateQueries({ queryKey: ['inspection', 'schedules'] }),
+        queryClient.invalidateQueries({ queryKey: ['support', 'queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['live-ops', 'flights'] }),
       ])
       setDispatchNote('')
       setDispatchError(null)
@@ -368,6 +394,10 @@ export function ControlPlanePage() {
         queryClient.invalidateQueries({ queryKey: ['missions'] }),
         queryClient.invalidateQueries({ queryKey: ['mission'] }),
         queryClient.invalidateQueries({ queryKey: ['web-overview'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['support', 'queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['live-ops', 'flights'] }),
       ])
       setDispatchError(null)
     },
@@ -521,23 +551,38 @@ export function ControlPlanePage() {
   function renderDashboard() {
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 xl:grid-cols-5">
-          <Metric label="場域數" value={overview?.siteCount ?? sites.length} hint="以 site map 為規劃脈絡" />
-          <Metric label="航線數" value={routes.length} hint="可重用的巡檢航線版本" />
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="場域數" value={dashboard?.siteCount ?? sites.length} hint="以 site map 為規劃脈絡" />
+          <Metric label="啟用航線" value={dashboard?.activeRouteCount ?? routes.length} hint="可重用的巡檢航線版本" />
+          <Metric
+            label="啟用模板"
+            value={dashboard?.activeTemplateCount ?? templates.length}
+            hint="inspection profile、證據與報表政策"
+          />
           <Metric
             label="已排程"
-            value={siteSchedules.filter((item) => item.status === 'scheduled').length}
+            value={dashboard?.scheduledMissionCount ?? siteSchedules.filter((item) => item.status === 'scheduled').length}
             hint="待執行排程"
           />
           <Metric
             label="待派工任務"
-            value={siteDispatches.filter((item) => ['queued', 'assigned', 'sent'].includes(item.status)).length}
+            value={dashboard?.dispatchPendingCount ?? siteDispatches.filter((item) => ['queued', 'assigned', 'sent'].includes(item.status)).length}
             hint="等候 dispatch 與 handoff"
           />
           <Metric
-            label="待處理營運提醒"
-            value={overview?.supportSummary?.openCount ?? 0}
-            hint="support / live ops 追蹤"
+            label="執行中任務"
+            value={dashboard?.runningMissionCount ?? siteMissions.filter((item) => item.status === 'running').length}
+            hint="已派工且正在執行的任務"
+          />
+          <Metric
+            label="失敗任務"
+            value={dashboard?.failedMissionCount ?? siteMissions.filter((item) => item.status === 'failed').length}
+            hint="需要 support / live ops 追蹤"
+          />
+          <Metric
+            label="待處理告警"
+            value={dashboard?.alertSummary.openCount ?? 0}
+            hint={`critical ${dashboard?.alertSummary.criticalCount ?? 0} / warning ${dashboard?.alertSummary.warningCount ?? 0}`}
           />
         </div>
 
@@ -625,26 +670,101 @@ export function ControlPlanePage() {
                 <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                   <p className="font-medium text-chrome-950">最新異常</p>
                   <p className="mt-2 text-sm text-chrome-700">
-                    {overview?.latestEventSummary?.summary ?? '目前沒有新的異常摘要。'}
+                    {dashboard?.latestEventSummary?.summary ?? '目前沒有新的異常摘要。'}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                   <p className="font-medium text-chrome-950">最新報表</p>
                   <p className="mt-2 text-sm text-chrome-700">
-                    {overview?.latestReportSummary?.summary ?? '目前沒有新的巡檢報表。'}
+                    {dashboard?.latestReportSummary?.summary ?? '目前沒有新的巡檢報表。'}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                   <p className="font-medium text-chrome-950">營運提醒</p>
                   <p className="mt-2 text-sm text-chrome-700">
-                    open {overview?.supportSummary?.openCount ?? 0} / critical{' '}
-                    {overview?.supportSummary?.criticalCount ?? 0}
+                    open {dashboard?.alertSummary.openCount ?? 0} / critical {dashboard?.alertSummary.criticalCount ?? 0}
                   </p>
                 </div>
               </div>
             </Panel>
+
+            <Panel>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+                alert center
+              </p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最近告警</h2>
+              <div className="mt-4 space-y-3">
+                {dashboard?.recentAlerts.length ? (
+                  dashboard.recentAlerts.map((alert) => (
+                    <div
+                      key={alert.alertId}
+                      className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium text-chrome-950">{alert.title}</p>
+                        <span className="rounded-full bg-chrome-100 px-3 py-1 text-xs text-chrome-700">
+                          {formatSupportCategory(alert.category)}
+                        </span>
+                        <span className="rounded-full bg-chrome-100 px-3 py-1 text-xs text-chrome-700">
+                          {formatSupportSeverity(alert.severity)}
+                        </span>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs text-chrome-700">
+                          {formatStatus(alert.status)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm text-chrome-700">{alert.summary}</p>
+                      <p className="mt-2 text-xs text-chrome-500">
+                        {alert.lastObservedAt ? formatDateTime(alert.lastObservedAt) : '尚未記錄觀測時間'}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    title="目前沒有告警"
+                    body="alert center 會收斂 telemetry、dispatch、mission 與 reporting 的異常。"
+                  />
+                )}
+              </div>
+            </Panel>
           </div>
         </div>
+
+        <Panel>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+            execution summaries
+          </p>
+          <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最近執行狀態</h2>
+          <div className="mt-4 grid gap-3 lg:grid-cols-3">
+            {dashboard?.recentExecutionSummaries.length ? (
+              dashboard.recentExecutionSummaries.map((summary) => (
+                <div
+                  key={summary.missionId}
+                  className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <Link to={`/missions/${summary.missionId}`} className="font-medium text-chrome-950 underline underline-offset-4">
+                      {summary.missionId}
+                    </Link>
+                    <StatusBadge status={summary.phase} />
+                  </div>
+                  <p className="mt-2 text-sm text-chrome-700">{executionSummaryHint(summary)}</p>
+                  <p className="mt-2 text-xs text-chrome-500">
+                    影像 {summary.lastImageryAt ? formatDateTime(summary.lastImageryAt) : '尚未收到'} / 遙測{' '}
+                    {summary.lastTelemetryAt ? formatDateTime(summary.lastTelemetryAt) : '尚未收到'}
+                  </p>
+                  {summary.failureReason ? (
+                    <p className="mt-2 text-xs text-red-700">{summary.failureReason}</p>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <EmptyState
+                title="目前沒有執行摘要"
+                body="mission execution summary 會在排程、派工與報表開始產生後出現在這裡。"
+              />
+            )}
+          </div>
+        </Panel>
 
         <Panel>
           <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">

@@ -54,6 +54,10 @@ The purpose is to show:
   - the schedule workspace becomes a lifecycle board with pause / resume / cancel / complete actions
   - dispatch records persist `acceptedAt` and `closedAt`, and gain a first-class dispatch board with assignment and status transitions
   - mission state now tracks dispatch progression more explicitly: `scheduled`, `dispatched`, `running`, `completed`, `failed`, and `report_ready`
+- Batch D adds shared operational read models:
+  - `/v1/control-plane/dashboard` becomes the single aggregate for route/template coverage, schedule pressure, dispatch pressure, latest report/event state, recent alerts, and recent execution summaries
+  - `/v1/control-plane/alerts` becomes the control-plane alert center for telemetry stale, battery low, bridge alerts, report failures, mission failures, and dispatch blockers
+  - `Mission Detail`, `Support`, and `Live Ops` now consume the same `executionSummary` language instead of inferring lifecycle state per page
 
 ## Scope
 
@@ -139,6 +143,9 @@ The productized control plane also expects these summary fields even when they a
 - `DispatchRecord.acceptedAt`
 - `DispatchRecord.closedAt`
 - `DispatchRecord.lastUpdatedAt`
+- `ControlPlaneDashboard`
+- `AlertCenterItem`
+- `MissionExecutionSummary`
 
 ### Event and Report Contracts
 
@@ -149,10 +156,13 @@ The productized control plane also expects these summary fields even when they a
 ### Internal Ops Contract Additions
 
 - `SupportQueueItem.category` includes `report_generation_failed`
+- `SupportQueueItem.category` includes `dispatch_blocked`
 - `LiveFlightSummary.reportStatus`
 - `LiveFlightSummary.reportGeneratedAt`
 - `LiveFlightSummary.eventCount`
 - `LiveFlightSummary.reportSummary`
+- `LiveFlightSummary.lastImageryAt`
+- `LiveFlightSummary.executionSummary`
 
 ## Endpoint Rollout Shape
 
@@ -172,6 +182,8 @@ These endpoints are Phase 1 targets. Control-plane and event/report endpoints no
 - `GET /v1/inspection/dispatch`
 - `POST /v1/missions/{missionId}/dispatch`
 - `PATCH /v1/inspection/dispatch/{dispatchId}`
+- `GET /v1/control-plane/dashboard`
+- `GET /v1/control-plane/alerts`
 
 ### Web Workspace Shape
 
@@ -200,6 +212,10 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 Batch C adds one more requirement to that convergence page:
 
 - schedule lifecycle and dispatch lifecycle must agree with mission status without requiring the operator to cross-check raw JSON
+
+Batch D adds another:
+
+- mission detail must expose a dedicated execution summary block with phase, telemetry freshness, last telemetry, last imagery, report status, event count, and failure reason
 
 ### Event and Report
 
@@ -246,6 +262,7 @@ Phase 1 demo functionality is accepted when:
 - `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass
 - schedule cards show next run, last run, pause reason, and last outcome without inferred placeholder values
 - dispatch cards show assignee, execution target, accepted time, closed time, and current handoff state
+- control-plane dashboard shows alert summary, recent alerts, and recent execution summaries without re-querying overview/support/live-ops separately
 - mission detail reflects dispatch lifecycle transitions directly:
   - `queued` -> mission `scheduled`
   - `assigned` / `sent` -> mission `dispatched`

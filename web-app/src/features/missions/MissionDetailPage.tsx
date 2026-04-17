@@ -90,6 +90,10 @@ export function MissionDetailPage() {
         queryClient.invalidateQueries({ queryKey: ['missions'] }),
         queryClient.invalidateQueries({ queryKey: ['missions', 'control-plane'] }),
         queryClient.invalidateQueries({ queryKey: ['web-overview'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['support', 'queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['live-ops', 'flights'] }),
       ])
       setAnalysisError(null)
       setAnalysisNotice(
@@ -303,6 +307,41 @@ export function MissionDetailPage() {
             </p>
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">執行與報表狀態</h2>
             <div className="mt-4 space-y-4">
+              {mission.executionSummary ? (
+                <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                  <p className="font-medium text-chrome-950">執行摘要</p>
+                  <div className="mt-3">
+                    <DataList
+                      rows={[
+                        { label: '執行階段', value: <StatusBadge status={mission.executionSummary.phase} /> },
+                        {
+                          label: '遙測新鮮度',
+                          value: <StatusBadge status={mission.executionSummary.telemetryFreshness} />,
+                        },
+                        {
+                          label: '最近一次遙測',
+                          value: mission.executionSummary.lastTelemetryAt
+                            ? formatDateTime(mission.executionSummary.lastTelemetryAt)
+                            : '尚未收到遙測',
+                        },
+                        {
+                          label: '最近一次影像',
+                          value: mission.executionSummary.lastImageryAt
+                            ? formatDateTime(mission.executionSummary.lastImageryAt)
+                            : '尚未收到影像',
+                        },
+                        { label: '報表狀態', value: <StatusBadge status={mission.executionSummary.reportStatus} /> },
+                        { label: '事件數量', value: mission.executionSummary.eventCount },
+                        {
+                          label: '失敗原因',
+                          value: mission.executionSummary.failureReason ?? '目前沒有執行層級的失敗原因',
+                        },
+                      ]}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                 <p className="font-medium text-chrome-950">巡檢分析與報表</p>
                 <p className="mt-2 text-sm text-chrome-700">{reportStatusMessage(mission)}</p>

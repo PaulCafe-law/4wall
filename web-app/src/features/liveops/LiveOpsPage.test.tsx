@@ -44,6 +44,7 @@ describe('LiveOpsPage', () => {
         siteName: 'Tower A',
         lastEventAt: '2026-04-16T10:00:00Z',
         lastTelemetryAt: '2026-04-16T09:57:30Z',
+        lastImageryAt: '2026-04-16T09:58:00Z',
         latestTelemetry: {
           timestamp: '2026-04-16T09:57:30Z',
           lat: 25.03391,
@@ -79,6 +80,16 @@ describe('LiveOpsPage', () => {
         reportGeneratedAt: '2026-04-16T10:02:00Z',
         eventCount: 0,
         reportSummary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
+        executionSummary: {
+          missionId: 'mission-001',
+          phase: 'running',
+          telemetryFreshness: 'stale',
+          lastTelemetryAt: '2026-04-16T09:57:30Z',
+          lastImageryAt: '2026-04-16T09:58:00Z',
+          reportStatus: 'failed',
+          eventCount: 0,
+          failureReason: 'Report generation is blocked until imagery review completes.',
+        },
       },
     ])
     apiMock.getLiveFlight.mockResolvedValue({
@@ -90,6 +101,7 @@ describe('LiveOpsPage', () => {
       siteName: 'Tower A',
       lastEventAt: '2026-04-16T10:00:00Z',
       lastTelemetryAt: '2026-04-16T09:57:30Z',
+      lastImageryAt: '2026-04-16T09:58:00Z',
       latestTelemetry: {
         timestamp: '2026-04-16T09:57:30Z',
         lat: 25.03391,
@@ -125,6 +137,16 @@ describe('LiveOpsPage', () => {
       reportGeneratedAt: '2026-04-16T10:02:00Z',
       eventCount: 0,
       reportSummary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
+      executionSummary: {
+        missionId: 'mission-001',
+        phase: 'running',
+        telemetryFreshness: 'stale',
+        lastTelemetryAt: '2026-04-16T09:57:30Z',
+        lastImageryAt: '2026-04-16T09:58:00Z',
+        reportStatus: 'failed',
+        eventCount: 0,
+        failureReason: 'Report generation is blocked until imagery review completes.',
+      },
       recentEvents: [
         {
           eventId: 'evt-001',
@@ -163,9 +185,12 @@ describe('LiveOpsPage', () => {
     expect(await screen.findAllByText('遙測延遲')).not.toHaveLength(0)
     expect(await screen.findAllByText('影像延遲')).not.toHaveLength(0)
     expect(await screen.findByText('報表產生失敗')).toBeInTheDocument()
+    expect(await screen.findAllByText('執行中')).not.toHaveLength(0)
     expect(
       await screen.findAllByText('Analysis pipeline could not derive inspection events from the mission imagery.'),
     ).not.toHaveLength(0)
+    expect(await screen.findByText('Report generation is blocked until imagery review completes.')).toBeInTheDocument()
+    expect(await screen.findByText(/最近一次影像/)).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: '申請遠端接管' })).toBeInTheDocument()
     expect(await screen.findByText('HQ takeover drill')).toBeInTheDocument()
     expect(await screen.findByText('CONTROL_LEASE_UPDATED')).toBeInTheDocument()

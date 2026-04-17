@@ -16,6 +16,7 @@ SupportCategoryLiteral = Literal[
     "telemetry_stale",
     "bridge_alert",
     "report_generation_failed",
+    "dispatch_blocked",
 ]
 SupportWorkflowStateLiteral = Literal["open", "claimed", "acknowledged", "resolved"]
 SupportQueueActionLiteral = Literal["claim", "acknowledge", "resolve", "release"]
@@ -48,6 +49,7 @@ InspectionAlertRuleKindLiteral = Literal[
 InspectionScheduleStatusLiteral = Literal["scheduled", "paused", "cancelled", "completed"]
 DispatchStatusLiteral = Literal["queued", "assigned", "sent", "accepted", "completed", "failed"]
 AnalysisReprocessModeLiteral = Literal["normal", "no_findings", "analysis_failed"]
+ExecutionPhaseLiteral = Literal["draft", "scheduled", "dispatched", "running", "completed", "failed", "report_ready"]
 
 
 class MembershipDto(BaseModel):
@@ -541,6 +543,17 @@ class MissionDeliveryDto(BaseModel):
     failureReason: str | None = None
 
 
+class MissionExecutionSummaryDto(BaseModel):
+    missionId: str
+    phase: ExecutionPhaseLiteral = "draft"
+    telemetryFreshness: TelemetryFreshnessLiteral = "missing"
+    lastTelemetryAt: datetime | None = None
+    lastImageryAt: datetime | None = None
+    reportStatus: InspectionReportStatusLiteral = "not_started"
+    eventCount: int = 0
+    failureReason: str | None = None
+
+
 class MissionDetailDto(BaseModel):
     missionId: str
     organizationId: str | None = None
@@ -562,6 +575,7 @@ class MissionDetailDto(BaseModel):
     template: InspectionTemplateDto | None = None
     schedule: InspectionScheduleDto | None = None
     dispatch: DispatchRecordDto | None = None
+    executionSummary: MissionExecutionSummaryDto | None = None
     createdAt: datetime
 
 
@@ -608,6 +622,44 @@ class OverviewEventSummaryDto(BaseModel):
     severity: SupportSeverityLiteral
     summary: str
     detectedAt: datetime
+
+
+class AlertCenterItemDto(BaseModel):
+    alertId: str
+    category: SupportCategoryLiteral
+    severity: SupportSeverityLiteral
+    organizationId: str
+    organizationName: str | None = None
+    missionId: str | None = None
+    missionName: str | None = None
+    siteId: str | None = None
+    siteName: str | None = None
+    title: str
+    summary: str
+    recommendedNextStep: str
+    status: SupportWorkflowStateLiteral = "open"
+    lastObservedAt: datetime | None = None
+
+
+class ControlPlaneAlertSummaryDto(BaseModel):
+    openCount: int = 0
+    criticalCount: int = 0
+    warningCount: int = 0
+
+
+class ControlPlaneDashboardDto(BaseModel):
+    siteCount: int = 0
+    activeRouteCount: int = 0
+    activeTemplateCount: int = 0
+    scheduledMissionCount: int = 0
+    dispatchPendingCount: int = 0
+    runningMissionCount: int = 0
+    failedMissionCount: int = 0
+    latestReportSummary: InspectionReportSummaryDto | None = None
+    latestEventSummary: OverviewEventSummaryDto | None = None
+    alertSummary: ControlPlaneAlertSummaryDto = Field(default_factory=ControlPlaneAlertSummaryDto)
+    recentAlerts: list[AlertCenterItemDto] = Field(default_factory=list)
+    recentExecutionSummaries: list[MissionExecutionSummaryDto] = Field(default_factory=list)
 
 
 class OverviewDto(BaseModel):
@@ -719,6 +771,7 @@ class LiveFlightSummaryDto(BaseModel):
     siteName: str | None = None
     lastEventAt: datetime | None = None
     lastTelemetryAt: datetime | None = None
+    lastImageryAt: datetime | None = None
     latestTelemetry: LiveTelemetrySampleDto | None = None
     telemetryFreshness: TelemetryFreshnessLiteral = "missing"
     telemetryAgeSeconds: int | None = None
@@ -729,6 +782,7 @@ class LiveFlightSummaryDto(BaseModel):
     reportGeneratedAt: datetime | None = None
     eventCount: int = 0
     reportSummary: str | None = None
+    executionSummary: MissionExecutionSummaryDto | None = None
 
 
 class LiveFlightDetailDto(LiveFlightSummaryDto):

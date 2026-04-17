@@ -136,6 +136,8 @@ def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
     assert listed[0]["reportStatus"] == "ready"
     assert listed[0]["eventCount"] == 2
     assert "inspection events" in listed[0]["reportSummary"]
+    assert listed[0]["executionSummary"]["phase"] == "report_ready"
+    assert listed[0]["executionSummary"]["reportStatus"] == "ready"
 
     response = client.get("/v1/live-ops/flights/flight-live-001", headers=ops_headers)
 
@@ -158,6 +160,8 @@ def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
     assert body["eventCount"] == 2
     assert body["reportGeneratedAt"] is not None
     assert body["reportSummary"] is not None
+    assert body["executionSummary"]["phase"] == "report_ready"
+    assert body["executionSummary"]["reportStatus"] == "ready"
     assert body["recentEvents"][0]["eventType"] in {"VIDEO_STREAM_STATE", "CONTROL_LEASE_UPDATED"}
 
     customer_response = client.get("/v1/live-ops/flights/flight-live-001", headers=admin_headers)
@@ -323,13 +327,13 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
     assert stale_item["severity"] == "critical"
     assert stale_item["flightId"] == flight_id
     assert stale_item["lastObservedAt"] is not None
-    assert "monitor-only" in stale_item["summary"]
+    assert "telemetry" in stale_item["summary"].lower()
 
     assert bridge_item["category"] == "bridge_alert"
     assert bridge_item["organizationName"] == "Acme Build"
-    assert bridge_item["flightId"] == flight_id
+    assert bridge_item["flightId"] is None
     assert bridge_item["lastObservedAt"] is not None
-    assert "lease" in bridge_item["recommendedNextStep"]
+    assert "live ops" in bridge_item["recommendedNextStep"].lower()
 
     customer_response = client.get("/v1/support/queue", headers=admin_headers)
     assert customer_response.status_code == 403
@@ -357,9 +361,8 @@ def test_support_queue_includes_report_generation_failures(
     report_item = next(item for item in items if item["category"] == "report_generation_failed")
     assert report_item["missionId"] == mission_id
     assert report_item["severity"] == "critical"
-    assert report_item["title"] == "Inspection report generation failed"
-    assert "analysis pipeline" in report_item["summary"].lower()
-    assert "rerun demo analysis" in report_item["recommendedNextStep"]
+    assert report_item["title"] == "報表產生失敗"
+    assert "demo analysis" in report_item["recommendedNextStep"]
     assert report_item["workflow"]["state"] == "open"
 
 

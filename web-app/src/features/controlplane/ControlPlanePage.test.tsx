@@ -6,7 +6,7 @@ import { ControlPlanePage } from './ControlPlanePage'
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
 
 const apiMock = vi.hoisted(() => ({
-  getOverview: vi.fn(),
+  getControlPlaneDashboard: vi.fn(),
   listSites: vi.fn(),
   listInspectionRoutes: vi.fn(),
   listInspectionTemplates: vi.fn(),
@@ -27,7 +27,7 @@ vi.mock('../../lib/api', async () => {
     ...actual,
     api: {
       ...actual.api,
-      getOverview: apiMock.getOverview,
+      getControlPlaneDashboard: apiMock.getControlPlaneDashboard,
       listSites: apiMock.listSites,
       listInspectionRoutes: apiMock.listInspectionRoutes,
       listInspectionTemplates: apiMock.listInspectionTemplates,
@@ -48,22 +48,14 @@ describe('ControlPlanePage', () => {
   beforeEach(() => {
     for (const mock of Object.values(apiMock)) mock.mockReset()
 
-    apiMock.getOverview.mockResolvedValue({
+    apiMock.getControlPlaneDashboard.mockResolvedValue({
       siteCount: 1,
-      missionCount: 2,
-      planningMissionCount: 0,
+      activeRouteCount: 1,
+      activeTemplateCount: 1,
       scheduledMissionCount: 1,
-      runningMissionCount: 0,
-      readyMissionCount: 1,
+      dispatchPendingCount: 1,
+      runningMissionCount: 1,
       failedMissionCount: 0,
-      publishedMissionCount: 1,
-      invoiceDueCount: 0,
-      overdueInvoiceCount: 0,
-      pendingInviteCount: 0,
-      recentMissions: [],
-      recentDeliveries: [],
-      recentInvoices: [],
-      pendingInvites: [],
       latestReportSummary: {
         reportId: 'report-001',
         missionId: 'mission-001',
@@ -81,7 +73,37 @@ describe('ControlPlanePage', () => {
         summary: 'Tower A flagged a possible water ingress pattern.',
         detectedAt: '2026-04-17T08:44:00Z',
       },
-      supportSummary: { openCount: 1, criticalCount: 1, warningCount: 0 },
+      alertSummary: { openCount: 1, criticalCount: 1, warningCount: 0 },
+      recentAlerts: [
+        {
+          alertId: 'alert-001',
+          category: 'dispatch_blocked',
+          severity: 'critical',
+          organizationId: 'org-001',
+          organizationName: 'Acme Build',
+          missionId: 'mission-001',
+          missionName: 'Tower A morning run',
+          siteId: 'site-001',
+          siteName: 'Tower A',
+          title: 'Dispatch blocked: observer unavailable',
+          summary: 'The control plane is still waiting for a valid assignee before handoff.',
+          recommendedNextStep: 'Assign a field observer and resend dispatch.',
+          status: 'open',
+          lastObservedAt: '2026-04-17T08:46:00Z',
+        },
+      ],
+      recentExecutionSummaries: [
+        {
+          missionId: 'mission-001',
+          phase: 'running',
+          telemetryFreshness: 'stale',
+          lastTelemetryAt: '2026-04-17T08:44:00Z',
+          lastImageryAt: '2026-04-17T08:43:00Z',
+          reportStatus: 'ready',
+          eventCount: 2,
+          failureReason: null,
+        },
+      ],
     })
     apiMock.listSites.mockResolvedValue([
       {
@@ -242,10 +264,15 @@ describe('ControlPlanePage', () => {
 
     expect(await screen.findByRole('heading', { level: 1, name: '控制平面總覽' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '總覽' })).toBeInTheDocument()
-    expect(screen.getByText('場域覆蓋與規劃密度')).toBeInTheDocument()
-    expect(screen.getByText('評審要看到的完整故事')).toBeInTheDocument()
-    expect(screen.getByText('待處理營運提醒')).toBeInTheDocument()
-    expect(await screen.findAllByText('Tower A')).toHaveLength(2)
+    expect(await screen.findByText('場域覆蓋與規劃密度')).toBeInTheDocument()
+    expect(await screen.findByText('評審要看到的完整故事')).toBeInTheDocument()
+    expect(await screen.findByText('最近告警')).toBeInTheDocument()
+    expect(await screen.findByText('最近執行狀態')).toBeInTheDocument()
+    expect(
+      await screen.findByText('The control plane is still waiting for a valid assignee before handoff.'),
+    ).toBeInTheDocument()
+    expect(await screen.findByText('執行中')).toBeInTheDocument()
+    expect((await screen.findAllByText('Tower A')).length).toBeGreaterThan(0)
   })
 
   it('renders route workspace with route library summaries', async () => {

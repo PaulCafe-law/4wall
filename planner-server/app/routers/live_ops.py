@@ -7,9 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from app.audit import record_audit
+from app.control_plane_read_models import build_control_plane_alerts, build_mission_execution_summary
 from app.deps import CurrentWebUser, get_session, require_internal_user
-from app.models import AuditEvent, Flight, FlightEvent, InspectionReport, Mission, Organization, Site, TelemetryBatch
+from app.models import AuditEvent, Flight, FlightEvent, InspectionReport, Mission, Site, TelemetryBatch
 from app.web_dto import (
+    AlertCenterItemDto,
     ControlIntentDto,
     ControlIntentRequestDto,
     ControlLeaseDto,
@@ -132,8 +134,7 @@ def list_support_queue(
     current_user: CurrentWebUser = Depends(require_internal_user),
     session: Session = Depends(get_session),
 ) -> list[SupportQueueItemDto]:
-    del current_user
-    return _build_support_queue(session)
+    return _build_support_queue(session, current_user)
 
 
 @router.post("/v1/support/queue/{item_id}/actions", response_model=SupportWorkflowDto, status_code=202)
@@ -143,7 +144,14 @@ def support_queue_action(
     current_user: CurrentWebUser = Depends(require_internal_user),
     session: Session = Depends(get_session),
 ) -> SupportWorkflowDto:
-    item = next((candidate for candidate in _build_support_queue(session, include_resolved=True) if candidate.itemId == item_id), None)
+    item = next(
+        (
+            candidate
+            for candidate in _build_support_queue(session, current_user, include_resolved=True)
+            if candidate.itemId == item_id
+        ),
+        None,
+    )
     if item is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="support_item_not_found")
 
@@ -194,9 +202,12 @@ def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDt
         .order_by(TelemetryBatch.last_timestamp.desc())
     ).first()
     latest_sample = _telemetry_sample(latest_batch.payload_json[-1]) if latest_batch and latest_batch.payload_json else None
-    latest_telemetry_at = _ensure_utc(latest_batch.last_timestamp) if latest_batch is not None else _ensure_utc(flight.last_telemetry_at)
+    latest_telemetry_at = (
+        _ensure_utc(latest_batch.last_timestamp) if latest_batch is not None else _ensure_utc(flight.last_telemetry_at)
+    )
     telemetry_age_seconds = _age_seconds(latest_telemetry_at)
     video = _video_channel(session, flight.id)
+    execution_summary = build_mission_execution_summary(session, mission) if mission is not None else None
 
     return LiveFlightSummaryDto(
         flightId=flight.id,
@@ -207,6 +218,7 @@ def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDt
         siteName=site.name if site is not None else None,
         lastEventAt=flight.last_event_at,
         lastTelemetryAt=latest_telemetry_at,
+        lastImageryAt=execution_summary.lastImageryAt if execution_summary is not None else None,
         latestTelemetry=latest_sample,
         telemetryFreshness=_telemetry_freshness(latest_sample, telemetry_age_seconds),
         telemetryAgeSeconds=telemetry_age_seconds,
@@ -217,146 +229,35 @@ def _build_live_summary(session: Session, flight: Flight) -> LiveFlightSummaryDt
         reportGeneratedAt=latest_report.generated_at if latest_report is not None else None,
         eventCount=latest_report.event_count if latest_report is not None else 0,
         reportSummary=latest_report.summary if latest_report is not None else None,
+        executionSummary=execution_summary,
     )
 
 
-def _build_support_queue(session: Session, *, include_resolved: bool = False) -> list[SupportQueueItemDto]:
-    items: list[SupportQueueItemDto] = []
-
-    failed_missions = session.exec(
-        select(Mission)
-        .where(Mission.organization_id.is_not(None), Mission.status == "failed")
-        .order_by(Mission.created_at.desc())
-    ).all()
-    for mission in failed_missions:
-        if mission.organization_id is None:
-            continue
-        context = _support_context(session, organization_id=mission.organization_id, mission=mission)
-        created_at = _ensure_utc(mission.created_at) or mission.created_at
-        items.append(
-            SupportQueueItemDto(
-                itemId=f"mission-failed-{mission.id}",
-                category="mission_failed",
-                severity="critical",
-                organizationId=mission.organization_id,
-                organizationName=context["organizationName"],
-                missionId=mission.id,
-                missionName=context["missionName"],
-                siteName=context["siteName"],
-                title="任務規劃失敗",
-                summary=f"{mission.mission_name} 規劃結果失敗，請先查看 mission request、response 與 artifacts 狀態。",
-                recommendedNextStep="先開啟任務詳情確認 mission request、response 與 artifacts，再決定是否重送規劃或由內部支援介入。",
-                createdAt=created_at,
-                lastObservedAt=created_at,
-            )
+def _build_support_queue(
+    session: Session,
+    current_user: CurrentWebUser,
+    *,
+    include_resolved: bool = False,
+) -> list[SupportQueueItemDto]:
+    items = [
+        SupportQueueItemDto(
+            itemId=alert.alertId,
+            category=alert.category,
+            severity=alert.severity,
+            organizationId=alert.organizationId,
+            organizationName=alert.organizationName,
+            missionId=alert.missionId,
+            missionName=alert.missionName,
+            siteName=alert.siteName,
+            title=alert.title,
+            summary=alert.summary,
+            recommendedNextStep=alert.recommendedNextStep,
+            createdAt=alert.lastObservedAt or datetime.now(timezone.utc),
+            lastObservedAt=alert.lastObservedAt,
+            flightId=_support_flight_id(alert),
         )
-
-    failed_reports = session.exec(
-        select(InspectionReport)
-        .where(InspectionReport.status == "failed")
-        .order_by(InspectionReport.generated_at.desc(), InspectionReport.updated_at.desc(), InspectionReport.created_at.desc())
-    ).all()
-    for report in failed_reports:
-        mission = session.get(Mission, report.mission_id)
-        if mission is None or mission.organization_id is None:
-            continue
-        context = _support_context(session, organization_id=mission.organization_id, mission=mission)
-        observed_at = _ensure_utc(report.generated_at or report.updated_at or report.created_at) or report.created_at
-        items.append(
-            SupportQueueItemDto(
-                itemId=f"report-failed-{report.id}",
-                category="report_generation_failed",
-                severity="critical",
-                organizationId=mission.organization_id,
-                organizationName=context["organizationName"],
-                missionId=mission.id,
-                missionName=context["missionName"],
-                siteName=context["siteName"],
-                title="Inspection report generation failed",
-                summary=report.summary or "The reporting pipeline did not produce a usable inspection report artifact.",
-                recommendedNextStep="Open mission detail, confirm artifact readiness, and rerun demo analysis once the imagery set is available.",
-                createdAt=observed_at,
-                lastObservedAt=observed_at,
-            )
-        )
-
-    flights = session.exec(select(Flight).where(Flight.organization_id.is_not(None))).all()
-    for flight in flights:
-        if flight.organization_id is None:
-            continue
-        summary = _build_live_summary(session, flight)
-        mission = session.get(Mission, flight.mission_id)
-        context = _support_context(session, organization_id=flight.organization_id, mission=mission)
-
-        if summary.latestTelemetry is not None and summary.latestTelemetry.batteryPct < LOW_BATTERY_THRESHOLD:
-            items.append(
-                SupportQueueItemDto(
-                    itemId=f"battery-{flight.id}",
-                    category="battery_low",
-                    severity="warning",
-                    organizationId=flight.organization_id,
-                    organizationName=context["organizationName"],
-                    flightId=flight.id,
-                    missionId=flight.mission_id,
-                    missionName=context["missionName"],
-                    siteName=context["siteName"],
-                    title="電量偏低",
-                    summary=f"最新遙測顯示剩餘電量 {summary.latestTelemetry.batteryPct}%，請確認 observer 與返航策略。",
-                    recommendedNextStep="先查看 Live Ops 的 lease、遙測與 observer 狀態，再決定是否要求現場 HOLD 或返航。",
-                    createdAt=summary.latestTelemetry.timestamp,
-                    lastObservedAt=summary.latestTelemetry.timestamp,
-                )
-            )
-
-        stale_observed_at = _ensure_utc(summary.lastTelemetryAt)
-        if summary.telemetryFreshness == "stale" and stale_observed_at is not None:
-            items.append(
-                SupportQueueItemDto(
-                    itemId=f"telemetry-stale-{flight.id}",
-                    category="telemetry_stale",
-                    severity="critical",
-                    organizationId=flight.organization_id,
-                    organizationName=context["organizationName"],
-                    flightId=flight.id,
-                    missionId=flight.mission_id,
-                    missionName=context["missionName"],
-                    siteName=context["siteName"],
-                    title="遙測已過期",
-                    summary=f"最新遙測距今已超過 {STALE_TELEMETRY_SECONDS} 秒，web 目前只能維持 monitor-only。",
-                    recommendedNextStep="先確認 bridge uplink、observer 與現場控制是否正常，再決定是否升級為現場介入或暫停監看。",
-                    createdAt=stale_observed_at,
-                    lastObservedAt=stale_observed_at,
-                )
-            )
-
-        bridge_alert = _latest_bridge_alert(session, flight.id)
-        if bridge_alert is not None:
-            payload = bridge_alert.payload_json
-            severity = _coerce_support_severity(payload.get("severity"))
-            code = str(payload.get("code", "bridge_alert"))
-            human_summary = str(
-                payload.get("summary")
-                or "Android bridge 回報告警，請確認 uplink、lease、video 與 observer 狀態。"
-            )
-            observed_at = _ensure_utc(bridge_alert.event_timestamp) or bridge_alert.event_timestamp
-            items.append(
-                SupportQueueItemDto(
-                    itemId=f"bridge-alert-{bridge_alert.id}",
-                    category="bridge_alert",
-                    severity=severity,
-                    organizationId=flight.organization_id,
-                    organizationName=context["organizationName"],
-                    flightId=flight.id,
-                    missionId=flight.mission_id,
-                    missionName=context["missionName"],
-                    siteName=context["siteName"],
-                    title=f"Bridge 告警: {code}",
-                    summary=human_summary,
-                    recommendedNextStep="先開啟 Live Ops 檢查 lease、telemetry freshness、video 與 observer 狀態，再決定是否升級處理。",
-                    createdAt=observed_at,
-                    lastObservedAt=observed_at,
-                )
-            )
+        for alert in build_control_plane_alerts(session, current_user)
+    ]
 
     visible_items: list[SupportQueueItemDto] = []
     for item in items:
@@ -371,6 +272,16 @@ def _build_support_queue(session: Session, *, include_resolved: bool = False) ->
         key=lambda item: _ensure_utc(item.lastObservedAt or item.createdAt) or item.createdAt,
         reverse=True,
     )
+
+
+def _support_flight_id(item: AlertCenterItemDto) -> str | None:
+    if item.category == "battery_low" and item.alertId.startswith("battery-"):
+        return item.alertId.removeprefix("battery-")
+    if item.category == "telemetry_stale" and item.alertId.startswith("telemetry-stale-"):
+        return item.alertId.removeprefix("telemetry-stale-")
+    if item.category == "bridge_alert" and item.alertId.startswith("bridge-alert-"):
+        return None
+    return None
 
 
 def _telemetry_sample(payload: dict[str, Any]) -> LiveTelemetrySampleDto:
@@ -547,7 +458,6 @@ def _derive_alerts(
     video: VideoChannelDescriptorDto,
 ) -> list[str]:
     alerts: list[str] = []
-
     if latest_sample is not None and latest_sample.batteryPct < LOW_BATTERY_THRESHOLD:
         alerts.append("low_battery")
     latest_sample_timestamp = _ensure_utc(latest_sample.timestamp) if latest_sample is not None else None
@@ -557,7 +467,6 @@ def _derive_alerts(
         alerts.append("video_unavailable")
     if _latest_bridge_alert(session, flight.id) is not None:
         alerts.append("bridge_alert")
-
     return alerts
 
 
@@ -577,23 +486,6 @@ def _latest_bridge_alert(session: Session, flight_id: str) -> FlightEvent | None
     return event
 
 
-def _coerce_support_severity(raw: Any) -> str:
-    value = str(raw or "warning").lower()
-    if value in {"info", "warning", "critical"}:
-        return value
-    return "warning"
-
-
-def _support_context(session: Session, *, organization_id: str, mission: Mission | None) -> dict[str, str | None]:
-    organization = session.get(Organization, organization_id)
-    site = session.get(Site, mission.site_id) if mission is not None and mission.site_id is not None else None
-    return {
-        "organizationName": organization.name if organization is not None else None,
-        "missionName": mission.mission_name if mission is not None else None,
-        "siteName": site.name if site is not None else None,
-    }
-
-
 def _as_bool(raw: Any) -> bool:
     if isinstance(raw, bool):
         return raw
@@ -611,7 +503,10 @@ def _ensure_utc(value: datetime | None) -> datetime | None:
 def _age_seconds(value: datetime | None) -> int | None:
     if value is None:
         return None
-    return max(int((datetime.now(timezone.utc) - value).total_seconds()), 0)
+    safe_value = _ensure_utc(value)
+    if safe_value is None:
+        return None
+    return max(int((datetime.now(timezone.utc) - safe_value).total_seconds()), 0)
 
 
 def _is_stale(value: datetime | None, threshold_seconds: int) -> bool:

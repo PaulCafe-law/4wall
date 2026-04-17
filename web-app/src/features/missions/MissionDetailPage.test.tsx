@@ -172,6 +172,16 @@ describe('MissionDetailPage', () => {
         status: 'accepted',
         note: 'Demo walkthrough ready',
       },
+      executionSummary: {
+        missionId: 'mission-001',
+        phase: 'running',
+        telemetryFreshness: 'stale',
+        lastTelemetryAt: '2026-04-17T08:43:00Z',
+        lastImageryAt: '2026-04-17T08:44:00Z',
+        reportStatus: 'ready',
+        eventCount: 2,
+        failureReason: null,
+      },
       createdAt: '2026-04-14T10:00:00Z',
     })
 
@@ -192,6 +202,7 @@ describe('MissionDetailPage', () => {
     expect(screen.getByText('控制平面規劃串接')).toBeInTheDocument()
     expect(screen.getByText('派工與執行責任')).toBeInTheDocument()
     expect(screen.getByText('執行與報表狀態')).toBeInTheDocument()
+    expect(screen.getByText('執行摘要')).toBeInTheDocument()
     expect(screen.getByText('偵測到的事件')).toBeInTheDocument()
     expect(screen.getByText('成果檔案')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '產生 demo 異常' })).toBeInTheDocument()
@@ -199,6 +210,8 @@ describe('MissionDetailPage', () => {
     expect(screen.getAllByText('2 inspection events were generated for Tower A Delivery.')).toHaveLength(2)
     expect(screen.getByText('observer-01')).toBeInTheDocument()
     expect(screen.getByText(/最近派工/)).toBeInTheDocument()
+    expect(screen.getByText(/最近一次影像/)).toBeInTheDocument()
+    expect(screen.getByText('執行中')).toBeInTheDocument()
     expect(screen.getByText(/最後更新/)).toBeInTheDocument()
   })
 })

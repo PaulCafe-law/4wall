@@ -10,6 +10,7 @@ export type SupportCategory =
   | 'telemetry_stale'
   | 'bridge_alert'
   | 'report_generation_failed'
+  | 'dispatch_blocked'
 export type SupportWorkflowState = 'open' | 'claimed' | 'acknowledged' | 'resolved'
 export type SupportQueueAction = 'claim' | 'acknowledge' | 'resolve' | 'release'
 export type TelemetryFreshness = 'fresh' | 'stale' | 'missing'
@@ -25,6 +26,7 @@ export type InspectionAlertRuleKind =
   | 'report_generation_failure'
 export type InspectionScheduleStatus = 'scheduled' | 'paused' | 'cancelled' | 'completed'
 export type DispatchStatus = 'queued' | 'assigned' | 'sent' | 'accepted' | 'completed' | 'failed'
+export type ExecutionPhase = 'draft' | 'scheduled' | 'dispatched' | 'running' | 'completed' | 'failed' | 'report_ready'
 
 export type ControlIntentAction =
   | 'request_remote_control'
@@ -361,7 +363,19 @@ export interface MissionDetail {
   template: InspectionTemplate | null
   schedule: InspectionSchedule | null
   dispatch: DispatchRecord | null
+  executionSummary: MissionExecutionSummary | null
   createdAt: string
+}
+
+export interface MissionExecutionSummary {
+  missionId: string
+  phase: ExecutionPhase
+  telemetryFreshness: TelemetryFreshness
+  lastTelemetryAt: string | null
+  lastImageryAt: string | null
+  reportStatus: InspectionReportStatus
+  eventCount: number
+  failureReason: string | null
 }
 
 export interface MissionPlanResponse {
@@ -453,6 +467,44 @@ export interface Overview {
   supportSummary: OverviewSupportSummary | null
 }
 
+export interface AlertCenterItem {
+  alertId: string
+  category: SupportCategory
+  severity: SupportSeverity
+  organizationId: string
+  organizationName: string | null
+  missionId: string | null
+  missionName: string | null
+  siteId: string | null
+  siteName: string | null
+  title: string
+  summary: string
+  recommendedNextStep: string
+  status: SupportWorkflowState
+  lastObservedAt: string | null
+}
+
+export interface ControlPlaneAlertSummary {
+  openCount: number
+  criticalCount: number
+  warningCount: number
+}
+
+export interface ControlPlaneDashboard {
+  siteCount: number
+  activeRouteCount: number
+  activeTemplateCount: number
+  scheduledMissionCount: number
+  dispatchPendingCount: number
+  runningMissionCount: number
+  failedMissionCount: number
+  latestReportSummary: InspectionReportSummary | null
+  latestEventSummary: OverviewEventSummary | null
+  alertSummary: ControlPlaneAlertSummary
+  recentAlerts: AlertCenterItem[]
+  recentExecutionSummaries: MissionExecutionSummary[]
+}
+
 export interface AuditEvent {
   auditEventId: string
   organizationId: string | null
@@ -520,6 +572,7 @@ export interface LiveFlightSummary {
   siteName: string | null
   lastEventAt: string | null
   lastTelemetryAt: string | null
+  lastImageryAt: string | null
   latestTelemetry: LiveTelemetrySample | null
   telemetryFreshness: TelemetryFreshness
   telemetryAgeSeconds: number | null
@@ -530,6 +583,7 @@ export interface LiveFlightSummary {
   reportGeneratedAt: string | null
   eventCount: number
   reportSummary: string | null
+  executionSummary: MissionExecutionSummary | null
 }
 
 export interface LiveFlightDetail extends LiveFlightSummary {

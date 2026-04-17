@@ -37,6 +37,7 @@ const categoryOptions: Array<{ value: 'all' | SupportCategory; label: string }> 
   { value: 'all', label: '全部類別' },
   { value: 'mission_failed', label: '任務失敗' },
   { value: 'report_generation_failed', label: '報表失敗' },
+  { value: 'dispatch_blocked', label: '派工阻塞' },
   { value: 'telemetry_stale', label: '遙測延遲' },
   { value: 'bridge_alert', label: 'Bridge 告警' },
   { value: 'battery_low', label: '低電量' },
@@ -168,6 +169,7 @@ export function SupportPage() {
   const acknowledgedCount = workflowCount(items, 'acknowledged')
   const reportFailureCount = categoryCount(items, 'report_generation_failed')
   const bridgeAlertCount = categoryCount(items, 'bridge_alert')
+  const dispatchBlockedCount = categoryCount(items, 'dispatch_blocked')
 
   return (
     <div className="space-y-6">
@@ -183,7 +185,11 @@ export function SupportPage() {
         <Metric label="警告事件" value={warningCount} hint="仍需後續處理的營運問題。" />
         <Metric label="已認領" value={claimedCount} />
         <Metric label="已確認" value={acknowledgedCount} />
-        <Metric label="報表阻塞" value={reportFailureCount + bridgeAlertCount} hint="報表失敗與 bridge 告警總和。" />
+        <Metric
+          label="控制平面阻塞"
+          value={reportFailureCount + bridgeAlertCount + dispatchBlockedCount}
+          hint="報表失敗、派工阻塞與 bridge 告警總和。"
+        />
       </div>
 
       <Panel>
@@ -240,7 +246,7 @@ export function SupportPage() {
       {!supportQuery.isLoading && items.length === 0 ? (
         <EmptyState
           title="目前沒有待處理的支援項目"
-          body="當內部頁面偵測到任務失敗、bridge 告警、遙測飄移或報表失敗時，項目就會出現在這裡。"
+          body="當內部頁面偵測到任務失敗、派工阻塞、bridge 告警、遙測飄移或報表失敗時，項目就會出現在這裡。"
         />
       ) : null}
 

@@ -61,10 +61,12 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - If the release touches internal ops surfaces, validate:
   - `Support` loads with severity/category filters, mission/org/site context, last-observed timing, recommended next step copy, and claim / acknowledge / resolve actions
   - `Support` includes `report_generation_failed` items when a report is reprocessed in `analysis_failed` mode
+  - `Support` includes `dispatch_blocked` items when a mission handoff fails or a schedule is paused/cancelled while execution is still pending
   - `Live Ops` stays internal-only
-  - telemetry freshness, video availability, report status, event count, and report summary are visible in `Live Ops`
+  - telemetry freshness, video availability, execution summary, report status, event count, and report summary are visible in `Live Ops`
   - unavailable or stale Android data remains fail-closed and clearly presented as monitor-only
   - mission detail, support, and live ops all agree on one report-failed mission and one clean-pass mission if the release touched the event/report slice
+  - `Control Plane` dashboard shows recent alerts and recent execution summaries that match the same mission state shown in mission detail
 
 ## 3. Production Promotion
 
