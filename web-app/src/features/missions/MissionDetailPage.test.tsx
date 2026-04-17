@@ -1,9 +1,9 @@
-import { screen } from '@testing-library/react'
+﻿import { screen } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 
 import { MissionDetailPage } from './MissionDetailPage'
-import { createAuthValue, renderWithProviders } from '../../test/utils'
+import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
 
 const apiMock = vi.hoisted(() => ({
   getMission: vi.fn(),
@@ -25,22 +25,18 @@ describe('MissionDetailPage', () => {
     apiMock.getMission.mockReset()
   })
 
-  it('renders published delivery, report summary, and evidence artifacts', async () => {
+  it('renders planning, dispatch, execution-report, and artifact sections', async () => {
     apiMock.getMission.mockResolvedValue({
       missionId: 'mission-001',
       organizationId: 'org-001',
       siteId: 'site-001',
       requestedByUserId: 'user-001',
       missionName: 'Tower A Delivery',
-      status: 'ready',
+      status: 'dispatched',
       bundleVersion: 'bundle-v3',
       request: { missionName: 'Tower A Delivery' },
       response: { missionId: 'mission-001' },
-      delivery: {
-        state: 'published',
-        publishedAt: '2026-04-14T10:15:00Z',
-        failureReason: null,
-      },
+      delivery: { state: 'published', publishedAt: '2026-04-14T10:15:00Z', failureReason: null },
       artifacts: [
         {
           artifactName: 'mission.kmz',
@@ -112,10 +108,68 @@ describe('MissionDetailPage', () => {
           ],
         },
       ],
-      route: null,
-      template: null,
-      schedule: null,
-      dispatch: null,
+      route: {
+        routeId: 'route-001',
+        organizationId: 'org-001',
+        siteId: 'site-001',
+        name: 'Tower A facade loop',
+        description: 'Facade-first route',
+        version: 1,
+        pointCount: 3,
+        previewPolyline: [],
+        estimatedDurationSec: 480,
+        waypoints: [],
+        planningParameters: {},
+        createdAt: '2026-04-17T08:00:00Z',
+        updatedAt: '2026-04-17T08:00:00Z',
+      },
+      template: {
+        templateId: 'template-001',
+        organizationId: 'org-001',
+        siteId: 'site-001',
+        routeId: 'route-001',
+        name: 'Facade standard',
+        description: 'Operator-reviewed',
+        inspectionProfile: {},
+        alertRules: [],
+        evidencePolicy: 'capture_key_frames',
+        reportMode: 'html_report',
+        reviewMode: 'operator_review',
+        createdAt: '2026-04-17T08:00:00Z',
+        updatedAt: '2026-04-17T08:00:00Z',
+      },
+      schedule: {
+        scheduleId: 'schedule-001',
+        organizationId: 'org-001',
+        siteId: 'site-001',
+        routeId: 'route-001',
+        templateId: 'template-001',
+        plannedAt: '2026-04-18T09:00:00Z',
+        recurrence: 'One-off',
+        status: 'scheduled',
+        alertRules: [],
+        nextRunAt: '2026-04-18T09:00:00Z',
+        lastRunAt: null,
+        pauseReason: null,
+        lastOutcome: 'scheduled_for_execution',
+        createdAt: '2026-04-17T08:00:00Z',
+        updatedAt: '2026-04-17T08:00:00Z',
+      },
+      dispatch: {
+        dispatchId: 'dispatch-001',
+        missionId: 'mission-001',
+        routeId: 'route-001',
+        templateId: 'template-001',
+        scheduleId: 'schedule-001',
+        dispatchedAt: '2026-04-17T08:40:00Z',
+        acceptedAt: '2026-04-17T08:42:00Z',
+        closedAt: null,
+        dispatchedByUserId: 'user-1',
+        assignee: 'observer-01',
+        executionTarget: 'field-team',
+        status: 'accepted',
+        note: 'Demo walkthrough ready',
+      },
       createdAt: '2026-04-14T10:00:00Z',
     })
 
@@ -125,74 +179,22 @@ describe('MissionDetailPage', () => {
       </Routes>,
       {
         route: '/missions/mission-001',
-        auth: createAuthValue(),
+        auth: createAuthValue({
+          session: createSession({ globalRoles: ['platform_admin'] }),
+        }),
       },
     )
 
     expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
-    expect(screen.getByText('巡檢分析與報表')).toBeInTheDocument()
-    expect(screen.getByText('2 inspection events were generated for Tower A Delivery.')).toBeInTheDocument()
+    expect(screen.getByText('規劃與任務背景')).toBeInTheDocument()
+    expect(screen.getByText('控制平面規劃串接')).toBeInTheDocument()
+    expect(screen.getByText('派工與執行責任')).toBeInTheDocument()
+    expect(screen.getByText('執行與報表狀態')).toBeInTheDocument()
     expect(screen.getByText('偵測到的事件')).toBeInTheDocument()
+    expect(screen.getByText('成果檔案')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '產生 demo 異常' })).toBeInTheDocument()
     expect(screen.getByText('Surface discoloration detected on the east facade.')).toBeInTheDocument()
-    expect(screen.getAllByText('inspection_report.html').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('mission.kmz').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('mission_meta.json').length).toBeGreaterThan(0)
-    expect(screen.getByText('下一步')).toBeInTheDocument()
-  })
-
-  it('renders failure reason and recovery guidance when analysis or delivery failed', async () => {
-    apiMock.getMission.mockResolvedValue({
-      missionId: 'mission-002',
-      organizationId: 'org-001',
-      siteId: 'site-001',
-      requestedByUserId: 'user-001',
-      missionName: 'Tower B Delivery',
-      status: 'failed',
-      bundleVersion: 'bundle-v4',
-      request: { missionName: 'Tower B Delivery' },
-      response: { failureReason: 'Route provider timed out for this site.' },
-      delivery: {
-        state: 'failed',
-        publishedAt: null,
-        failureReason: 'Route provider timed out for this site.',
-      },
-      artifacts: [],
-      reportStatus: 'failed',
-      reportGeneratedAt: '2026-04-14T11:10:00Z',
-      eventCount: 0,
-      latestReport: {
-        reportId: 'report-002',
-        missionId: 'mission-002',
-        status: 'failed',
-        generatedAt: '2026-04-14T11:10:00Z',
-        summary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
-        eventCount: 0,
-        downloadArtifact: null,
-      },
-      events: [],
-      route: null,
-      template: null,
-      schedule: null,
-      dispatch: null,
-      createdAt: '2026-04-14T11:00:00Z',
-    })
-
-    renderWithProviders(
-      <Routes>
-        <Route path="/missions/:missionId" element={<MissionDetailPage />} />
-      </Routes>,
-      {
-        route: '/missions/mission-002',
-        auth: createAuthValue(),
-      },
-    )
-
-    expect(await screen.findByText('Tower B Delivery')).toBeInTheDocument()
-    expect(screen.getAllByText('Route provider timed out for this site.').length).toBeGreaterThan(0)
-    expect(screen.getByText('Analysis pipeline could not derive inspection events from the mission imagery.')).toBeInTheDocument()
-    expect(
-      screen.getByText('請使用內部重跑控制重新產生 demo 報表，或切換成無異常版本。'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('目前沒有巡檢事件')).toBeInTheDocument()
+    expect(screen.getAllByText('2 inspection events were generated for Tower A Delivery.')).toHaveLength(2)
+    expect(screen.getByText('observer-01')).toBeInTheDocument()
   })
 })

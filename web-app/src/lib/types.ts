@@ -149,7 +149,10 @@ export interface InspectionRoute {
   siteId: string
   name: string
   description: string
+  version: number
   pointCount: number
+  previewPolyline: Array<{ lat: number; lng: number }>
+  estimatedDurationSec: number
   waypoints: InspectionWaypoint[]
   planningParameters: Record<string, unknown>
   createdAt: string
@@ -165,6 +168,9 @@ export interface InspectionTemplate {
   description: string
   inspectionProfile: Record<string, unknown>
   alertRules: InspectionAlertRule[]
+  evidencePolicy: string
+  reportMode: string
+  reviewMode: string
   createdAt: string
   updatedAt: string
 }
@@ -179,6 +185,10 @@ export interface InspectionSchedule {
   recurrence: string | null
   status: InspectionScheduleStatus
   alertRules: InspectionAlertRule[]
+  nextRunAt: string | null
+  lastRunAt: string | null
+  pauseReason: string | null
+  lastOutcome: string | null
   createdAt: string
   updatedAt: string
 }
@@ -190,6 +200,8 @@ export interface DispatchRecord {
   templateId: string | null
   scheduleId: string | null
   dispatchedAt: string
+  acceptedAt: string | null
+  closedAt: string | null
   dispatchedByUserId: string | null
   assignee: string | null
   executionTarget: string | null

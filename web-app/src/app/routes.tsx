@@ -37,6 +37,10 @@ export function AppRoutes() {
                 <Route path="/sites" element={<SitesPage />} />
                 <Route path="/sites/:siteId" element={<SitesPage />} />
                 <Route path="/control-plane" element={<ControlPlanePage />} />
+                <Route path="/control-plane/routes" element={<ControlPlanePage />} />
+                <Route path="/control-plane/templates" element={<ControlPlanePage />} />
+                <Route path="/control-plane/schedules" element={<ControlPlanePage />} />
+                <Route path="/control-plane/dispatch" element={<ControlPlanePage />} />
                 <Route path="/missions" element={<MissionsPage />} />
                 <Route path="/missions/new" element={<PlannerPage />} />
                 <Route path="/missions/:missionId" element={<MissionDetailPage />} />
