@@ -1,4 +1,4 @@
-﻿import { screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 
@@ -14,11 +14,24 @@ const apiMock = vi.hoisted(() => ({
   listInspectionDispatches: vi.fn(),
   listMissions: vi.fn(),
   createInspectionRoute: vi.fn(),
+  patchInspectionRoute: vi.fn(),
   createInspectionTemplate: vi.fn(),
   createInspectionSchedule: vi.fn(),
   patchInspectionSchedule: vi.fn(),
   dispatchMission: vi.fn(),
   patchInspectionDispatch: vi.fn(),
+}))
+
+vi.mock('../maps/GoogleMapCanvas', () => ({
+  GoogleMapCanvas: () => <div>GoogleMapCanvasMock</div>,
+  routeOverlaysFromRoutes: (routes: Array<{ routeId: string; name: string }>) =>
+    routes.map((route) => ({ routeId: route.routeId, name: route.name, path: [], active: false })),
+}))
+
+vi.mock('./InternalRouteEditorPanel', () => ({
+  InternalRouteEditorPanel: ({ routeName }: { routeName: string }) => (
+    <div>InternalRouteEditorPanelMock:{routeName}</div>
+  ),
 }))
 
 vi.mock('../../lib/api', async () => {
@@ -35,6 +48,7 @@ vi.mock('../../lib/api', async () => {
       listInspectionDispatches: apiMock.listInspectionDispatches,
       listMissions: apiMock.listMissions,
       createInspectionRoute: apiMock.createInspectionRoute,
+      patchInspectionRoute: apiMock.patchInspectionRoute,
       createInspectionTemplate: apiMock.createInspectionTemplate,
       createInspectionSchedule: apiMock.createInspectionSchedule,
       patchInspectionSchedule: apiMock.patchInspectionSchedule,
@@ -115,14 +129,13 @@ describe('ControlPlanePage', () => {
         location: { lat: 25.03391, lng: 121.56452 },
         notes: 'North facade priority',
         siteMap: {
-          siteId: 'site-001',
           baseMapType: 'satellite',
           center: { lat: 25.03391, lng: 121.56452 },
           zoom: 18,
+          version: 1,
           zones: [],
           launchPoints: [],
           viewpoints: [],
-          updatedAt: '2026-04-17T08:00:00Z',
         },
         activeRouteCount: 1,
         activeTemplateCount: 1,
@@ -131,15 +144,20 @@ describe('ControlPlanePage', () => {
             routeId: 'route-001',
             name: 'Tower A facade loop',
             version: 1,
+            pointCount: 3,
             estimatedDurationSec: 480,
+            updatedAt: '2026-04-17T08:00:00Z',
           },
         ],
         activeTemplates: [
           {
             templateId: 'template-001',
+            routeId: 'route-001',
             name: 'Facade standard',
             reportMode: 'html_report',
             evidencePolicy: 'capture_key_frames',
+            reviewMode: 'operator_review',
+            updatedAt: '2026-04-17T08:00:00Z',
           },
         ],
         createdAt: '2026-04-17T08:00:00Z',
@@ -160,7 +178,17 @@ describe('ControlPlanePage', () => {
           { lat: 25.03391, lng: 121.56452 },
         ],
         estimatedDurationSec: 480,
-        waypoints: [],
+        waypoints: [
+          {
+            kind: 'transit',
+            lat: 25.0337,
+            lng: 121.5643,
+            altitudeM: 40,
+            label: '進場點',
+            headingDeg: 45,
+            dwellSeconds: 0,
+          },
+        ],
         planningParameters: { routeMode: 'site-envelope-demo' },
         createdAt: '2026-04-17T08:00:00Z',
         updatedAt: '2026-04-17T08:00:00Z',
@@ -276,7 +304,7 @@ describe('ControlPlanePage', () => {
     expect((await screen.findAllByText('Tower A')).length).toBeGreaterThan(0)
   })
 
-  it('renders route workspace with route library summaries', async () => {
+  it('renders customer route workspace without waypoint editor controls', async () => {
     renderWithProviders(
       <Routes>
         <Route path="/control-plane/routes" element={<ControlPlanePage />} />
@@ -299,11 +327,33 @@ describe('ControlPlanePage', () => {
     )
 
     expect(await screen.findByRole('heading', { level: 1, name: '航線規劃庫' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: '建立航線' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
     expect(await screen.findByText('Tower A facade loop')).toBeInTheDocument()
-    expect(screen.getByText('8 分鐘')).toBeInTheDocument()
-    expect(screen.getByText('v1')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '航線摘要' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
+    expect(await screen.findByText('8 分鐘')).toBeInTheDocument()
+    expect(
+      screen.getByText('客戶角色只檢視航線版本、預估時間與覆蓋範圍。Waypoint authority 由 internal 規劃團隊持有，不在客戶面開放直接編輯。'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/InternalRouteEditorPanelMock/)).not.toBeInTheDocument()
+  })
+
+  it('renders internal route workspace with the internal waypoint editor', async () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/control-plane/routes" element={<ControlPlanePage />} />
+      </Routes>,
+      {
+        route: '/control-plane/routes',
+        auth: createAuthValue({
+          session: createSession({ globalRoles: ['platform_admin'] }),
+        }),
+      },
+    )
+
+    expect(await screen.findByRole('heading', { level: 1, name: '航線規劃庫' })).toBeInTheDocument()
+    expect(screen.getByText(/InternalRouteEditorPanelMock:/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 2, name: '航線摘要' })).not.toBeInTheDocument()
   })
 
   it('renders schedule and dispatch workspaces with lifecycle fields', async () => {

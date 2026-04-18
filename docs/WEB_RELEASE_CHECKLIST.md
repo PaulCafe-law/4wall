@@ -46,14 +46,15 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - customer viewer deployed smoke if viewer smoke credentials are configured
   - site map read path and site selection
   - route/template create or edit path if the release touched control-plane surfaces
-  - site workspace shows map version, zones, launch points, viewpoints, and active route/template summaries if the release touched control-plane surfaces
+  - route workspace exposes Google Maps waypoint editing only to internal users, while customer users remain on summary/read-only route coverage, if the release touched control-plane surfaces
+  - site workspace shows map version, zones, launch points, viewpoints, active route/template summaries, and internal Google Maps preview if the release touched control-plane surfaces
   - schedule create, pause/resume, cancel/complete, and `lastOutcome` / `lastDispatchedAt` visibility if the release touched control-plane surfaces
   - dispatch create, send/accept/complete/fail transitions, assignee / execution target / handoff note rendering, and dispatch board visibility if the release touched control-plane surfaces
   - control-plane dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace each render screenshot-ready guidance and match the rehearsal script if the release touched control-plane surfaces
   - overview aggregate cards, including pending actions, ready-for-delivery reminders, invoice reminders, recent deliveries, and setup guidance when a workspace has no sites or no missions
   - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
   - mission list with explicit delivery badges, publish time, failure reason, and clean customer-facing copy
-  - mission detail and artifact download, including checksum, version, published timestamp, next-step guidance, event count, report summary, and linked route/template/schedule/dispatch metadata when the release touched control-plane surfaces
+  - mission detail and artifact download, including checksum, version, published timestamp, next-step guidance, event count, report summary, linked route/template/schedule/dispatch metadata, and internal-only raw-contract debug visibility when the release touched control-plane surfaces
   - internal-only report reprocess flow, including normal findings, clean pass, and analysis-failed modes when the release touched the event/report slice
   - billing, including due / overdue / paid / void clarity plus payment note / receipt ref rendering and reminder panels for overdue or due-soon invoices
   - team, including invite create / resend / revoke
@@ -78,6 +79,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Re-run `.github/workflows/smoke-beta.yml` against production values.
 - Validate the same core customer flows on production.
 - Reconfirm any route/template/schedule/dispatch surface touched by the release on production.
+- Reconfirm internal Google Maps route editing and customer route-summary-only behavior on production if the release touched control-plane surfaces.
 - Reconfirm schedule lifecycle and dispatch board state transitions on production if the release touched control-plane surfaces.
 - Reconfirm mission detail still shows linked planning metadata for one dispatched mission when the release touched control-plane surfaces.
 - Reconfirm one clean-pass mission and one report-failed mission show the same reporting state across mission detail, support, and live ops when the release touched the event/report slice.
@@ -104,6 +106,7 @@ Rollback immediately if any of these occur:
 - Render deploy IDs for staging and production
 - manual QA notes for customer and internal flows
 - demo-story notes for one route/template -> schedule -> dispatch -> mission-detail walkthrough when the release touches the control-plane slice
+- evidence that customer roles could not access waypoint editing controls or raw-contract JSON after deploy
 - screenshot references for the control-plane dashboard, site workspace, route workspace, template workspace, schedule workspace, and dispatch workspace when the release touches the control-plane slice
 - demo-story notes for one end-to-end route -> dispatch -> event -> report walkthrough when the release touches Phase 1 event/report features
 - evidence that a clean-pass mission and a report-failed mission were both rehearsed after deploy when the release touched event/report or internal-ops surfaces

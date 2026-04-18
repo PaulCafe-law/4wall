@@ -50,6 +50,7 @@ Reference these docs before shipping any `live-ops` or `support` change:
 - Web envs:
   - `VITE_API_BASE_URL`
   - `VITE_APP_ENVIRONMENT`
+  - `VITE_GOOGLE_MAPS_API_KEY`
 - Smoke envs:
   - `BETA_API_BASE_URL`
   - `BETA_WEB_LOGIN_URL`
@@ -83,14 +84,15 @@ The current rollout model is:
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
    - site map and site selection flow
-   - site workspace shows map version, zones, launch points, viewpoints, and active route/template summaries if the release touched control-plane surfaces
+   - site workspace shows map version, zones, launch points, viewpoints, active route/template summaries, and internal Google Maps preview if the release touched control-plane surfaces
    - route/template records can be created, viewed, or edited without entering any flight-control path
+   - Google Maps waypoint editing only appears for internal users, and customer users stay on summary/read-only route coverage, if the release touched control-plane surfaces
    - schedule and dispatch records can be created and show the expected planning metadata
    - control-plane dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace each match the current rehearsal script and provide screenshot-ready presentation copy if the release touched control-plane surfaces
    - overview pending-action cards, invoice reminders, invite reminders, and setup guidance when the workspace has no sites or no missions
    - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
    - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
-   - mission detail publication panel with download metadata, next-step guidance, event count, report summary, evidence/report artifacts, and linked route/template/schedule/dispatch metadata when the release touched control-plane surfaces
+   - mission detail publication panel with download metadata, next-step guidance, event count, report summary, evidence/report artifacts, linked route/template/schedule/dispatch metadata, and internal-only raw-contract debug visibility when the release touched control-plane surfaces
    - internal-only analysis reprocess flow can generate demo findings, clean-pass output, and explicit analysis-failed output when the release touched event/report surfaces
    - the control-plane walkthrough panel can be used to rehearse the route-to-report story without hidden operator knowledge
    - team invite lifecycle, including resend / revoke

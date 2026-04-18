@@ -1,4 +1,5 @@
-﻿import { screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 
@@ -20,170 +21,164 @@ vi.mock('../../lib/api', async () => {
   }
 })
 
+function buildMissionDetail() {
+  return {
+    missionId: 'mission-001',
+    organizationId: 'org-001',
+    siteId: 'site-001',
+    requestedByUserId: 'user-001',
+    missionName: 'Tower A Delivery',
+    status: 'dispatched',
+    bundleVersion: 'bundle-v3',
+    request: { missionName: 'Tower A Delivery' },
+    response: { missionId: 'mission-001' },
+    delivery: { state: 'published', publishedAt: '2026-04-14T10:15:00Z', failureReason: null },
+    artifacts: [
+      {
+        artifactName: 'mission.kmz',
+        downloadUrl: '/v1/missions/mission-001/artifacts/mission.kmz',
+        version: 3,
+        checksumSha256: 'abc123',
+        contentType: 'application/vnd.google-earth.kmz',
+        sizeBytes: 1024,
+        cacheControl: 'private, max-age=60',
+        publishedAt: '2026-04-14T10:15:00Z',
+      },
+      {
+        artifactName: 'inspection_report.html',
+        downloadUrl: '/v1/missions/mission-001/artifacts/inspection_report.html',
+        version: 1,
+        checksumSha256: 'report123',
+        contentType: 'text/html',
+        sizeBytes: 4096,
+        cacheControl: 'private, max-age=60',
+        publishedAt: '2026-04-14T10:20:00Z',
+      },
+    ],
+    reportStatus: 'ready',
+    reportGeneratedAt: '2026-04-14T10:20:00Z',
+    eventCount: 2,
+    latestReport: {
+      reportId: 'report-001',
+      missionId: 'mission-001',
+      status: 'ready',
+      generatedAt: '2026-04-14T10:20:00Z',
+      summary: '2 inspection events were generated for Tower A Delivery.',
+      eventCount: 2,
+      downloadArtifact: {
+        artifactName: 'inspection_report.html',
+        downloadUrl: '/v1/missions/mission-001/artifacts/inspection_report.html',
+        contentType: 'text/html',
+        checksumSha256: 'report123',
+        publishedAt: '2026-04-14T10:20:00Z',
+      },
+    },
+    events: [
+      {
+        eventId: 'event-001',
+        missionId: 'mission-001',
+        siteId: 'site-001',
+        category: 'material_discoloration',
+        severity: 'warning',
+        summary: 'Surface discoloration detected on the east facade.',
+        detectedAt: '2026-04-14T10:18:00Z',
+        status: 'open',
+        evidenceArtifacts: [
+          {
+            artifactName: 'evidence-event-001.svg',
+            downloadUrl: '/v1/missions/mission-001/artifacts/evidence-event-001.svg',
+            contentType: 'image/svg+xml',
+            checksumSha256: 'evidence123',
+            publishedAt: '2026-04-14T10:18:00Z',
+          },
+        ],
+      },
+    ],
+    route: {
+      routeId: 'route-001',
+      organizationId: 'org-001',
+      siteId: 'site-001',
+      name: 'Tower A facade loop',
+      description: 'Facade-first route',
+      version: 1,
+      pointCount: 3,
+      previewPolyline: [],
+      estimatedDurationSec: 480,
+      waypoints: [],
+      planningParameters: {},
+      createdAt: '2026-04-17T08:00:00Z',
+      updatedAt: '2026-04-17T08:00:00Z',
+    },
+    template: {
+      templateId: 'template-001',
+      organizationId: 'org-001',
+      siteId: 'site-001',
+      routeId: 'route-001',
+      name: 'Facade standard',
+      description: 'Operator-reviewed',
+      inspectionProfile: {},
+      alertRules: [],
+      evidencePolicy: 'capture_key_frames',
+      reportMode: 'html_report',
+      reviewMode: 'operator_review',
+      createdAt: '2026-04-17T08:00:00Z',
+      updatedAt: '2026-04-17T08:00:00Z',
+    },
+    schedule: {
+      scheduleId: 'schedule-001',
+      organizationId: 'org-001',
+      siteId: 'site-001',
+      routeId: 'route-001',
+      templateId: 'template-001',
+      plannedAt: '2026-04-18T09:00:00Z',
+      recurrence: 'One-off',
+      status: 'scheduled',
+      alertRules: [],
+      nextRunAt: '2026-04-18T09:00:00Z',
+      lastRunAt: null,
+      lastDispatchedAt: '2026-04-17T08:40:00Z',
+      pauseReason: null,
+      lastOutcome: 'scheduled_for_execution',
+      createdAt: '2026-04-17T08:00:00Z',
+      updatedAt: '2026-04-17T08:00:00Z',
+    },
+    dispatch: {
+      dispatchId: 'dispatch-001',
+      missionId: 'mission-001',
+      routeId: 'route-001',
+      templateId: 'template-001',
+      scheduleId: 'schedule-001',
+      dispatchedAt: '2026-04-17T08:40:00Z',
+      acceptedAt: '2026-04-17T08:42:00Z',
+      closedAt: null,
+      lastUpdatedAt: '2026-04-17T08:42:00Z',
+      dispatchedByUserId: 'user-1',
+      assignee: 'observer-01',
+      executionTarget: 'field-team',
+      status: 'accepted',
+      note: 'Demo walkthrough ready',
+    },
+    executionSummary: {
+      missionId: 'mission-001',
+      phase: 'running',
+      telemetryFreshness: 'stale',
+      lastTelemetryAt: '2026-04-17T08:43:00Z',
+      lastImageryAt: '2026-04-17T08:44:00Z',
+      reportStatus: 'ready',
+      eventCount: 2,
+      failureReason: null,
+    },
+    createdAt: '2026-04-14T10:00:00Z',
+  }
+}
+
 describe('MissionDetailPage', () => {
   beforeEach(() => {
     apiMock.getMission.mockReset()
   })
 
-  it('renders planning, dispatch, execution-report, and artifact sections', async () => {
-    apiMock.getMission.mockResolvedValue({
-      missionId: 'mission-001',
-      organizationId: 'org-001',
-      siteId: 'site-001',
-      requestedByUserId: 'user-001',
-      missionName: 'Tower A Delivery',
-      status: 'dispatched',
-      bundleVersion: 'bundle-v3',
-      request: { missionName: 'Tower A Delivery' },
-      response: { missionId: 'mission-001' },
-      delivery: { state: 'published', publishedAt: '2026-04-14T10:15:00Z', failureReason: null },
-      artifacts: [
-        {
-          artifactName: 'mission.kmz',
-          downloadUrl: '/v1/missions/mission-001/artifacts/mission.kmz',
-          version: 3,
-          checksumSha256: 'abc123',
-          contentType: 'application/vnd.google-earth.kmz',
-          sizeBytes: 1024,
-          cacheControl: 'private, max-age=60',
-          publishedAt: '2026-04-14T10:15:00Z',
-        },
-        {
-          artifactName: 'mission_meta.json',
-          downloadUrl: '/v1/missions/mission-001/artifacts/mission_meta.json',
-          version: 3,
-          checksumSha256: 'def456',
-          contentType: 'application/json',
-          sizeBytes: 2048,
-          cacheControl: 'private, max-age=60',
-          publishedAt: '2026-04-14T10:15:00Z',
-        },
-        {
-          artifactName: 'inspection_report.html',
-          downloadUrl: '/v1/missions/mission-001/artifacts/inspection_report.html',
-          version: 1,
-          checksumSha256: 'report123',
-          contentType: 'text/html',
-          sizeBytes: 4096,
-          cacheControl: 'private, max-age=60',
-          publishedAt: '2026-04-14T10:20:00Z',
-        },
-      ],
-      reportStatus: 'ready',
-      reportGeneratedAt: '2026-04-14T10:20:00Z',
-      eventCount: 2,
-      latestReport: {
-        reportId: 'report-001',
-        missionId: 'mission-001',
-        status: 'ready',
-        generatedAt: '2026-04-14T10:20:00Z',
-        summary: '2 inspection events were generated for Tower A Delivery.',
-        eventCount: 2,
-        downloadArtifact: {
-          artifactName: 'inspection_report.html',
-          downloadUrl: '/v1/missions/mission-001/artifacts/inspection_report.html',
-          contentType: 'text/html',
-          checksumSha256: 'report123',
-          publishedAt: '2026-04-14T10:20:00Z',
-        },
-      },
-      events: [
-        {
-          eventId: 'event-001',
-          missionId: 'mission-001',
-          siteId: 'site-001',
-          category: 'material_discoloration',
-          severity: 'warning',
-          summary: 'Surface discoloration detected on the east facade.',
-          detectedAt: '2026-04-14T10:18:00Z',
-          status: 'open',
-          evidenceArtifacts: [
-            {
-              artifactName: 'evidence-event-001.svg',
-              downloadUrl: '/v1/missions/mission-001/artifacts/evidence-event-001.svg',
-              contentType: 'image/svg+xml',
-              checksumSha256: 'evidence123',
-              publishedAt: '2026-04-14T10:18:00Z',
-            },
-          ],
-        },
-      ],
-      route: {
-        routeId: 'route-001',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        name: 'Tower A facade loop',
-        description: 'Facade-first route',
-        version: 1,
-        pointCount: 3,
-        previewPolyline: [],
-        estimatedDurationSec: 480,
-        waypoints: [],
-        planningParameters: {},
-        createdAt: '2026-04-17T08:00:00Z',
-        updatedAt: '2026-04-17T08:00:00Z',
-      },
-      template: {
-        templateId: 'template-001',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        routeId: 'route-001',
-        name: 'Facade standard',
-        description: 'Operator-reviewed',
-        inspectionProfile: {},
-        alertRules: [],
-        evidencePolicy: 'capture_key_frames',
-        reportMode: 'html_report',
-        reviewMode: 'operator_review',
-        createdAt: '2026-04-17T08:00:00Z',
-        updatedAt: '2026-04-17T08:00:00Z',
-      },
-      schedule: {
-        scheduleId: 'schedule-001',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        routeId: 'route-001',
-        templateId: 'template-001',
-        plannedAt: '2026-04-18T09:00:00Z',
-        recurrence: 'One-off',
-        status: 'scheduled',
-        alertRules: [],
-        nextRunAt: '2026-04-18T09:00:00Z',
-        lastRunAt: null,
-        lastDispatchedAt: '2026-04-17T08:40:00Z',
-        pauseReason: null,
-        lastOutcome: 'scheduled_for_execution',
-        createdAt: '2026-04-17T08:00:00Z',
-        updatedAt: '2026-04-17T08:00:00Z',
-      },
-      dispatch: {
-        dispatchId: 'dispatch-001',
-        missionId: 'mission-001',
-        routeId: 'route-001',
-        templateId: 'template-001',
-        scheduleId: 'schedule-001',
-        dispatchedAt: '2026-04-17T08:40:00Z',
-        acceptedAt: '2026-04-17T08:42:00Z',
-        closedAt: null,
-        lastUpdatedAt: '2026-04-17T08:42:00Z',
-        dispatchedByUserId: 'user-1',
-        assignee: 'observer-01',
-        executionTarget: 'field-team',
-        status: 'accepted',
-        note: 'Demo walkthrough ready',
-      },
-      executionSummary: {
-        missionId: 'mission-001',
-        phase: 'running',
-        telemetryFreshness: 'stale',
-        lastTelemetryAt: '2026-04-17T08:43:00Z',
-        lastImageryAt: '2026-04-17T08:44:00Z',
-        reportStatus: 'ready',
-        eventCount: 2,
-        failureReason: null,
-      },
-      createdAt: '2026-04-14T10:00:00Z',
-    })
+  it('renders the main product sections and keeps raw contract collapsed for internal users', async () => {
+    apiMock.getMission.mockResolvedValue(buildMissionDetail())
 
     renderWithProviders(
       <Routes>
@@ -213,5 +208,57 @@ describe('MissionDetailPage', () => {
     expect(screen.getByText(/最近一次影像/)).toBeInTheDocument()
     expect(screen.getByText('執行中')).toBeInTheDocument()
     expect(screen.getByText(/最後更新/)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: '原始契約（除錯）' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '查看原始契約（除錯）' })).toBeInTheDocument()
+    expect(screen.queryByText(/"missionName":\s*"Tower A Delivery"/s)).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: '查看原始契約（除錯）' }))
+
+    expect(await screen.findByRole('heading', { level: 2, name: '規劃請求與回應' })).toBeInTheDocument()
+    expect(screen.getByText(/"missionName"\s*:\s*"Tower A Delivery"/s)).toBeInTheDocument()
+    expect(screen.getByText(/"missionId"\s*:\s*"mission-001"/s)).toBeInTheDocument()
+  })
+
+  it('hides raw contract debug surfaces from customer roles', async () => {
+    apiMock.getMission.mockResolvedValue({
+      ...buildMissionDetail(),
+      latestReport: null,
+      artifacts: [],
+      events: [],
+      route: null,
+      template: null,
+      schedule: null,
+      dispatch: null,
+      executionSummary: null,
+      eventCount: 0,
+      reportStatus: 'not_started',
+      reportGeneratedAt: null,
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/missions/:missionId" element={<MissionDetailPage />} />
+      </Routes>,
+      {
+        route: '/missions/mission-001',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [
+              {
+                membershipId: 'membership-001',
+                organizationId: 'org-001',
+                role: 'customer_admin',
+                isActive: true,
+              },
+            ],
+          }),
+        }),
+      },
+    )
+
+    expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 2, name: '原始契約（除錯）' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '查看原始契約（除錯）' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/"missionName":\s*"Tower A Delivery"/s)).not.toBeInTheDocument()
   })
 })

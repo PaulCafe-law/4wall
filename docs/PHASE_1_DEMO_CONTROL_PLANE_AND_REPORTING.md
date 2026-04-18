@@ -62,6 +62,11 @@ The purpose is to show:
   - control-plane and mission-detail copy is normalized to a single Chinese product narrative
   - every control-plane workspace now includes screenshot and next-step guidance for rehearsal
   - the rehearsal script and evidence package are rewritten around the complete product control-plane story instead of the earlier CRUD demo slice
+- Batch F turns route planning into an internal-only map authority:
+  - the route workspace uses Google Maps as the internal planning surface instead of a text-only demo generator
+  - `customer_admin` and `customer_viewer` see route summaries, preview coverage, and duration only
+  - only internal users can add, drag, delete, and reclassify waypoint markers
+  - `Mission Detail` moves raw request/response JSON out of the main narrative and into an internal-only debug surface
 
 ## Scope
 
@@ -69,6 +74,7 @@ The purpose is to show:
 
 - site map and area context
 - route and route-template records
+- internal-only waypoint editing on top of Google Maps
 - inspection schedule
 - alert rules
 - mission record with planning / scheduled / dispatched / running / completed / failed context
@@ -151,6 +157,10 @@ The productized control plane also expects these summary fields even when they a
 - `AlertCenterItem`
 - `MissionExecutionSummary`
 
+The route editor also assumes this deploy-time contract on the web tier:
+
+- `VITE_GOOGLE_MAPS_API_KEY`
+
 ### Event and Report Contracts
 
 - `EvidenceArtifact`
@@ -198,7 +208,7 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 - `/sites/{siteId}`
   - site-detail workspace for map context, zones, launch points, viewpoints, and active route/template coverage
 - `/control-plane/routes`
-  - route library and route creation workspace
+  - route library and internal-only waypoint editor on top of Google Maps
 - `/control-plane/templates`
   - template library and inspection policy workspace
 - `/control-plane/schedules`
@@ -212,6 +222,7 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 - dispatch context
 - execution and reporting context
 - evidence and artifact delivery
+- internal-only raw-contract debugging, collapsed by default and excluded from the customer-facing narrative
 
 Batch C adds one more requirement to that convergence page:
 
@@ -233,6 +244,7 @@ Batch D adds another:
 - no continuous stick-control API is added
 - dispatch means mission assignment only
 - analysis and report generation remain non-flight-critical planner-server jobs
+- customer users do not receive waypoint authority; they provide site context and review results, while internal users remain the route authority
 
 ## Demo Script
 
@@ -240,7 +252,7 @@ The minimum demo path is:
 
 1. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage plus recent alerts
 2. Open the site-detail workspace and show map context, launch points, viewpoints, and active route/template coverage
-3. Open the route workspace and review route preview, duration, and versioned planning summary
+3. Open the route workspace and review route preview, duration, versioned planning summary, and internal-only Google Maps waypoint editing
 4. Open the template workspace and review inspection policy, evidence policy, and report mode
 5. Open the schedule workspace and show next run, pause reason, last outcome, and alert coverage
 6. Open the dispatch workspace and show assignment, execution target, accepted/closed timing, and mission linkage
@@ -262,6 +274,7 @@ Phase 1 demo functionality is accepted when:
 - the web UI can demonstrate the full route-to-report story without explanation gaps
 - the control plane reads like a real product workspace instead of a stack of unrelated forms
 - the control-plane dashboard, site workspace, route workspace, schedule workspace, and dispatch workspace each produce a screenshot that can stand on its own in a plan-review deck
+- the route workspace can demonstrate internal-only waypoint editing on Google Maps without exposing editing controls to customer roles
 - the data model is stable enough that later batches do not need to redesign route/schedule/event/report shapes
 - control-plane and report surfaces stay outside the flight-critical boundary
 - `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass
@@ -279,3 +292,6 @@ Phase 1 demo functionality is accepted when:
   - analysis failed
   - report generation failed
   - data unavailable / monitor-only
+- mission detail is presentation-safe:
+  - customer users never see raw request/response JSON
+  - internal users can still inspect raw contract data through an explicit collapsed debug surface
