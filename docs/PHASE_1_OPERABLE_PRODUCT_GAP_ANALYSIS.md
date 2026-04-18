@@ -22,7 +22,7 @@ The current `main` branch already has:
 - mission list/detail delivery metadata with explicit `planning / ready / failed / published` states
 - a first control-plane slice with route, template, schedule, and dispatch records plus a `/control-plane` web surface
 - productized control-plane workspaces for dashboard, routes, templates, schedules, and dispatch
-- site-detail workspaces with site-map context, launch points, viewpoints, and active route/template summaries
+- site-detail workspaces with site-map context, explicit zones, and active route/template summaries
 - mission detail linkage for route / template / schedule / dispatch metadata
 - a first event/report slice with mission-linked demo analysis, evidence artifacts, report summaries, and downloadable HTML report output
 - persisted schedule/dispatch lifecycle fields for `nextRunAt`, `lastRunAt`, `pauseReason`, `lastOutcome`, `acceptedAt`, and `closedAt`
@@ -83,7 +83,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 
 - roadmap, gap analysis, and release docs rewritten around the control-plane + event/report demo story
 - first-class contracts for route/template, schedule, dispatch, event, evidence, and report data
-- first-class contracts for site-map metadata, launch points, viewpoints, and active route/template summaries
+- first-class contracts for site-map metadata, route-owned launch points, ordered waypoints, and active route/template summaries
 - overview and mission contract additions for event/report summaries
 - control-plane UI/API slices for site map, route/template, schedule, and dispatch
 - productized control-plane IA with dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace
@@ -99,7 +99,7 @@ The main gap is no longer basic web scaffolding. The main gap is that the produc
 
 Phase 1 is complete when:
 
-- a demo operator can configure a site, route/template, schedule, and dispatch record from the web
+- a demo operator can configure a site, route-owned launch point, ordered patrol waypoints, template, schedule, and dispatch record from the web
 - the control-plane surface reads like a planning/dispatch product, not a single long demo form
 - the control-plane slice can be rehearsed without hidden operator knowledge:
   - select a site

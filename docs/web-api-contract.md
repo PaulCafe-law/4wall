@@ -206,8 +206,6 @@ Response also sets the `fw_refresh` cookie.
 - `siteMap.zoom`
 - `siteMap.version`
 - `siteMap.zones[]`
-- `siteMap.launchPoints[]`
-- `siteMap.viewpoints[]`
 - `activeRouteCount`
 - `activeTemplateCount`
 - `activeRoutes[]`
@@ -220,29 +218,6 @@ Response also sets the `fw_refresh` cookie.
 - `kind`
 - `polygon`
 - `note`
-- `isActive`
-
-`LaunchPoint` should support:
-
-- `launchPointId`
-- `label`
-- `kind`
-- `lat`
-- `lng`
-- `headingDeg`
-- `altitudeM`
-- `isActive`
-
-`InspectionViewpoint` should support:
-
-- `viewpointId`
-- `label`
-- `purpose`
-- `lat`
-- `lng`
-- `headingDeg`
-- `altitudeM`
-- `distanceToFacadeM`
 - `isActive`
 
 ## Missions
@@ -277,13 +252,9 @@ This extends the existing planner API with tenant and requester context.
   "siteId": "site_123",
   "missionName": "tower-a-prod-beta",
   "requestedByUserId": "usr_123",
-  "origin": {
+  "launchPoint": {
     "lat": 25.03391,
     "lng": 121.56452
-  },
-  "targetBuilding": {
-    "buildingId": "tower-a",
-    "label": "Tower A"
   },
   "routingMode": "road_network_following",
   "corridorPolicy": {
@@ -296,6 +267,18 @@ This extends the existing planner API with tenant and requester context.
     "defaultSpeedMps": 4.0,
     "maxApproachSpeedMps": 1.0
   },
+  "waypoints": [
+    {
+      "waypointId": "wp-01",
+      "kind": "transit",
+      "label": "north-patrol",
+      "lat": 25.03441,
+      "lng": 121.56501,
+      "altitudeM": 35.0,
+      "headingDeg": 225.0,
+      "dwellSeconds": 8
+    }
+  ],
   "demoMode": false
 }
 ```
@@ -358,7 +341,10 @@ The productized control-plane slice also expects:
   - `activeRoutes`
   - `activeTemplates`
 - route summary fields:
+  - `launchPoint`
+  - `implicitReturnToLaunch`
   - `version`
+  - `waypointCount`
   - `previewPolyline`
   - `estimatedDurationSec`
 - template summary fields:
@@ -410,9 +396,9 @@ The web surface is intentionally split into product workspaces:
 - `/control-plane`
   - dashboard summary for sites, routes, schedules, dispatch pressure, latest report, and latest anomalies
 - `/sites/{siteId}`
-  - site-detail workspace for map context, zones, launch points, viewpoints, and active route/template coverage
+  - site-detail workspace for map context, zones, and active route/template coverage
 - `/control-plane/routes`
-  - route library and route-creation workspace
+  - route library and internal-only launch-point + waypoint planning workspace
 - `/control-plane/templates`
   - template library and inspection-policy workspace
 - `/control-plane/schedules`
@@ -458,6 +444,23 @@ These endpoints manage:
 - evidence artifacts
 - report summary and download artifact
 - internal-only reprocessing / regeneration requests
+
+### Patrol Route v1
+
+Phase 1 for security patrol uses a simplified planning model:
+
+- `Site` keeps center point, map mode, zoom, and explicit `SiteZone` polygons only.
+- `InspectionRoute` owns:
+  - `launchPoint`
+  - `waypoints[]`
+  - `implicitReturnToLaunch`
+- `previewPolyline` always renders:
+  - `launchPoint`
+  - ordered `waypoints`
+  - synthetic return leg back to `launchPoint`
+- `MissionPlanRequest` no longer requires `inspectionIntent.viewpoints`.
+- `MissionBundle` no longer exposes `inspectionViewpoints`.
+- camera targeting is treated as execution-time behavior, not route-planning schema.
 
 The current Batch 3 implementation is deterministic and demo-oriented:
 

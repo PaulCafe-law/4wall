@@ -1134,31 +1134,8 @@ def _default_site_map(lat: float, lng: float, site_name: str) -> dict[str, objec
             "version": 1,
         },
         "zones": [],
-        "launchPoints": [
-            {
-                "launchPointId": f"launch-{uuid4().hex[:8]}",
-                "label": f"{site_name} 主要起降點",
-                "kind": "primary",
-                "lat": lat,
-                "lng": lng,
-                "headingDeg": 180,
-                "altitudeM": 12,
-                "isActive": True,
-            }
-        ],
-        "viewpoints": [
-            {
-                "viewpointId": f"view-{uuid4().hex[:8]}",
-                "label": f"{site_name} 主立面視角",
-                "purpose": "facade",
-                "lat": lat + (SITE_MAP_DEFAULT_OFFSET / 2),
-                "lng": lng + (SITE_MAP_DEFAULT_OFFSET / 2),
-                "headingDeg": 225,
-                "altitudeM": 32,
-                "distanceToFacadeM": 12,
-                "isActive": True,
-            }
-        ],
+        "launchPoints": [],
+        "viewpoints": [],
     }
 
 
@@ -1186,8 +1163,8 @@ def _build_site_map_payload(
             "version": int(version or default_map["mapConfig"]["version"]),
         },
         "zones": zones or default_map["zones"],
-        "launchPoints": launch_points or default_map["launchPoints"],
-        "viewpoints": viewpoints or default_map["viewpoints"],
+        "launchPoints": launch_points or [],
+        "viewpoints": viewpoints or [],
     }
 
 
@@ -1226,16 +1203,14 @@ def _serialize_site_map(site: Site) -> SiteMapDto:
     site_map = _build_site_map_payload(lat=site.lat, lng=site.lng, site_name=site.name)
     map_config = site.map_config_json or site_map["mapConfig"]
     zones = _filter_site_zones(site.zones_json or site_map["zones"], lat=site.lat, lng=site.lng)
-    launch_points = site.launch_points_json or site_map["launchPoints"]
-    viewpoints = site.viewpoints_json or site_map["viewpoints"]
     return SiteMapDto(
         baseMapType=map_config.get("baseMapType", "satellite"),
         center=map_config.get("center", {"lat": site.lat, "lng": site.lng}),
         zoom=int(map_config.get("zoom", 18)),
         version=int(map_config.get("version", 1)),
         zones=[SiteZoneDto.model_validate(zone) for zone in zones],
-        launchPoints=[LaunchPointDto.model_validate(point) for point in launch_points],
-        viewpoints=[InspectionViewpointDto.model_validate(viewpoint) for viewpoint in viewpoints],
+        launchPoints=[],
+        viewpoints=[],
     )
 
 

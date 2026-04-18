@@ -104,6 +104,7 @@ class InspectionRoute(SQLModel, table=True):
     site_id: str = Field(foreign_key="site.id", index=True)
     name: str = Field(index=True)
     description: str = ""
+    launch_point_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     waypoints_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     planning_parameters_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")

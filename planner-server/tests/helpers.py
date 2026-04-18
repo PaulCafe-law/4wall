@@ -12,8 +12,7 @@ from app.security import hash_password
 def valid_request_payload() -> dict:
     return {
         "missionName": "building-a-demo",
-        "origin": {"lat": 25.03391, "lng": 121.56452},
-        "targetBuilding": {"buildingId": "tower-a", "label": "Tower A"},
+        "launchPoint": {"lat": 25.03391, "lng": 121.56452},
         "routingMode": "road_network_following",
         "corridorPolicy": {
             "defaultHalfWidthM": 8.0,
@@ -25,18 +24,28 @@ def valid_request_payload() -> dict:
             "defaultSpeedMps": 4.0,
             "maxApproachSpeedMps": 1.0,
         },
-        "inspectionIntent": {
-            "viewpoints": [
-                {
-                    "viewpointId": "vp-01",
-                    "label": "north-east-facade",
-                    "lat": 25.03441,
-                    "lng": 121.56501,
-                    "yawDeg": 225.0,
-                    "distanceToFacadeM": 12.0,
-                }
-            ]
-        },
+        "waypoints": [
+            {
+                "waypointId": "wp-01",
+                "kind": "transit",
+                "label": "north-east-pass",
+                "lat": 25.03441,
+                "lng": 121.56501,
+                "altitudeM": 35.0,
+                "headingDeg": 225.0,
+                "dwellSeconds": 0,
+            },
+            {
+                "waypointId": "wp-02",
+                "kind": "hold",
+                "label": "north-east-hold",
+                "lat": 25.03451,
+                "lng": 121.56511,
+                "altitudeM": 32.0,
+                "headingDeg": 225.0,
+                "dwellSeconds": 8,
+            },
+        ],
         "demoMode": False,
     }
 

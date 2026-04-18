@@ -17,7 +17,7 @@ export type TelemetryFreshness = 'fresh' | 'stale' | 'missing'
 export type VideoAvailability = 'live' | 'stale' | 'unavailable'
 export type InspectionReportStatus = 'not_started' | 'queued' | 'generating' | 'ready' | 'failed'
 export type InspectionEventStatus = 'open' | 'reviewed' | 'dismissed' | 'confirmed'
-export type InspectionWaypointKind = 'transit' | 'inspection_viewpoint' | 'hold'
+export type InspectionWaypointKind = 'transit' | 'hold'
 export type InspectionAlertRuleKind =
   | 'mission_failure'
   | 'telemetry_stale'
@@ -226,6 +226,8 @@ export interface InspectionRoute {
   name: string
   description: string
   version: number
+  launchPoint: LaunchPoint
+  implicitReturnToLaunch: boolean
   pointCount: number
   previewPolyline: Array<{ lat: number; lng: number }>
   estimatedDurationSec: number

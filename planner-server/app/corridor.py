@@ -7,7 +7,6 @@ from math import ceil, cos, radians, sqrt
 from app.dto import (
     CorridorSegmentDto,
     GeoPointDto,
-    InspectionViewpointDto,
     MissionArtifactDescriptorDto,
     MissionArtifactsDto,
     MissionBundleDto,
@@ -34,16 +33,9 @@ class CorridorGenerator:
         densified = densify_polyline(route_path.points, max_spacing_m=self.densify_spacing_m)
         half_width = min(request.corridorPolicy.defaultHalfWidthM, request.corridorPolicy.maxHalfWidthM)
         verification_points = build_verification_points(densified, request)
-        inspection_viewpoints = [
-            InspectionViewpointDto(
-                inspectionViewpointId=viewpoint.viewpointId,
-                location=GeoPointDto(lat=viewpoint.lat, lng=viewpoint.lng),
-                yawDegrees=viewpoint.yawDeg,
-                captureMode="photo_burst",
-                label=viewpoint.label,
-            )
-            for viewpoint in request.inspectionIntent.viewpoints
-        ]
+        launch_point = request.launchPoint or request.origin
+        if launch_point is None:
+            raise ValueError("launch point missing")
         failsafe = MissionFailsafeDto()
         bundle_version = "1.1.0"
         mission_bundle = MissionBundleDto(
@@ -51,6 +43,9 @@ class CorridorGenerator:
             routeMode="road_network_following",
             defaultAltitudeMeters=request.flightProfile.defaultAltitudeM,
             defaultSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
+            launchPoint=launch_point,
+            waypointCount=len(request.waypoints),
+            implicitReturnToLaunch=True,
             corridorSegments=[
                 CorridorSegmentDto(
                     segmentId="seg-001",
@@ -61,7 +56,6 @@ class CorridorGenerator:
                 )
             ],
             verificationPoints=verification_points,
-            inspectionViewpoints=inspection_viewpoints,
             failsafe=failsafe,
         )
         placeholder_descriptor = MissionArtifactDescriptorDto(
@@ -78,7 +72,8 @@ class CorridorGenerator:
             generatedAt=datetime.now(timezone.utc),
             segments=1,
             verificationPoints=len(verification_points),
-            inspectionViewpoints=len(inspection_viewpoints),
+            routeWaypointCount=len(request.waypoints),
+            implicitReturnToLaunch=True,
             corridorHalfWidthM=half_width,
             suggestedAltitudeM=request.flightProfile.defaultAltitudeM,
             suggestedSpeedMps=request.flightProfile.defaultSpeedMps,

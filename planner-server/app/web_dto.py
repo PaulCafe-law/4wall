@@ -34,7 +34,7 @@ ControlIntentStatusLiteral = Literal["requested", "accepted", "rejected", "super
 ControlModeLiteral = Literal["monitor_only", "remote_control_requested", "remote_control_active", "released"]
 InspectionReportStatusLiteral = Literal["not_started", "queued", "generating", "ready", "failed"]
 InspectionEventStatusLiteral = Literal["open", "reviewed", "dismissed", "confirmed"]
-InspectionWaypointKindLiteral = Literal["transit", "inspection_viewpoint", "hold"]
+InspectionWaypointKindLiteral = Literal["transit", "hold"]
 SiteMapBaseMapLiteral = Literal["satellite", "roadmap", "hybrid"]
 SiteZoneKindLiteral = Literal["inspection_boundary", "priority_facade", "restricted_area", "staging_area"]
 LaunchPointKindLiteral = Literal["primary", "backup"]
@@ -345,6 +345,7 @@ class CreateInspectionRouteRequestDto(BaseModel):
     siteId: str
     name: str = Field(min_length=1)
     description: str = ""
+    launchPoint: LaunchPointInputDto
     waypoints: list[InspectionWaypointInputDto] = Field(min_length=1)
     planningParameters: dict[str, Any] = Field(default_factory=dict)
 
@@ -352,6 +353,7 @@ class CreateInspectionRouteRequestDto(BaseModel):
 class UpdateInspectionRouteRequestDto(BaseModel):
     name: str | None = Field(default=None, min_length=1)
     description: str | None = None
+    launchPoint: LaunchPointInputDto | None = None
     waypoints: list[InspectionWaypointInputDto] | None = None
     planningParameters: dict[str, Any] | None = None
 
@@ -363,6 +365,8 @@ class InspectionRouteDto(BaseModel):
     name: str
     description: str = ""
     version: int = 1
+    launchPoint: LaunchPointDto
+    implicitReturnToLaunch: bool = True
     pointCount: int = 0
     previewPolyline: list[dict[str, float]] = Field(default_factory=list)
     estimatedDurationSec: int = 0

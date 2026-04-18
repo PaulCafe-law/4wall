@@ -36,19 +36,77 @@ def normalize_alert_rules(alert_rules: list[dict] | None) -> list[dict]:
     return normalized
 
 
-def _preview_polyline(waypoints: list[dict]) -> list[dict[str, float]]:
-    preview: list[dict[str, float]] = []
+def _normalize_waypoint_kind(kind: str | None) -> str:
+    if kind == "hold":
+        return "hold"
+    return "transit"
+
+
+def _serialize_launch_point(route: InspectionRoute) -> dict[str, object]:
+    launch_point = route.launch_point_json or {}
+    if launch_point.get("lat") is not None and launch_point.get("lng") is not None:
+        return {
+            "launchPointId": str(launch_point.get("launchPointId") or f"route-launch-{route.id[:8]}"),
+            "label": str(launch_point.get("label") or f"{route.name} 起降點"),
+            "kind": str(launch_point.get("kind") or "primary"),
+            "lat": float(launch_point["lat"]),
+            "lng": float(launch_point["lng"]),
+            "headingDeg": launch_point.get("headingDeg"),
+            "altitudeM": launch_point.get("altitudeM"),
+            "isActive": bool(launch_point.get("isActive", True)),
+        }
+
+    if route.waypoints_json:
+        first_waypoint = route.waypoints_json[0]
+        return {
+            "launchPointId": f"route-launch-{route.id[:8]}",
+            "label": f"{route.name} 起降點",
+            "kind": "primary",
+            "lat": float(first_waypoint["lat"]),
+            "lng": float(first_waypoint["lng"]),
+            "headingDeg": first_waypoint.get("headingDeg"),
+            "altitudeM": first_waypoint.get("altitudeM"),
+            "isActive": True,
+        }
+
+    return {
+        "launchPointId": f"route-launch-{route.id[:8]}",
+        "label": f"{route.name} 起降點",
+        "kind": "primary",
+        "lat": 0.0,
+        "lng": 0.0,
+        "headingDeg": None,
+        "altitudeM": None,
+        "isActive": True,
+    }
+
+
+def _route_geometry(launch_point: dict[str, object], waypoints: list[dict]) -> list[dict[str, float]]:
+    geometry: list[dict[str, float]] = []
+    if launch_point.get("lat") is not None and launch_point.get("lng") is not None:
+        geometry.append({"lat": float(launch_point["lat"]), "lng": float(launch_point["lng"])})
     for waypoint in waypoints:
         lat = waypoint.get("lat")
         lng = waypoint.get("lng")
         if lat is None or lng is None:
             continue
-        preview.append({"lat": float(lat), "lng": float(lng)})
-    return preview
+        geometry.append({"lat": float(lat), "lng": float(lng)})
+    if len(geometry) > 1:
+        geometry.append(geometry[0])
+    return geometry
 
 
-def _estimate_route_duration_seconds(waypoints: list[dict], planning_parameters: dict) -> int:
-    if len(waypoints) < 2:
+def _preview_polyline(launch_point: dict[str, object], waypoints: list[dict]) -> list[dict[str, float]]:
+    return [{"lat": point["lat"], "lng": point["lng"]} for point in _route_geometry(launch_point, waypoints)]
+
+
+def _estimate_route_duration_seconds(
+    launch_point: dict[str, object],
+    waypoints: list[dict],
+    planning_parameters: dict,
+) -> int:
+    geometry = _route_geometry(launch_point, waypoints)
+    if len(geometry) < 2:
         return sum(int(waypoint.get("dwellSeconds") or 0) for waypoint in waypoints)
 
     speed_mps = (
@@ -72,14 +130,23 @@ def _estimate_route_duration_seconds(waypoints: list[dict], planning_parameters:
         )
         return 2 * earth_radius_m * math.asin(math.sqrt(hav))
 
-    transit_seconds = sum(distance_m(current, nxt) / speed_mps for current, nxt in zip(waypoints, waypoints[1:]))
+    transit_seconds = sum(distance_m(current, nxt) / speed_mps for current, nxt in zip(geometry, geometry[1:]))
     dwell_seconds = sum(int(waypoint.get("dwellSeconds") or 0) for waypoint in waypoints)
     return int(round(transit_seconds + dwell_seconds))
 
 
 def serialize_route(route: InspectionRoute) -> InspectionRouteDto:
+    launch_point = _serialize_launch_point(route)
+    normalized_waypoints = [
+        {
+            **waypoint,
+            "kind": _normalize_waypoint_kind(waypoint.get("kind")),
+        }
+        for waypoint in route.waypoints_json
+    ]
     estimated_duration = _estimate_route_duration_seconds(
-        route.waypoints_json,
+        launch_point,
+        normalized_waypoints,
         route.planning_parameters_json,
     )
     return InspectionRouteDto(
@@ -89,10 +156,12 @@ def serialize_route(route: InspectionRoute) -> InspectionRouteDto:
         name=route.name,
         description=route.description,
         version=int(route.planning_parameters_json.get("routeVersion") or 1),
-        pointCount=len(route.waypoints_json),
-        previewPolyline=_preview_polyline(route.waypoints_json),
+        launchPoint=launch_point,
+        implicitReturnToLaunch=True,
+        pointCount=len(normalized_waypoints),
+        previewPolyline=_preview_polyline(launch_point, normalized_waypoints),
         estimatedDurationSec=estimated_duration,
-        waypoints=[InspectionWaypointDto.model_validate(waypoint) for waypoint in route.waypoints_json],
+        waypoints=[InspectionWaypointDto.model_validate(waypoint) for waypoint in normalized_waypoints],
         planningParameters=route.planning_parameters_json,
         createdAt=route.created_at,
         updatedAt=route.updated_at,
@@ -118,12 +187,14 @@ def serialize_template(template: InspectionTemplate) -> InspectionTemplateDto:
 
 
 def serialize_route_summary(route: InspectionRoute) -> SiteRouteSummaryDto:
+    launch_point = _serialize_launch_point(route)
     return SiteRouteSummaryDto(
         routeId=route.id,
         name=route.name,
         version=int(route.planning_parameters_json.get("routeVersion") or 1),
         pointCount=len(route.waypoints_json),
         estimatedDurationSec=_estimate_route_duration_seconds(
+            launch_point,
             route.waypoints_json,
             route.planning_parameters_json,
         ),

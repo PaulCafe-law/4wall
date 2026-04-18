@@ -28,24 +28,14 @@ class RouteProvider:
 
 class MockRouteProvider(RouteProvider):
     def plan_route(self, request: MissionPlanRequestDto) -> RoutePath:
-        origin = request.origin
-        target = GeoPointDto(
-            lat=request.inspectionIntent.viewpoints[0].lat,
-            lng=request.inspectionIntent.viewpoints[0].lng,
-        )
-        midpoint = GeoPointDto(
-            lat=(origin.lat + target.lat) / 2,
-            lng=(origin.lng + target.lng) / 2,
-        )
-        branch_hint = GeoPointDto(
-            lat=midpoint.lat + 0.00015,
-            lng=midpoint.lng + 0.00012,
-        )
-        safety_buffer = GeoPointDto(
-            lat=target.lat - 0.00010,
-            lng=target.lng - 0.00008,
-        )
-        return RoutePath(points=[origin, midpoint, branch_hint, safety_buffer, target])
+        launch_point = request.launchPoint or request.origin
+        if launch_point is None:
+            raise RouteProviderError("launch point missing")
+
+        points = [launch_point]
+        points.extend(GeoPointDto(lat=waypoint.lat, lng=waypoint.lng) for waypoint in request.waypoints)
+        points.append(launch_point)
+        return RoutePath(points=points)
 
 
 class OsmOsrmRouteProvider(RouteProvider):
@@ -61,9 +51,13 @@ class OsmOsrmRouteProvider(RouteProvider):
         self.client = client or httpx.Client(timeout=10.0)
 
     def plan_route(self, request: MissionPlanRequestDto) -> RoutePath:
-        origin = request.origin
-        target = request.inspectionIntent.viewpoints[0]
-        coordinates = f"{origin.lng},{origin.lat};{target.lng},{target.lat}"
+        launch_point = request.launchPoint or request.origin
+        if launch_point is None:
+            raise RouteProviderError("launch point missing")
+        coordinate_points = [launch_point]
+        coordinate_points.extend(GeoPointDto(lat=waypoint.lat, lng=waypoint.lng) for waypoint in request.waypoints)
+        coordinate_points.append(launch_point)
+        coordinates = ";".join(f"{point.lng},{point.lat}" for point in coordinate_points)
         response = self.client.get(
             f"{self.base_url}/route/v1/{self.profile}/{coordinates}",
             params={

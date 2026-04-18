@@ -196,11 +196,11 @@ export interface MissionPlanPayload {
   organizationId: string
   siteId: string
   missionName: string
-  origin: {
+  launchPoint: {
     lat: number
     lng: number
   }
-  targetBuilding: {
+  targetBuilding?: {
     buildingId: string
     label: string
   }
@@ -215,16 +215,16 @@ export interface MissionPlanPayload {
     defaultSpeedMps: number
     maxApproachSpeedMps: number
   }
-  inspectionIntent: {
-    viewpoints: Array<{
-      viewpointId: string
-      label: string
-      lat: number
-      lng: number
-      yawDeg: number
-      distanceToFacadeM: number
-    }>
-  }
+  waypoints: Array<{
+    waypointId?: string
+    kind?: 'transit' | 'hold'
+    label?: string
+    lat: number
+    lng: number
+    altitudeM: number
+    headingDeg?: number
+    dwellSeconds?: number
+  }>
   demoMode: boolean
 }
 
@@ -271,6 +271,7 @@ export interface InspectionRoutePayload {
   siteId: string
   name: string
   description?: string
+  launchPoint: LaunchPointPayload
   waypoints: InspectionWaypoint[]
   planningParameters?: Record<string, unknown>
 }

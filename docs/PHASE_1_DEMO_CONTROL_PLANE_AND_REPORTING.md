@@ -46,8 +46,8 @@ The purpose is to show:
   - mission detail is reorganized into planning / dispatch / execution-report sections
   - route / template / schedule / dispatch DTOs expose product-style summary metadata needed for presentation and review
 - Batch B formalizes site-map context and site-linked route reuse:
-  - site records now carry `SiteMap`, `SiteZone`, `LaunchPoint`, and `InspectionViewpoint` metadata
-  - `/sites/{siteId}` becomes the site-detail workspace for map context, launch points, viewpoints, and active routes/templates
+  - site records now carry `SiteMap` and explicit `SiteZone` metadata
+  - `/sites/{siteId}` becomes the site-detail workspace for map context and active routes/templates
   - route preview, route duration, and template policy summaries are exposed directly from the site workspace
 - Batch C formalizes schedule and dispatch lifecycle handling:
   - schedules persist `nextRunAt`, `lastRunAt`, `pauseReason`, and `lastOutcome` instead of deriving them ad hoc
@@ -65,13 +65,13 @@ The purpose is to show:
 - Batch F turns route planning into an internal-only map authority:
   - the route workspace uses Google Maps as the internal planning surface instead of a text-only demo generator
   - `customer_admin` and `customer_viewer` see route summaries, preview coverage, and duration only
-  - only internal users can add, drag, delete, and reclassify waypoint markers
+  - only internal users can set `launchPoint`, add, drag, delete, and reorder waypoint markers
   - `Mission Detail` moves raw request/response JSON out of the main narrative and into an internal-only debug surface
-- Batch G turns site-map context into the same internal map-authority workflow:
-  - launch points and inspection viewpoints are no longer treated as static labels only
-  - internal users can add, drag, relabel, and remove `LaunchPoint` and `InspectionViewpoint` markers directly on Google Maps
-  - customer roles still see site context and active route overlays, but cannot edit site geometry
-  - site-map geometry remains the authority for launch/viewpoint context, while route waypoints remain a separate internal planning asset
+- Batch G simplifies geometry ownership for security patrol v1:
+  - route geometry is route-owned instead of split across site-level launch/viewpoint markers and route waypoint assets
+  - the route editor now exposes one `launchPoint` plus ordered `1..N` waypoints
+  - the preview path always closes back to `launchPoint` through implicit return-to-launch
+  - site-detail no longer acts as route-geometry authority
 - Batch H corrects the meaning of site zones:
   - a customer-provided site center is treated as a reference point only, not as an implied inspection boundary
   - the web tier no longer auto-generates a default `inspection_boundary` polygon around every new site
@@ -84,9 +84,8 @@ The purpose is to show:
 
 - site map and area context
 - explicit inspection boundary polygons only when internal has actually defined them
-- internal-only launch point and inspection viewpoint editing on top of Google Maps
 - route and route-template records
-- internal-only waypoint editing on top of Google Maps
+- internal-only launch-point and waypoint editing on top of Google Maps
 - inspection schedule
 - alert rules
 - mission record with planning / scheduled / dispatched / running / completed / failed context
@@ -136,7 +135,6 @@ These contracts are locked in Batch 1 even if endpoint rollout happens in later 
 - `SiteMap`
 - `SiteZone`
 - `LaunchPoint`
-- `InspectionViewpoint`
 - `InspectionWaypoint`
 - `InspectionRoute`
 - `InspectionTemplate`
@@ -222,9 +220,9 @@ The control plane is no longer presented as one undifferentiated form wall. Prod
 - `/control-plane`
   - dashboard summary for site count, route/template coverage, schedule pressure, dispatch pressure, latest report, latest anomaly, and internal handoff state
 - `/sites/{siteId}`
-  - site-detail workspace for map context, zones, launch points, viewpoints, and active route/template coverage
+  - site-detail workspace for map context, explicit zones, and active route/template coverage
 - `/control-plane/routes`
-  - route library and internal-only waypoint editor on top of Google Maps
+  - route library and internal-only launch-point + waypoint editor on top of Google Maps
 - `/control-plane/templates`
   - template library and inspection policy workspace
 - `/control-plane/schedules`
@@ -267,9 +265,8 @@ Batch D adds another:
 The minimum demo path is:
 
 1. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage plus recent alerts
-2. Open the site-detail workspace and show map context, launch points, viewpoints, and active route/template coverage
-3. In the site-detail workspace, show internal-only launch point / viewpoint editing on Google Maps
-4. Open the route workspace and review route preview, duration, versioned planning summary, and internal-only Google Maps waypoint editing
+2. Open the site-detail workspace and show map context, explicit zones, and active route/template coverage
+3. Open the route workspace and review route preview, duration, versioned planning summary, and internal-only Google Maps launch-point / waypoint editing
 5. Open the template workspace and review inspection policy, evidence policy, and report mode
 6. Open the schedule workspace and show next run, pause reason, last outcome, and alert coverage
 7. Open the dispatch workspace and show assignment, execution target, accepted/closed timing, and mission linkage
@@ -291,8 +288,7 @@ Phase 1 demo functionality is accepted when:
 - the web UI can demonstrate the full route-to-report story without explanation gaps
 - the control plane reads like a real product workspace instead of a stack of unrelated forms
 - the control-plane dashboard, site workspace, route workspace, schedule workspace, and dispatch workspace each produce a screenshot that can stand on its own in a plan-review deck
-- the route workspace can demonstrate internal-only waypoint editing on Google Maps without exposing editing controls to customer roles
-- the site workspace can demonstrate internal-only launch point and inspection viewpoint editing on Google Maps without exposing geometry controls to customer roles
+- the route workspace can demonstrate internal-only launch-point and waypoint editing on Google Maps without exposing editing controls to customer roles
 - the data model is stable enough that later batches do not need to redesign route/schedule/event/report shapes
 - control-plane and report surfaces stay outside the flight-critical boundary
 - `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass

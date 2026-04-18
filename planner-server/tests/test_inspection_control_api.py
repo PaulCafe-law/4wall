@@ -42,6 +42,14 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
             "siteId": site_id,
             "name": "Tower A facade loop",
             "description": "Demo envelope",
+            "launchPoint": {
+                "label": "Tower A launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+                "headingDeg": 180,
+                "altitudeM": 0,
+            },
             "planningParameters": {"routeMode": "site-envelope-demo"},
             "waypoints": [
                 {
@@ -52,11 +60,11 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
                     "label": "ingress",
                 },
                 {
-                    "kind": "inspection_viewpoint",
+                    "kind": "hold",
                     "lat": 25.03391,
                     "lng": 121.56452,
                     "altitudeM": 32,
-                    "label": "facade",
+                    "label": "hold",
                     "dwellSeconds": 18,
                 },
             ],
@@ -232,14 +240,20 @@ def test_customer_viewer_can_read_but_not_write_control_plane_records(client, se
             "siteId": site_id,
             "name": "Viewer Route",
             "description": "Read-only route",
+            "launchPoint": {
+                "label": "Viewer launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+            },
             "planningParameters": {"routeMode": "site-envelope-demo"},
             "waypoints": [
                 {
-                    "kind": "inspection_viewpoint",
+                    "kind": "transit",
                     "lat": 25.03391,
                     "lng": 121.56452,
                     "altitudeM": 30,
-                    "label": "facade",
+                    "label": "patrol",
                     "dwellSeconds": 12,
                 }
             ],
@@ -257,14 +271,20 @@ def test_customer_viewer_can_read_but_not_write_control_plane_records(client, se
             "siteId": site_id,
             "name": "Blocked Route",
             "description": "Should not work",
+            "launchPoint": {
+                "label": "Blocked launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+            },
             "planningParameters": {"routeMode": "site-envelope-demo"},
             "waypoints": [
                 {
-                    "kind": "inspection_viewpoint",
+                    "kind": "transit",
                     "lat": 25.03391,
                     "lng": 121.56452,
                     "altitudeM": 30,
-                    "label": "facade",
+                    "label": "patrol",
                     "dwellSeconds": 12,
                 }
             ],
@@ -306,8 +326,8 @@ def test_site_detail_returns_site_map_context_and_active_route_template_summarie
     site_id = site["siteId"]
     assert site["siteMap"]["baseMapType"] == "satellite"
     assert len(site["siteMap"]["zones"]) == 0
-    assert len(site["siteMap"]["launchPoints"]) == 1
-    assert len(site["siteMap"]["viewpoints"]) == 1
+    assert len(site["siteMap"]["launchPoints"]) == 0
+    assert len(site["siteMap"]["viewpoints"]) == 0
 
     route_response = client.post(
         "/v1/inspection/routes",
@@ -317,6 +337,12 @@ def test_site_detail_returns_site_map_context_and_active_route_template_summarie
             "siteId": site_id,
             "name": "Tower A facade loop",
             "description": "Demo envelope",
+            "launchPoint": {
+                "label": "Tower A launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+            },
             "planningParameters": {"routeMode": "site-envelope-demo", "routeVersion": 2},
             "waypoints": [
                 {
@@ -327,11 +353,11 @@ def test_site_detail_returns_site_map_context_and_active_route_template_summarie
                     "label": "ingress",
                 },
                 {
-                    "kind": "inspection_viewpoint",
+                    "kind": "hold",
                     "lat": 25.03391,
                     "lng": 121.56452,
                     "altitudeM": 32,
-                    "label": "facade",
+                    "label": "hold",
                     "dwellSeconds": 18,
                 },
             ],
@@ -384,8 +410,8 @@ def test_site_detail_returns_site_map_context_and_active_route_template_summarie
                 "zoom": 19,
                 "version": 3,
                 "zones": detail["siteMap"]["zones"],
-                "launchPoints": detail["siteMap"]["launchPoints"],
-                "viewpoints": detail["siteMap"]["viewpoints"],
+                "launchPoints": [],
+                "viewpoints": [],
             },
         },
     )
@@ -485,6 +511,12 @@ def test_control_plane_dashboard_and_alerts_surface_execution_lifecycle(client, 
             "siteId": site_id,
             "name": "Tower A facade loop",
             "description": "Demo envelope",
+            "launchPoint": {
+                "label": "Tower A launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+            },
             "planningParameters": {"routeMode": "site-envelope-demo", "routeVersion": 2},
             "waypoints": [
                 {
@@ -495,11 +527,11 @@ def test_control_plane_dashboard_and_alerts_surface_execution_lifecycle(client, 
                     "label": "ingress",
                 },
                 {
-                    "kind": "inspection_viewpoint",
+                    "kind": "hold",
                     "lat": 25.03391,
                     "lng": 121.56452,
                     "altitudeM": 32,
-                    "label": "facade",
+                    "label": "hold",
                     "dwellSeconds": 18,
                 },
             ],

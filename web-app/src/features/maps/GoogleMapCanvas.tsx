@@ -25,7 +25,6 @@ export type RouteOverlay = {
 }
 
 function routeWaypointColor(kind: InspectionWaypoint['kind']) {
-  if (kind === 'inspection_viewpoint') return '#c76a28'
   if (kind === 'hold') return '#596b55'
   return '#1f2b3a'
 }

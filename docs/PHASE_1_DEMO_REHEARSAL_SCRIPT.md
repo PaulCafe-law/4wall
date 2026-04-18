@@ -68,10 +68,9 @@ Show:
 
 - selected site
 - address and coordinates
-- site-map version, launch points, viewpoints, and any internal-defined zones
-- internal-only launch-point and viewpoint editing on Google Maps
+- site-map version and any internal-defined zones
 - active route/template coverage
-- Google Maps map context if rehearsing with an internal account
+- Google Maps map context
 
 Capture evidence:
 
@@ -82,11 +81,13 @@ Capture evidence:
 Show:
 
 - at least one route
+- route-owned launch point
+- ordered patrol waypoints
 - route version
 - estimated duration
-- preview polyline or route summary
+- preview polyline showing implicit return-to-launch
 - internal-only Google Maps waypoint editor
-- at least one waypoint add/drag/edit interaction if rehearsing with an internal account
+- at least one launch-point or waypoint drag/edit interaction if rehearsing with an internal account
 
 Capture evidence:
 
@@ -218,4 +219,5 @@ The rehearsal is complete only if:
 - customer roles never see waypoint editing controls or raw contract JSON
 - the selected mission shows consistent planning metadata, report state, and evidence
 - the clean-pass and failure variants both render correctly
+- the published route visibly closes back to launch without storing an explicit duplicate last waypoint
 - internal ops surfaces agree with mission detail on report-failed state

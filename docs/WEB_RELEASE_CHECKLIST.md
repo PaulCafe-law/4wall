@@ -46,9 +46,8 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - customer viewer deployed smoke if viewer smoke credentials are configured
   - site map read path and site selection
   - route/template create or edit path if the release touched control-plane surfaces
-  - route workspace exposes Google Maps waypoint editing only to internal users, while customer users remain on summary/read-only route coverage, if the release touched control-plane surfaces
-  - site workspace shows map version, launch points, viewpoints, active route/template summaries, and any internal-defined zones, plus internal Google Maps preview if the release touched control-plane surfaces
-  - site workspace exposes launch-point and viewpoint editing only to internal users, while customer users remain on summary/read-only site context, if the release touched control-plane surfaces
+  - route workspace exposes route-owned launch-point and waypoint editing only to internal users, while customer users remain on summary/read-only route coverage, if the release touched control-plane surfaces
+  - site workspace shows map version, active route/template summaries, and any internal-defined zones, plus Google Maps preview if the release touched control-plane surfaces
   - schedule create, pause/resume, cancel/complete, and `lastOutcome` / `lastDispatchedAt` visibility if the release touched control-plane surfaces
   - dispatch create, send/accept/complete/fail transitions, assignee / execution target / handoff note rendering, and dispatch board visibility if the release touched control-plane surfaces
   - control-plane dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace each render screenshot-ready guidance and match the rehearsal script if the release touched control-plane surfaces
@@ -80,8 +79,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
 - Re-run `.github/workflows/smoke-beta.yml` against production values.
 - Validate the same core customer flows on production.
 - Reconfirm any route/template/schedule/dispatch surface touched by the release on production.
-- Reconfirm internal Google Maps route editing and customer route-summary-only behavior on production if the release touched control-plane surfaces.
-- Reconfirm internal Google Maps launch-point/viewpoint editing and customer site-summary-only behavior on production if the release touched control-plane surfaces.
+- Reconfirm internal Google Maps route launch-point/waypoint editing and customer route-summary-only behavior on production if the release touched control-plane surfaces.
 - Reconfirm schedule lifecycle and dispatch board state transitions on production if the release touched control-plane surfaces.
 - Reconfirm mission detail still shows linked planning metadata for one dispatched mission when the release touched control-plane surfaces.
 - Reconfirm one clean-pass mission and one report-failed mission show the same reporting state across mission detail, support, and live ops when the release touched the event/report slice.
@@ -109,7 +107,7 @@ Rollback immediately if any of these occur:
 - manual QA notes for customer and internal flows
 - demo-story notes for one route/template -> schedule -> dispatch -> mission-detail walkthrough when the release touches the control-plane slice
 - evidence that customer roles could not access waypoint editing controls or raw-contract JSON after deploy
-- evidence that customer roles could not access site-geometry editing controls after deploy
+- evidence that customer roles could not access route geometry editing controls after deploy
 - screenshot references for the control-plane dashboard, site workspace, route workspace, template workspace, schedule workspace, and dispatch workspace when the release touches the control-plane slice
 - demo-story notes for one end-to-end route -> dispatch -> event -> report walkthrough when the release touches Phase 1 event/report features
 - evidence that a clean-pass mission and a report-failed mission were both rehearsed after deploy when the release touched event/report or internal-ops surfaces

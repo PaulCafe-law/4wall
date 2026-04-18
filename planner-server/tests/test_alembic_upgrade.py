@@ -35,6 +35,9 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "launch_points_json" in site_columns
     assert "viewpoints_json" in site_columns
 
+    route_columns = {column["name"] for column in inspector.get_columns("inspectionroute")}
+    assert "launch_point_json" in route_columns
+
     schedule_columns = {column["name"] for column in inspector.get_columns("inspectionschedule")}
     assert "next_run_at" in schedule_columns
     assert "last_run_at" in schedule_columns

@@ -43,6 +43,18 @@ from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_o
 router = APIRouter(tags=["inspection"])
 
 
+def _normalize_route_waypoints(waypoints: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    for waypoint in waypoints:
+        normalized.append(
+            {
+                **waypoint,
+                "kind": "hold" if waypoint.get("kind") == "hold" else "transit",
+            }
+        )
+    return normalized
+
+
 @router.get("/v1/control-plane/dashboard", response_model=ControlPlaneDashboardDto)
 def get_control_plane_dashboard(
     current_user: CurrentWebUser = Depends(get_current_web_user),
@@ -88,7 +100,8 @@ def create_route(
         site_id=site.id,
         name=request.name,
         description=request.description,
-        waypoints_json=[waypoint.model_dump(mode="json") for waypoint in request.waypoints],
+        launch_point_json=request.launchPoint.model_dump(mode="json"),
+        waypoints_json=_normalize_route_waypoints([waypoint.model_dump(mode="json") for waypoint in request.waypoints]),
         planning_parameters_json=request.planningParameters,
         created_by_user_id=current_user.user.id,
         updated_by_user_id=current_user.user.id,
@@ -123,8 +136,10 @@ def patch_route(
         route.name = request.name
     if request.description is not None:
         route.description = request.description
+    if request.launchPoint is not None:
+        route.launch_point_json = request.launchPoint.model_dump(mode="json")
     if request.waypoints is not None:
-        route.waypoints_json = [waypoint.model_dump(mode="json") for waypoint in request.waypoints]
+        route.waypoints_json = _normalize_route_waypoints([waypoint.model_dump(mode="json") for waypoint in request.waypoints])
     if request.planningParameters is not None:
         route.planning_parameters_json = request.planningParameters
     route.updated_by_user_id = current_user.user.id
