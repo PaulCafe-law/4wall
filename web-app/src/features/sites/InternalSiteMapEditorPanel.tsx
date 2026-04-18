@@ -45,12 +45,40 @@ function nextViewpoint(
   }
 }
 
+function sitePlanningPreviewOverlays(
+  site: Site,
+  launchPoints: LaunchPoint[],
+  viewpoints: InspectionViewpoint[],
+): RouteOverlay[] {
+  const activeLaunchPoints = launchPoints.filter((point) => point.isActive)
+  const activeViewpoints = viewpoints.filter((point) => point.isActive)
+  const routeStart =
+    activeLaunchPoints.find((point) => point.kind === 'primary') ?? activeLaunchPoints[0] ?? null
+
+  const path = [
+    ...(routeStart ? [{ lat: routeStart.lat, lng: routeStart.lng }] : []),
+    ...activeViewpoints.map((point) => ({ lat: point.lat, lng: point.lng })),
+  ]
+
+  if (path.length < 2) {
+    return []
+  }
+
+  return [
+    {
+      routeId: `site-preview-${site.siteId}`,
+      name: `${site.name} 場域規劃預覽`,
+      path,
+      active: true,
+    },
+  ]
+}
+
 export function InternalSiteMapEditorPanel({
   site,
   launchPoints,
   viewpoints,
   baseMapType,
-  routeOverlays,
   placementMode,
   isSaving,
   error,
@@ -64,7 +92,6 @@ export function InternalSiteMapEditorPanel({
   launchPoints: LaunchPoint[]
   viewpoints: InspectionViewpoint[]
   baseMapType: Site['siteMap']['baseMapType']
-  routeOverlays: RouteOverlay[]
   placementMode: SitePlacementMode
   isSaving: boolean
   error: string | null
@@ -74,6 +101,8 @@ export function InternalSiteMapEditorPanel({
   onViewpointsChange: (value: InspectionViewpoint[]) => void
   onSave: () => void
 }) {
+  const previewOverlays = sitePlanningPreviewOverlays(site, launchPoints, viewpoints)
+
   return (
     <div className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
       <Panel>
@@ -426,7 +455,7 @@ export function InternalSiteMapEditorPanel({
               launchPoints,
               viewpoints,
             }}
-            routeOverlays={routeOverlays}
+            routeOverlays={previewOverlays}
             editableLaunchPoints={launchPoints}
             editableViewpoints={viewpoints}
             internalEditable
@@ -465,8 +494,8 @@ export function InternalSiteMapEditorPanel({
             }
           />
           <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-            L 點位代表起降點，V 點位代表巡檢視角點。兩者都由 internal 直接在 Google Maps
-            上規劃，並與 route waypoint 分開保存。
+            這條紅線是目前場域規劃的即時預覽，會以主要起降點作為起點，串接目前啟用中的視角點。拖拉
+            L / V 點位或新增視角點後，紅線會立即更新；正式 route waypoint 仍在航線工作區獨立管理。
           </div>
         </div>
       </Panel>

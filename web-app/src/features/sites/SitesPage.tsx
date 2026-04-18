@@ -670,7 +670,6 @@ export function SitesPage() {
                 launchPoints={siteMapDraft.launchPoints}
                 viewpoints={siteMapDraft.viewpoints}
                 baseMapType={siteMapDraft.baseMapType}
-                routeOverlays={selectedRouteOverlays}
                 placementMode={placementMode}
                 isSaving={patchSite.isPending}
                 error={mapEditorError}
