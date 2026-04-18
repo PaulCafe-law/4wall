@@ -25,6 +25,7 @@ After a successful run, record the output in:
   - `Missions`
   - `Mission Detail`
 - One internal account can access:
+  - Google Maps waypoint editor in `Control Plane > Routes`
   - `Support`
   - `Live Ops`
 - At least one site exists.
@@ -69,6 +70,7 @@ Show:
 - address and coordinates
 - site-map version, zones, launch points, viewpoints
 - active route/template coverage
+- Google Maps map context if rehearsing with an internal account
 
 Capture evidence:
 
@@ -82,6 +84,8 @@ Show:
 - route version
 - estimated duration
 - preview polyline or route summary
+- internal-only Google Maps waypoint editor
+- at least one waypoint add/drag/edit interaction if rehearsing with an internal account
 
 Capture evidence:
 
@@ -138,6 +142,7 @@ Show:
 - report summary
 - evidence gallery or clean-pass state
 - downloadable report artifact
+- internal-only raw-contract debug surface only if you explicitly need to verify request/response
 
 Capture evidence:
 
@@ -209,6 +214,7 @@ Record those references in:
 The rehearsal is complete only if:
 
 - the walkthrough can be performed without verbal gap-filling
+- customer roles never see waypoint editing controls or raw contract JSON
 - the selected mission shows consistent planning metadata, report state, and evidence
 - the clean-pass and failure variants both render correctly
 - internal ops surfaces agree with mission detail on report-failed state

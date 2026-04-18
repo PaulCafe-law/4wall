@@ -1,11 +1,12 @@
 ﻿
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Link, useLocation } from 'react-router-dom'
 
 import {
   ActionButton,
+  DataList,
   EmptyState,
   Field,
   Input,
@@ -26,7 +27,8 @@ import {
   formatSupportCategory,
   formatSupportSeverity,
 } from '../../lib/presentation'
-import type { Site } from '../../lib/types'
+import type { InspectionWaypoint, Site } from '../../lib/types'
+import { InternalRouteEditorPanel } from './InternalRouteEditorPanel'
 
 type WorkspaceKey = 'dashboard' | 'routes' | 'templates' | 'schedules' | 'dispatch'
 
@@ -190,6 +192,10 @@ function buildDemoWaypoints(
   ]
 }
 
+function cloneWaypoints(waypoints: InspectionWaypoint[]) {
+  return waypoints.map((waypoint) => ({ ...waypoint }))
+}
+
 function defaultAlertRules() {
   return [
     { kind: 'mission_failure' as const, enabled: true, note: '任務失敗時建立支援項目。' },
@@ -255,7 +261,10 @@ export function ControlPlanePage() {
   const workspace = WORKSPACES.find((item) => item.key === workspaceFromPath(location.pathname)) ?? WORKSPACES[0]
 
   const [selectedSiteId, setSelectedSiteId] = useState('')
+  const [selectedRouteId, setSelectedRouteId] = useState('new')
   const [routeName, setRouteName] = useState('')
+  const [routeDescription, setRouteDescription] = useState('')
+  const [routeDraftWaypoints, setRouteDraftWaypoints] = useState<InspectionWaypoint[]>([])
   const [templateName, setTemplateName] = useState('')
   const [plannedAt, setPlannedAt] = useState('')
   const [schedulePauseReason, setSchedulePauseReason] = useState('天候不佳，暫停起飛窗口。')
@@ -320,6 +329,7 @@ export function ControlPlanePage() {
   const siteTemplates = templates.filter((template) => !effectiveSiteId || template.siteId === effectiveSiteId)
   const siteSchedules = schedules.filter((schedule) => !effectiveSiteId || schedule.siteId === effectiveSiteId)
   const siteMissions = missions.filter((mission) => !effectiveSiteId || mission.siteId === effectiveSiteId)
+  const editingRoute = siteRoutes.find((route) => route.routeId === selectedRouteId) ?? null
   const siteDispatches = dispatches.filter(
     (dispatch) =>
       !effectiveSiteId ||
@@ -335,6 +345,40 @@ export function ControlPlanePage() {
     missionCount: missions.filter((mission) => mission.siteId === site.siteId).length,
   }))
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!selectedSite) {
+        setSelectedRouteId('new')
+        setRouteName('')
+        setRouteDescription('')
+        setRouteDraftWaypoints([])
+        return
+      }
+
+      if (selectedRouteId !== 'new' && !siteRoutes.some((route) => route.routeId === selectedRouteId)) {
+        setSelectedRouteId('new')
+        return
+      }
+
+      if (selectedRouteId === 'new') {
+        setRouteName(`${selectedSite.name} 巡檢航線`)
+        setRouteDescription('由 internal 規劃團隊在 Google Maps 上編輯並發布的巡檢航線。')
+        setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 40, 32, 18)))
+        return
+      }
+
+      if (editingRoute) {
+        setRouteName(editingRoute.name)
+        setRouteDescription(editingRoute.description)
+        setRouteDraftWaypoints(cloneWaypoints(editingRoute.waypoints))
+      }
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [editingRoute, selectedRouteId, selectedSite, siteRoutes])
+
   const createRoute = useAuthedMutation({
     mutationKey: ['inspection', 'routes', 'create'],
     mutationFn: ({
@@ -349,7 +393,24 @@ export function ControlPlanePage() {
         queryClient.invalidateQueries({ queryKey: ['inspection', 'routes'] }),
         queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
       ])
-      setRouteName('')
+      setRouteError(null)
+    },
+  })
+
+  const updateRoute = useAuthedMutation({
+    mutationKey: ['inspection', 'routes', 'update'],
+    mutationFn: ({
+      token,
+      payload,
+    }: {
+      token: string
+      payload: { routeId: string; body: Parameters<typeof api.patchInspectionRoute>[2] }
+    }) => api.patchInspectionRoute(token, payload.routeId, payload.body),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'routes'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+      ])
       setRouteError(null)
     },
   })
@@ -470,7 +531,17 @@ export function ControlPlanePage() {
     },
   })
 
-  async function handleCreateRoute() {
+  function seedRouteDraftFromSite() {
+    if (!selectedSite) {
+      setRouteError('請先建立並選擇場域。')
+      return
+    }
+
+    setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 40, 32, 18)))
+    setRouteError(null)
+  }
+
+  async function handleSaveRouteDraft() {
     if (!selectedSite) {
       setRouteError('請先建立並選擇場域。')
       return
@@ -479,23 +550,46 @@ export function ControlPlanePage() {
       setRouteError('請輸入航線名稱。')
       return
     }
+    if (routeDraftWaypoints.length < 2) {
+      setRouteError('至少需要兩個 waypoint 才能建立或更新航線。')
+      return
+    }
 
     try {
-      await createRoute.mutateAsync({
+      if (selectedRouteId !== 'new' && editingRoute) {
+        await updateRoute.mutateAsync({
+          routeId: editingRoute.routeId,
+          body: {
+            name: routeName.trim(),
+            description: routeDescription.trim() || undefined,
+            waypoints: routeDraftWaypoints,
+            planningParameters: {
+              ...(editingRoute.planningParameters ?? {}),
+              routeMode: 'google-maps-editor',
+              editor: 'internal_google_maps',
+            },
+          },
+        })
+        return
+      }
+
+      const createdRoute = await createRoute.mutateAsync({
         organizationId: selectedSite.organizationId,
         siteId: selectedSite.siteId,
         name: routeName.trim(),
-        description: '以場域外框與主視角產生的示範航線，用於規劃、排程與派工 demo。',
-        waypoints: buildDemoWaypoints(selectedSite, 40, 32, 18),
+        description: routeDescription.trim() || '由 internal 規劃團隊在 Google Maps 上編輯並發布的巡檢航線。',
+        waypoints: routeDraftWaypoints,
         planningParameters: {
           routeVersion: 1,
-          routeMode: 'site-envelope-demo',
+          routeMode: 'google-maps-editor',
           defaultSpeedMps: 4,
+          editor: 'internal_google_maps',
         },
       })
+      setSelectedRouteId(createdRoute.routeId)
     } catch (error) {
       setRouteError(
-        formatApiError(error instanceof ApiError ? error.detail : undefined, '建立航線失敗。'),
+        formatApiError(error instanceof ApiError ? error.detail : undefined, '建立或更新航線失敗。'),
       )
     }
   }
@@ -901,44 +995,46 @@ export function ControlPlanePage() {
   function renderRoutesWorkspace() {
     return (
       <div className="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
-        <Panel>
-          {eyebrowLabel('航線建立')}
-          <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">建立航線</h2>
-          <div className="mt-4 grid gap-4">
-            <Field label="航線名稱">
-              <Input value={routeName} onChange={(event) => setRouteName(event.target.value)} />
-            </Field>
-            <Field label="場域">
-              <Select
-                value={effectiveSiteId}
-                onChange={(event) => setSelectedSiteId(event.target.value)}
-              >
-                {sites.length === 0 ? <option value="">尚未建立場域</option> : null}
-                {sites.map((site) => (
-                  <option key={site.siteId} value={site.siteId}>
-                    {site.name}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="建立邏輯" hint="用場域座標生成示範航線，供排程、派工與任務回溯使用。">
-              <TextArea readOnly value="場域地圖 -> 航線預覽 -> 任務封裝" />
-            </Field>
-            {routeError ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {routeError}
-              </div>
-            ) : null}
-            <div className="flex justify-end">
-              <ActionButton
-                disabled={!canWriteSelectedSite || createRoute.isPending}
-                onClick={() => void handleCreateRoute()}
-              >
-                {createRoute.isPending ? '建立中…' : '建立航線'}
-              </ActionButton>
-            </div>
+        {auth.isInternal ? (
+          <div className="xl:col-span-2">
+            <InternalRouteEditorPanel
+              site={selectedSite}
+              routes={siteRoutes}
+              selectedRouteId={selectedRouteId}
+              routeName={routeName}
+              routeDescription={routeDescription}
+              waypoints={routeDraftWaypoints}
+              routeError={routeError}
+              isSaving={createRoute.isPending || updateRoute.isPending}
+              onSelectedRouteIdChange={setSelectedRouteId}
+              onRouteNameChange={setRouteName}
+              onRouteDescriptionChange={setRouteDescription}
+              onWaypointsChange={setRouteDraftWaypoints}
+              onSeedDemoDraft={seedRouteDraftFromSite}
+              onSave={() => void handleSaveRouteDraft()}
+            />
           </div>
-        </Panel>
+        ) : (
+          <Panel>
+            {eyebrowLabel('航線摘要')}
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">航線摘要</h2>
+            <div className="mt-4 space-y-4">
+              <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
+                客戶角色只檢視航線版本、預估時間與覆蓋範圍。Waypoint authority 由 internal 規劃團隊持有，不在客戶面開放直接編輯。
+              </div>
+              <DataList
+                rows={[
+                  { label: '場域', value: selectedSite?.name ?? '尚未選定' },
+                  { label: '航線數量', value: siteRoutes.length },
+                  {
+                    label: '展示重點',
+                    value: '客戶面只看 route summary、preview coverage 與 estimated duration，不直接承擔 waypoint 規劃責任。',
+                  },
+                ]}
+              />
+            </div>
+          </Panel>
+        )}
 
         <Panel>
           {eyebrowLabel('航線資產')}

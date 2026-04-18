@@ -1,5 +1,5 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { useDeferredValue, useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import {
@@ -22,6 +22,8 @@ import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { useOrganizationChoices } from '../../lib/organization-choices'
 import { formatApiError, formatSearchMode } from '../../lib/presentation'
 import type { Site } from '../../lib/types'
+import { GoogleMapCanvas } from '../maps/GoogleMapCanvas'
+import { routeOverlaysFromRoutes } from '../maps/route-overlays'
 
 const DEFAULT_LAT = 25.03391
 const DEFAULT_LNG = 121.56452
@@ -73,15 +75,15 @@ function editDefaults(site: Site): EditSiteForm {
     centerLng: String(site.siteMap.center.lng),
     zoom: String(site.siteMap.zoom),
     zoneLabel: site.siteMap.zones[0]?.label ?? `${site.name} 巡檢邊界`,
-    launchLabel: site.siteMap.launchPoints[0]?.label ?? `${site.name} 主要起降點`,
-    viewpointLabel: site.siteMap.viewpoints[0]?.label ?? `${site.name} 主立面視角`,
+    launchLabel: site.siteMap.launchPoints[0]?.label ?? `${site.name} 主起降點`,
+    viewpointLabel: site.siteMap.viewpoints[0]?.label ?? `${site.name} 主視角點`,
   }
 }
 
 function mapTypeLabel(value: Site['siteMap']['baseMapType']) {
-  if (value === 'roadmap') return '道路底圖'
-  if (value === 'hybrid') return '混合底圖'
-  return '衛星底圖'
+  if (value === 'roadmap') return '道路'
+  if (value === 'hybrid') return '混合'
+  return '衛星'
 }
 
 function formatDuration(seconds: number) {
@@ -130,6 +132,12 @@ export function SitesPage() {
   const deferredSearch = useDeferredValue(search)
 
   const sitesQuery = useAuthedQuery({ queryKey: ['sites'], queryFn: api.listSites, staleTime: 15_000 })
+  const routesQuery = useAuthedQuery({
+    queryKey: ['inspection', 'routes', 'sites-page'],
+    queryFn: (token) => api.listInspectionRoutes(token),
+    staleTime: 15_000,
+  })
+
   const createSite = useAuthedMutation({
     mutationKey: ['sites', 'create'],
     mutationFn: ({ token, payload }: { token: string; payload: SitePayload }) => api.createSite(token, payload),
@@ -139,6 +147,7 @@ export function SitesPage() {
       setCreateError(null)
     },
   })
+
   const patchSite = useAuthedMutation({
     mutationKey: ['sites', 'patch'],
     mutationFn: ({
@@ -156,6 +165,7 @@ export function SitesPage() {
   })
 
   const allSites = useMemo(() => sitesQuery.data ?? [], [sitesQuery.data])
+  const allRoutes = useMemo(() => routesQuery.data ?? [], [routesQuery.data])
   const filteredSites = useMemo(() => {
     const needle = deferredSearch.trim().toLowerCase()
     if (!needle) return allSites
@@ -163,19 +173,25 @@ export function SitesPage() {
       `${site.name} ${site.address} ${site.externalRef ?? ''}`.toLowerCase().includes(needle),
     )
   }, [allSites, deferredSearch])
+
   const selectedSite = filteredSites.find((site) => site.siteId === siteId) ?? filteredSites[0] ?? null
+  const selectedSiteRoutes = selectedSite
+    ? allRoutes.filter((route) => route.siteId === selectedSite.siteId)
+    : []
 
   async function handleCreateSite() {
     const lat = Number(createForm.lat)
     const lng = Number(createForm.lng)
+
     if (!createForm.organizationId || !createForm.name.trim() || !createForm.address.trim()) {
-      setCreateError('請完整填寫組織、場域名稱與地址。')
+      setCreateError('請填完組織、場域名稱與地址。')
       return
     }
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setCreateError('請輸入有效的場域中心座標。')
+      setCreateError('請提供有效的中心座標。')
       return
     }
+
     try {
       await createSite.mutateAsync({
         organizationId: createForm.organizationId,
@@ -183,7 +199,7 @@ export function SitesPage() {
         address: createForm.address.trim(),
         externalRef: createForm.externalRef.trim() || undefined,
         location: { lat, lng },
-        notes: createForm.notes.trim(),
+        notes: createForm.notes.trim() || undefined,
       })
       setCreateForm(createDefaults(createForm.organizationId))
     } catch (error) {
@@ -193,6 +209,7 @@ export function SitesPage() {
 
   async function handleUpdateSite() {
     if (!selectedSite || !editForm) return
+
     try {
       await patchSite.mutateAsync({
         siteId: selectedSite.siteId,
@@ -201,7 +218,10 @@ export function SitesPage() {
           address: editForm.address.trim(),
           externalRef: editForm.externalRef.trim() || undefined,
           notes: editForm.notes.trim(),
-          location: { lat: Number(editForm.centerLat), lng: Number(editForm.centerLng) },
+          location: {
+            lat: Number(editForm.centerLat),
+            lng: Number(editForm.centerLng),
+          },
           siteMap: buildSiteMapPayload(selectedSite, editForm),
         },
       })
@@ -213,16 +233,16 @@ export function SitesPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="客戶工作區"
+        eyebrow="場域工作區"
         title="場域"
-        subtitle="把 site 從地址簿提升成真正的控制平面上下文：map、launch point、inspection viewpoint，以及 active route/template coverage 都在同一頁。"
+        subtitle="把 site map、launch points、inspection viewpoints、active routes 和 template coverage 收斂成控制平面的場域工作區。"
         action={
           choices.length > 0 ? (
             <Modal
               open={createOpen}
               onOpenChange={setCreateOpen}
               title="新增場域"
-              description="先建立 site，控制平面才有明確的 map context。"
+              description="先建立可被 route、template、schedule、dispatch 重用的 site context。"
               trigger={<ActionButton>新增場域</ActionButton>}
             >
               <div className="space-y-4">
@@ -239,34 +259,53 @@ export function SitesPage() {
                   </Select>
                 </Field>
                 <Field label="場域名稱">
-                  <Input value={createForm.name} onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))} />
+                  <Input
+                    value={createForm.name}
+                    onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
+                  />
                 </Field>
                 <Field label="地址">
-                  <Input value={createForm.address} onChange={(event) => setCreateForm((current) => ({ ...current, address: event.target.value }))} />
+                  <Input
+                    value={createForm.address}
+                    onChange={(event) => setCreateForm((current) => ({ ...current, address: event.target.value }))}
+                  />
                 </Field>
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="中心緯度">
-                    <Input value={createForm.lat} onChange={(event) => setCreateForm((current) => ({ ...current, lat: event.target.value }))} />
+                    <Input
+                      value={createForm.lat}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, lat: event.target.value }))}
+                    />
                   </Field>
                   <Field label="中心經度">
-                    <Input value={createForm.lng} onChange={(event) => setCreateForm((current) => ({ ...current, lng: event.target.value }))} />
+                    <Input
+                      value={createForm.lng}
+                      onChange={(event) => setCreateForm((current) => ({ ...current, lng: event.target.value }))}
+                    />
                   </Field>
                 </div>
-                <Field label="外部代號">
+                <Field label="外部參考碼">
                   <Input
                     value={createForm.externalRef}
-                    onChange={(event) => setCreateForm((current) => ({ ...current, externalRef: event.target.value }))}
+                    onChange={(event) =>
+                      setCreateForm((current) => ({ ...current, externalRef: event.target.value }))
+                    }
                   />
                 </Field>
                 <Field label="備註">
-                  <TextArea value={createForm.notes} onChange={(event) => setCreateForm((current) => ({ ...current, notes: event.target.value }))} />
+                  <TextArea
+                    value={createForm.notes}
+                    onChange={(event) => setCreateForm((current) => ({ ...current, notes: event.target.value }))}
+                  />
                 </Field>
                 {createError ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{createError}</div>
+                  <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {createError}
+                  </div>
                 ) : null}
                 <div className="flex justify-end">
-                  <ActionButton disabled={createSite.isPending} onClick={handleCreateSite}>
-                    {createSite.isPending ? '建立中' : '建立場域'}
+                  <ActionButton disabled={createSite.isPending} onClick={() => void handleCreateSite()}>
+                    {createSite.isPending ? '建立中…' : '建立場域'}
                   </ActionButton>
                 </div>
               </div>
@@ -276,27 +315,35 @@ export function SitesPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="場域總數" value={filteredSites.length} hint="site map workspace 數量" />
-        <Metric label="航線總數" value={filteredSites.reduce((sum, site) => sum + site.activeRouteCount, 0)} hint="active route coverage" />
-        <Metric label="模板總數" value={filteredSites.reduce((sum, site) => sum + site.activeTemplateCount, 0)} hint="inspection policy reuse" />
-        <Metric label="搜尋模式" value={formatSearchMode(Boolean(deferredSearch))} hint="快速切換評審要看的場域" />
+        <Metric label="場域總數" value={filteredSites.length} hint="site workspace coverage" />
+        <Metric
+          label="啟用航線"
+          value={filteredSites.reduce((sum, site) => sum + site.activeRouteCount, 0)}
+          hint="route authority reuse"
+        />
+        <Metric
+          label="啟用模板"
+          value={filteredSites.reduce((sum, site) => sum + site.activeTemplateCount, 0)}
+          hint="inspection policy reuse"
+        />
+        <Metric label="搜尋模式" value={formatSearchMode(Boolean(deferredSearch))} hint="支援依名稱、地址與外部參考碼過濾場域" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
         <div className="space-y-6">
           <Panel>
             <Field label="搜尋場域">
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋場域名稱或地址" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜尋場域名稱、地址或外部參考碼" />
             </Field>
           </Panel>
 
           {!sitesQuery.isPending && filteredSites.length === 0 ? (
             <EmptyState
-              title={allSites.length === 0 ? '目前還沒有場域' : '找不到符合條件的場域'}
+              title={allSites.length === 0 ? '目前沒有場域' : '找不到符合條件的場域'}
               body={
                 allSites.length === 0
-                  ? '先建立 site，控制平面才有 map context 可以綁定 route、template、schedule 與 dispatch。'
-                  : '請調整搜尋條件，或切回全部場域。'
+                  ? '先建立一個 site，控制平面才有 map context、route reuse、schedule 與 dispatch 的共同起點。'
+                  : '請調整搜尋條件，或直接建立新的場域。'
               }
             />
           ) : null}
@@ -304,13 +351,21 @@ export function SitesPage() {
           <div className="grid gap-4">
             {filteredSites.map((site) => (
               <Link key={site.siteId} to={`/sites/${site.siteId}`}>
-                <Panel className={selectedSite?.siteId === site.siteId ? 'border-ember-300 bg-white' : 'transition hover:border-chrome-400 hover:bg-white'}>
+                <Panel
+                  className={
+                    selectedSite?.siteId === site.siteId
+                      ? 'border-ember-300 bg-white'
+                      : 'transition hover:border-chrome-400 hover:bg-white'
+                  }
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="break-words font-display text-2xl font-semibold text-chrome-950">{site.name}</p>
                       <p className="mt-2 text-sm text-chrome-700">{site.address}</p>
                     </div>
-                    <span className="rounded-full bg-chrome-100 px-3 py-1 text-xs text-chrome-700">{mapTypeLabel(site.siteMap.baseMapType)}</span>
+                    <span className="rounded-full bg-chrome-100 px-3 py-1 text-xs text-chrome-700">
+                      {mapTypeLabel(site.siteMap.baseMapType)}
+                    </span>
                   </div>
                   <div className="mt-4 grid gap-2 text-sm text-chrome-700 md:grid-cols-2">
                     <div>航線 {site.activeRouteCount}</div>
@@ -345,7 +400,7 @@ export function SitesPage() {
                     </ActionButton>
                   ) : null}
                   <ActionButton variant="secondary" onClick={() => navigate('/control-plane')}>
-                    控制平面總覽
+                    前往控制平面
                   </ActionButton>
                 </div>
               </div>
@@ -353,49 +408,76 @@ export function SitesPage() {
                 <DataList
                   rows={[
                     { label: '地址', value: selectedSite.address },
-                    { label: '外部代號', value: selectedSite.externalRef ?? '尚未設定' },
-                    { label: '底圖', value: mapTypeLabel(selectedSite.siteMap.baseMapType) },
-                    { label: '中心', value: `${selectedSite.siteMap.center.lat.toFixed(5)}, ${selectedSite.siteMap.center.lng.toFixed(5)}` },
-                    { label: '更新時間', value: formatDateTime(selectedSite.updatedAt) },
-                    { label: '備註', value: selectedSite.notes || '目前沒有額外說明' },
+                    { label: '外部參考碼', value: selectedSite.externalRef ?? '尚未設定' },
+                    { label: '地圖模式', value: mapTypeLabel(selectedSite.siteMap.baseMapType) },
+                    {
+                      label: '中心座標',
+                      value: `${selectedSite.siteMap.center.lat.toFixed(5)}, ${selectedSite.siteMap.center.lng.toFixed(5)}`,
+                    },
+                    { label: '最後更新', value: formatDateTime(selectedSite.updatedAt) },
+                    { label: '備註', value: selectedSite.notes || '目前沒有補充說明' },
                   ]}
                 />
               </div>
             </Panel>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <Metric label="Zone 數量" value={selectedSite.siteMap.zones.length} hint="巡檢區域與重點立面" />
-              <Metric label="起降點" value={selectedSite.siteMap.launchPoints.length} hint="現場整備與起飛責任" />
-              <Metric label="視角點" value={selectedSite.siteMap.viewpoints.length} hint="inspection intent 與 facade coverage" />
+              <Metric label="Zone 覆蓋" value={selectedSite.siteMap.zones.length} hint="inspection boundary / priority facade" />
+              <Metric label="起降點" value={selectedSite.siteMap.launchPoints.length} hint="launch authority context" />
+              <Metric label="視角點" value={selectedSite.siteMap.viewpoints.length} hint="inspection viewpoint coverage" />
             </div>
 
             <Panel>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">map context</p>
-              <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">場域地圖與覆蓋脈絡</h3>
-              <div className="mt-4 grid gap-4 xl:grid-cols-3">
-                <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                  <p className="font-medium text-chrome-950">巡檢區域</p>
-                  {selectedSite.siteMap.zones.map((zone) => (
-                    <p key={zone.zoneId} className="mt-3 text-sm text-chrome-700">
-                      {zone.label} · {zone.polygon.length} 個定位點
-                    </p>
-                  ))}
-                </div>
-                <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                  <p className="font-medium text-chrome-950">起降點</p>
-                  {selectedSite.siteMap.launchPoints.map((point) => (
-                    <p key={point.launchPointId} className="mt-3 text-sm text-chrome-700">
-                      {point.label} · heading {point.headingDeg ?? 180}°
-                    </p>
-                  ))}
-                </div>
-                <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                  <p className="font-medium text-chrome-950">視角點</p>
-                  {selectedSite.siteMap.viewpoints.map((viewpoint) => (
-                    <p key={viewpoint.viewpointId} className="mt-3 text-sm text-chrome-700">
-                      {viewpoint.label} · {viewpoint.purpose} · {viewpoint.distanceToFacadeM ?? 12}m
-                    </p>
-                  ))}
+              <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">場域地圖與 active route overlay</h3>
+              <div className="mt-4 space-y-4">
+                {auth.isInternal ? (
+                  <GoogleMapCanvas
+                    siteMap={selectedSite.siteMap}
+                    routeOverlays={routeOverlaysFromRoutes(selectedSiteRoutes).map((route) => ({ ...route, active: true }))}
+                  />
+                ) : (
+                  <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
+                    customer 角色只檢視 site map 摘要與 active route coverage，不直接使用 Google Maps 編輯器。
+                  </div>
+                )}
+                <div className="grid gap-4 xl:grid-cols-3">
+                  <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                    <p className="font-medium text-chrome-950">Zones</p>
+                    {selectedSite.siteMap.zones.length === 0 ? (
+                      <p className="mt-3 text-sm text-chrome-700">目前沒有 zone。</p>
+                    ) : (
+                      selectedSite.siteMap.zones.map((zone) => (
+                        <p key={zone.zoneId} className="mt-3 text-sm text-chrome-700">
+                          {zone.label} / {zone.kind} / {zone.polygon.length} 個點
+                        </p>
+                      ))
+                    )}
+                  </div>
+                  <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                    <p className="font-medium text-chrome-950">Launch Points</p>
+                    {selectedSite.siteMap.launchPoints.length === 0 ? (
+                      <p className="mt-3 text-sm text-chrome-700">目前沒有起降點。</p>
+                    ) : (
+                      selectedSite.siteMap.launchPoints.map((point) => (
+                        <p key={point.launchPointId} className="mt-3 text-sm text-chrome-700">
+                          {point.label} / heading {point.headingDeg ?? 180}°
+                        </p>
+                      ))
+                    )}
+                  </div>
+                  <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+                    <p className="font-medium text-chrome-950">Inspection Viewpoints</p>
+                    {selectedSite.siteMap.viewpoints.length === 0 ? (
+                      <p className="mt-3 text-sm text-chrome-700">目前沒有視角點。</p>
+                    ) : (
+                      selectedSite.siteMap.viewpoints.map((viewpoint) => (
+                        <p key={viewpoint.viewpointId} className="mt-3 text-sm text-chrome-700">
+                          {viewpoint.label} / {viewpoint.purpose} / {viewpoint.distanceToFacadeM ?? 12} m
+                        </p>
+                      ))
+                    )}
+                  </div>
                 </div>
               </div>
             </Panel>
@@ -408,18 +490,18 @@ export function SitesPage() {
                     <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">航線覆蓋</h3>
                   </div>
                   <ActionButton variant="secondary" onClick={() => navigate('/control-plane/routes')}>
-                    打開航線工作區
+                    查看航線工作區
                   </ActionButton>
                 </div>
                 <div className="mt-4 space-y-3">
                   {selectedSite.activeRoutes.length === 0 ? (
-                    <EmptyState title="目前沒有航線" body="先建立 route，這個場域才有可重用的巡檢規劃版本。" />
+                    <EmptyState title="目前沒有航線" body="先建立 route，site workspace 才能顯示 active route coverage。" />
                   ) : (
                     selectedSite.activeRoutes.map((route) => (
                       <div key={route.routeId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                         <p className="font-medium text-chrome-950">{route.name}</p>
                         <p className="mt-2 text-sm text-chrome-700">
-                          v{route.version} · {route.pointCount} 點 · {formatDuration(route.estimatedDurationSec)}
+                          v{route.version} / {route.pointCount} 點 / {formatDuration(route.estimatedDurationSec)}
                         </p>
                         <p className="mt-1 text-xs text-chrome-500">更新於 {formatDateTime(route.updatedAt)}</p>
                       </div>
@@ -435,18 +517,18 @@ export function SitesPage() {
                     <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">模板覆蓋</h3>
                   </div>
                   <ActionButton variant="secondary" onClick={() => navigate('/control-plane/templates')}>
-                    打開模板工作區
+                    查看模板工作區
                   </ActionButton>
                 </div>
                 <div className="mt-4 space-y-3">
                   {selectedSite.activeTemplates.length === 0 ? (
-                    <EmptyState title="目前沒有模板" body="先建立 template，把 evidence policy、report mode 與 review mode 固定下來。" />
+                    <EmptyState title="目前沒有模板" body="先建立 template，site workspace 才能顯示 inspection policy reuse。" />
                   ) : (
                     selectedSite.activeTemplates.map((template) => (
                       <div key={template.templateId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                         <p className="font-medium text-chrome-950">{template.name}</p>
                         <p className="mt-2 text-sm text-chrome-700">
-                          {template.evidencePolicy} · {template.reportMode}
+                          {template.evidencePolicy} / {template.reportMode}
                         </p>
                         <p className="mt-1 text-sm text-chrome-700">審閱模式 {template.reviewMode}</p>
                       </div>
@@ -458,7 +540,9 @@ export function SitesPage() {
           </div>
         ) : (
           <Panel>
-            <p className="text-sm text-chrome-700">尚未選擇場域。先建立一筆 site，控制平面才有 map context 可以掛接 route、template、schedule 與 dispatch。</p>
+            <p className="text-sm text-chrome-700">
+              目前沒有可顯示的場域。先建立 site，控制平面才有 map context、launch points、viewpoints 與 active route/template coverage。
+            </p>
           </Panel>
         )}
       </div>
@@ -468,7 +552,7 @@ export function SitesPage() {
           open={editOpen}
           onOpenChange={setEditOpen}
           title="編輯場域工作區"
-          description="更新 site map context、launch point 與 viewpoint 摘要。"
+          description="更新 site map 的顯示設定與場域文字資訊。"
         >
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -478,10 +562,10 @@ export function SitesPage() {
               <Field label="地址">
                 <Input value={editForm.address} onChange={(event) => setEditForm((current) => (current ? { ...current, address: event.target.value } : current))} />
               </Field>
-              <Field label="外部代號">
+              <Field label="外部參考碼">
                 <Input value={editForm.externalRef} onChange={(event) => setEditForm((current) => (current ? { ...current, externalRef: event.target.value } : current))} />
               </Field>
-              <Field label="底圖模式">
+              <Field label="地圖模式">
                 <Select
                   value={editForm.baseMapType}
                   onChange={(event) =>
@@ -490,9 +574,9 @@ export function SitesPage() {
                     )
                   }
                 >
-                  <option value="satellite">衛星底圖</option>
-                  <option value="roadmap">道路底圖</option>
-                  <option value="hybrid">混合底圖</option>
+                  <option value="satellite">衛星</option>
+                  <option value="roadmap">道路</option>
+                  <option value="hybrid">混合</option>
                 </Select>
               </Field>
               <Field label="中心緯度">
@@ -504,13 +588,13 @@ export function SitesPage() {
               <Field label="Zoom">
                 <Input value={editForm.zoom} onChange={(event) => setEditForm((current) => (current ? { ...current, zoom: event.target.value } : current))} />
               </Field>
-              <Field label="邊界名稱">
+              <Field label="Zone 標籤">
                 <Input value={editForm.zoneLabel} onChange={(event) => setEditForm((current) => (current ? { ...current, zoneLabel: event.target.value } : current))} />
               </Field>
-              <Field label="起降點名稱">
+              <Field label="起降點標籤">
                 <Input value={editForm.launchLabel} onChange={(event) => setEditForm((current) => (current ? { ...current, launchLabel: event.target.value } : current))} />
               </Field>
-              <Field label="視角名稱">
+              <Field label="視角點標籤">
                 <Input value={editForm.viewpointLabel} onChange={(event) => setEditForm((current) => (current ? { ...current, viewpointLabel: event.target.value } : current))} />
               </Field>
             </div>
@@ -518,11 +602,13 @@ export function SitesPage() {
               <TextArea value={editForm.notes} onChange={(event) => setEditForm((current) => (current ? { ...current, notes: event.target.value } : current))} />
             </Field>
             {editError ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{editError}</div>
+              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {editError}
+              </div>
             ) : null}
             <div className="flex justify-end">
-              <ActionButton disabled={patchSite.isPending} onClick={handleUpdateSite}>
-                {patchSite.isPending ? '更新中' : '更新場域工作區'}
+              <ActionButton disabled={patchSite.isPending} onClick={() => void handleUpdateSite()}>
+                {patchSite.isPending ? '更新中…' : '更新場域工作區'}
               </ActionButton>
             </div>
           </div>

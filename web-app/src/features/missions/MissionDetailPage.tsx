@@ -6,6 +6,7 @@ import {
   ActionButton,
   DataList,
   EmptyState,
+  Modal,
   Panel,
   ShellSection,
   StatusBadge,
@@ -68,6 +69,7 @@ export function MissionDetailPage() {
   const [analysisNotice, setAnalysisNotice] = useState<string | null>(null)
   const [analysisError, setAnalysisError] = useState<string | null>(null)
   const [artifactError, setArtifactError] = useState<string | null>(null)
+  const [debugOpen, setDebugOpen] = useState(false)
 
   const missionQuery = useAuthedQuery({
     queryKey: ['mission', missionId],
@@ -169,9 +171,6 @@ export function MissionDetailPage() {
 
   const mission = missionQuery.data
   const latestReportArtifact = mission.latestReport?.downloadArtifact ?? null
-  const requestJson = JSON.stringify(mission.request ?? {}, null, 2)
-  const responseJson = JSON.stringify(mission.response ?? {}, null, 2)
-
   return (
     <div className="space-y-6">
       <ShellSection
@@ -447,20 +446,39 @@ export function MissionDetailPage() {
             </div>
           </Panel>
 
-          <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">原始契約</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">規劃請求與回應</h2>
-            <div className="mt-4 grid gap-4 xl:grid-cols-2">
-              <div className="rounded-2xl border border-chrome-200 bg-chrome-950 px-4 py-4 text-sm text-chrome-50">
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">請求</p>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all">{requestJson}</pre>
+          {auth.isInternal ? (
+            <Panel>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">internal debug</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">原始契約（除錯）</h2>
+              <p className="mt-3 text-sm text-chrome-700">
+                預設不在主流程展開，避免 request/response JSON 佔用任務詳情高度。只有 internal user 主動開啟時才載入原始契約。
+              </p>
+              <div className="mt-4">
+                <Modal
+                  open={debugOpen}
+                  onOpenChange={setDebugOpen}
+                  title="規劃請求與回應"
+                  description="這個除錯視窗只提供 internal user 檢查 mission request/response contract，不屬於客戶 demo 敘事的一部分。"
+                  trigger={<ActionButton variant="secondary">查看原始契約（除錯）</ActionButton>}
+                >
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <div className="rounded-2xl border border-chrome-200 bg-chrome-950 px-4 py-4 text-sm text-chrome-50">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">請求</p>
+                      <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all">
+                        {JSON.stringify(mission.request ?? {}, null, 2)}
+                      </pre>
+                    </div>
+                    <div className="rounded-2xl border border-chrome-200 bg-chrome-950 px-4 py-4 text-sm text-chrome-50">
+                      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">回應</p>
+                      <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all">
+                        {JSON.stringify(mission.response ?? {}, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                </Modal>
               </div>
-              <div className="rounded-2xl border border-chrome-200 bg-chrome-950 px-4 py-4 text-sm text-chrome-50">
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-300">回應</p>
-                <pre className="mt-3 overflow-x-auto whitespace-pre-wrap break-all">{responseJson}</pre>
-              </div>
-            </div>
-          </Panel>
+            </Panel>
+          ) : null}
         </div>
 
         <div className="space-y-6">
