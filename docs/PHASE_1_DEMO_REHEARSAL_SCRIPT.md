@@ -69,6 +69,7 @@ Show:
 - selected site
 - address and coordinates
 - site-map version, zones, launch points, viewpoints
+- internal-only launch-point and viewpoint editing on Google Maps
 - active route/template coverage
 - Google Maps map context if rehearsing with an internal account
 
