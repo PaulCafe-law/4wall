@@ -79,6 +79,8 @@ export function GoogleMapCanvas({
   const mapRef = useRef<GoogleMapsMap | null>(null)
   const overlaysRef = useRef<GoogleMapsOverlay[]>([])
   const clickListenerRef = useRef<GoogleMapsListener | null>(null)
+  const onWaypointMoveRef = useRef(onWaypointMove)
+  const onMapClickRef = useRef(onMapClick)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
     hasGoogleMapsApiKey() ? 'loading' : 'error',
   )
@@ -86,9 +88,18 @@ export function GoogleMapCanvas({
     hasGoogleMapsApiKey() ? null : '尚未設定 VITE_GOOGLE_MAPS_API_KEY，Google Maps 編輯器目前維持 fail-closed。',
   )
 
-  const serializedSiteMap = useMemo(() => JSON.stringify(siteMap), [siteMap])
-  const serializedRoutes = useMemo(() => JSON.stringify(routeOverlays), [routeOverlays])
-  const serializedWaypoints = useMemo(() => JSON.stringify(editableWaypoints), [editableWaypoints])
+  const renderModel = useMemo(
+    () => ({ siteMap, routeOverlays, editableWaypoints }),
+    [editableWaypoints, routeOverlays, siteMap],
+  )
+
+  useEffect(() => {
+    onWaypointMoveRef.current = onWaypointMove
+  }, [onWaypointMove])
+
+  useEffect(() => {
+    onMapClickRef.current = onMapClick
+  }, [onMapClick])
 
   useEffect(() => {
     let cancelled = false
@@ -134,16 +145,19 @@ export function GoogleMapCanvas({
 
     const maps = window.google.maps
     const map = mapRef.current
-    map.setCenter(siteMap.center)
-    map.setZoom(siteMap.zoom)
-    map.setMapTypeId(siteMap.baseMapType)
+    const { siteMap: visibleSiteMap, routeOverlays: visibleRoutes, editableWaypoints: visibleWaypoints } =
+      renderModel
+
+    map.setCenter(visibleSiteMap.center)
+    map.setZoom(visibleSiteMap.zoom)
+    map.setMapTypeId(visibleSiteMap.baseMapType)
 
     overlaysRef.current.forEach((overlay) => {
       overlay.setMap(null)
     })
     overlaysRef.current = []
 
-    for (const zone of siteMap.zones) {
+    for (const zone of visibleSiteMap.zones) {
       const polygon = new maps.Polygon({
         map,
         paths: zone.polygon,
@@ -156,7 +170,7 @@ export function GoogleMapCanvas({
       overlaysRef.current.push(polygon)
     }
 
-    for (const launchPoint of siteMap.launchPoints) {
+    for (const launchPoint of visibleSiteMap.launchPoints) {
       overlaysRef.current.push(
         makeMarker(
           maps,
@@ -169,7 +183,7 @@ export function GoogleMapCanvas({
       )
     }
 
-    for (const viewpoint of siteMap.viewpoints) {
+    for (const viewpoint of visibleSiteMap.viewpoints) {
       overlaysRef.current.push(
         makeMarker(
           maps,
@@ -182,7 +196,7 @@ export function GoogleMapCanvas({
       )
     }
 
-    for (const route of routeOverlays) {
+    for (const route of visibleRoutes) {
       const polyline = new maps.Polyline({
         map,
         path: route.path,
@@ -193,7 +207,7 @@ export function GoogleMapCanvas({
       overlaysRef.current.push(polyline)
     }
 
-    editableWaypoints.forEach((waypoint, index) => {
+    visibleWaypoints.forEach((waypoint, index) => {
       const marker = makeMarker(
         maps,
         map,
@@ -202,11 +216,11 @@ export function GoogleMapCanvas({
         markerColor(waypoint.kind),
         internalEditable,
       )
-      if (internalEditable && onWaypointMove) {
+      if (internalEditable && onWaypointMoveRef.current) {
         marker.addListener('dragend', (event: GoogleMapsMouseEvent) => {
           const latLng = event?.latLng
           if (!latLng) return
-          onWaypointMove(index, { lat: latLng.lat(), lng: latLng.lng() })
+          onWaypointMoveRef.current?.(index, { lat: latLng.lat(), lng: latLng.lng() })
         })
       }
       overlaysRef.current.push(marker)
@@ -216,11 +230,11 @@ export function GoogleMapCanvas({
       maps.event.removeListener(clickListenerRef.current)
       clickListenerRef.current = null
     }
-    if (internalEditable && onMapClick) {
+    if (internalEditable && onMapClickRef.current) {
       clickListenerRef.current = map.addListener('click', (event: GoogleMapsMouseEvent) => {
         const latLng = event?.latLng
         if (!latLng) return
-        onMapClick({ lat: latLng.lat(), lng: latLng.lng() })
+        onMapClickRef.current?.({ lat: latLng.lat(), lng: latLng.lng() })
       })
     }
 
@@ -232,14 +246,7 @@ export function GoogleMapCanvas({
     }
   }, [
     internalEditable,
-    onMapClick,
-    onWaypointMove,
-    serializedRoutes,
-    serializedSiteMap,
-    serializedWaypoints,
-    siteMap,
-    routeOverlays,
-    editableWaypoints,
+    renderModel,
     status,
   ])
 

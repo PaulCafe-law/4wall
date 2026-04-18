@@ -1,5 +1,5 @@
 ﻿
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { clsx } from 'clsx'
 import { Link, useLocation } from 'react-router-dom'
@@ -312,12 +312,12 @@ export function ControlPlanePage() {
     staleTime: 10_000,
   })
 
-  const sites = sitesQuery.data ?? []
-  const routes = routesQuery.data ?? []
-  const templates = templatesQuery.data ?? []
-  const schedules = schedulesQuery.data ?? []
-  const dispatches = dispatchesQuery.data ?? []
-  const missions = missionsQuery.data ?? []
+  const sites = useMemo(() => sitesQuery.data ?? [], [sitesQuery.data])
+  const routes = useMemo(() => routesQuery.data ?? [], [routesQuery.data])
+  const templates = useMemo(() => templatesQuery.data ?? [], [templatesQuery.data])
+  const schedules = useMemo(() => schedulesQuery.data ?? [], [schedulesQuery.data])
+  const dispatches = useMemo(() => dispatchesQuery.data ?? [], [dispatchesQuery.data])
+  const missions = useMemo(() => missionsQuery.data ?? [], [missionsQuery.data])
   const dashboard = dashboardQuery.data
   const workspaceGuide = WORKSPACE_GUIDES[workspace.key]
 
@@ -325,25 +325,56 @@ export function ControlPlanePage() {
   const selectedSite = sites.find((site) => site.siteId === effectiveSiteId) ?? null
   const canWriteSelectedSite = selectedSite ? auth.canWriteOrganization(selectedSite.organizationId) : false
 
-  const siteRoutes = routes.filter((route) => !effectiveSiteId || route.siteId === effectiveSiteId)
-  const siteTemplates = templates.filter((template) => !effectiveSiteId || template.siteId === effectiveSiteId)
-  const siteSchedules = schedules.filter((schedule) => !effectiveSiteId || schedule.siteId === effectiveSiteId)
-  const siteMissions = missions.filter((mission) => !effectiveSiteId || mission.siteId === effectiveSiteId)
-  const editingRoute = siteRoutes.find((route) => route.routeId === selectedRouteId) ?? null
-  const siteDispatches = dispatches.filter(
-    (dispatch) =>
-      !effectiveSiteId ||
-      siteMissions.some((mission) => mission.missionId === dispatch.missionId && mission.siteId === effectiveSiteId),
+  const siteRoutes = useMemo(
+    () => routes.filter((route) => !effectiveSiteId || route.siteId === effectiveSiteId),
+    [effectiveSiteId, routes],
   )
-  const dispatchByMissionId = new Map(siteDispatches.map((dispatch) => [dispatch.missionId, dispatch]))
-  const missionById = new Map(missions.map((mission) => [mission.missionId, mission]))
-  const siteCoverage = sites.map((site) => ({
-    site,
-    routeCount: routes.filter((route) => route.siteId === site.siteId).length,
-    templateCount: templates.filter((template) => template.siteId === site.siteId).length,
-    scheduleCount: schedules.filter((schedule) => schedule.siteId === site.siteId).length,
-    missionCount: missions.filter((mission) => mission.siteId === site.siteId).length,
-  }))
+  const siteTemplates = useMemo(
+    () => templates.filter((template) => !effectiveSiteId || template.siteId === effectiveSiteId),
+    [effectiveSiteId, templates],
+  )
+  const siteSchedules = useMemo(
+    () => schedules.filter((schedule) => !effectiveSiteId || schedule.siteId === effectiveSiteId),
+    [effectiveSiteId, schedules],
+  )
+  const siteMissions = useMemo(
+    () => missions.filter((mission) => !effectiveSiteId || mission.siteId === effectiveSiteId),
+    [effectiveSiteId, missions],
+  )
+  const editingRoute = useMemo(
+    () => siteRoutes.find((route) => route.routeId === selectedRouteId) ?? null,
+    [selectedRouteId, siteRoutes],
+  )
+  const siteDispatches = useMemo(
+    () =>
+      dispatches.filter(
+        (dispatch) =>
+          !effectiveSiteId ||
+          siteMissions.some(
+            (mission) => mission.missionId === dispatch.missionId && mission.siteId === effectiveSiteId,
+          ),
+      ),
+    [dispatches, effectiveSiteId, siteMissions],
+  )
+  const dispatchByMissionId = useMemo(
+    () => new Map(siteDispatches.map((dispatch) => [dispatch.missionId, dispatch])),
+    [siteDispatches],
+  )
+  const missionById = useMemo(
+    () => new Map(missions.map((mission) => [mission.missionId, mission])),
+    [missions],
+  )
+  const siteCoverage = useMemo(
+    () =>
+      sites.map((site) => ({
+        site,
+        routeCount: routes.filter((route) => route.siteId === site.siteId).length,
+        templateCount: templates.filter((template) => template.siteId === site.siteId).length,
+        scheduleCount: schedules.filter((schedule) => schedule.siteId === site.siteId).length,
+        missionCount: missions.filter((mission) => mission.siteId === site.siteId).length,
+      })),
+    [missions, routes, sites, schedules, templates],
+  )
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
