@@ -84,7 +84,7 @@ The current rollout model is:
 9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
 10. Manually verify:
    - site map and site selection flow
-   - site workspace shows map version, zones, launch points, viewpoints, active route/template summaries, and internal Google Maps preview if the release touched control-plane surfaces
+  - site workspace shows map version, launch points, viewpoints, active route/template summaries, and any internal-defined zones, plus internal Google Maps preview if the release touched control-plane surfaces
    - route/template records can be created, viewed, or edited without entering any flight-control path
    - Google Maps waypoint editing only appears for internal users, and customer users stay on summary/read-only route coverage, if the release touched control-plane surfaces
    - schedule and dispatch records can be created and show the expected planning metadata

@@ -95,6 +95,7 @@ LOW_BATTERY_THRESHOLD = 25
 BRIDGE_ALERT_LOOKBACK_MINUTES = 10
 BRIDGE_ALERT_EVENT = "BRIDGE_ALERT"
 SITE_MAP_DEFAULT_OFFSET = 0.00012
+DEFAULT_ZONE_NOTE = "Demo-ready inspection boundary around the site centroid."
 
 
 @router.post("/v1/web/session/login", response_model=WebSessionDto)
@@ -1132,21 +1133,7 @@ def _default_site_map(lat: float, lng: float, site_name: str) -> dict[str, objec
             "zoom": 18,
             "version": 1,
         },
-        "zones": [
-            {
-                "zoneId": f"zone-{uuid4().hex[:8]}",
-                "label": f"{site_name} 巡檢邊界",
-                "kind": "inspection_boundary",
-                "polygon": [
-                    {"lat": lat - SITE_MAP_DEFAULT_OFFSET, "lng": lng - SITE_MAP_DEFAULT_OFFSET},
-                    {"lat": lat - SITE_MAP_DEFAULT_OFFSET, "lng": lng + SITE_MAP_DEFAULT_OFFSET},
-                    {"lat": lat + SITE_MAP_DEFAULT_OFFSET, "lng": lng + SITE_MAP_DEFAULT_OFFSET},
-                    {"lat": lat + SITE_MAP_DEFAULT_OFFSET, "lng": lng - SITE_MAP_DEFAULT_OFFSET},
-                ],
-                "note": "Demo-ready inspection boundary around the site centroid.",
-                "isActive": True,
-            }
-        ],
+        "zones": [],
         "launchPoints": [
             {
                 "launchPointId": f"launch-{uuid4().hex[:8]}",
@@ -1204,10 +1191,41 @@ def _build_site_map_payload(
     }
 
 
+def _is_site_zone_placeholder(zone: dict, *, lat: float, lng: float) -> bool:
+    if zone.get("kind") != "inspection_boundary":
+        return False
+
+    polygon = zone.get("polygon")
+    if not isinstance(polygon, list) or len(polygon) != 4:
+        return False
+
+    expected_polygon = [
+        {"lat": lat - SITE_MAP_DEFAULT_OFFSET, "lng": lng - SITE_MAP_DEFAULT_OFFSET},
+        {"lat": lat - SITE_MAP_DEFAULT_OFFSET, "lng": lng + SITE_MAP_DEFAULT_OFFSET},
+        {"lat": lat + SITE_MAP_DEFAULT_OFFSET, "lng": lng + SITE_MAP_DEFAULT_OFFSET},
+        {"lat": lat + SITE_MAP_DEFAULT_OFFSET, "lng": lng - SITE_MAP_DEFAULT_OFFSET},
+    ]
+
+    for current, expected in zip(polygon, expected_polygon):
+        if not isinstance(current, dict):
+            return False
+        if abs(float(current.get("lat", 0.0)) - expected["lat"]) > 1e-9:
+            return False
+        if abs(float(current.get("lng", 0.0)) - expected["lng"]) > 1e-9:
+            return False
+
+    note = zone.get("note")
+    return note in (None, "", DEFAULT_ZONE_NOTE)
+
+
+def _filter_site_zones(zones: list[dict], *, lat: float, lng: float) -> list[dict]:
+    return [zone for zone in zones if not _is_site_zone_placeholder(zone, lat=lat, lng=lng)]
+
+
 def _serialize_site_map(site: Site) -> SiteMapDto:
     site_map = _build_site_map_payload(lat=site.lat, lng=site.lng, site_name=site.name)
     map_config = site.map_config_json or site_map["mapConfig"]
-    zones = site.zones_json or site_map["zones"]
+    zones = _filter_site_zones(site.zones_json or site_map["zones"], lat=site.lat, lng=site.lng)
     launch_points = site.launch_points_json or site_map["launchPoints"]
     viewpoints = site.viewpoints_json or site_map["viewpoints"]
     return SiteMapDto(

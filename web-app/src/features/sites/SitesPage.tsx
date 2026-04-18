@@ -530,7 +530,7 @@ export function SitesPage() {
                   <div className="mt-4 grid gap-2 text-sm text-chrome-700 md:grid-cols-2">
                     <div>航線 {site.activeRouteCount}</div>
                     <div>模板 {site.activeTemplateCount}</div>
-                    <div>Zone {site.siteMap.zones.length}</div>
+                    <div>邊界區 {site.siteMap.zones.length}</div>
                     <div>Viewpoint {site.siteMap.viewpoints.length}</div>
                   </div>
                 </Panel>
@@ -587,9 +587,9 @@ export function SitesPage() {
 
             <div className="grid gap-4 md:grid-cols-3">
               <Metric
-                label="Zone 數量"
+                label="邊界區數量"
                 value={selectedSite.siteMap.zones.length}
-                hint="inspection boundary / facade priority"
+                hint="只有 internal 明確定義巡檢邊界後才會出現"
               />
               <Metric
                 label="Launch Point"
@@ -608,7 +608,7 @@ export function SitesPage() {
                 map context
               </p>
               <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
-                場域地圖與 active route overlay
+                場域地圖、L/V 點位與可選航線預覽
               </h3>
               <div className="mt-4 space-y-4">
                 <GoogleMapCanvas
@@ -617,15 +617,17 @@ export function SitesPage() {
                 />
                 {!auth.isInternal ? (
                   <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-                    customer 只檢視場域摘要、L/V 點位結果與 active route overlay，不直接修改
-                    launch point 或 inspection viewpoint 幾何。
+                    customer 只檢視場域摘要、L/V 點位結果與可選航線預覽。巡檢邊界 zone
+                    只有在 internal 明確定義 polygon 後才會出現，不會由單一場域中心點自動推導。
                   </div>
                 ) : null}
                 <div className="grid gap-4 xl:grid-cols-3">
                   <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                    <p className="font-medium text-chrome-950">Zones</p>
+                    <p className="font-medium text-chrome-950">巡檢邊界 Zones</p>
                     {selectedSite.siteMap.zones.length === 0 ? (
-                      <p className="mt-3 text-sm text-chrome-700">目前沒有設定 zone。</p>
+                      <p className="mt-3 text-sm text-chrome-700">
+                        目前沒有明確巡檢邊界。單一場域中心點只代表參考位置，不會自動形成 zone。
+                      </p>
                     ) : (
                       selectedSite.siteMap.zones.map((zone) => (
                         <p key={zone.zoneId} className="mt-3 text-sm text-chrome-700">
