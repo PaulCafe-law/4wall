@@ -1,3 +1,6 @@
+from sqlmodel import select
+
+from app.models import Site
 from tests.helpers import login_web, seed_organization, seed_user, valid_request_payload
 
 
@@ -302,7 +305,7 @@ def test_site_detail_returns_site_map_context_and_active_route_template_summarie
     site = site_response.json()
     site_id = site["siteId"]
     assert site["siteMap"]["baseMapType"] == "satellite"
-    assert len(site["siteMap"]["zones"]) == 1
+    assert len(site["siteMap"]["zones"]) == 0
     assert len(site["siteMap"]["launchPoints"]) == 1
     assert len(site["siteMap"]["viewpoints"]) == 1
 
@@ -391,6 +394,60 @@ def test_site_detail_returns_site_map_context_and_active_route_template_summarie
     assert patched["name"] == "Tower A Updated"
     assert patched["siteMap"]["baseMapType"] == "hybrid"
     assert patched["siteMap"]["version"] == 3
+
+
+def test_site_detail_filters_legacy_placeholder_zone_boxes(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Legacy Zone Org")
+        org_id = org.id
+        seed_user(
+            session,
+            email="admin@legacy-zone.test",
+            password=PASSWORD,
+            org_roles=[(org_id, "customer_admin")],
+        )
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@legacy-zone.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "name": "Legacy Zone Site",
+            "address": "Kaohsiung",
+            "location": {"lat": 22.6273, "lng": 120.3014},
+            "notes": "",
+        },
+    )
+    assert site_response.status_code == 200, site_response.text
+    site_id = site_response.json()["siteId"]
+
+    with session_factory() as session:
+        site = session.exec(select(Site).where(Site.id == site_id)).one()
+        site.zones_json = [
+            {
+                "zoneId": "zone-legacy",
+                "label": "Legacy Zone Site 巡檢邊界",
+                "kind": "inspection_boundary",
+                "polygon": [
+                    {"lat": 22.6273 - 0.00012, "lng": 120.3014 - 0.00012},
+                    {"lat": 22.6273 - 0.00012, "lng": 120.3014 + 0.00012},
+                    {"lat": 22.6273 + 0.00012, "lng": 120.3014 + 0.00012},
+                    {"lat": 22.6273 + 0.00012, "lng": 120.3014 - 0.00012},
+                ],
+                "note": "Demo-ready inspection boundary around the site centroid.",
+                "isActive": True,
+            }
+        ]
+        session.add(site)
+        session.commit()
+
+    detail_response = client.get(f"/v1/sites/{site_id}", headers=headers)
+    assert detail_response.status_code == 200, detail_response.text
+    detail = detail_response.json()
+
+    assert detail["siteMap"]["zones"] == []
 
 
 def test_control_plane_dashboard_and_alerts_surface_execution_lifecycle(client, session_factory) -> None:

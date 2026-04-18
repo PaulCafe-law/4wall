@@ -47,7 +47,7 @@ Viewer smoke should be enabled in each environment once a seeded `customer_viewe
   - site map read path and site selection
   - route/template create or edit path if the release touched control-plane surfaces
   - route workspace exposes Google Maps waypoint editing only to internal users, while customer users remain on summary/read-only route coverage, if the release touched control-plane surfaces
-  - site workspace shows map version, zones, launch points, viewpoints, active route/template summaries, and internal Google Maps preview if the release touched control-plane surfaces
+  - site workspace shows map version, launch points, viewpoints, active route/template summaries, and any internal-defined zones, plus internal Google Maps preview if the release touched control-plane surfaces
   - site workspace exposes launch-point and viewpoint editing only to internal users, while customer users remain on summary/read-only site context, if the release touched control-plane surfaces
   - schedule create, pause/resume, cancel/complete, and `lastOutcome` / `lastDispatchedAt` visibility if the release touched control-plane surfaces
   - dispatch create, send/accept/complete/fail transitions, assignee / execution target / handoff note rendering, and dispatch board visibility if the release touched control-plane surfaces

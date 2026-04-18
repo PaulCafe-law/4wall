@@ -186,7 +186,7 @@ describe('SitesPage', () => {
     ).not.toBeInTheDocument()
     expect(
       screen.getByText(
-        'customer 只檢視場域摘要、L/V 點位結果與 active route overlay，不直接修改 launch point 或 inspection viewpoint 幾何。',
+        'customer 只檢視場域摘要、L/V 點位結果與可選航線預覽。巡檢邊界 zone 只有在 internal 明確定義 polygon 後才會出現，不會由單一場域中心點自動推導。',
       ),
     ).toBeInTheDocument()
   })

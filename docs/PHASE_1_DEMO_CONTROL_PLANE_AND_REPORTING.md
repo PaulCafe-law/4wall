@@ -72,12 +72,18 @@ The purpose is to show:
   - internal users can add, drag, relabel, and remove `LaunchPoint` and `InspectionViewpoint` markers directly on Google Maps
   - customer roles still see site context and active route overlays, but cannot edit site geometry
   - site-map geometry remains the authority for launch/viewpoint context, while route waypoints remain a separate internal planning asset
+- Batch H corrects the meaning of site zones:
+  - a customer-provided site center is treated as a reference point only, not as an implied inspection boundary
+  - the web tier no longer auto-generates a default `inspection_boundary` polygon around every new site
+  - only internal-defined polygons are rendered as `SiteZone` overlays on the site map
+  - legacy placeholder boundary boxes are filtered out at read time so older staging data does not keep showing a false inspection zone
 
 ## Scope
 
 ### Control Plane
 
 - site map and area context
+- explicit inspection boundary polygons only when internal has actually defined them
 - internal-only launch point and inspection viewpoint editing on top of Google Maps
 - route and route-template records
 - internal-only waypoint editing on top of Google Maps
