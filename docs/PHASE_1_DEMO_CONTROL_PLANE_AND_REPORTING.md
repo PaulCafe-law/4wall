@@ -67,12 +67,18 @@ The purpose is to show:
   - `customer_admin` and `customer_viewer` see route summaries, preview coverage, and duration only
   - only internal users can add, drag, delete, and reclassify waypoint markers
   - `Mission Detail` moves raw request/response JSON out of the main narrative and into an internal-only debug surface
+- Batch G turns site-map context into the same internal map-authority workflow:
+  - launch points and inspection viewpoints are no longer treated as static labels only
+  - internal users can add, drag, relabel, and remove `LaunchPoint` and `InspectionViewpoint` markers directly on Google Maps
+  - customer roles still see site context and active route overlays, but cannot edit site geometry
+  - site-map geometry remains the authority for launch/viewpoint context, while route waypoints remain a separate internal planning asset
 
 ## Scope
 
 ### Control Plane
 
 - site map and area context
+- internal-only launch point and inspection viewpoint editing on top of Google Maps
 - route and route-template records
 - internal-only waypoint editing on top of Google Maps
 - inspection schedule
@@ -158,6 +164,10 @@ The productized control plane also expects these summary fields even when they a
 - `MissionExecutionSummary`
 
 The route editor also assumes this deploy-time contract on the web tier:
+
+- `VITE_GOOGLE_MAPS_API_KEY`
+
+The site workspace now assumes the same deploy-time contract because site geometry is edited on the same Google Maps surface:
 
 - `VITE_GOOGLE_MAPS_API_KEY`
 
@@ -252,15 +262,16 @@ The minimum demo path is:
 
 1. Open the control-plane dashboard and show current route/template/schedule/dispatch coverage plus recent alerts
 2. Open the site-detail workspace and show map context, launch points, viewpoints, and active route/template coverage
-3. Open the route workspace and review route preview, duration, versioned planning summary, and internal-only Google Maps waypoint editing
-4. Open the template workspace and review inspection policy, evidence policy, and report mode
-5. Open the schedule workspace and show next run, pause reason, last outcome, and alert coverage
-6. Open the dispatch workspace and show assignment, execution target, accepted/closed timing, and mission linkage
-7. Open the mission record
-8. Show execution summary, imagery-derived events, and evidence
-9. Open the generated report summary
-10. Download the report artifact
-11. Cross-check the same mission state in `Support` and `Live Ops`
+3. In the site-detail workspace, show internal-only launch point / viewpoint editing on Google Maps
+4. Open the route workspace and review route preview, duration, versioned planning summary, and internal-only Google Maps waypoint editing
+5. Open the template workspace and review inspection policy, evidence policy, and report mode
+6. Open the schedule workspace and show next run, pause reason, last outcome, and alert coverage
+7. Open the dispatch workspace and show assignment, execution target, accepted/closed timing, and mission linkage
+8. Open the mission record
+9. Show execution summary, imagery-derived events, and evidence
+10. Open the generated report summary
+11. Download the report artifact
+12. Cross-check the same mission state in `Support` and `Live Ops`
 
 The repeatable rehearsal path and evidence package now live in:
 
@@ -275,6 +286,7 @@ Phase 1 demo functionality is accepted when:
 - the control plane reads like a real product workspace instead of a stack of unrelated forms
 - the control-plane dashboard, site workspace, route workspace, schedule workspace, and dispatch workspace each produce a screenshot that can stand on its own in a plan-review deck
 - the route workspace can demonstrate internal-only waypoint editing on Google Maps without exposing editing controls to customer roles
+- the site workspace can demonstrate internal-only launch point and inspection viewpoint editing on Google Maps without exposing geometry controls to customer roles
 - the data model is stable enough that later batches do not need to redesign route/schedule/event/report shapes
 - control-plane and report surfaces stay outside the flight-critical boundary
 - `Support` and `Live Ops` tell the same story as mission detail when report generation fails or produces a clean pass

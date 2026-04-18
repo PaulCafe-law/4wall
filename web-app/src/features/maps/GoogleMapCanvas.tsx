@@ -10,7 +10,7 @@ import {
   type GoogleMapsMouseEvent,
   type GoogleMapsOverlay,
 } from '../../lib/google-maps'
-import type { InspectionWaypoint, SiteMap } from '../../lib/types'
+import type { InspectionViewpoint, InspectionWaypoint, LaunchPoint, SiteMap } from '../../lib/types'
 
 type LatLngPoint = {
   lat: number
@@ -24,10 +24,20 @@ export type RouteOverlay = {
   active?: boolean
 }
 
-function markerColor(kind: InspectionWaypoint['kind']) {
+function routeWaypointColor(kind: InspectionWaypoint['kind']) {
   if (kind === 'inspection_viewpoint') return '#c76a28'
   if (kind === 'hold') return '#596b55'
   return '#1f2b3a'
+}
+
+function launchPointColor(kind: LaunchPoint['kind']) {
+  return kind === 'backup' ? '#596b55' : '#1f2b3a'
+}
+
+function viewpointColor(purpose: InspectionViewpoint['purpose']) {
+  if (purpose === 'detail') return '#c76a28'
+  if (purpose === 'overview') return '#41658a'
+  return '#8c5a2b'
 }
 
 function makeMarker(
@@ -61,17 +71,25 @@ function makeMarker(
 export function GoogleMapCanvas({
   siteMap,
   routeOverlays = [],
-  editableWaypoints = [],
+  editableWaypoints,
+  editableLaunchPoints,
+  editableViewpoints,
   internalEditable = false,
   onWaypointMove,
+  onLaunchPointMove,
+  onViewpointMove,
   onMapClick,
   className,
 }: {
   siteMap: SiteMap
   routeOverlays?: RouteOverlay[]
   editableWaypoints?: InspectionWaypoint[]
+  editableLaunchPoints?: LaunchPoint[]
+  editableViewpoints?: InspectionViewpoint[]
   internalEditable?: boolean
   onWaypointMove?: (index: number, point: LatLngPoint) => void
+  onLaunchPointMove?: (index: number, point: LatLngPoint) => void
+  onViewpointMove?: (index: number, point: LatLngPoint) => void
   onMapClick?: (point: LatLngPoint) => void
   className?: string
 }) {
@@ -80,22 +98,40 @@ export function GoogleMapCanvas({
   const overlaysRef = useRef<GoogleMapsOverlay[]>([])
   const clickListenerRef = useRef<GoogleMapsListener | null>(null)
   const onWaypointMoveRef = useRef(onWaypointMove)
+  const onLaunchPointMoveRef = useRef(onLaunchPointMove)
+  const onViewpointMoveRef = useRef(onViewpointMove)
   const onMapClickRef = useRef(onMapClick)
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(
     hasGoogleMapsApiKey() ? 'loading' : 'error',
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(
-    hasGoogleMapsApiKey() ? null : '尚未設定 VITE_GOOGLE_MAPS_API_KEY，Google Maps 編輯器目前維持 fail-closed。',
+    hasGoogleMapsApiKey()
+      ? null
+      : '缺少 VITE_GOOGLE_MAPS_API_KEY，Google Maps 編輯器會以 fail-closed 方式停用。',
   )
 
   const renderModel = useMemo(
-    () => ({ siteMap, routeOverlays, editableWaypoints }),
-    [editableWaypoints, routeOverlays, siteMap],
+    () => ({
+      siteMap,
+      routeOverlays,
+      editableWaypoints: editableWaypoints ?? null,
+      editableLaunchPoints: editableLaunchPoints ?? null,
+      editableViewpoints: editableViewpoints ?? null,
+    }),
+    [editableLaunchPoints, editableViewpoints, editableWaypoints, routeOverlays, siteMap],
   )
 
   useEffect(() => {
     onWaypointMoveRef.current = onWaypointMove
   }, [onWaypointMove])
+
+  useEffect(() => {
+    onLaunchPointMoveRef.current = onLaunchPointMove
+  }, [onLaunchPointMove])
+
+  useEffect(() => {
+    onViewpointMoveRef.current = onViewpointMove
+  }, [onViewpointMove])
 
   useEffect(() => {
     onMapClickRef.current = onMapClick
@@ -111,9 +147,6 @@ export function GoogleMapCanvas({
     void loadGoogleMapsApi()
       .then((maps) => {
         if (cancelled || !containerRef.current) return
-        if (!maps) {
-          throw new Error('google_maps_api_unavailable')
-        }
         if (!mapRef.current) {
           mapRef.current = new maps.Map(containerRef.current, {
             center: siteMap.center,
@@ -130,7 +163,9 @@ export function GoogleMapCanvas({
       .catch(() => {
         if (cancelled) return
         setStatus('error')
-        setErrorMessage('Google Maps 載入失敗，請確認 API key 與網路設定。')
+        setErrorMessage(
+          'Google Maps 載入失敗。請確認 API key、referrer 限制與網域設定是否正確。',
+        )
       })
 
     return () => {
@@ -145,16 +180,19 @@ export function GoogleMapCanvas({
 
     const maps = window.google.maps
     const map = mapRef.current
-    const { siteMap: visibleSiteMap, routeOverlays: visibleRoutes, editableWaypoints: visibleWaypoints } =
-      renderModel
+    const {
+      siteMap: visibleSiteMap,
+      routeOverlays: visibleRoutes,
+      editableWaypoints: visibleWaypoints,
+      editableLaunchPoints: visibleLaunchPoints,
+      editableViewpoints: visibleViewpoints,
+    } = renderModel
 
     map.setCenter(visibleSiteMap.center)
     map.setZoom(visibleSiteMap.zoom)
     map.setMapTypeId(visibleSiteMap.baseMapType)
 
-    overlaysRef.current.forEach((overlay) => {
-      overlay.setMap(null)
-    })
+    overlaysRef.current.forEach((overlay) => overlay.setMap(null))
     overlaysRef.current = []
 
     for (const zone of visibleSiteMap.zones) {
@@ -170,30 +208,44 @@ export function GoogleMapCanvas({
       overlaysRef.current.push(polygon)
     }
 
-    for (const launchPoint of visibleSiteMap.launchPoints) {
-      overlaysRef.current.push(
-        makeMarker(
-          maps,
-          map,
-          { lat: launchPoint.lat, lng: launchPoint.lng },
-          'L',
-          '#596b55',
-          false,
-        ),
+    const launchPoints = visibleLaunchPoints ?? visibleSiteMap.launchPoints
+    for (const [index, launchPoint] of launchPoints.entries()) {
+      const marker = makeMarker(
+        maps,
+        map,
+        { lat: launchPoint.lat, lng: launchPoint.lng },
+        `L${index + 1}`,
+        launchPointColor(launchPoint.kind),
+        internalEditable && Boolean(visibleLaunchPoints),
       )
+      if (internalEditable && visibleLaunchPoints && onLaunchPointMoveRef.current) {
+        marker.addListener('dragend', (event: GoogleMapsMouseEvent) => {
+          const latLng = event?.latLng
+          if (!latLng) return
+          onLaunchPointMoveRef.current?.(index, { lat: latLng.lat(), lng: latLng.lng() })
+        })
+      }
+      overlaysRef.current.push(marker)
     }
 
-    for (const viewpoint of visibleSiteMap.viewpoints) {
-      overlaysRef.current.push(
-        makeMarker(
-          maps,
-          map,
-          { lat: viewpoint.lat, lng: viewpoint.lng },
-          'V',
-          '#41658a',
-          false,
-        ),
+    const viewpoints = visibleViewpoints ?? visibleSiteMap.viewpoints
+    for (const [index, viewpoint] of viewpoints.entries()) {
+      const marker = makeMarker(
+        maps,
+        map,
+        { lat: viewpoint.lat, lng: viewpoint.lng },
+        `V${index + 1}`,
+        viewpointColor(viewpoint.purpose),
+        internalEditable && Boolean(visibleViewpoints),
       )
+      if (internalEditable && visibleViewpoints && onViewpointMoveRef.current) {
+        marker.addListener('dragend', (event: GoogleMapsMouseEvent) => {
+          const latLng = event?.latLng
+          if (!latLng) return
+          onViewpointMoveRef.current?.(index, { lat: latLng.lat(), lng: latLng.lng() })
+        })
+      }
+      overlaysRef.current.push(marker)
     }
 
     for (const route of visibleRoutes) {
@@ -207,13 +259,13 @@ export function GoogleMapCanvas({
       overlaysRef.current.push(polyline)
     }
 
-    visibleWaypoints.forEach((waypoint, index) => {
+    for (const [index, waypoint] of (visibleWaypoints ?? []).entries()) {
       const marker = makeMarker(
         maps,
         map,
         { lat: waypoint.lat, lng: waypoint.lng },
         String(index + 1),
-        markerColor(waypoint.kind),
+        routeWaypointColor(waypoint.kind),
         internalEditable,
       )
       if (internalEditable && onWaypointMoveRef.current) {
@@ -224,7 +276,7 @@ export function GoogleMapCanvas({
         })
       }
       overlaysRef.current.push(marker)
-    })
+    }
 
     if (clickListenerRef.current) {
       maps.event.removeListener(clickListenerRef.current)
@@ -244,11 +296,7 @@ export function GoogleMapCanvas({
         clickListenerRef.current = null
       }
     }
-  }, [
-    internalEditable,
-    renderModel,
-    status,
-  ])
+  }, [internalEditable, renderModel, status])
 
   if (status === 'error') {
     return (
@@ -273,8 +321,8 @@ export function GoogleMapCanvas({
       ) : (
         <p className="text-sm text-chrome-700">
           {internalEditable
-            ? '可直接拖拉 waypoint，或在地圖上點擊新增點位。'
-            : '這個地圖預覽只用來展示 site context、route overlay 與 inspection viewpoints。'}
+            ? 'internal 可在地圖上拖拉 route waypoint、launch point 與 viewpoint，並直接把幾何編輯結果儲存回控制平面。'
+            : '目前顯示 site context、route overlay、launch points 與 inspection viewpoints。'}
         </p>
       )}
     </div>
