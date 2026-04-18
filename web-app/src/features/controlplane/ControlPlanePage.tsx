@@ -18,7 +18,7 @@ import {
   TextArea,
   formatDateTime,
 } from '../../components/ui'
-import { ApiError, api } from '../../lib/api'
+import { ApiError, api, type SiteMapPayload } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import {
@@ -27,7 +27,7 @@ import {
   formatSupportCategory,
   formatSupportSeverity,
 } from '../../lib/presentation'
-import type { InspectionWaypoint, Site } from '../../lib/types'
+import type { InspectionViewpoint, InspectionWaypoint, LaunchPoint, Site } from '../../lib/types'
 import { InternalRouteEditorPanel } from './InternalRouteEditorPanel'
 
 type WorkspaceKey = 'dashboard' | 'routes' | 'templates' | 'schedules' | 'dispatch'
@@ -196,6 +196,52 @@ function cloneWaypoints(waypoints: InspectionWaypoint[]) {
   return waypoints.map((waypoint) => ({ ...waypoint }))
 }
 
+function cloneLaunchPoints(launchPoints: LaunchPoint[]) {
+  return launchPoints.map((launchPoint) => ({ ...launchPoint }))
+}
+
+function cloneViewpoints(viewpoints: InspectionViewpoint[]) {
+  return viewpoints.map((viewpoint) => ({ ...viewpoint }))
+}
+
+function toSiteMapPayload(siteMap: Site['siteMap']): SiteMapPayload {
+  return {
+    baseMapType: siteMap.baseMapType,
+    center: { ...siteMap.center },
+    zoom: siteMap.zoom,
+    version: siteMap.version,
+    zones: siteMap.zones.map((zone) => ({
+      zoneId: zone.zoneId,
+      label: zone.label,
+      kind: zone.kind,
+      polygon: zone.polygon.map((point) => ({ ...point })),
+      note: zone.note,
+      isActive: zone.isActive,
+    })),
+    launchPoints: siteMap.launchPoints.map((launchPoint) => ({
+      launchPointId: launchPoint.launchPointId,
+      label: launchPoint.label,
+      kind: launchPoint.kind,
+      lat: launchPoint.lat,
+      lng: launchPoint.lng,
+      headingDeg: launchPoint.headingDeg,
+      altitudeM: launchPoint.altitudeM,
+      isActive: launchPoint.isActive,
+    })),
+    viewpoints: siteMap.viewpoints.map((viewpoint) => ({
+      viewpointId: viewpoint.viewpointId,
+      label: viewpoint.label,
+      purpose: viewpoint.purpose,
+      lat: viewpoint.lat,
+      lng: viewpoint.lng,
+      headingDeg: viewpoint.headingDeg,
+      altitudeM: viewpoint.altitudeM,
+      distanceToFacadeM: viewpoint.distanceToFacadeM,
+      isActive: viewpoint.isActive,
+    })),
+  }
+}
+
 function defaultAlertRules() {
   return [
     { kind: 'mission_failure' as const, enabled: true, note: '任務失敗時建立支援項目。' },
@@ -265,6 +311,8 @@ export function ControlPlanePage() {
   const [routeName, setRouteName] = useState('')
   const [routeDescription, setRouteDescription] = useState('')
   const [routeDraftWaypoints, setRouteDraftWaypoints] = useState<InspectionWaypoint[]>([])
+  const [routeDraftLaunchPoints, setRouteDraftLaunchPoints] = useState<LaunchPoint[]>([])
+  const [routeDraftViewpoints, setRouteDraftViewpoints] = useState<InspectionViewpoint[]>([])
   const [templateName, setTemplateName] = useState('')
   const [plannedAt, setPlannedAt] = useState('')
   const [schedulePauseReason, setSchedulePauseReason] = useState('天候不佳，暫停起飛窗口。')
@@ -272,6 +320,7 @@ export function ControlPlanePage() {
   const [dispatchExecutionTarget, setDispatchExecutionTarget] = useState('field-team')
   const [dispatchNote, setDispatchNote] = useState('')
   const [routeError, setRouteError] = useState<string | null>(null)
+  const [routeSiteMapError, setRouteSiteMapError] = useState<string | null>(null)
   const [templateError, setTemplateError] = useState<string | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [dispatchError, setDispatchError] = useState<string | null>(null)
@@ -410,6 +459,25 @@ export function ControlPlanePage() {
     }
   }, [editingRoute, selectedRouteId, selectedSite, siteRoutes])
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (!selectedSite) {
+        setRouteDraftLaunchPoints([])
+        setRouteDraftViewpoints([])
+        setRouteSiteMapError(null)
+        return
+      }
+
+      setRouteDraftLaunchPoints(cloneLaunchPoints(selectedSite.siteMap.launchPoints))
+      setRouteDraftViewpoints(cloneViewpoints(selectedSite.siteMap.viewpoints))
+      setRouteSiteMapError(null)
+    }, 0)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [selectedSite])
+
   const createRoute = useAuthedMutation({
     mutationKey: ['inspection', 'routes', 'create'],
     mutationFn: ({
@@ -443,6 +511,26 @@ export function ControlPlanePage() {
         queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
       ])
       setRouteError(null)
+    },
+  })
+
+  const patchRouteWorkspaceSite = useAuthedMutation({
+    mutationKey: ['sites', 'patch', 'control-plane-routes'],
+    mutationFn: ({
+      token,
+      payload,
+    }: {
+      token: string
+      payload: { siteId: string; body: Parameters<typeof api.patchSite>[2] }
+    }) => api.patchSite(token, payload.siteId, payload.body),
+    onSuccess: async (site) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['sites'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+      ])
+      setRouteDraftLaunchPoints(cloneLaunchPoints(site.siteMap.launchPoints))
+      setRouteDraftViewpoints(cloneViewpoints(site.siteMap.viewpoints))
+      setRouteSiteMapError(null)
     },
   })
 
@@ -570,6 +658,33 @@ export function ControlPlanePage() {
 
     setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 40, 32, 18)))
     setRouteError(null)
+  }
+
+  async function handleSaveRouteSiteMap() {
+    if (!selectedSite) {
+      setRouteSiteMapError('請先建立並選擇場域。')
+      return
+    }
+
+    try {
+      await patchRouteWorkspaceSite.mutateAsync({
+        siteId: selectedSite.siteId,
+        body: {
+          siteMap: toSiteMapPayload({
+            ...selectedSite.siteMap,
+            launchPoints: routeDraftLaunchPoints,
+            viewpoints: routeDraftViewpoints,
+          }),
+        },
+      })
+    } catch (error) {
+      setRouteSiteMapError(
+        formatApiError(
+          error instanceof ApiError ? error.detail : undefined,
+          '儲存 L/V 場域點位失敗。',
+        ),
+      )
+    }
   }
 
   async function handleSaveRouteDraft() {
@@ -1035,14 +1150,21 @@ export function ControlPlanePage() {
               routeName={routeName}
               routeDescription={routeDescription}
               waypoints={routeDraftWaypoints}
+              launchPoints={routeDraftLaunchPoints}
+              viewpoints={routeDraftViewpoints}
               routeError={routeError}
-              isSaving={createRoute.isPending || updateRoute.isPending}
+              siteMapError={routeSiteMapError}
+              isSavingRoute={createRoute.isPending || updateRoute.isPending}
+              isSavingSiteMap={patchRouteWorkspaceSite.isPending}
               onSelectedRouteIdChange={setSelectedRouteId}
               onRouteNameChange={setRouteName}
               onRouteDescriptionChange={setRouteDescription}
               onWaypointsChange={setRouteDraftWaypoints}
+              onLaunchPointsChange={setRouteDraftLaunchPoints}
+              onViewpointsChange={setRouteDraftViewpoints}
               onSeedDemoDraft={seedRouteDraftFromSite}
-              onSave={() => void handleSaveRouteDraft()}
+              onSaveRoute={() => void handleSaveRouteDraft()}
+              onSaveSiteMap={() => void handleSaveRouteSiteMap()}
             />
           </div>
         ) : (
