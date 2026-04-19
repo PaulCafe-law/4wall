@@ -30,8 +30,9 @@ def test_mock_route_provider_returns_demo_path() -> None:
 
     route = provider.plan_route(request)
 
-    assert len(route.points) == 5
-    assert route.points[0].lat == request.origin.lat
+    assert len(route.points) == len(request.waypoints) + 2
+    assert route.points[0] == request.launchPoint
+    assert route.points[-1] == request.launchPoint
 
 
 def test_osm_osrm_provider_builds_expected_request_and_parses_geojson() -> None:

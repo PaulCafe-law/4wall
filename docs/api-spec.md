@@ -63,13 +63,9 @@ Creates a mission, persists mission and artifact records, writes artifacts to st
 ```json
 {
   "missionName": "tower-a-prod-beta",
-  "origin": {
+  "launchPoint": {
     "lat": 25.03391,
     "lng": 121.56452
-  },
-  "targetBuilding": {
-    "buildingId": "tower-a",
-    "label": "Tower A"
   },
   "routingMode": "road_network_following",
   "corridorPolicy": {
@@ -82,18 +78,18 @@ Creates a mission, persists mission and artifact records, writes artifacts to st
     "defaultSpeedMps": 4.0,
     "maxApproachSpeedMps": 1.0
   },
-  "inspectionIntent": {
-    "viewpoints": [
-      {
-        "viewpointId": "vp-01",
-        "label": "north-east-facade",
-        "lat": 25.03441,
-        "lng": 121.56501,
-        "yawDeg": 225.0,
-        "distanceToFacadeM": 12.0
-      }
-    ]
-  },
+  "waypoints": [
+    {
+      "waypointId": "wp-01",
+      "kind": "transit",
+      "label": "north-patrol",
+      "lat": 25.03441,
+      "lng": 121.56501,
+      "altitudeM": 35.0,
+      "headingDeg": 225.0,
+      "dwellSeconds": 8
+    }
+  ],
   "demoMode": false
 }
 ```
@@ -114,7 +110,8 @@ Creates a mission, persists mission and artifact records, writes artifacts to st
         "segmentId": "seg-001",
         "polyline": [
           { "lat": 25.03391, "lng": 121.56452 },
-          { "lat": 25.03441, "lng": 121.56501 }
+          { "lat": 25.03441, "lng": 121.56501 },
+          { "lat": 25.03391, "lng": 121.56452 }
         ],
         "halfWidthMeters": 8.0,
         "suggestedAltitudeMeters": 35.0,
@@ -129,15 +126,9 @@ Creates a mission, persists mission and artifact records, writes artifacts to st
         "timeoutMillis": 2500
       }
     ],
-    "inspectionViewpoints": [
-      {
-        "inspectionViewpointId": "vp-01",
-        "location": { "lat": 25.03441, "lng": 121.56501 },
-        "yawDegrees": 225.0,
-        "captureMode": "photo_burst",
-        "label": "north-east-facade"
-      }
-    ],
+    "launchPoint": { "lat": 25.03391, "lng": 121.56452 },
+    "waypointCount": 1,
+    "implicitReturnToLaunch": true,
     "failsafe": {
       "onSemanticTimeout": "HOLD",
       "onBatteryCritical": "RTH",
@@ -190,7 +181,8 @@ Returns mission metadata JSON. The response body carries route/corridor metadata
   "generatedAt": "2026-04-02T07:20:00Z",
   "segments": 1,
   "verificationPoints": 2,
-  "inspectionViewpoints": 1,
+  "routeWaypointCount": 1,
+  "implicitReturnToLaunch": true,
   "corridorHalfWidthM": 8.0,
   "suggestedAltitudeM": 35.0,
   "suggestedSpeedMps": 4.0,

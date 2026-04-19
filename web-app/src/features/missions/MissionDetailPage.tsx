@@ -212,10 +212,23 @@ export function MissionDetailPage() {
               <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                 <p className="font-medium text-chrome-950">航線</p>
                 {mission.route ? (
-                  <div className="mt-3 space-y-2 text-sm text-chrome-700">
-                    <p>{mission.route.name}</p>
-                    <p>v{mission.route.version} / {mission.route.pointCount} 個點位</p>
-                    <p>預估時間 {Math.round(mission.route.estimatedDurationSec / 60)} 分鐘</p>
+                  <div className="mt-3">
+                    <DataList
+                      rows={[
+                        { label: '名稱', value: mission.route.name },
+                        { label: '版本', value: `v${mission.route.version}` },
+                        { label: '起降點', value: mission.route.launchPoint.label },
+                        { label: '巡邏點', value: mission.route.pointCount },
+                        {
+                          label: '閉合規則',
+                          value: mission.route.implicitReturnToLaunch ? '固定回到起降點' : '未啟用',
+                        },
+                        {
+                          label: '預估時間',
+                          value: `${Math.max(1, Math.round(mission.route.estimatedDurationSec / 60))} 分鐘`,
+                        },
+                      ]}
+                    />
                   </div>
                 ) : (
                   <p className="mt-3 text-sm text-chrome-700">目前沒有綁定航線。</p>

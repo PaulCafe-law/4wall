@@ -18,7 +18,7 @@ import {
   TextArea,
   formatDateTime,
 } from '../../components/ui'
-import { ApiError, api, type SiteMapPayload } from '../../lib/api'
+import { ApiError, api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import {
@@ -27,7 +27,7 @@ import {
   formatSupportCategory,
   formatSupportSeverity,
 } from '../../lib/presentation'
-import type { InspectionViewpoint, InspectionWaypoint, LaunchPoint, Site } from '../../lib/types'
+import type { InspectionWaypoint, LaunchPoint, Site } from '../../lib/types'
 import { InternalRouteEditorPanel } from './InternalRouteEditorPanel'
 
 type WorkspaceKey = 'dashboard' | 'routes' | 'templates' | 'schedules' | 'dispatch'
@@ -158,8 +158,6 @@ function tabClass(active: boolean) {
 function buildDemoWaypoints(
   site: Site,
   transitAltitudeM: number,
-  inspectionAltitudeM: number,
-  dwellSeconds: number,
 ) {
   return [
     {
@@ -172,22 +170,22 @@ function buildDemoWaypoints(
       dwellSeconds: 0,
     },
     {
-      kind: 'inspection_viewpoint' as const,
+      kind: 'transit' as const,
       lat: site.location.lat,
       lng: site.location.lng,
-      altitudeM: inspectionAltitudeM,
-      label: `${site.name} 主視角`,
+      altitudeM: transitAltitudeM,
+      label: `${site.name} 中段巡邏點`,
       headingDeg: 180,
-      dwellSeconds,
+      dwellSeconds: 0,
     },
     {
       kind: 'hold' as const,
       lat: site.location.lat + DEFAULT_ROUTE_OFFSET,
       lng: site.location.lng + DEFAULT_ROUTE_OFFSET,
       altitudeM: transitAltitudeM,
-      label: `${site.name} 離場確認點`,
+      label: `${site.name} 回航保持點`,
       headingDeg: 0,
-      dwellSeconds: Math.max(5, Math.floor(dwellSeconds / 2)),
+      dwellSeconds: 8,
     },
   ]
 }
@@ -196,49 +194,20 @@ function cloneWaypoints(waypoints: InspectionWaypoint[]) {
   return waypoints.map((waypoint) => ({ ...waypoint }))
 }
 
-function cloneLaunchPoints(launchPoints: LaunchPoint[]) {
-  return launchPoints.map((launchPoint) => ({ ...launchPoint }))
+function cloneLaunchPoint(launchPoint: LaunchPoint | null) {
+  return launchPoint ? { ...launchPoint } : null
 }
 
-function cloneViewpoints(viewpoints: InspectionViewpoint[]) {
-  return viewpoints.map((viewpoint) => ({ ...viewpoint }))
-}
-
-function toSiteMapPayload(siteMap: Site['siteMap']): SiteMapPayload {
+function buildDefaultLaunchPoint(site: Site): LaunchPoint {
   return {
-    baseMapType: siteMap.baseMapType,
-    center: { ...siteMap.center },
-    zoom: siteMap.zoom,
-    version: siteMap.version,
-    zones: siteMap.zones.map((zone) => ({
-      zoneId: zone.zoneId,
-      label: zone.label,
-      kind: zone.kind,
-      polygon: zone.polygon.map((point) => ({ ...point })),
-      note: zone.note,
-      isActive: zone.isActive,
-    })),
-    launchPoints: siteMap.launchPoints.map((launchPoint) => ({
-      launchPointId: launchPoint.launchPointId,
-      label: launchPoint.label,
-      kind: launchPoint.kind,
-      lat: launchPoint.lat,
-      lng: launchPoint.lng,
-      headingDeg: launchPoint.headingDeg,
-      altitudeM: launchPoint.altitudeM,
-      isActive: launchPoint.isActive,
-    })),
-    viewpoints: siteMap.viewpoints.map((viewpoint) => ({
-      viewpointId: viewpoint.viewpointId,
-      label: viewpoint.label,
-      purpose: viewpoint.purpose,
-      lat: viewpoint.lat,
-      lng: viewpoint.lng,
-      headingDeg: viewpoint.headingDeg,
-      altitudeM: viewpoint.altitudeM,
-      distanceToFacadeM: viewpoint.distanceToFacadeM,
-      isActive: viewpoint.isActive,
-    })),
+    launchPointId: 'launch-draft',
+    label: `${site.name} 起降點`,
+    kind: 'primary',
+    lat: site.location.lat,
+    lng: site.location.lng,
+    headingDeg: 180,
+    altitudeM: 0,
+    isActive: true,
   }
 }
 
@@ -311,8 +280,7 @@ export function ControlPlanePage() {
   const [routeName, setRouteName] = useState('')
   const [routeDescription, setRouteDescription] = useState('')
   const [routeDraftWaypoints, setRouteDraftWaypoints] = useState<InspectionWaypoint[]>([])
-  const [routeDraftLaunchPoints, setRouteDraftLaunchPoints] = useState<LaunchPoint[]>([])
-  const [routeDraftViewpoints, setRouteDraftViewpoints] = useState<InspectionViewpoint[]>([])
+  const [routeDraftLaunchPoint, setRouteDraftLaunchPoint] = useState<LaunchPoint | null>(null)
   const [templateName, setTemplateName] = useState('')
   const [plannedAt, setPlannedAt] = useState('')
   const [schedulePauseReason, setSchedulePauseReason] = useState('天候不佳，暫停起飛窗口。')
@@ -320,7 +288,6 @@ export function ControlPlanePage() {
   const [dispatchExecutionTarget, setDispatchExecutionTarget] = useState('field-team')
   const [dispatchNote, setDispatchNote] = useState('')
   const [routeError, setRouteError] = useState<string | null>(null)
-  const [routeSiteMapError, setRouteSiteMapError] = useState<string | null>(null)
   const [templateError, setTemplateError] = useState<string | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [dispatchError, setDispatchError] = useState<string | null>(null)
@@ -431,6 +398,7 @@ export function ControlPlanePage() {
         setSelectedRouteId('new')
         setRouteName('')
         setRouteDescription('')
+        setRouteDraftLaunchPoint(null)
         setRouteDraftWaypoints([])
         return
       }
@@ -443,13 +411,15 @@ export function ControlPlanePage() {
       if (selectedRouteId === 'new') {
         setRouteName(`${selectedSite.name} 巡檢航線`)
         setRouteDescription('由 internal 規劃團隊在 Google Maps 上編輯並發布的巡檢航線。')
-        setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 40, 32, 18)))
+        setRouteDraftLaunchPoint(buildDefaultLaunchPoint(selectedSite))
+        setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 36)))
         return
       }
 
       if (editingRoute) {
         setRouteName(editingRoute.name)
         setRouteDescription(editingRoute.description)
+        setRouteDraftLaunchPoint(cloneLaunchPoint(editingRoute.launchPoint))
         setRouteDraftWaypoints(cloneWaypoints(editingRoute.waypoints))
       }
     }, 0)
@@ -458,25 +428,6 @@ export function ControlPlanePage() {
       window.clearTimeout(timer)
     }
   }, [editingRoute, selectedRouteId, selectedSite, siteRoutes])
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (!selectedSite) {
-        setRouteDraftLaunchPoints([])
-        setRouteDraftViewpoints([])
-        setRouteSiteMapError(null)
-        return
-      }
-
-      setRouteDraftLaunchPoints(cloneLaunchPoints(selectedSite.siteMap.launchPoints))
-      setRouteDraftViewpoints(cloneViewpoints(selectedSite.siteMap.viewpoints))
-      setRouteSiteMapError(null)
-    }, 0)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [selectedSite])
 
   const createRoute = useAuthedMutation({
     mutationKey: ['inspection', 'routes', 'create'],
@@ -511,26 +462,6 @@ export function ControlPlanePage() {
         queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
       ])
       setRouteError(null)
-    },
-  })
-
-  const patchRouteWorkspaceSite = useAuthedMutation({
-    mutationKey: ['sites', 'patch', 'control-plane-routes'],
-    mutationFn: ({
-      token,
-      payload,
-    }: {
-      token: string
-      payload: { siteId: string; body: Parameters<typeof api.patchSite>[2] }
-    }) => api.patchSite(token, payload.siteId, payload.body),
-    onSuccess: async (site) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['sites'] }),
-        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
-      ])
-      setRouteDraftLaunchPoints(cloneLaunchPoints(site.siteMap.launchPoints))
-      setRouteDraftViewpoints(cloneViewpoints(site.siteMap.viewpoints))
-      setRouteSiteMapError(null)
     },
   })
 
@@ -656,35 +587,9 @@ export function ControlPlanePage() {
       return
     }
 
-    setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 40, 32, 18)))
+    setRouteDraftLaunchPoint(buildDefaultLaunchPoint(selectedSite))
+    setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 36)))
     setRouteError(null)
-  }
-
-  async function handleSaveRouteSiteMap() {
-    if (!selectedSite) {
-      setRouteSiteMapError('請先建立並選擇場域。')
-      return
-    }
-
-    try {
-      await patchRouteWorkspaceSite.mutateAsync({
-        siteId: selectedSite.siteId,
-        body: {
-          siteMap: toSiteMapPayload({
-            ...selectedSite.siteMap,
-            launchPoints: routeDraftLaunchPoints,
-            viewpoints: routeDraftViewpoints,
-          }),
-        },
-      })
-    } catch (error) {
-      setRouteSiteMapError(
-        formatApiError(
-          error instanceof ApiError ? error.detail : undefined,
-          '儲存 L/V 場域點位失敗。',
-        ),
-      )
-    }
   }
 
   async function handleSaveRouteDraft() {
@@ -700,6 +605,10 @@ export function ControlPlanePage() {
       setRouteError('至少需要兩個 waypoint 才能建立或更新航線。')
       return
     }
+    if (!routeDraftLaunchPoint) {
+      setRouteError('請先設定 route-owned launch point。')
+      return
+    }
 
     try {
       if (selectedRouteId !== 'new' && editingRoute) {
@@ -708,11 +617,13 @@ export function ControlPlanePage() {
           body: {
             name: routeName.trim(),
             description: routeDescription.trim() || undefined,
+            launchPoint: routeDraftLaunchPoint,
             waypoints: routeDraftWaypoints,
             planningParameters: {
               ...(editingRoute.planningParameters ?? {}),
               routeMode: 'google-maps-editor',
               editor: 'internal_google_maps',
+              patrolModel: 'route_owned_launch_waypoints_v1',
             },
           },
         })
@@ -724,12 +635,14 @@ export function ControlPlanePage() {
         siteId: selectedSite.siteId,
         name: routeName.trim(),
         description: routeDescription.trim() || '由 internal 規劃團隊在 Google Maps 上編輯並發布的巡檢航線。',
+        launchPoint: routeDraftLaunchPoint,
         waypoints: routeDraftWaypoints,
         planningParameters: {
           routeVersion: 1,
           routeMode: 'google-maps-editor',
           defaultSpeedMps: 4,
           editor: 'internal_google_maps',
+          patrolModel: 'route_owned_launch_waypoints_v1',
         },
       })
       setSelectedRouteId(createdRoute.routeId)
@@ -992,8 +905,8 @@ export function ControlPlanePage() {
                   <div className="grid gap-3 md:grid-cols-4">
                     <Metric label="地圖版本" value={selectedSite.siteMap.version ?? 1} />
                     <Metric label="區域" value={selectedSite.siteMap.zones.length} />
-                    <Metric label="起降點" value={selectedSite.siteMap.launchPoints.length} />
-                    <Metric label="視角點" value={selectedSite.siteMap.viewpoints.length} />
+                    <Metric label="航線資產" value={selectedSite.activeRouteCount} />
+                    <Metric label="模板資產" value={selectedSite.activeTemplateCount} />
                   </div>
                   <div className="flex flex-wrap gap-3">
                     <Link
@@ -1149,22 +1062,17 @@ export function ControlPlanePage() {
               selectedRouteId={selectedRouteId}
               routeName={routeName}
               routeDescription={routeDescription}
+              launchPoint={routeDraftLaunchPoint}
               waypoints={routeDraftWaypoints}
-              launchPoints={routeDraftLaunchPoints}
-              viewpoints={routeDraftViewpoints}
               routeError={routeError}
-              siteMapError={routeSiteMapError}
               isSavingRoute={createRoute.isPending || updateRoute.isPending}
-              isSavingSiteMap={patchRouteWorkspaceSite.isPending}
               onSelectedRouteIdChange={setSelectedRouteId}
               onRouteNameChange={setRouteName}
               onRouteDescriptionChange={setRouteDescription}
+              onLaunchPointChange={setRouteDraftLaunchPoint}
               onWaypointsChange={setRouteDraftWaypoints}
-              onLaunchPointsChange={setRouteDraftLaunchPoints}
-              onViewpointsChange={setRouteDraftViewpoints}
               onSeedDemoDraft={seedRouteDraftFromSite}
               onSaveRoute={() => void handleSaveRouteDraft()}
-              onSaveSiteMap={() => void handleSaveRouteSiteMap()}
             />
           </div>
         ) : (
@@ -1179,9 +1087,10 @@ export function ControlPlanePage() {
                 rows={[
                   { label: '場域', value: selectedSite?.name ?? '尚未選定' },
                   { label: '航線數量', value: siteRoutes.length },
+                  { label: '起降點', value: siteRoutes[0]?.launchPoint?.label ?? '由 internal 定義' },
                   {
                     label: '展示重點',
-                    value: '客戶面只看 route summary、preview coverage 與 estimated duration，不直接承擔 waypoint 規劃責任。',
+                    value: '客戶面只看 route summary、launch point、closed patrol loop 與 estimated duration，不直接承擔 route geometry 規劃責任。',
                   },
                 ]}
               />
@@ -1216,9 +1125,10 @@ export function ControlPlanePage() {
                     </span>
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-4">
-                    <Metric label="點位" value={route.pointCount} />
+                    <Metric label="起降點" value={route.launchPoint.label} />
+                    <Metric label="巡邏點" value={route.pointCount} />
                     <Metric label="預估時間" value={formatDuration(route.estimatedDurationSec)} />
-                    <Metric label="預覽點" value={route.previewPolyline.length} />
+                    <Metric label="閉合路徑" value={route.implicitReturnToLaunch ? '回到 L' : '未閉合'} />
                     <Metric label="更新時間" value={formatDateTime(route.updatedAt)} />
                   </div>
                 </div>

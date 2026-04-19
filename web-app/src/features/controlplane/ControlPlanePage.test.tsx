@@ -13,7 +13,6 @@ const apiMock = vi.hoisted(() => ({
   listInspectionSchedules: vi.fn(),
   listInspectionDispatches: vi.fn(),
   listMissions: vi.fn(),
-  patchSite: vi.fn(),
   createInspectionRoute: vi.fn(),
   patchInspectionRoute: vi.fn(),
   createInspectionTemplate: vi.fn(),
@@ -25,8 +24,6 @@ const apiMock = vi.hoisted(() => ({
 
 vi.mock('../maps/GoogleMapCanvas', () => ({
   GoogleMapCanvas: () => <div>GoogleMapCanvasMock</div>,
-  routeOverlaysFromRoutes: (routes: Array<{ routeId: string; name: string }>) =>
-    routes.map((route) => ({ routeId: route.routeId, name: route.name, path: [], active: false })),
 }))
 
 vi.mock('./InternalRouteEditorPanel', () => ({
@@ -48,7 +45,6 @@ vi.mock('../../lib/api', async () => {
       listInspectionSchedules: apiMock.listInspectionSchedules,
       listInspectionDispatches: apiMock.listInspectionDispatches,
       listMissions: apiMock.listMissions,
-      patchSite: apiMock.patchSite,
       createInspectionRoute: apiMock.createInspectionRoute,
       patchInspectionRoute: apiMock.patchInspectionRoute,
       createInspectionTemplate: apiMock.createInspectionTemplate,
@@ -77,16 +73,16 @@ describe('ControlPlanePage', () => {
         missionId: 'mission-001',
         status: 'ready',
         generatedAt: '2026-04-17T08:45:00Z',
-        summary: 'Detected facade cracking and water ingress markers.',
+        summary: 'Detected perimeter anomalies and generated an HTML patrol report.',
         eventCount: 2,
         downloadArtifact: null,
       },
       latestEventSummary: {
         eventId: 'event-001',
         missionId: 'mission-001',
-        category: 'joint_water_ingress_risk',
+        category: 'perimeter_breach_risk',
         severity: 'critical',
-        summary: 'Tower A flagged a possible water ingress pattern.',
+        summary: 'North patrol segment detected an unexpected perimeter intrusion pattern.',
         detectedAt: '2026-04-17T08:44:00Z',
       },
       alertSummary: { openCount: 1, criticalCount: 1, warningCount: 0 },
@@ -121,6 +117,7 @@ describe('ControlPlanePage', () => {
         },
       ],
     })
+
     apiMock.listSites.mockResolvedValue([
       {
         siteId: 'site-001',
@@ -129,7 +126,7 @@ describe('ControlPlanePage', () => {
         externalRef: 'SITE-A',
         address: 'Taipei',
         location: { lat: 25.03391, lng: 121.56452 },
-        notes: 'North facade priority',
+        notes: 'North perimeter priority',
         siteMap: {
           baseMapType: 'satellite',
           center: { lat: 25.03391, lng: 121.56452 },
@@ -144,7 +141,7 @@ describe('ControlPlanePage', () => {
         activeRoutes: [
           {
             routeId: 'route-001',
-            name: 'Tower A facade loop',
+            name: 'Tower A patrol loop',
             version: 1,
             pointCount: 3,
             estimatedDurationSec: 480,
@@ -155,7 +152,7 @@ describe('ControlPlanePage', () => {
           {
             templateId: 'template-001',
             routeId: 'route-001',
-            name: 'Facade standard',
+            name: 'Perimeter standard',
             reportMode: 'html_report',
             evidencePolicy: 'capture_key_frames',
             reviewMode: 'operator_review',
@@ -166,17 +163,31 @@ describe('ControlPlanePage', () => {
         updatedAt: '2026-04-17T08:00:00Z',
       },
     ])
+
     apiMock.listInspectionRoutes.mockResolvedValue([
       {
         routeId: 'route-001',
         organizationId: 'org-001',
         siteId: 'site-001',
-        name: 'Tower A facade loop',
-        description: 'Facade-first route',
+        name: 'Tower A patrol loop',
+        description: 'Closed patrol route for security inspection.',
         version: 1,
+        launchPoint: {
+          launchPointId: 'launch-001',
+          label: 'Tower A launch point',
+          kind: 'primary',
+          lat: 25.03391,
+          lng: 121.56452,
+          headingDeg: 180,
+          altitudeM: 0,
+          isActive: true,
+        },
+        implicitReturnToLaunch: true,
         pointCount: 3,
         previewPolyline: [
+          { lat: 25.03391, lng: 121.56452 },
           { lat: 25.0337, lng: 121.5643 },
+          { lat: 25.03405, lng: 121.56478 },
           { lat: 25.03391, lng: 121.56452 },
         ],
         estimatedDurationSec: 480,
@@ -185,24 +196,34 @@ describe('ControlPlanePage', () => {
             kind: 'transit',
             lat: 25.0337,
             lng: 121.5643,
-            altitudeM: 40,
-            label: '進場點',
+            altitudeM: 36,
+            label: 'Ingress patrol point',
             headingDeg: 45,
             dwellSeconds: 0,
           },
+          {
+            kind: 'hold',
+            lat: 25.03405,
+            lng: 121.56478,
+            altitudeM: 28,
+            label: 'North hold point',
+            headingDeg: 0,
+            dwellSeconds: 8,
+          },
         ],
-        planningParameters: { routeMode: 'site-envelope-demo' },
+        planningParameters: { routeMode: 'route_owned_launch_waypoints_v1' },
         createdAt: '2026-04-17T08:00:00Z',
         updatedAt: '2026-04-17T08:00:00Z',
       },
     ])
+
     apiMock.listInspectionTemplates.mockResolvedValue([
       {
         templateId: 'template-001',
         organizationId: 'org-001',
         siteId: 'site-001',
         routeId: 'route-001',
-        name: 'Facade standard',
+        name: 'Perimeter standard',
         description: 'Operator-reviewed',
         inspectionProfile: {},
         alertRules: [],
@@ -213,6 +234,7 @@ describe('ControlPlanePage', () => {
         updatedAt: '2026-04-17T08:00:00Z',
       },
     ])
+
     apiMock.listInspectionSchedules.mockResolvedValue([
       {
         scheduleId: 'schedule-001',
@@ -233,6 +255,7 @@ describe('ControlPlanePage', () => {
         updatedAt: '2026-04-17T08:00:00Z',
       },
     ])
+
     apiMock.listInspectionDispatches.mockResolvedValue([
       {
         dispatchId: 'dispatch-001',
@@ -251,6 +274,7 @@ describe('ControlPlanePage', () => {
         note: 'Ready for field handoff',
       },
     ])
+
     apiMock.listMissions.mockResolvedValue([
       {
         missionId: 'mission-001',
@@ -270,7 +294,7 @@ describe('ControlPlanePage', () => {
     ])
   })
 
-  it('renders dashboard workspace with productized control-plane IA', async () => {
+  it('renders dashboard workspace with the productized control-plane IA', async () => {
     renderWithProviders(
       <Routes>
         <Route path="/control-plane" element={<ControlPlanePage />} />
@@ -295,18 +319,13 @@ describe('ControlPlanePage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: '控制平面總覽' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '總覽' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { level: 2, name: '場域覆蓋與規劃密度' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { level: 2, name: '評審要看到的完整故事' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { level: 2, name: '先用總覽把控制平面講成一個持續運作的工作台' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { level: 2, name: '最近告警' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { level: 2, name: '最近執行狀態' })).toBeInTheDocument()
-    expect(
-      await screen.findByText('The control plane is still waiting for a valid assignee before handoff.'),
-    ).toBeInTheDocument()
-    expect(await screen.findByText('執行中')).toBeInTheDocument()
-    expect((await screen.findAllByText('Tower A')).length).toBeGreaterThan(0)
+    expect(await screen.findByText('Dispatch blocked: observer unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('Tower A morning run')).toBeInTheDocument()
   })
 
-  it('renders customer route workspace without waypoint editor controls', async () => {
+  it('renders customer route workspace without the geometry editor', async () => {
     renderWithProviders(
       <Routes>
         <Route path="/control-plane/routes" element={<ControlPlanePage />} />
@@ -329,17 +348,14 @@ describe('ControlPlanePage', () => {
     )
 
     expect(await screen.findByRole('heading', { level: 1, name: '航線規劃庫' })).toBeInTheDocument()
-    expect(await screen.findByText('Tower A facade loop')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: '航線摘要' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
-    expect(await screen.findByText('8 分鐘')).toBeInTheDocument()
-    expect(
-      screen.getByText('客戶角色只檢視航線版本、預估時間與覆蓋範圍。Waypoint authority 由 internal 規劃團隊持有，不在客戶面開放直接編輯。'),
-    ).toBeInTheDocument()
-    expect(screen.queryByText(/InternalRouteEditorPanelMock/)).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '航線摘要' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
+    expect(await screen.findByText('Tower A patrol loop')).toBeInTheDocument()
+    expect(screen.getByText(/Waypoint authority 由 internal 規劃團隊持有/)).toBeInTheDocument()
+    expect(screen.queryByText(/InternalRouteEditorPanelMock:/)).not.toBeInTheDocument()
   })
 
-  it('renders internal route workspace with the internal waypoint editor', async () => {
+  it('renders internal route workspace with the route-owned launch and waypoints editor', async () => {
     renderWithProviders(
       <Routes>
         <Route path="/control-plane/routes" element={<ControlPlanePage />} />
@@ -358,7 +374,7 @@ describe('ControlPlanePage', () => {
     expect(screen.queryByRole('heading', { level: 2, name: '航線摘要' })).not.toBeInTheDocument()
   })
 
-  it('renders schedule and dispatch workspaces with lifecycle fields', async () => {
+  it('renders the dispatch workspace with lifecycle fields', async () => {
     renderWithProviders(
       <Routes>
         <Route path="/control-plane/dispatch" element={<ControlPlanePage />} />
@@ -388,6 +404,5 @@ describe('ControlPlanePage', () => {
     expect(screen.getByDisplayValue('observer-01')).toBeInTheDocument()
     expect(screen.getByDisplayValue('field-team')).toBeInTheDocument()
     expect(await screen.findByText('Ready for field handoff')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '標記完成' })).toBeInTheDocument()
   })
 })

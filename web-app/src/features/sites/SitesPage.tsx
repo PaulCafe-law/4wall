@@ -11,12 +11,11 @@ import {
   Metric,
   Modal,
   Panel,
-  Select,
   ShellSection,
   TextArea,
   formatDateTime,
 } from '../../components/ui'
-import { ApiError, api, type SiteMapPayload, type SitePayload } from '../../lib/api'
+import { ApiError, api, type SitePayload } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { useOrganizationChoices } from '../../lib/organization-choices'
@@ -24,7 +23,6 @@ import { formatApiError, formatSearchMode } from '../../lib/presentation'
 import type { Site } from '../../lib/types'
 import { GoogleMapCanvas } from '../maps/GoogleMapCanvas'
 import { routeOverlaysFromRoutes } from '../maps/route-overlays'
-import { InternalSiteMapEditorPanel, type SitePlacementMode } from './InternalSiteMapEditorPanel'
 
 const DEFAULT_LAT = 25.03391
 const DEFAULT_LNG = 121.56452
@@ -73,57 +71,6 @@ function metadataDefaults(site: Site): EditSiteMetaForm {
   }
 }
 
-function cloneSiteMap(siteMap: Site['siteMap']): Site['siteMap'] {
-  return {
-    ...siteMap,
-    center: { ...siteMap.center },
-    zones: siteMap.zones.map((zone) => ({
-      ...zone,
-      polygon: zone.polygon.map((point) => ({ ...point })),
-    })),
-    launchPoints: siteMap.launchPoints.map((point) => ({ ...point })),
-    viewpoints: siteMap.viewpoints.map((point) => ({ ...point })),
-  }
-}
-
-function toSiteMapPayload(siteMap: Site['siteMap']): SiteMapPayload {
-  return {
-    baseMapType: siteMap.baseMapType,
-    center: { ...siteMap.center },
-    zoom: siteMap.zoom,
-    version: siteMap.version,
-    zones: siteMap.zones.map((zone) => ({
-      zoneId: zone.zoneId,
-      label: zone.label,
-      kind: zone.kind,
-      polygon: zone.polygon.map((point) => ({ ...point })),
-      note: zone.note,
-      isActive: zone.isActive,
-    })),
-    launchPoints: siteMap.launchPoints.map((point) => ({
-      launchPointId: point.launchPointId,
-      label: point.label,
-      kind: point.kind,
-      lat: point.lat,
-      lng: point.lng,
-      headingDeg: point.headingDeg,
-      altitudeM: point.altitudeM,
-      isActive: point.isActive,
-    })),
-    viewpoints: siteMap.viewpoints.map((point) => ({
-      viewpointId: point.viewpointId,
-      label: point.label,
-      purpose: point.purpose,
-      lat: point.lat,
-      lng: point.lng,
-      headingDeg: point.headingDeg,
-      altitudeM: point.altitudeM,
-      distanceToFacadeM: point.distanceToFacadeM,
-      isActive: point.isActive,
-    })),
-  }
-}
-
 function mapTypeLabel(value: Site['siteMap']['baseMapType']) {
   if (value === 'roadmap') return '地圖'
   if (value === 'hybrid') return '混合'
@@ -155,18 +102,10 @@ export function SitesPage() {
   const [editMetaOpen, setEditMetaOpen] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [editMetaError, setEditMetaError] = useState<string | null>(null)
-  const [mapEditorError, setMapEditorError] = useState<string | null>(null)
   const [createForm, setCreateForm] = useState<CreateSiteForm>(() =>
     createDefaults(choices[0]?.organizationId ?? ''),
   )
   const [editMetaDraft, setEditMetaDraft] = useState<ScopedDraft<EditSiteMetaForm> | null>(null)
-  const [siteMapDraftState, setSiteMapDraftState] = useState<ScopedDraft<Site['siteMap']> | null>(
-    null,
-  )
-  const [placementModeState, setPlacementModeState] = useState<{
-    siteId: string
-    value: SitePlacementMode
-  } | null>(null)
   const deferredSearch = useDeferredValue(search)
 
   const sitesQuery = useAuthedQuery({
@@ -206,10 +145,7 @@ export function SitesPage() {
       await queryClient.invalidateQueries({ queryKey: ['sites'] })
       setEditMetaOpen(false)
       setEditMetaError(null)
-      setMapEditorError(null)
       setEditMetaDraft(toScopedDraft(site, metadataDefaults(site)))
-      setSiteMapDraftState(toScopedDraft(site, cloneSiteMap(site.siteMap)))
-      setPlacementModeState({ siteId: site.siteId, value: null })
     },
   })
 
@@ -249,40 +185,9 @@ export function SitesPage() {
     return metadataDefaults(selectedSite)
   }, [editMetaDraft, selectedSite])
 
-  const siteMapDraft = useMemo(() => {
-    if (!selectedSite) return null
-    if (
-      siteMapDraftState &&
-      siteMapDraftState.siteId === selectedSite.siteId &&
-      siteMapDraftState.updatedAt === selectedSite.updatedAt
-    ) {
-      return siteMapDraftState.value
-    }
-    return cloneSiteMap(selectedSite.siteMap)
-  }, [selectedSite, siteMapDraftState])
-
-  const placementMode =
-    selectedSite && placementModeState?.siteId === selectedSite.siteId
-      ? placementModeState.value
-      : null
-
-  function updateEditMetaForm(
-    updater: (current: EditSiteMetaForm) => EditSiteMetaForm,
-  ) {
+  function updateEditMetaForm(updater: (current: EditSiteMetaForm) => EditSiteMetaForm) {
     if (!selectedSite || !editMetaForm) return
     setEditMetaDraft(toScopedDraft(selectedSite, updater(editMetaForm)))
-  }
-
-  function updateSiteMapDraft(
-    updater: (current: Site['siteMap']) => Site['siteMap'],
-  ) {
-    if (!selectedSite || !siteMapDraft) return
-    setSiteMapDraftState(toScopedDraft(selectedSite, updater(siteMapDraft)))
-  }
-
-  function setPlacementMode(value: SitePlacementMode) {
-    if (!selectedSite) return
-    setPlacementModeState({ siteId: selectedSite.siteId, value })
   }
 
   async function handleCreateSite() {
@@ -295,7 +200,7 @@ export function SitesPage() {
       return
     }
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      setCreateError('請輸入有效的中心緯度與經度。')
+      setCreateError('請提供有效的場域中心點經緯度。')
       return
     }
 
@@ -312,7 +217,7 @@ export function SitesPage() {
       setCreateError(
         formatApiError(
           error instanceof ApiError ? error.detail : undefined,
-          '建立場域失敗，請稍後再試。',
+          '建立場域失敗。',
         ),
       )
     }
@@ -335,28 +240,7 @@ export function SitesPage() {
       setEditMetaError(
         formatApiError(
           error instanceof ApiError ? error.detail : undefined,
-          '更新場域資料失敗，請稍後再試。',
-        ),
-      )
-    }
-  }
-
-  async function handleSaveSiteMapDraft() {
-    if (!selectedSite || !siteMapDraft) return
-
-    try {
-      await patchSite.mutateAsync({
-        siteId: selectedSite.siteId,
-        body: {
-          siteMap: toSiteMapPayload(siteMapDraft),
-        },
-      })
-      setPlacementMode(null)
-    } catch (error) {
-      setMapEditorError(
-        formatApiError(
-          error instanceof ApiError ? error.detail : undefined,
-          '儲存場域地圖失敗，請稍後再試。',
+          '更新場域資料失敗。',
         ),
       )
     }
@@ -367,19 +251,19 @@ export function SitesPage() {
       <ShellSection
         eyebrow="場域工作區"
         title="場域"
-        subtitle="以 site 為單位整理地址、地圖中心、launch points、inspection viewpoints 與 active route/template 覆蓋。"
+        subtitle="Site 頁只保留場域參考中心點、基本資料與已發布 route overlay。保全巡檢 v1 的 launch point 與 patrol waypoints 都由 route 持有，不在 site 頁直接編輯。"
         action={
           choices.length > 0 ? (
             <Modal
               open={createOpen}
               onOpenChange={setCreateOpen}
               title="新增場域"
-              description="先建立 site，後續的 route、template、schedule、dispatch 與 mission 才有固定場域脈絡。"
+              description="場域只定義 site metadata 與中心點，route geometry 由 internal 在控制平面航線工作區管理。"
               trigger={<ActionButton>新增場域</ActionButton>}
             >
               <div className="space-y-4">
                 <Field label="組織">
-                  <Select
+                  <select
                     value={createForm.organizationId || choices[0]?.organizationId || ''}
                     onChange={(event) =>
                       setCreateForm((current) => ({
@@ -387,13 +271,14 @@ export function SitesPage() {
                         organizationId: event.target.value,
                       }))
                     }
+                    className="w-full rounded-2xl border border-chrome-300 bg-white px-4 py-3 text-sm text-chrome-950"
                   >
                     {choices.map((choice) => (
                       <option key={choice.organizationId} value={choice.organizationId}>
                         {choice.name}
                       </option>
                     ))}
-                  </Select>
+                  </select>
                 </Field>
                 <Field label="場域名稱">
                   <Input
@@ -412,7 +297,7 @@ export function SitesPage() {
                   />
                 </Field>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="中心緯度">
+                  <Field label="中心點緯度">
                     <Input
                       value={createForm.lat}
                       onChange={(event) =>
@@ -420,7 +305,7 @@ export function SitesPage() {
                       }
                     />
                   </Field>
-                  <Field label="中心經度">
+                  <Field label="中心點經度">
                     <Input
                       value={createForm.lng}
                       onChange={(event) =>
@@ -429,14 +314,11 @@ export function SitesPage() {
                     />
                   </Field>
                 </div>
-                <Field label="外部代碼">
+                <Field label="外部代號">
                   <Input
                     value={createForm.externalRef}
                     onChange={(event) =>
-                      setCreateForm((current) => ({
-                        ...current,
-                        externalRef: event.target.value,
-                      }))
+                      setCreateForm((current) => ({ ...current, externalRef: event.target.value }))
                     }
                   />
                 </Field>
@@ -465,22 +347,18 @@ export function SitesPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="場域總數" value={filteredSites.length} hint="site coverage" />
+        <Metric label="場域數量" value={filteredSites.length} hint="site coverage" />
         <Metric
-          label="啟用航線"
+          label="活躍航線"
           value={filteredSites.reduce((sum, site) => sum + site.activeRouteCount, 0)}
           hint="route reuse"
         />
         <Metric
-          label="啟用模板"
+          label="活躍模板"
           value={filteredSites.reduce((sum, site) => sum + site.activeTemplateCount, 0)}
           hint="template reuse"
         />
-        <Metric
-          label="搜尋模式"
-          value={formatSearchMode(Boolean(deferredSearch))}
-          hint="目前是否只顯示部分場域"
-        />
+        <Metric label="搜尋模式" value={formatSearchMode(Boolean(deferredSearch))} hint="搜尋當前 site list" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
@@ -490,18 +368,18 @@ export function SitesPage() {
               <Input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="輸入場域名稱、地址或外部代碼"
+                placeholder="搜尋場域名稱、地址或外部代號"
               />
             </Field>
           </Panel>
 
           {!sitesQuery.isPending && filteredSites.length === 0 ? (
             <EmptyState
-              title={allSites.length === 0 ? '目前還沒有場域' : '查無符合條件的場域'}
+              title={allSites.length === 0 ? '目前沒有場域' : '找不到符合搜尋條件的場域'}
               body={
                 allSites.length === 0
-                  ? '先建立一個 site，控制平面才有地圖、launch point、inspection viewpoint 與 active route/template coverage。'
-                  : '調整搜尋條件，或回到全部資料檢視其他場域。'
+                  ? '先建立第一個場域，控制平面才有 site context 可以掛 route、template、schedule 與 mission。'
+                  : '請調整搜尋條件，或建立新的場域。'
               }
             />
           ) : null}
@@ -530,8 +408,8 @@ export function SitesPage() {
                   <div className="mt-4 grid gap-2 text-sm text-chrome-700 md:grid-cols-2">
                     <div>航線 {site.activeRouteCount}</div>
                     <div>模板 {site.activeTemplateCount}</div>
-                    <div>邊界區 {site.siteMap.zones.length}</div>
-                    <div>Viewpoint {site.siteMap.viewpoints.length}</div>
+                    <div>Zones {site.siteMap.zones.length}</div>
+                    <div>中心點 {site.location.lat.toFixed(3)}, {site.location.lng.toFixed(3)}</div>
                   </div>
                 </Panel>
               </Link>
@@ -563,8 +441,8 @@ export function SitesPage() {
                       編輯場域資料
                     </ActionButton>
                   ) : null}
-                  <ActionButton variant="secondary" onClick={() => navigate('/control-plane')}>
-                    查看控制平面
+                  <ActionButton variant="secondary" onClick={() => navigate('/control-plane/routes')}>
+                    前往航線規劃
                   </ActionButton>
                 </div>
               </div>
@@ -572,35 +450,23 @@ export function SitesPage() {
                 <DataList
                   rows={[
                     { label: '地址', value: selectedSite.address },
-                    { label: '外部代碼', value: selectedSite.externalRef ?? '未設定' },
+                    { label: '外部代號', value: selectedSite.externalRef ?? '未設定' },
                     { label: '底圖模式', value: mapTypeLabel(selectedSite.siteMap.baseMapType) },
                     {
-                      label: '地圖中心',
+                      label: '場域中心',
                       value: `${selectedSite.siteMap.center.lat.toFixed(5)}, ${selectedSite.siteMap.center.lng.toFixed(5)}`,
                     },
                     { label: '最後更新', value: formatDateTime(selectedSite.updatedAt) },
-                    { label: '備註', value: selectedSite.notes || '無額外說明' },
+                    { label: '備註', value: selectedSite.notes || '沒有備註' },
                   ]}
                 />
               </div>
             </Panel>
 
             <div className="grid gap-4 md:grid-cols-3">
-              <Metric
-                label="邊界區數量"
-                value={selectedSite.siteMap.zones.length}
-                hint="只有 internal 明確定義巡檢邊界後才會出現"
-              />
-              <Metric
-                label="Launch Point"
-                value={selectedSite.siteMap.launchPoints.length}
-                hint="L 點位"
-              />
-              <Metric
-                label="Viewpoint"
-                value={selectedSite.siteMap.viewpoints.length}
-                hint="V 點位"
-              />
+              <Metric label="定義 zones" value={selectedSite.siteMap.zones.length} hint="explicit polygons only" />
+              <Metric label="活躍航線" value={selectedSite.activeRouteCount} hint="published route assets" />
+              <Metric label="活躍模板" value={selectedSite.activeTemplateCount} hint="attached policies" />
             </div>
 
             <Panel>
@@ -608,54 +474,39 @@ export function SitesPage() {
                 map context
               </p>
               <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
-                場域地圖、L/V 點位與可選航線預覽
+                場域底圖與已發布航線
               </h3>
               <div className="mt-4 space-y-4">
-                <GoogleMapCanvas
-                  siteMap={siteMapDraft ?? selectedSite.siteMap}
-                  routeOverlays={selectedRouteOverlays}
-                />
-                {!auth.isInternal ? (
-                  <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-                    customer 只檢視場域摘要、L/V 點位結果與可選航線預覽。巡檢邊界 zone
-                    只有在 internal 明確定義 polygon 後才會出現，不會由單一場域中心點自動推導。
-                  </div>
-                ) : null}
-                <div className="grid gap-4 xl:grid-cols-3">
+                <GoogleMapCanvas siteMap={selectedSite.siteMap} routeOverlays={selectedRouteOverlays} />
+                <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
+                  Site 頁只顯示場域參考中心點、明確定義的 zones 與已發布 route overlay。保全巡檢 v1 的 launch point 與 patrol waypoints
+                  由 internal 在航線工作區維護，不在 site 頁直接編輯。
+                </div>
+                <div className="grid gap-4 xl:grid-cols-2">
                   <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                    <p className="font-medium text-chrome-950">巡檢邊界 Zones</p>
+                    <p className="font-medium text-chrome-950">場域 zones</p>
                     {selectedSite.siteMap.zones.length === 0 ? (
                       <p className="mt-3 text-sm text-chrome-700">
-                        目前沒有明確巡檢邊界。單一場域中心點只代表參考位置，不會自動形成 zone。
+                        目前沒有明確定義的 zone。中心點只代表 site reference，不自動推論成巡檢邊界。
                       </p>
                     ) : (
                       selectedSite.siteMap.zones.map((zone) => (
                         <p key={zone.zoneId} className="mt-3 text-sm text-chrome-700">
-                          {zone.label} / {zone.kind} / {zone.polygon.length} 點
+                          {zone.label} / {zone.kind} / {zone.polygon.length} 個角點
                         </p>
                       ))
                     )}
                   </div>
                   <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                    <p className="font-medium text-chrome-950">Launch Points</p>
-                    {selectedSite.siteMap.launchPoints.length === 0 ? (
-                      <p className="mt-3 text-sm text-chrome-700">目前沒有起降點。</p>
+                    <p className="font-medium text-chrome-950">已發布航線 overlay</p>
+                    {selectedSiteRoutes.length === 0 ? (
+                      <p className="mt-3 text-sm text-chrome-700">
+                        目前沒有航線。請到控制平面航線工作區建立 route-owned launch point 與 patrol waypoints。
+                      </p>
                     ) : (
-                      selectedSite.siteMap.launchPoints.map((point) => (
-                        <p key={point.launchPointId} className="mt-3 text-sm text-chrome-700">
-                          {point.label} / {point.kind}
-                        </p>
-                      ))
-                    )}
-                  </div>
-                  <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                    <p className="font-medium text-chrome-950">Inspection Viewpoints</p>
-                    {selectedSite.siteMap.viewpoints.length === 0 ? (
-                      <p className="mt-3 text-sm text-chrome-700">目前沒有視角點。</p>
-                    ) : (
-                      selectedSite.siteMap.viewpoints.map((viewpoint) => (
-                        <p key={viewpoint.viewpointId} className="mt-3 text-sm text-chrome-700">
-                          {viewpoint.label} / {viewpoint.purpose} / {viewpoint.distanceToFacadeM ?? 12} m
+                      selectedSiteRoutes.map((route) => (
+                        <p key={route.routeId} className="mt-3 text-sm text-chrome-700">
+                          {route.name} / {route.pointCount} 個巡邏點 / {formatDuration(route.estimatedDurationSec)}
                         </p>
                       ))
                     )}
@@ -663,29 +514,6 @@ export function SitesPage() {
                 </div>
               </div>
             </Panel>
-
-            {auth.isInternal && siteMapDraft ? (
-              <InternalSiteMapEditorPanel
-                site={selectedSite}
-                launchPoints={siteMapDraft.launchPoints}
-                viewpoints={siteMapDraft.viewpoints}
-                baseMapType={siteMapDraft.baseMapType}
-                placementMode={placementMode}
-                isSaving={patchSite.isPending}
-                error={mapEditorError}
-                onBaseMapTypeChange={(value) =>
-                  updateSiteMapDraft((current) => ({ ...current, baseMapType: value }))
-                }
-                onPlacementModeChange={setPlacementMode}
-                onLaunchPointsChange={(value) =>
-                  updateSiteMapDraft((current) => ({ ...current, launchPoints: value }))
-                }
-                onViewpointsChange={(value) =>
-                  updateSiteMapDraft((current) => ({ ...current, viewpoints: value }))
-                }
-                onSave={() => void handleSaveSiteMapDraft()}
-              />
-            ) : null}
 
             <div className="grid gap-4 xl:grid-cols-2">
               <Panel>
@@ -695,25 +523,25 @@ export function SitesPage() {
                       active routes
                     </p>
                     <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
-                      航線摘要
+                      航線庫
                     </h3>
                   </div>
                   <ActionButton variant="secondary" onClick={() => navigate('/control-plane/routes')}>
-                    查看航線工作區
+                    前往航線工作區
                   </ActionButton>
                 </div>
                 <div className="mt-4 space-y-3">
                   {selectedSite.activeRoutes.length === 0 ? (
                     <EmptyState
                       title="目前沒有航線"
-                      body="先建立 route，控制平面才會把場域脈絡帶到排程、派工與任務詳情。"
+                      body="先建立 route，保全巡檢路徑才會顯示 launch point、ordered patrol waypoints 與閉合巡邏迴路。"
                     />
                   ) : (
                     selectedSite.activeRoutes.map((route) => (
                       <div key={route.routeId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                         <p className="font-medium text-chrome-950">{route.name}</p>
                         <p className="mt-2 text-sm text-chrome-700">
-                          v{route.version} / {route.pointCount} 點 / {formatDuration(route.estimatedDurationSec)}
+                          v{route.version} / {route.pointCount} 個巡邏點 / {formatDuration(route.estimatedDurationSec)}
                         </p>
                         <p className="mt-1 text-xs text-chrome-500">
                           最後更新 {formatDateTime(route.updatedAt)}
@@ -731,21 +559,18 @@ export function SitesPage() {
                       active templates
                     </p>
                     <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
-                      模板摘要
+                      模板庫
                     </h3>
                   </div>
-                  <ActionButton
-                    variant="secondary"
-                    onClick={() => navigate('/control-plane/templates')}
-                  >
-                    查看模板工作區
+                  <ActionButton variant="secondary" onClick={() => navigate('/control-plane/templates')}>
+                    前往模板工作區
                   </ActionButton>
                 </div>
                 <div className="mt-4 space-y-3">
                   {selectedSite.activeTemplates.length === 0 ? (
                     <EmptyState
                       title="目前沒有模板"
-                      body="先建立 template，後續的 inspection policy、evidence policy 與 report mode 才能固定重用。"
+                      body="模板會把巡檢策略、證據政策與報表模式收斂成可重用的 route 附屬資產。"
                     />
                   ) : (
                     selectedSite.activeTemplates.map((template) => (
@@ -757,9 +582,7 @@ export function SitesPage() {
                         <p className="mt-2 text-sm text-chrome-700">
                           {template.evidencePolicy} / {template.reportMode}
                         </p>
-                        <p className="mt-1 text-sm text-chrome-700">
-                          審核模式 {template.reviewMode}
-                        </p>
+                        <p className="mt-1 text-sm text-chrome-700">審閱模式 {template.reviewMode}</p>
                       </div>
                     ))
                   )}
@@ -770,8 +593,7 @@ export function SitesPage() {
         ) : (
           <Panel>
             <p className="text-sm text-chrome-700">
-              目前還沒有可檢視的場域。先建立一個 site，控制平面才有地圖、launch point、
-              inspection viewpoint 與 active route/template coverage。
+              目前沒有場域。先建立第一個 site，再到控制平面航線工作區建立 route-owned launch point 與 patrol waypoints。
             </p>
           </Panel>
         )}
@@ -782,7 +604,7 @@ export function SitesPage() {
           open={editMetaOpen}
           onOpenChange={setEditMetaOpen}
           title="編輯場域資料"
-          description="這裡只更新場域 metadata。launch point 與 viewpoint 幾何由 internal 在 Google Maps 場域編輯器內維護。"
+          description="這裡只編輯 site metadata。route geometry、launch point 與 patrol waypoints 都在控制平面航線工作區管理。"
         >
           <div className="space-y-4">
             <Field label="場域名稱">
@@ -801,14 +623,11 @@ export function SitesPage() {
                 }
               />
             </Field>
-            <Field label="外部代碼">
+            <Field label="外部代號">
               <Input
                 value={editMetaForm.externalRef}
                 onChange={(event) =>
-                  updateEditMetaForm((current) => ({
-                    ...current,
-                    externalRef: event.target.value,
-                  }))
+                  updateEditMetaForm((current) => ({ ...current, externalRef: event.target.value }))
                 }
               />
             </Field>
