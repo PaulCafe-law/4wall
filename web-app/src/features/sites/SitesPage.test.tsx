@@ -141,7 +141,7 @@ describe('SitesPage', () => {
     expect(screen.getByText('GoogleMapCanvasMock')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 3, name: 'Google Maps 場域規劃' })).not.toBeInTheDocument()
     expect(
-      screen.getByText(/Site 頁只保留場域參考中心點、基本資料與已發布 route overlay/),
+      screen.getByText(/Site 頁只保留場域參考中心點與基本資料/),
     ).toBeInTheDocument()
   })
 
@@ -171,6 +171,6 @@ describe('SitesPage', () => {
     expect(await screen.findByRole('heading', { level: 2, name: '平實公園' })).toBeInTheDocument()
     expect(screen.getByText('GoogleMapCanvasMock')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 3, name: 'Google Maps 場域規劃' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Site 頁只保留場域參考中心點、基本資料與已發布 route overlay/)).toBeInTheDocument()
+    expect(screen.getByText(/Site 頁只保留場域參考中心點與基本資料/)).toBeInTheDocument()
   })
 })

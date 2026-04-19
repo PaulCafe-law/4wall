@@ -1,6 +1,5 @@
 import { ActionButton, Field, Input, Panel, Select } from '../../components/ui'
 import { GoogleMapCanvas } from '../maps/GoogleMapCanvas'
-import { routeOverlaysFromRoutes } from '../maps/route-overlays'
 import type { InspectionRoute, InspectionWaypoint, LaunchPoint, Site } from '../../lib/types'
 
 function waypointLabel(index: number, waypoint: InspectionWaypoint) {
@@ -386,10 +385,6 @@ export function InternalRouteEditorPanel({
             <GoogleMapCanvas
               siteMap={site.siteMap}
               routeOverlays={[
-                ...routeOverlaysFromRoutes(routes).map((route) => ({
-                  ...route,
-                  active: route.routeId !== selectedRouteId,
-                })),
                 {
                   routeId: selectedRouteId || 'draft',
                   name: routeName || 'route draft',

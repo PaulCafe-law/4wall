@@ -22,7 +22,6 @@ import { useOrganizationChoices } from '../../lib/organization-choices'
 import { formatApiError, formatSearchMode } from '../../lib/presentation'
 import type { Site } from '../../lib/types'
 import { GoogleMapCanvas } from '../maps/GoogleMapCanvas'
-import { routeOverlaysFromRoutes } from '../maps/route-overlays'
 
 const DEFAULT_LAT = 25.03391
 const DEFAULT_LNG = 121.56452
@@ -168,11 +167,6 @@ export function SitesPage() {
     [allRoutes, selectedSite],
   )
 
-  const selectedRouteOverlays = useMemo(
-    () => routeOverlaysFromRoutes(selectedSiteRoutes).map((route) => ({ ...route, active: true })),
-    [selectedSiteRoutes],
-  )
-
   const editMetaForm = useMemo(() => {
     if (!selectedSite) return null
     if (
@@ -251,7 +245,7 @@ export function SitesPage() {
       <ShellSection
         eyebrow="場域工作區"
         title="場域"
-        subtitle="Site 頁只保留場域參考中心點、基本資料與已發布 route overlay。保全巡檢 v1 的 launch point 與 patrol waypoints 都由 route 持有，不在 site 頁直接編輯。"
+        subtitle="Site 頁只保留場域參考中心點與基本資料。保全巡檢 v1 的 launch point 與 patrol waypoints 都由 route 持有，不在 site 頁直接編輯。"
         action={
           choices.length > 0 ? (
             <Modal
@@ -474,13 +468,13 @@ export function SitesPage() {
                 map context
               </p>
               <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
-                場域底圖與已發布航線
+                場域底圖
               </h3>
               <div className="mt-4 space-y-4">
-                <GoogleMapCanvas siteMap={selectedSite.siteMap} routeOverlays={selectedRouteOverlays} />
+                <GoogleMapCanvas siteMap={selectedSite.siteMap} />
                 <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-                  Site 頁只顯示場域參考中心點、明確定義的 zones 與已發布 route overlay。保全巡檢 v1 的 launch point 與 patrol waypoints
-                  由 internal 在航線工作區維護，不在 site 頁直接編輯。
+                  Site 頁只顯示場域參考中心點與明確定義的 zones。保全巡檢 v1 的 launch point 與 patrol waypoints 由
+                  internal 在航線工作區維護，不在 site 頁直接編輯，也不在這裡預設疊航線折線。
                 </div>
                 <div className="grid gap-4 xl:grid-cols-2">
                   <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
