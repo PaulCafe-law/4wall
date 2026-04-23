@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlmodel import Session, select
@@ -49,6 +50,14 @@ def build_app(
         title=app_settings.app_name,
         version="0.3.0",
         lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins(app_settings),
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+        expose_headers=["x-artifact-checksum"],
     )
     app.state.settings = app_settings
     app.state.engine = engine
@@ -97,6 +106,19 @@ def _build_route_provider(settings: Settings) -> RouteProvider:
     if settings.route_provider.lower() == "osrm":
         return OsmOsrmRouteProvider(base_url=settings.osrm_base_url, profile=settings.osrm_profile)
     return MockRouteProvider()
+
+
+def _cors_origins(settings: Settings) -> list[str]:
+    if settings.app_origin:
+        return [settings.app_origin.rstrip("/")]
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ]
 
 
 def _build_artifact_storage(settings: Settings) -> ArtifactStorage:

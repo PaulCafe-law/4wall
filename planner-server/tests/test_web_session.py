@@ -1,5 +1,9 @@
 from dataclasses import replace
 
+from fastapi.testclient import TestClient
+
+from app.main import build_app
+
 from app.security import WEB_REFRESH_COOKIE_NAME
 from tests.helpers import login_web, seed_organization, seed_user
 
@@ -134,3 +138,21 @@ def test_web_session_endpoints_reject_wrong_origin(client, app, session_factory)
     )
     assert blocked_logout.status_code == 403
     assert blocked_logout.json()["detail"] == "origin_not_allowed"
+
+
+def test_web_session_preflight_allows_configured_origin(test_settings) -> None:
+    app = build_app(settings=replace(test_settings, app_origin="https://four-wall-web-staging.onrender.com"))
+
+    with TestClient(app) as client:
+        response = client.options(
+            "/v1/web/session/login",
+            headers={
+                "Origin": "https://four-wall-web-staging.onrender.com",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://four-wall-web-staging.onrender.com"
+    assert response.headers["access-control-allow-credentials"] == "true"
