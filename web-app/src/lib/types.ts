@@ -2,6 +2,26 @@ export type Role = 'platform_admin' | 'ops' | 'customer_admin' | 'customer_viewe
 
 export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overdue' | 'void'
 
+export type SupportSeverity = 'info' | 'warning' | 'critical'
+export type OperatingProfile = 'outdoor_gps_patrol' | 'indoor_no_gps'
+export type ExecutionMode = 'patrol_route' | 'manual_pilot'
+
+export type ControlIntentAction =
+  | 'request_remote_control'
+  | 'release_remote_control'
+  | 'pause_mission'
+  | 'resume_mission'
+  | 'hold'
+  | 'return_to_home'
+
+export type ControlIntentStatus = 'requested' | 'accepted' | 'rejected' | 'superseded'
+
+export type ControlMode =
+  | 'monitor_only'
+  | 'remote_control_requested'
+  | 'remote_control_active'
+  | 'released'
+
 export interface Membership {
   membershipId: string
   organizationId: string | null
@@ -66,6 +86,34 @@ export interface Site {
   updatedAt: string
 }
 
+export interface LaunchPointSummary {
+  launchPointId?: string
+  label?: string
+  location?: {
+    lat: number
+    lng: number
+  }
+  lat?: number
+  lng?: number
+}
+
+export interface ExecutionSummary {
+  flightId: string | null
+  lastEventType: string | null
+  lastEventAt: string | null
+  executionState: string | null
+  uploadState: string | null
+  waypointProgress: string | null
+  plannedOperatingProfile: OperatingProfile | null
+  executedOperatingProfile: OperatingProfile | null
+  executionMode: ExecutionMode | null
+  cameraStreamState: string | null
+  recordingState: string | null
+  landingPhase: string | null
+  fallbackReason: string | null
+  statusNote: string | null
+}
+
 export interface MissionSummary {
   missionId: string
   organizationId: string | null
@@ -73,6 +121,10 @@ export interface MissionSummary {
   missionName: string
   status: string
   bundleVersion: string
+  operatingProfile: OperatingProfile
+  launchPoint: LaunchPointSummary | null
+  waypointCount: number
+  implicitReturnToLaunch: boolean
   createdAt: string
 }
 
@@ -83,7 +135,13 @@ export interface MissionDetail {
   requestedByUserId: string | null
   missionName: string
   status: string
+  routeMode: string
   bundleVersion: string
+  operatingProfile: OperatingProfile
+  launchPoint: LaunchPointSummary | null
+  waypointCount: number
+  implicitReturnToLaunch: boolean
+  executionSummary: ExecutionSummary | null
   request: Record<string, unknown>
   response: Record<string, unknown>
   createdAt: string
@@ -159,7 +217,80 @@ export interface TelemetryBatchRecord {
   payload: Array<Record<string, unknown>>
 }
 
+export interface LiveTelemetrySample {
+  timestamp: string
+  lat: number
+  lng: number
+  altitudeM: number
+  groundSpeedMps: number
+  batteryPct: number
+  flightState: string
+  corridorDeviationM: number
+}
+
+export interface VideoChannelDescriptor {
+  available: boolean
+  streaming: boolean
+  viewerUrl: string | null
+  codec: string | null
+  latencyMs: number | null
+  lastFrameAt: string | null
+}
+
+export interface ControlLease {
+  holder: string
+  mode: ControlMode
+  remoteControlEnabled: boolean
+  observerReady: boolean
+  heartbeatHealthy: boolean
+  expiresAt: string | null
+}
+
+export interface LiveFlightSummary {
+  flightId: string
+  organizationId: string
+  missionId: string
+  missionName: string
+  operatingProfile: OperatingProfile
+  siteId: string | null
+  siteName: string | null
+  lastEventAt: string | null
+  lastTelemetryAt: string | null
+  latestTelemetry: LiveTelemetrySample | null
+  executionSummary: ExecutionSummary | null
+  video: VideoChannelDescriptor
+  controlLease: ControlLease
+  alerts: string[]
+}
+
+export interface LiveFlightDetail extends LiveFlightSummary {
+  recentEvents: FlightEventRecord[]
+}
+
+export interface ControlIntent {
+  requestId: string
+  flightId: string
+  action: ControlIntentAction
+  status: ControlIntentStatus
+  reason: string | null
+  requestedByUserId: string | null
+  createdAt: string
+  acknowledgedAt: string | null
+  resolutionNote: string | null
+}
+
+export interface SupportQueueItem {
+  itemId: string
+  severity: SupportSeverity
+  organizationId: string
+  flightId: string | null
+  missionId: string | null
+  operatingProfile: OperatingProfile | null
+  title: string
+  summary: string
+  createdAt: string
+}
+
 export interface InviteCreateResponse {
   invite: Invite
-  inviteToken: string
 }

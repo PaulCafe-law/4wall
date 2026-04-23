@@ -28,6 +28,13 @@ from app.dto import (
     TelemetryBatchAcceptedDto,
     TelemetryBatchRequestDto,
 )
+from app.mission_execution import derive_execution_summary
+from app.mission_profile import (
+    derive_implicit_return_to_launch,
+    derive_launch_point,
+    derive_operating_profile,
+    derive_waypoint_count,
+)
 from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
 from app.providers import RouteProvider, RouteProviderError
 from app.web_dto import FlightEventRecordDto, MissionDetailDto, MissionSummaryDto, TelemetryBatchRecordDto
@@ -190,6 +197,10 @@ def list_missions(
             missionName=mission.mission_name,
             status=mission.status,
             bundleVersion=mission.bundle_version,
+            operatingProfile=derive_operating_profile(mission.request_json, mission.response_json),
+            launchPoint=derive_launch_point(mission.request_json, mission.response_json),
+            waypointCount=derive_waypoint_count(mission.request_json, mission.response_json),
+            implicitReturnToLaunch=derive_implicit_return_to_launch(mission.request_json, mission.response_json),
             createdAt=mission.created_at,
         )
         for mission in session.exec(statement).all()
@@ -213,7 +224,13 @@ def get_mission_detail(
         requestedByUserId=mission.requested_by_user_id,
         missionName=mission.mission_name,
         status=mission.status,
+        routeMode=mission.routing_mode,
         bundleVersion=mission.bundle_version,
+        operatingProfile=derive_operating_profile(mission.request_json, mission.response_json),
+        launchPoint=derive_launch_point(mission.request_json, mission.response_json),
+        waypointCount=derive_waypoint_count(mission.request_json, mission.response_json),
+        implicitReturnToLaunch=derive_implicit_return_to_launch(mission.request_json, mission.response_json),
+        executionSummary=derive_execution_summary(session, mission_id=mission.id),
         request=mission.request_json,
         response=mission.response_json,
         createdAt=mission.created_at,

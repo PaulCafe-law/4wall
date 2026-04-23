@@ -15,7 +15,7 @@ class DjiPerceptionAdapter(
         fun start(
             onPerceptionInfo: (PerceptionInfo) -> Unit,
             onObstacleData: (ObstacleData) -> Unit
-        )
+        ): Boolean
     }
 
     private val listeners = linkedMapOf<String, (PerceptionSnapshot) -> Unit>()
@@ -44,13 +44,12 @@ class DjiPerceptionAdapter(
         if (started) {
             return
         }
-        started = true
-        gateway.start(
+        started = gateway.start(
             onPerceptionInfo = { info ->
                 snapshot = snapshot.copy(
                     obstacleDetected = snapshot.obstacleDetected,
                     hardStopRequired = snapshot.hardStopRequired,
-                    summary = info.toString()
+                    summary = summarizePerceptionInfo(info)
                 )
                 publish()
             },
@@ -58,7 +57,7 @@ class DjiPerceptionAdapter(
                 snapshot = PerceptionSnapshot(
                     obstacleDetected = true,
                     hardStopRequired = true,
-                    summary = data.toString()
+                    summary = summarizeObstacleData(data)
                 )
                 publish()
             }
@@ -69,15 +68,36 @@ class DjiPerceptionAdapter(
         listeners.values.forEach { it(snapshot) }
     }
 
-    private class RealGateway : Gateway {
-        private val perceptionManager = PerceptionManager.getInstance()
+    private fun summarizePerceptionInfo(info: PerceptionInfo): String? {
+        val raw = info.toString()
+        return when {
+            raw.contains("BRAKE", ignoreCase = true) -> "本地感知要求立即減速或停止，請勿直接降落。"
+            raw.contains("WARNING", ignoreCase = true) -> "本地感知偵測到降落區附近可能有障礙。"
+            raw.contains("AVOID", ignoreCase = true) -> "本地感知建議先避開障礙，再重新評估降落。"
+            else -> "本地感知判定目前不適合直接降落。"
+        }
+    }
 
+    private fun summarizeObstacleData(data: ObstacleData): String {
+        val raw = data.toString()
+        return when {
+            raw.contains("horizontalObstacleDistance", ignoreCase = true) ->
+                "本地感知偵測到降落區附近有障礙，請先確認周圍環境。"
+
+            else ->
+                "本地感知偵測到降落區異常，請先確認下方環境。"
+        }
+    }
+
+    private class RealGateway : Gateway {
         override fun start(
             onPerceptionInfo: (PerceptionInfo) -> Unit,
             onObstacleData: (ObstacleData) -> Unit
-        ) {
+        ): Boolean = runCatching {
+            val perceptionManager = PerceptionManager.getInstance()
             perceptionManager.addPerceptionInformationListener(onPerceptionInfo)
             perceptionManager.addObstacleDataListener(onObstacleData)
-        }
+            true
+        }.getOrDefault(false)
     }
 }

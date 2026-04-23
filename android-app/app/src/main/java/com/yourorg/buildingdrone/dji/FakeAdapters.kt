@@ -1,6 +1,7 @@
 package com.yourorg.buildingdrone.dji
 
 import android.app.Application
+import android.view.TextureView
 import com.yourorg.buildingdrone.core.GeoPoint
 import com.yourorg.buildingdrone.data.MissionBundle
 import com.yourorg.buildingdrone.domain.semantic.BranchDecision
@@ -25,6 +26,10 @@ class FakeMobileSdkSession(
 
     override fun initialize(application: Application) {
         mutableState.value = mutableState.value.copy(initialized = true, registered = true, initProgress = 100)
+    }
+
+    override fun retryRegistration() {
+        mutableState.value = mutableState.value.copy(registered = true, lastError = null)
     }
 
     override fun destroy() = Unit
@@ -53,6 +58,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     private var loadedMission: MissionLoadStatus? = null
     private var lastUploadedMissionId: String? = null
     private var executionState: MissionExecutionState = MissionExecutionState.IDLE
+    private var lastError: String? = null
 
     override suspend fun loadKmzMission(request: MissionLoadRequest): MissionLoadStatus {
         val file = File(request.kmzPath)
@@ -77,6 +83,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     override suspend fun uploadMission(missionBundle: MissionBundle): Boolean {
         lastUploadedMissionId = missionBundle.missionId
         executionState = MissionExecutionState.UPLOADED
+        lastError = null
         return true
     }
 
@@ -84,6 +91,9 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
         val canStart = executionState == MissionExecutionState.UPLOADED || executionState == MissionExecutionState.PAUSED
         if (canStart) {
             executionState = MissionExecutionState.RUNNING
+            lastError = null
+        } else {
+            lastError = "Mission is not uploaded."
         }
         return canStart
     }
@@ -92,6 +102,9 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
         val canPause = executionState == MissionExecutionState.RUNNING
         if (canPause) {
             executionState = MissionExecutionState.PAUSED
+            lastError = null
+        } else {
+            lastError = "Mission is not running."
         }
         return canPause
     }
@@ -101,6 +114,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     override suspend fun stopMission(): Boolean {
         val hadMission = executionState != MissionExecutionState.IDLE
         executionState = MissionExecutionState.STOPPED
+        lastError = if (hadMission) null else "No active mission."
         return hadMission
     }
 
@@ -108,7 +122,85 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
 
     override fun lastLoadedMission(): MissionLoadStatus? = loadedMission
 
+    override fun lastCommandError(): String? = lastError
+
     fun lastUploadedMissionId(): String? = lastUploadedMissionId
+}
+
+class FakeFlightControlAdapter : FlightControlAdapter {
+    private var airborne = false
+    private var autoLandingActive = false
+    private var landingConfirmationNeeded = false
+    private var confirmLandingSupported = true
+    private var lastError: String? = null
+
+    override suspend fun takeoff(): Boolean {
+        return if (airborne) {
+            lastError = "Aircraft is already airborne."
+            false
+        } else {
+            airborne = true
+            autoLandingActive = false
+            lastError = null
+            true
+        }
+    }
+
+    override suspend fun startAutoLanding(): Boolean {
+        return if (!airborne) {
+            lastError = "Aircraft is not airborne."
+            false
+        } else {
+            autoLandingActive = true
+            lastError = null
+            if (!landingConfirmationNeeded) {
+                airborne = false
+                autoLandingActive = false
+            }
+            true
+        }
+    }
+
+    override suspend fun stopAutoLanding(): Boolean {
+        return if (!autoLandingActive) {
+            lastError = "Auto landing is not active."
+            false
+        } else {
+            autoLandingActive = false
+            lastError = null
+            true
+        }
+    }
+
+    override suspend fun confirmLanding(): Boolean {
+        return if (!autoLandingActive) {
+            lastError = "Landing confirmation is not active."
+            false
+        } else if (!confirmLandingSupported) {
+            lastError = "Confirm landing is unsupported on this fake path."
+            false
+        } else {
+            autoLandingActive = false
+            landingConfirmationNeeded = false
+            airborne = false
+            lastError = null
+            true
+        }
+    }
+
+    override fun isLandingConfirmationNeeded(): Boolean = autoLandingActive && landingConfirmationNeeded
+
+    override fun lastCommandError(): String? = lastError
+
+    fun airborne(): Boolean = airborne
+
+    fun requireLandingConfirmation(required: Boolean) {
+        landingConfirmationNeeded = required
+    }
+
+    fun setConfirmLandingSupported(supported: Boolean) {
+        confirmLandingSupported = supported
+    }
 }
 
 class FakeVirtualStickAdapter : VirtualStickAdapter {
@@ -141,7 +233,12 @@ class FakeVirtualStickAdapter : VirtualStickAdapter {
 
 class FakeCameraStreamAdapter : CameraStreamAdapter {
     private val listeners = linkedMapOf<String, (CameraFrameSample) -> Unit>()
-    private var status = CameraStreamStatus(available = true, streaming = false)
+    private var status = CameraStreamStatus(
+        available = true,
+        streaming = false,
+        selectedCameraIndex = "LEFT_OR_MAIN",
+        sourceAvailable = true
+    )
 
     override fun status(): CameraStreamStatus = status
 
@@ -157,6 +254,8 @@ class FakeCameraStreamAdapter : CameraStreamAdapter {
         status = CameraStreamStatus(
             available = true,
             streaming = true,
+            selectedCameraIndex = "LEFT_OR_MAIN",
+            sourceAvailable = true,
             lastFrameTimestampMillis = System.currentTimeMillis()
         )
         emitFrame()
@@ -168,6 +267,10 @@ class FakeCameraStreamAdapter : CameraStreamAdapter {
         return true
     }
 
+    override fun bindPreview(textureView: TextureView): Boolean = true
+
+    override fun unbindPreview(textureView: TextureView) = Unit
+
     fun emitFrame() {
         val frame = CameraFrameSample(
             width = 1280,
@@ -178,6 +281,38 @@ class FakeCameraStreamAdapter : CameraStreamAdapter {
         status = status.copy(lastFrameTimestampMillis = frame.timestampMillis)
         listeners.values.forEach { it(frame) }
     }
+}
+
+class FakeCameraControlAdapter : CameraControlAdapter {
+    private var status = CameraControlStatus(available = true, recording = false, gimbalPitchDegrees = 0.0)
+    private var lastError: String? = null
+
+    override fun status(): CameraControlStatus = status.copy(lastError = lastError)
+
+    override suspend fun takePhoto(): Boolean {
+        lastError = null
+        return true
+    }
+
+    override suspend fun startRecording(): Boolean {
+        status = status.copy(recording = true)
+        lastError = null
+        return true
+    }
+
+    override suspend fun stopRecording(): Boolean {
+        status = status.copy(recording = false)
+        lastError = null
+        return true
+    }
+
+    override suspend fun adjustGimbalPitch(deltaDegrees: Double): Boolean {
+        status = status.copy(gimbalPitchDegrees = (status.gimbalPitchDegrees + deltaDegrees).coerceIn(-90.0, 30.0))
+        lastError = null
+        return true
+    }
+
+    override fun lastCommandError(): String? = lastError
 }
 
 class FakePerceptionAdapter(

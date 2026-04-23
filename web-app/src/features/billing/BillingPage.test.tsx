@@ -8,7 +8,7 @@ describe('BillingPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('hides invoice mutation controls for customer users', async () => {
+  it('客戶角色在沒有資料時看得到繁中空狀態', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify([]), {
         status: 200,
@@ -33,11 +33,11 @@ describe('BillingPage', () => {
       }),
     })
 
-    expect(await screen.findByText('No invoice yet')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'New Invoice' })).not.toBeInTheDocument()
+    expect(await screen.findByText('尚無帳單')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新增帳單' })).not.toBeInTheDocument()
   })
 
-  it('renders overdue status and create controls for internal users', async () => {
+  it('內部角色可以看到逾期標記與建立按鈕', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
       if (url.includes('/v1/billing/invoices')) {
@@ -100,7 +100,7 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('overdue')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'New Invoice' })).toBeInTheDocument()
+    expect(screen.getAllByText('逾期')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: '新增帳單' })).toBeInTheDocument()
   })
 })

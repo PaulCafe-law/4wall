@@ -7,12 +7,14 @@
     "missionId",
     "bundleVersion",
     "generatedAt",
-    "segments",
-    "verificationPoints",
-    "inspectionViewpoints",
-    "corridorHalfWidthM",
-    "suggestedAltitudeM",
-    "suggestedSpeedMps",
+    "routeMode",
+    "operatingProfile",
+    "launchPoint",
+    "waypointCount",
+    "implicitReturnToLaunch",
+    "defaultAltitudeMeters",
+    "defaultSpeedMetersPerSecond",
+    "landingPolicy",
     "safetyDefaults",
     "artifacts"
   ],
@@ -20,12 +22,32 @@
     "missionId": { "type": "string", "minLength": 1 },
     "bundleVersion": { "type": "string", "minLength": 1 },
     "generatedAt": { "type": "string" },
-    "segments": { "type": "integer", "minimum": 0 },
-    "verificationPoints": { "type": "integer", "minimum": 0 },
-    "inspectionViewpoints": { "type": "integer", "minimum": 0 },
-    "corridorHalfWidthM": { "type": "number", "exclusiveMinimum": 0 },
-    "suggestedAltitudeM": { "type": "number", "exclusiveMinimum": 0 },
-    "suggestedSpeedMps": { "type": "number", "exclusiveMinimum": 0 },
+    "routeMode": { "type": "string", "const": "road_network_following" },
+    "operatingProfile": {
+      "type": "string",
+      "enum": ["outdoor_gps_patrol", "indoor_no_gps"]
+    },
+    "launchPoint": {
+      "type": "object",
+      "required": ["launchPointId", "location"],
+      "properties": {
+        "launchPointId": { "type": "string", "minLength": 1 },
+        "location": {
+          "type": "object",
+          "required": ["lat", "lng"],
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "label": { "type": "string" }
+      }
+    },
+    "waypointCount": { "type": "integer", "minimum": 0 },
+    "implicitReturnToLaunch": { "type": "boolean", "const": true },
+    "defaultAltitudeMeters": { "type": "number", "exclusiveMinimum": 0 },
+    "defaultSpeedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 },
+    "landingPolicy": { "type": "string", "minLength": 1 },
     "safetyDefaults": {
       "type": "object",
       "required": ["onSemanticTimeout", "onBatteryCritical", "onFrameDrop"],
@@ -42,7 +64,8 @@
         "missionKmz": { "$ref": "#/$defs/artifactDescriptor" },
         "missionMeta": { "$ref": "#/$defs/artifactDescriptor" }
       }
-    }
+    },
+    "legacyInspectionViewpointCount": { "type": "integer", "minimum": 0 }
   },
   "$defs": {
     "artifactDescriptor": {

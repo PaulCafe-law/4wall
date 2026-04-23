@@ -21,6 +21,9 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Check required deployment variables
         env:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
@@ -59,13 +62,26 @@ jobs:
           WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
         run: |
           for attempt in $(seq 1 30); do
-            if curl --fail --silent --show-error "$WEB_LOGIN_URL" | grep -iq "sign in"; then
+            body=$(curl --fail --silent --show-error "$WEB_LOGIN_URL") || true
+            if printf '%s' "$body" | grep -q '<div id="root"></div>' && printf '%s' "$body" | grep -q 'type="module"'; then
               exit 0
             fi
             sleep 10
           done
           echo "Web login route never became ready"
           exit 1
+      - name: Install Playwright browser smoke dependencies
+        working-directory: web-app
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Browser login smoke
+        working-directory: web-app
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ vars.BETA_APP_ORIGIN }}
+          PW_WEB_SMOKE_EMAIL: ${{ secrets.BETA_WEB_SMOKE_EMAIL }}
+          PW_WEB_SMOKE_PASSWORD: ${{ secrets.BETA_WEB_SMOKE_PASSWORD }}
+        run: npx playwright test tests/e2e/deployed-login.spec.ts
       - name: Web beta authenticated smoke
         working-directory: planner-server
         env:

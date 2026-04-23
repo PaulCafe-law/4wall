@@ -1,6 +1,8 @@
 package com.yourorg.buildingdrone.dji.real
 
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
 import com.yourorg.buildingdrone.dji.MobileSdkSession
 import com.yourorg.buildingdrone.dji.SdkSessionState
 import dji.v5.common.error.IDJIError
@@ -14,7 +16,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class DjiSdkSession(
-    private val gateway: Gateway = RealGateway()
+    private val gateway: Gateway = RealGateway(),
+    private val manifestApiKeyProvider: (Application) -> String? = ::readManifestApiKey
 ) : MobileSdkSession {
     interface Gateway {
         fun init(application: Application, callback: Callback)
@@ -33,11 +36,22 @@ class DjiSdkSession(
 
     private val mutableState = MutableStateFlow(SdkSessionState())
     private var initialized = false
+    private var applicationRef: Application? = null
 
     override val state: StateFlow<SdkSessionState> = mutableState.asStateFlow()
 
     override fun initialize(application: Application) {
         if (initialized) {
+            return
+        }
+        applicationRef = application
+        val manifestApiKey = manifestApiKeyProvider(application)
+        if (manifestApiKey.isNullOrBlank() || manifestApiKey == "MISSING_DJI_API_KEY") {
+            mutableState.value = mutableState.value.copy(
+                initialized = false,
+                registered = false,
+                lastError = "DJI App Key is missing from the manifest. Rebuild the prod app with -PDJI_API_KEY or set DJI_API_KEY in the environment."
+            )
             return
         }
         initialized = true
@@ -68,9 +82,52 @@ class DjiSdkSession(
         }
     }
 
+    override fun retryRegistration() {
+        val application = applicationRef ?: return
+        val manifestApiKey = manifestApiKeyProvider(application)
+        if (manifestApiKey.isNullOrBlank() || manifestApiKey == "MISSING_DJI_API_KEY") {
+            mutableState.value = mutableState.value.copy(
+                registered = false,
+                lastError = "DJI App Key is missing from the manifest. Rebuild the prod app with -PDJI_API_KEY or set DJI_API_KEY in the environment."
+            )
+            return
+        }
+        if (!mutableState.value.initialized || gateway.isRegistered()) {
+            return
+        }
+        runCatching {
+            gateway.registerApp()
+        }.onFailure { error ->
+            mutableState.value = mutableState.value.copy(
+                registered = false,
+                lastError = error.message ?: error.javaClass.simpleName
+            )
+        }
+    }
+
     override fun destroy() {
         gateway.removeNetworkStatusListener()
         gateway.destroy()
+    }
+
+    companion object {
+        private const val DJI_API_KEY_METADATA = "com.dji.sdk.API_KEY"
+
+        private fun readManifestApiKey(application: Application): String? {
+            return runCatching {
+                val packageManager = application.packageManager
+                val applicationInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    packageManager.getApplicationInfo(
+                        application.packageName,
+                        PackageManager.ApplicationInfoFlags.of(PackageManager.GET_META_DATA.toLong())
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getApplicationInfo(application.packageName, PackageManager.GET_META_DATA)
+                }
+                applicationInfo.metaData?.getString(DJI_API_KEY_METADATA)
+            }.getOrNull()
+        }
     }
 
     private class RealGateway : Gateway {

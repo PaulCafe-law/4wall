@@ -5,12 +5,12 @@ import { RequireAuthenticated, RequireInternal } from './routes'
 import { createAuthValue, renderWithProviders } from '../test/utils'
 
 describe('route guards', () => {
-  it('redirects expired sessions back to login', async () => {
+  it('expired session redirects back to login', async () => {
     renderWithProviders(
       <Routes>
-        <Route path="/login" element={<div>Login screen</div>} />
+        <Route path="/login" element={<div>登入頁</div>} />
         <Route element={<RequireAuthenticated />}>
-          <Route path="/" element={<div>Protected content</div>} />
+          <Route path="/" element={<div>受保護頁面</div>} />
         </Route>
       </Routes>,
       {
@@ -18,25 +18,28 @@ describe('route guards', () => {
       },
     )
 
-    expect(await screen.findByText('Login screen')).toBeInTheDocument()
+    expect(await screen.findByText('登入頁')).toBeInTheDocument()
   })
 
-  it('blocks non-internal roles from internal routes', async () => {
+  it('non-internal users cannot open internal routes', async () => {
+    const baseAuth = createAuthValue()
+
     renderWithProviders(
       <Routes>
         <Route
           path="/"
           element={
             <RequireInternal>
-              <div>Internal destination</div>
+              <div>內部頁面</div>
             </RequireInternal>
           }
         />
       </Routes>,
       {
         auth: createAuthValue({
-          user: createAuthValue().user && {
-            ...createAuthValue().user!,
+          ...baseAuth,
+          user: {
+            ...baseAuth.user!,
             globalRoles: [],
           },
           isInternal: false,
@@ -44,6 +47,6 @@ describe('route guards', () => {
       },
     )
 
-    expect(await screen.findByText('Internal access required')).toBeInTheDocument()
+    expect(await screen.findByText('這個頁面僅提供 internal 使用')).toBeInTheDocument()
   })
 })

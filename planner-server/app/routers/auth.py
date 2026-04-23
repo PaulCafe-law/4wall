@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlmodel import Session, select
 
 from app.deps import get_current_operator, get_session, get_settings
-from app.dto import AuthRefreshRequestDto, LoginRequestDto, OperatorDto, TokenPairDto
+from app.dto import AuthLogoutRequestDto, AuthRefreshRequestDto, LoginRequestDto, OperatorDto, TokenPairDto
 from app.models import OperatorAccount
 from app.security import (
     AuthError,
@@ -49,6 +49,21 @@ def refresh(
 
     revoke_refresh_token(session, payload["jti"])
     return _issue_token_pair(session, settings, operator)
+
+
+@router.post("/v1/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    request: AuthLogoutRequestDto,
+    session: Session = Depends(get_session),
+    settings=Depends(get_settings),
+) -> Response:
+    try:
+        payload = validate_refresh_token(request.refreshToken, settings, session)
+        revoke_refresh_token(session, payload["jti"])
+    except AuthError:
+        pass
+    session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/v1/auth/me", response_model=OperatorDto)

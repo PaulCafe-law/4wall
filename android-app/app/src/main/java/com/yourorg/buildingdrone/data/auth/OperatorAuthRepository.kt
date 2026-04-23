@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStoreFile
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.yourorg.buildingdrone.data.network.LoginRequestWire
+import com.yourorg.buildingdrone.data.network.LogoutRequestWire
 import com.yourorg.buildingdrone.data.network.PlannerTokenProvider
 import com.yourorg.buildingdrone.data.network.PlannerTransport
 import com.yourorg.buildingdrone.data.network.RefreshRequestWire
@@ -30,6 +31,11 @@ data class OperatorSession(
     fun isNearExpiry(nowEpochMillis: Long = System.currentTimeMillis()): Boolean {
         return expiresAtEpochMillis <= nowEpochMillis + 30_000L
     }
+}
+
+sealed interface LogoutResult {
+    data object Success : LogoutResult
+    data class SuccessWithServerRevokeWarning(val message: String) : LogoutResult
 }
 
 class OperatorAuthRepository(
@@ -59,8 +65,26 @@ class OperatorAuthRepository(
         return session
     }
 
-    suspend fun logout() {
+    suspend fun logout(): LogoutResult {
+        val session = readSession()
+        var revokeWarning: String? = null
+        if (session != null) {
+            revokeWarning = try {
+                transport.postJson(
+                    pathOrUrl = "/v1/auth/logout",
+                    body = json.encodeToString(
+                        LogoutRequestWire.serializer(),
+                        LogoutRequestWire(refreshToken = session.refreshToken)
+                    ),
+                    authenticated = false
+                )
+                null
+            } catch (_: IOException) {
+                "Signed out locally, but server token revocation could not be confirmed."
+            }
+        }
         store.edit { it.clear() }
+        return revokeWarning?.let(LogoutResult::SuccessWithServerRevokeWarning) ?: LogoutResult.Success
     }
 
     override suspend fun currentAccessToken(): String? {

@@ -29,6 +29,7 @@ class DjiWaypointMissionAdapter(
     private var loadedMissionPath: String? = null
     private var loadedMissionId: String? = null
     private var executionState = MissionExecutionState.IDLE
+    private var lastCommandError: String? = null
 
     override suspend fun loadKmzMission(request: MissionLoadRequest): MissionLoadStatus {
         val file = File(request.kmzPath)
@@ -49,6 +50,7 @@ class DjiWaypointMissionAdapter(
         }
         loadedMissionPath = request.kmzPath
         loadedMissionId = request.expectedMissionId
+        lastCommandError = loadedMission?.error
         executionState = if (loadedMission?.valid == true) MissionExecutionState.LOADED else MissionExecutionState.FAILED
         return loadedMission!!
     }
@@ -57,12 +59,19 @@ class DjiWaypointMissionAdapter(
         val kmzPath = missionBundle.artifacts.missionKmz.localPath
         if (kmzPath.isBlank() || kmzPath.startsWith("embedded://")) {
             executionState = MissionExecutionState.FAILED
+            lastCommandError = "Mission KMZ path is missing."
             return false
         }
         if (loadedMissionPath != kmzPath) {
-            val loadStatus = loadKmzMission(MissionLoadRequest(kmzPath = kmzPath, expectedMissionId = missionBundle.missionId))
+            val loadStatus = loadKmzMission(
+                MissionLoadRequest(
+                    kmzPath = kmzPath,
+                    expectedMissionId = missionBundle.missionId
+                )
+            )
             if (!loadStatus.valid) {
                 executionState = MissionExecutionState.FAILED
+                lastCommandError = loadStatus.error ?: "KMZ validation failed."
                 return false
             }
         }
@@ -72,10 +81,12 @@ class DjiWaypointMissionAdapter(
                 override fun onProgressUpdate(progress: Double) = Unit
 
                 override fun onSuccess() {
+                    lastCommandError = null
                     continuation.resume(true)
                 }
 
                 override fun onFailure(error: IDJIError) {
+                    lastCommandError = error.toString()
                     continuation.resume(false)
                 }
             })
@@ -85,8 +96,14 @@ class DjiWaypointMissionAdapter(
     }
 
     override suspend fun startMission(): Boolean {
-        val missionId = loadedMissionId ?: return false
-        val missionPath = loadedMissionPath ?: return false
+        val missionId = loadedMissionId ?: run {
+            lastCommandError = "No loaded mission ID."
+            return false
+        }
+        val missionPath = loadedMissionPath ?: run {
+            lastCommandError = "No loaded mission path."
+            return false
+        }
         val waylineIds = gateway.availableWaylineIds(missionPath)
         val started = suspendCompletion { gateway.startMission(missionId, waylineIds, it) }
         executionState = if (started) MissionExecutionState.RUNNING else MissionExecutionState.FAILED
@@ -106,7 +123,10 @@ class DjiWaypointMissionAdapter(
     }
 
     override suspend fun stopMission(): Boolean {
-        val missionId = loadedMissionId ?: return false
+        val missionId = loadedMissionId ?: run {
+            lastCommandError = "No loaded mission ID."
+            return false
+        }
         val stopped = suspendCompletion { gateway.stopMission(missionId, it) }
         executionState = if (stopped) MissionExecutionState.STOPPED else executionState
         return stopped
@@ -116,15 +136,19 @@ class DjiWaypointMissionAdapter(
 
     override fun lastLoadedMission(): MissionLoadStatus? = loadedMission
 
+    override fun lastCommandError(): String? = lastCommandError
+
     private suspend fun suspendCompletion(
         block: (CommonCallbacks.CompletionCallback) -> Unit
     ): Boolean = suspendCoroutine { continuation ->
         block(object : CommonCallbacks.CompletionCallback {
             override fun onSuccess() {
+                lastCommandError = null
                 continuation.resume(true)
             }
 
             override fun onFailure(error: IDJIError) {
+                lastCommandError = error.toString()
                 continuation.resume(false)
             }
         })

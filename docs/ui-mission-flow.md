@@ -13,6 +13,7 @@ This app is a pilot console for field operations. It is not a dashboard.
 ## Screen Set
 
 - Mission Setup
+- Simulator Verification
 - Preflight Checklist
 - In-Flight Main
 - Branch Confirm
@@ -28,6 +29,12 @@ Mission Setup
   3. artifact readiness
   4. mission summary
   5. continue CTA
+
+Simulator Verification
+  1. simulator status banner
+  2. external observer note or `Stage 0 unavailable` fallback (`DJI Assistant 2`)
+  3. required replay checklist
+  4. continue CTA to `Connection Guide`
 
 Preflight Checklist
   1. aircraft / RC / stream / GPS readiness
@@ -67,6 +74,7 @@ Emergency / Hold / RTH / Takeover
 Mission Setup
   -> authenticate and load mission
   -> verify artifacts
+  -> Simulator Verification
   -> Preflight Checklist
   -> Upload + Start
   -> In-Flight Main

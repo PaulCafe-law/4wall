@@ -4,6 +4,8 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { clsx } from 'clsx'
 import type { PropsWithChildren, ReactNode } from 'react'
 
+import { formatStatus } from '../lib/presentation'
+
 export function ShellSection({
   eyebrow,
   title,
@@ -16,8 +18,8 @@ export function ShellSection({
   action?: ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-4 border-b border-chrome-200/80 pb-6 md:flex-row md:items-end md:justify-between">
-      <div className="space-y-2">
+    <div className="flex flex-col gap-4 border-b border-chrome-200/80 pb-6 2xl:flex-row 2xl:items-end 2xl:justify-between">
+      <div className="min-w-0 space-y-2">
         {eyebrow ? (
           <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">{eyebrow}</p>
         ) : null}
@@ -26,7 +28,7 @@ export function ShellSection({
         </h1>
         {subtitle ? <p className="max-w-3xl text-sm text-chrome-700 md:text-base">{subtitle}</p> : null}
       </div>
-      {action ? <div>{action}</div> : null}
+      {action ? <div className="shrink-0 self-start 2xl:self-auto">{action}</div> : null}
     </div>
   )
 }
@@ -66,7 +68,7 @@ export function StatusBadge({ status }: { status: string }) {
         classes,
       )}
     >
-      {status.replaceAll('_', ' ')}
+      {formatStatus(status)}
     </span>
   )
 }
@@ -83,7 +85,7 @@ export function EmptyState({
   return (
     <Panel className="border-dashed border-chrome-300 bg-chrome-50/80 text-center">
       <div className="mx-auto flex max-w-xl flex-col items-center gap-4 py-10">
-        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">Empty state</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">目前沒有資料</p>
         <h2 className="font-display text-2xl font-semibold text-chrome-950">{title}</h2>
         <p className="text-sm text-chrome-700 md:text-base">{body}</p>
         {action}
@@ -210,7 +212,7 @@ export function DataList({
           className="grid grid-cols-[7rem_minmax(0,1fr)] gap-3 rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3"
         >
           <dt className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">{row.label}</dt>
-          <dd className="min-w-0 text-sm text-chrome-900">{row.value}</dd>
+          <dd className="min-w-0 break-words text-sm text-chrome-900">{row.value}</dd>
         </div>
       ))}
     </dl>
@@ -253,15 +255,15 @@ export function Modal({
 }
 
 export function formatDate(value: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric',
+  return new Intl.DateTimeFormat('zh-TW', {
     year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
   }).format(new Date(value))
 }
 
 export function formatCurrency(currency: string, amount: number) {
-  return new Intl.NumberFormat('en-US', {
+  return new Intl.NumberFormat('zh-TW', {
     style: 'currency',
     currency,
     maximumFractionDigits: 0,

@@ -8,13 +8,46 @@ data class PreflightChecklistItem(
     val detail: String
 )
 
+data class IndoorConfirmationItem(
+    val id: String,
+    val label: String,
+    val checked: Boolean
+)
+
+data class PreflightActionState(
+    val label: String,
+    val enabled: Boolean,
+    val visible: Boolean = true
+)
+
 data class PreflightUiState(
     val status: ScreenDataState = ScreenDataState.EMPTY,
     val blockers: List<String> = emptyList(),
     val readyToUpload: Boolean = false,
     val checklist: List<PreflightChecklistItem> = emptyList(),
     val warning: String? = null,
-    val modeLabel: String = "demo",
-    val nextStep: String = "\u5b8c\u6210\u6240\u6709 blocking gates \u5f8c\u624d\u80fd\u4e0a\u50b3\u4efb\u52d9",
-    val decisionHint: String = "\u4efb\u4f55\u4e0d\u78ba\u5b9a\u90fd\u5148 HOLD\uff0c\u518d\u6c7a\u5b9a Resume / RTH / Takeover"
+    val modeLabel: String = "戶外 / 需 GPS",
+    val operationSummary: String = "確認所有安全門檻後，才能進入起飛或任務執行。",
+    val nextStep: String = "依序完成檢查項目，再核准起飛前檢查。",
+    val decisionHint: String = "任何不確定性都先落到 HOLD。",
+    val propOnBlocked: Boolean = false,
+    val propOnBlockReason: String? = null,
+    val uploadActionLabel: String = "上傳任務並起飛",
+    val indoorConfirmations: List<IndoorConfirmationItem> = emptyList(),
+    val autonomyStatus: String? = null,
+    val appTakeoffAction: PreflightActionState = PreflightActionState(
+        label = "App 起飛",
+        enabled = false,
+        visible = false
+    ),
+    val rcHoverAction: PreflightActionState = PreflightActionState(
+        label = "RC 手動起飛已就緒",
+        enabled = false,
+        visible = false
+    ),
+    val landAction: PreflightActionState = PreflightActionState(
+        label = "降落",
+        enabled = false,
+        visible = false
+    )
 )

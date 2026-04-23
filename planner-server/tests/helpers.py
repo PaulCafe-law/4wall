@@ -12,31 +12,33 @@ from app.security import hash_password
 def valid_request_payload() -> dict:
     return {
         "missionName": "building-a-demo",
-        "origin": {"lat": 25.03391, "lng": 121.56452},
-        "targetBuilding": {"buildingId": "tower-a", "label": "Tower A"},
-        "routingMode": "road_network_following",
-        "corridorPolicy": {
-            "defaultHalfWidthM": 8.0,
-            "maxHalfWidthM": 12.0,
-            "branchConfirmRadiusM": 18.0,
+        "launchPoint": {
+            "launchPointId": "launch-01",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "label": "tower-a-launch",
         },
+        "orderedWaypoints": [
+            {
+                "waypointId": "wp-01",
+                "location": {"lat": 25.03412, "lng": 121.56472},
+                "sequence": 1,
+                "holdSeconds": 0,
+            },
+            {
+                "waypointId": "wp-02",
+                "location": {"lat": 25.03441, "lng": 121.56501},
+                "sequence": 2,
+                "holdSeconds": 0,
+            },
+        ],
+        "routingMode": "road_network_following",
         "flightProfile": {
             "defaultAltitudeM": 35.0,
             "defaultSpeedMps": 4.0,
             "maxApproachSpeedMps": 1.0,
         },
-        "inspectionIntent": {
-            "viewpoints": [
-                {
-                    "viewpointId": "vp-01",
-                    "label": "north-east-facade",
-                    "lat": 25.03441,
-                    "lng": 121.56501,
-                    "yawDeg": 225.0,
-                    "distanceToFacadeM": 12.0,
-                }
-            ]
-        },
+        "operatingProfile": "outdoor_gps_patrol",
+        "implicitReturnToLaunch": True,
         "demoMode": False,
     }
 

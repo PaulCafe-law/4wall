@@ -5,6 +5,7 @@ enum class FlightStage {
     PRECHECK,
     MISSION_READY,
     TAKEOFF,
+    HOVER_READY,
     TRANSIT,
     BRANCH_VERIFY,
     LOCAL_AVOID,
@@ -26,6 +27,8 @@ enum class FlightEventType {
     MISSION_BUNDLE_INVALID,
     MISSION_UPLOADED,
     PREFLIGHT_OK,
+    APP_TAKEOFF_COMPLETED,
+    RC_HOVER_CONFIRMED,
     CORRIDOR_DEVIATION_WARN,
     CORRIDOR_DEVIATION_HARD,
     VERIFICATION_POINT_REACHED,
@@ -44,6 +47,7 @@ enum class FlightEventType {
     USER_HOLD_REQUESTED,
     USER_RESUME_REQUESTED,
     USER_RTH_REQUESTED,
+    USER_LAND_REQUESTED,
     USER_TAKEOVER_REQUESTED,
     AUTH_EXPIRED,
     AUTH_REFRESHED,
@@ -119,8 +123,11 @@ class DefaultTransitionGuard : TransitionGuard {
             FlightStage.PRECHECK -> from.stage == FlightStage.IDLE
             FlightStage.MISSION_READY -> (context.missionBundleLoaded || from.missionBundleLoaded) &&
                 (context.missionBundleVerified || from.missionBundleVerified)
+
             FlightStage.TAKEOFF -> (context.missionUploaded || from.missionUploaded) &&
                 (context.preflightReady || from.preflightReady)
+
+            FlightStage.HOVER_READY -> context.preflightReady || from.preflightReady
             FlightStage.TRANSIT -> from.missionUploaded || context.missionUploaded
             FlightStage.BRANCH_VERIFY -> from.missionUploaded || context.missionUploaded
             FlightStage.LOCAL_AVOID -> from.missionUploaded || context.missionUploaded
@@ -130,8 +137,10 @@ class DefaultTransitionGuard : TransitionGuard {
             FlightStage.HOLD -> true
             FlightStage.MANUAL_OVERRIDE -> true
             FlightStage.RTH -> true
-            FlightStage.LANDING -> from.stage == FlightStage.RTH || context.rthArrived
-            FlightStage.COMPLETED -> from.stage == FlightStage.LANDING || (from.stage == FlightStage.MANUAL_OVERRIDE && context.manualOverrideComplete)
+            FlightStage.LANDING -> true
+            FlightStage.COMPLETED ->
+                from.stage == FlightStage.LANDING || (from.stage == FlightStage.MANUAL_OVERRIDE && context.manualOverrideComplete)
+
             FlightStage.ABORTED -> from.stage == FlightStage.MANUAL_OVERRIDE && context.manualOverrideAborted
             FlightStage.IDLE -> true
         }

@@ -1,11 +1,13 @@
 package com.yourorg.buildingdrone.domain.safety
 
+import com.yourorg.buildingdrone.domain.operations.OperationProfile
 import com.yourorg.buildingdrone.domain.statemachine.FlightEventType
 
 enum class SafetyDecision {
     NONE,
     HOLD,
-    RTH
+    RTH,
+    LAND
 }
 
 data class SafetySnapshot(
@@ -15,7 +17,8 @@ data class SafetySnapshot(
     val gpsHealthy: Boolean = true,
     val gpsWeak: Boolean = false,
     val rcSignalHealthy: Boolean = true,
-    val deviceHealthBlocking: Boolean = false
+    val deviceHealthBlocking: Boolean = false,
+    val operationProfile: OperationProfile = OperationProfile.OUTDOOR_GPS_REQUIRED
 )
 
 interface HoldPolicy {
@@ -26,19 +29,24 @@ interface RthPolicy {
     fun shouldReturnHome(event: FlightEventType, snapshot: SafetySnapshot): Boolean
 }
 
+interface LandingPolicy {
+    fun shouldLand(event: FlightEventType, snapshot: SafetySnapshot): Boolean
+}
+
 interface SafetySupervisor {
     fun evaluate(event: FlightEventType, snapshot: SafetySnapshot): SafetyDecision
 }
 
 class DefaultHoldPolicy : HoldPolicy {
     override fun shouldHold(event: FlightEventType, snapshot: SafetySnapshot): Boolean {
+        val gpsShouldHold = snapshot.operationProfile == OperationProfile.OUTDOOR_GPS_REQUIRED &&
+            (event == FlightEventType.GPS_WEAK || event == FlightEventType.GPS_LOST || !snapshot.gpsHealthy || snapshot.gpsWeak)
+
         return event in setOf(
             FlightEventType.BRANCH_VERIFY_TIMEOUT,
             FlightEventType.BRANCH_VERIFY_UNKNOWN,
             FlightEventType.OBSTACLE_HARD_STOP,
             FlightEventType.CORRIDOR_DEVIATION_HARD,
-            FlightEventType.GPS_WEAK,
-            FlightEventType.GPS_LOST,
             FlightEventType.RC_SIGNAL_DEGRADED,
             FlightEventType.RC_SIGNAL_LOST,
             FlightEventType.APP_HEALTH_BAD,
@@ -46,10 +54,9 @@ class DefaultHoldPolicy : HoldPolicy {
             FlightEventType.SEMANTIC_TIMEOUT,
             FlightEventType.DEVICE_HEALTH_BLOCKING
         ) ||
+            gpsShouldHold ||
             !snapshot.frameStreamHealthy ||
             !snapshot.appHealthy ||
-            !snapshot.gpsHealthy ||
-            snapshot.gpsWeak ||
             !snapshot.rcSignalHealthy ||
             snapshot.deviceHealthBlocking
     }
@@ -57,16 +64,30 @@ class DefaultHoldPolicy : HoldPolicy {
 
 class DefaultRthPolicy : RthPolicy {
     override fun shouldReturnHome(event: FlightEventType, snapshot: SafetySnapshot): Boolean {
+        if (snapshot.operationProfile == OperationProfile.INDOOR_NO_GPS) {
+            return false
+        }
+        return event == FlightEventType.BATTERY_CRITICAL || snapshot.batteryCritical
+    }
+}
+
+class DefaultLandingPolicy : LandingPolicy {
+    override fun shouldLand(event: FlightEventType, snapshot: SafetySnapshot): Boolean {
+        if (snapshot.operationProfile != OperationProfile.INDOOR_NO_GPS) {
+            return false
+        }
         return event == FlightEventType.BATTERY_CRITICAL || snapshot.batteryCritical
     }
 }
 
 class DefaultSafetySupervisor(
     private val holdPolicy: HoldPolicy,
-    private val rthPolicy: RthPolicy
+    private val rthPolicy: RthPolicy,
+    private val landingPolicy: LandingPolicy = DefaultLandingPolicy()
 ) : SafetySupervisor {
     override fun evaluate(event: FlightEventType, snapshot: SafetySnapshot): SafetyDecision {
         return when {
+            landingPolicy.shouldLand(event, snapshot) -> SafetyDecision.LAND
             rthPolicy.shouldReturnHome(event, snapshot) -> SafetyDecision.RTH
             holdPolicy.shouldHold(event, snapshot) -> SafetyDecision.HOLD
             else -> SafetyDecision.NONE

@@ -7,9 +7,10 @@
     "missionId",
     "routeMode",
     "bundleVersion",
-    "corridorSegments",
-    "verificationPoints",
-    "inspectionViewpoints",
+    "operatingProfile",
+    "launchPoint",
+    "orderedWaypoints",
+    "implicitReturnToLaunch",
     "defaultAltitudeMeters",
     "defaultSpeedMetersPerSecond",
     "artifacts",
@@ -20,77 +21,17 @@
     "missionId": { "type": "string", "minLength": 1 },
     "routeMode": { "type": "string", "const": "road_network_following" },
     "bundleVersion": { "type": "string", "minLength": 1 },
-    "corridorSegments": {
+    "operatingProfile": {
+      "type": "string",
+      "enum": ["outdoor_gps_patrol", "indoor_no_gps"]
+    },
+    "launchPoint": { "$ref": "#/$defs/launchPoint" },
+    "orderedWaypoints": {
       "type": "array",
       "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["segmentId", "polyline", "halfWidthMeters", "suggestedAltitudeMeters", "suggestedSpeedMetersPerSecond"],
-        "properties": {
-          "segmentId": { "type": "string", "minLength": 1 },
-          "polyline": {
-            "type": "array",
-            "minItems": 2,
-            "items": {
-              "type": "object",
-              "required": ["lat", "lng"],
-              "properties": {
-                "lat": { "type": "number" },
-                "lng": { "type": "number" }
-              }
-            }
-          },
-          "halfWidthMeters": { "type": "number", "exclusiveMinimum": 0 },
-          "suggestedAltitudeMeters": { "type": "number", "exclusiveMinimum": 0 },
-          "suggestedSpeedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 }
-        }
-      }
+      "items": { "$ref": "#/$defs/waypoint" }
     },
-    "verificationPoints": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["verificationPointId", "location", "expectedOptions", "timeoutMillis"],
-        "properties": {
-          "verificationPointId": { "type": "string", "minLength": 1 },
-          "location": {
-            "type": "object",
-            "required": ["lat", "lng"],
-            "properties": {
-              "lat": { "type": "number" },
-              "lng": { "type": "number" }
-            }
-          },
-          "expectedOptions": {
-            "type": "array",
-            "minItems": 1,
-            "items": { "type": "string" }
-          },
-          "timeoutMillis": { "type": "integer", "minimum": 1 }
-        }
-      }
-    },
-    "inspectionViewpoints": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["inspectionViewpointId", "location", "yawDegrees", "captureMode", "label"],
-        "properties": {
-          "inspectionViewpointId": { "type": "string", "minLength": 1 },
-          "location": {
-            "type": "object",
-            "required": ["lat", "lng"],
-            "properties": {
-              "lat": { "type": "number" },
-              "lng": { "type": "number" }
-            }
-          },
-          "yawDegrees": { "type": "number" },
-          "captureMode": { "type": "string", "minLength": 1 },
-          "label": { "type": "string", "minLength": 1 }
-        }
-      }
-    },
+    "implicitReturnToLaunch": { "type": "boolean", "const": true },
     "defaultAltitudeMeters": { "type": "number", "exclusiveMinimum": 0 },
     "defaultSpeedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 },
     "artifacts": {
@@ -120,6 +61,10 @@
         "onBatteryCritical": { "type": "string" },
         "onFrameDrop": { "type": "string" }
       }
+    },
+    "legacyInspectionViewpoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/legacyInspectionViewpoint" }
     }
   },
   "$defs": {
@@ -132,6 +77,46 @@
         "checksum": { "type": "string", "minLength": 1 },
         "version": { "type": "integer", "minimum": 1 },
         "sizeBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "geoPoint": {
+      "type": "object",
+      "required": ["lat", "lng"],
+      "properties": {
+        "lat": { "type": "number" },
+        "lng": { "type": "number" }
+      }
+    },
+    "launchPoint": {
+      "type": "object",
+      "required": ["launchPointId", "location"],
+      "properties": {
+        "launchPointId": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/geoPoint" },
+        "label": { "type": "string" }
+      }
+    },
+    "waypoint": {
+      "type": "object",
+      "required": ["waypointId", "location", "sequence"],
+      "properties": {
+        "waypointId": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/geoPoint" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "holdSeconds": { "type": "integer", "minimum": 0 },
+        "speedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 },
+        "altitudeMeters": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "legacyInspectionViewpoint": {
+      "type": "object",
+      "required": ["inspectionViewpointId", "location", "yawDegrees", "captureMode", "label"],
+      "properties": {
+        "inspectionViewpointId": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/geoPoint" },
+        "yawDegrees": { "type": "number" },
+        "captureMode": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 }
       }
     }
   }

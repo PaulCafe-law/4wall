@@ -28,24 +28,9 @@ class RouteProvider:
 
 class MockRouteProvider(RouteProvider):
     def plan_route(self, request: MissionPlanRequestDto) -> RoutePath:
-        origin = request.origin
-        target = GeoPointDto(
-            lat=request.inspectionIntent.viewpoints[0].lat,
-            lng=request.inspectionIntent.viewpoints[0].lng,
-        )
-        midpoint = GeoPointDto(
-            lat=(origin.lat + target.lat) / 2,
-            lng=(origin.lng + target.lng) / 2,
-        )
-        branch_hint = GeoPointDto(
-            lat=midpoint.lat + 0.00015,
-            lng=midpoint.lng + 0.00012,
-        )
-        safety_buffer = GeoPointDto(
-            lat=target.lat - 0.00010,
-            lng=target.lng - 0.00008,
-        )
-        return RoutePath(points=[origin, midpoint, branch_hint, safety_buffer, target])
+        launch = request.launchPoint.location
+        ordered = [waypoint.location for waypoint in sorted(request.orderedWaypoints, key=lambda item: item.sequence)]
+        return RoutePath(points=[launch, *ordered, launch])
 
 
 class OsmOsrmRouteProvider(RouteProvider):
@@ -61,28 +46,39 @@ class OsmOsrmRouteProvider(RouteProvider):
         self.client = client or httpx.Client(timeout=10.0)
 
     def plan_route(self, request: MissionPlanRequestDto) -> RoutePath:
-        origin = request.origin
-        target = request.inspectionIntent.viewpoints[0]
-        coordinates = f"{origin.lng},{origin.lat};{target.lng},{target.lat}"
-        response = self.client.get(
-            f"{self.base_url}/route/v1/{self.profile}/{coordinates}",
-            params={
-                "overview": "full",
-                "geometries": "geojson",
-                "steps": "true",
-                "continue_straight": "true",
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
+        ordered = [waypoint.location for waypoint in sorted(request.orderedWaypoints, key=lambda item: item.sequence)]
+        route_points = [request.launchPoint.location, *ordered, request.launchPoint.location]
+        if request.operatingProfile == "indoor_no_gps":
+            return RoutePath(points=route_points)
 
-        routes = payload.get("routes") or []
-        if not routes:
-            raise RouteProviderError("OSRM returned no routes")
+        stitched: list[GeoPointDto] = []
+        for start, end in zip(route_points, route_points[1:]):
+            coordinates = f"{start.lng},{start.lat};{end.lng},{end.lat}"
+            response = self.client.get(
+                f"{self.base_url}/route/v1/{self.profile}/{coordinates}",
+                params={
+                    "overview": "full",
+                    "geometries": "geojson",
+                    "steps": "true",
+                    "continue_straight": "true",
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
 
-        geometry = routes[0].get("geometry", {})
-        coordinates_list = geometry.get("coordinates") or []
-        if not coordinates_list:
-            raise RouteProviderError("OSRM returned empty geometry")
+            routes = payload.get("routes") or []
+            if not routes:
+                raise RouteProviderError("OSRM returned no routes")
 
-        return RoutePath(points=[GeoPointDto(lat=lat, lng=lng) for lng, lat in coordinates_list])
+            geometry = routes[0].get("geometry", {})
+            coordinates_list = geometry.get("coordinates") or []
+            if not coordinates_list:
+                raise RouteProviderError("OSRM returned empty geometry")
+
+            leg = [GeoPointDto(lat=lat, lng=lng) for lng, lat in coordinates_list]
+            if stitched:
+                stitched.extend(leg[1:])
+            else:
+                stitched.extend(leg)
+
+        return RoutePath(points=stitched)

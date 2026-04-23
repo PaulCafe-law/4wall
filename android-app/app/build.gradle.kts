@@ -1,9 +1,24 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
 }
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use(::load)
+    }
+}
+val djiApiKeyProvider = providers.gradleProperty("DJI_API_KEY")
+    .orElse(providers.environmentVariable("DJI_API_KEY"))
+val localPropertiesDjiApiKey = localProperties.getProperty("DJI_API_KEY")
+val resolvedDjiApiKey = djiApiKeyProvider.orNull?.takeIf { it.isNotBlank() }
+    ?: localPropertiesDjiApiKey?.takeIf { it.isNotBlank() }
+    ?: "MISSING_DJI_API_KEY"
 
 android {
     namespace = "com.yourorg.buildingdrone"
@@ -16,11 +31,11 @@ android {
         versionCode = 2
         versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        manifestPlaceholders["DJI_API_KEY"] = project.findProperty("DJI_API_KEY") as String? ?: "MISSING_DJI_API_KEY"
-        buildConfigField(
-            "String",
-            "PLANNER_BASE_URL",
-            "\"${project.findProperty("PLANNER_BASE_URL") as String? ?: "http://10.0.2.2:8000"}\""
+        manifestPlaceholders["DJI_API_KEY"] = resolvedDjiApiKey
+        resValue(
+            "string",
+            "planner_base_url",
+            project.findProperty("PLANNER_BASE_URL") as String? ?: "http://10.0.2.2:8000"
         )
     }
 
@@ -78,6 +93,22 @@ android {
                 "**/libDJIFlySafeCore-CSDK.so",
                 "**/libDJIWaypointV2Core-CSDK.so"
             )
+        }
+    }
+}
+
+tasks.configureEach {
+    val isProdPackagingTask = name.startsWith("assembleProd") ||
+        name.startsWith("installProd") ||
+        name.startsWith("packageProd") ||
+        name.startsWith("bundleProd")
+    if (isProdPackagingTask) {
+        doFirst {
+            if (resolvedDjiApiKey == "MISSING_DJI_API_KEY") {
+                throw GradleException(
+                    "DJI_API_KEY is required for prod builds. Pass -PDJI_API_KEY=... or set DJI_API_KEY in the environment."
+                )
+            }
         }
     }
 }

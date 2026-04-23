@@ -1,9 +1,11 @@
 package com.yourorg.buildingdrone.dji
 
 import android.app.Application
+import android.view.TextureView
 import androidx.lifecycle.DefaultLifecycleObserver
 import com.yourorg.buildingdrone.core.GeoPoint
 import com.yourorg.buildingdrone.data.MissionBundle
+import com.yourorg.buildingdrone.domain.operations.AutonomyCapability
 import com.yourorg.buildingdrone.domain.semantic.BranchDecision
 import com.yourorg.buildingdrone.domain.semantic.BranchPrompt
 import kotlinx.coroutines.flow.StateFlow
@@ -19,6 +21,7 @@ data class SdkSessionState(
 interface MobileSdkSession : DefaultLifecycleObserver {
     val state: StateFlow<SdkSessionState>
     fun initialize(application: Application)
+    fun retryRegistration() = Unit
     fun destroy()
 }
 
@@ -43,11 +46,14 @@ data class HardwareSnapshot(
     val remoteControllerConnected: Boolean = false,
     val productType: String? = null,
     val firmwareVersion: String? = null,
+    val isFlying: Boolean = false,
+    val ultrasonicHeightDm: Int? = null,
     val gpsSatelliteCount: Int = 0,
     val gpsSignalLevel: String? = null,
     val userAccount: UserAccountState = UserAccountState(),
     val deviceHealth: DeviceHealthState = DeviceHealthState(),
-    val flyZone: FlyZoneState = FlyZoneState()
+    val flyZone: FlyZoneState = FlyZoneState(),
+    val indoorAutonomyCapability: AutonomyCapability = AutonomyCapability.UNKNOWN
 ) {
     val gpsReady: Boolean
         get() = gpsSatelliteCount >= 8 && gpsSignalLevel !in setOf(null, "LEVEL_0", "LEVEL_1")
@@ -111,7 +117,18 @@ data class CameraFrameSample(
 data class CameraStreamStatus(
     val available: Boolean = false,
     val streaming: Boolean = false,
+    val selectedCameraIndex: String? = null,
+    val sourceAvailable: Boolean = false,
+    val startupTimedOut: Boolean = false,
+    val lastError: String? = null,
     val lastFrameTimestampMillis: Long? = null
+)
+
+data class CameraControlStatus(
+    val available: Boolean = false,
+    val recording: Boolean = false,
+    val gimbalPitchDegrees: Double = 0.0,
+    val lastError: String? = null
 )
 
 data class PerceptionSnapshot(
@@ -136,6 +153,17 @@ interface WaypointMissionAdapter {
     suspend fun stopMission(): Boolean
     fun executionState(): MissionExecutionState
     fun lastLoadedMission(): MissionLoadStatus?
+    fun lastCommandError(): String? = null
+}
+
+interface FlightControlAdapter {
+    suspend fun takeoff(): Boolean
+    suspend fun startAutoLanding(): Boolean
+    suspend fun stopAutoLanding(): Boolean
+    suspend fun confirmLanding(): Boolean
+    fun isLandingConfirmationNeeded(): Boolean = false
+    suspend fun land(): Boolean = startAutoLanding()
+    fun lastCommandError(): String? = null
 }
 
 interface VirtualStickAdapter {
@@ -151,6 +179,17 @@ interface CameraStreamAdapter {
     fun removeFrameListener(listenerId: String)
     suspend fun start(): Boolean
     suspend fun stop(): Boolean
+    fun bindPreview(textureView: TextureView): Boolean = false
+    fun unbindPreview(textureView: TextureView) = Unit
+}
+
+interface CameraControlAdapter {
+    fun status(): CameraControlStatus
+    suspend fun takePhoto(): Boolean
+    suspend fun startRecording(): Boolean
+    suspend fun stopRecording(): Boolean
+    suspend fun adjustGimbalPitch(deltaDegrees: Double): Boolean
+    fun lastCommandError(): String? = null
 }
 
 interface PerceptionAdapter {
@@ -166,4 +205,5 @@ interface SimulatorAdapter {
     fun removeStateListener(listenerId: String)
     suspend fun enable(initialLocation: GeoPoint, altitudeMeters: Double): Boolean
     suspend fun disable(): Boolean
+    fun lastCommandError(): String? = null
 }

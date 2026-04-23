@@ -12,6 +12,23 @@ Add a desktop-first web app that gives internal ops and invited customers a sing
 
 This surface is never flight-critical. Android remains the only flight-critical runtime.
 
+For remote operations MVP, the web app may add live monitoring and high-level control intent requests, but manual flight control remains outside the browser. Headquarters operation, when enabled, must route through a site-deployed control station plus Android safety arbitration.
+
+## Thread Boundary
+
+This web/planner thread only owns:
+
+- `web-app`
+- `planner-server`
+- `docs`
+- deploy, release, smoke, and customer-facing operations surfaces
+
+Android implementation is handled as an external dependency by a separate workstream. In this thread, Android only appears as:
+
+- event and metadata contracts consumed by web/planner
+- documented prerequisites for live monitoring and support surfaces
+- blockers that force the web surface to stay in placeholder or monitor-only states
+
 ## Product Shape
 
 - App type: single React + Vite + TypeScript app
@@ -41,8 +58,9 @@ This surface is never flight-critical. Android remains the only flight-critical 
 
 ### Internal Navigation
 
+- `Live Ops`
 - `Organizations`
-- `Ops Queue`
+- `Support`
 - `Audit`
 - plus all customer-visible sections when impersonating or assisting a tenant
 
@@ -56,11 +74,12 @@ This surface is never flight-critical. Android remains the only flight-critical 
 - Mission list
 - Mission detail
 - Mission planner workspace
+- Live monitoring view for internal users only
 - Artifact panel
 - Billing / invoices
 - Internal org admin
 - Internal audit log
-- Failed mission support view
+- Failed mission support view for internal users only
 
 ## Mandatory States
 
@@ -111,8 +130,10 @@ This surface is never flight-critical. Android remains the only flight-critical 
 - hosted online checkout as a launch gate
 - post-flight analytics portal
 - mobile-first planner editing
-- real-time flight control surface
+- browser-direct real-time flight control
 - any server or web participation in the active control loop
+- treating remote desktop software as a safety boundary
+- Android UI, reducer, simulator, blackbox, or failsafe implementation in this thread
 
 ## Acceptance Checks
 

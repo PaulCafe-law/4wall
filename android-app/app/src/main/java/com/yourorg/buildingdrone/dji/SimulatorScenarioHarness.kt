@@ -6,6 +6,7 @@ import com.yourorg.buildingdrone.domain.statemachine.FlightReducer
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
 import com.yourorg.buildingdrone.domain.statemachine.FlightState
 import com.yourorg.buildingdrone.domain.statemachine.TransitionContext
+import kotlinx.coroutines.delay
 
 enum class SimulatorScenario {
     TRANSIT_BRANCH_HOLD_RTH,
@@ -21,12 +22,19 @@ data class SimulatorScenarioStep(
 data class SimulatorScenarioReplay(
     val visitedStages: List<FlightStage>,
     val simulatorSamples: List<SimulatorStatus>,
-    val finalState: FlightState
+    val finalState: FlightState,
+    val enableSucceeded: Boolean = simulatorSamples.any { it.enabled },
+    val listenerObserved: Boolean = simulatorSamples.any { it.enabled || it.location != null || it.altitudeMeters != 0.0 || it.satelliteCount > 0 },
+    val enabledSampleObserved: Boolean = simulatorSamples.any { it.enabled },
+    val disableSucceeded: Boolean = true,
+    val failureReason: String? = null
 )
 
 class SimulatorScenarioHarness(
     private val simulatorAdapter: SimulatorAdapter,
-    private val reducer: FlightReducer
+    private val reducer: FlightReducer,
+    private val enableObservationTimeoutMillis: Long = 1_000L,
+    private val observationPollIntervalMillis: Long = 50L
 ) {
     suspend fun replay(
         initialLocation: GeoPoint,
@@ -37,7 +45,11 @@ class SimulatorScenarioHarness(
         val samples = mutableListOf<SimulatorStatus>()
         val listenerId = "scenario-harness"
         simulatorAdapter.addStateListener(listenerId) { samples += it }
-        simulatorAdapter.enable(initialLocation, altitudeMeters)
+        val baselineSamples = samples.size
+        val enableSucceeded = simulatorAdapter.enable(initialLocation, altitudeMeters)
+        if (enableSucceeded) {
+            waitForObservation(samples, baselineSamples)
+        }
 
         var state = initialState
         val visitedStages = mutableListOf(state.stage)
@@ -46,13 +58,41 @@ class SimulatorScenarioHarness(
             visitedStages += state.stage
         }
 
-        simulatorAdapter.disable()
-        simulatorAdapter.removeStateListener(listenerId)
+        val listenerSamples = samples.drop(baselineSamples)
+        val listenerObserved = listenerSamples.isNotEmpty()
+        val enabledSampleObserved = listenerSamples.any { it.enabled }
+        val failureReason = when {
+            !enableSucceeded -> simulatorAdapter.lastCommandError() ?: "Failed to enable the in-app simulator."
+            !listenerObserved -> "Replay completed reducer transitions, but no MSDK simulator state update was observed."
+            !enabledSampleObserved -> "Replay completed reducer transitions, but no enabled simulator sample was observed."
+            else -> null
+        }
+
+        val disableSucceeded = try {
+            simulatorAdapter.disable()
+        } finally {
+            simulatorAdapter.removeStateListener(listenerId)
+        }
         return SimulatorScenarioReplay(
             visitedStages = visitedStages,
             simulatorSamples = samples.toList(),
-            finalState = state
+            finalState = state,
+            enableSucceeded = enableSucceeded,
+            listenerObserved = listenerObserved,
+            enabledSampleObserved = enabledSampleObserved,
+            disableSucceeded = disableSucceeded,
+            failureReason = failureReason
         )
+    }
+
+    private suspend fun waitForObservation(
+        samples: List<SimulatorStatus>,
+        baselineSamples: Int
+    ) {
+        val deadline = System.currentTimeMillis() + enableObservationTimeoutMillis
+        while (samples.drop(baselineSamples).none { it.enabled } && System.currentTimeMillis() < deadline) {
+            delay(observationPollIntervalMillis)
+        }
     }
 
     private fun stepsFor(scenario: SimulatorScenario): List<SimulatorScenarioStep> {

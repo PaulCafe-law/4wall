@@ -17,6 +17,15 @@ class RepositoriesTest {
     }
 
     @Test
+    fun fakeMissionRepository_clearCachedMissionBundle_removesBundle() = runTest {
+        val repository = FakeMissionRepository(demoMissionBundle())
+
+        repository.clearCachedMissionBundle()
+
+        assertEquals(null, repository.loadMissionBundle())
+    }
+
+    @Test
     fun flightLogRepository_appendsEventsInOrder() = runTest {
         val repository = InMemoryFlightLogRepository()
 

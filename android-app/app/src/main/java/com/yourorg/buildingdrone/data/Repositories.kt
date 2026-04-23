@@ -9,6 +9,7 @@ interface MissionRepository {
     suspend fun loadMissionBundle(): MissionBundle?
     suspend fun loadActiveFlightContext(): ActiveFlightContext? = null
     suspend fun syncMissionBundle(): MissionSyncResult = MissionSyncResult.Failure("Mission sync unavailable")
+    suspend fun clearCachedMissionBundle() = Unit
 }
 
 interface FlightLogRepository {
@@ -21,9 +22,13 @@ interface DeviceStorageRepository {
 }
 
 class FakeMissionRepository(
-    private val missionBundle: MissionBundle
+    private var missionBundle: MissionBundle?
 ) : MissionRepository {
-    override suspend fun loadMissionBundle(): MissionBundle = missionBundle
+    override suspend fun loadMissionBundle(): MissionBundle? = missionBundle
+
+    override suspend fun clearCachedMissionBundle() {
+        missionBundle = null
+    }
 }
 
 class InMemoryFlightLogRepository : FlightLogRepository {
@@ -105,9 +110,18 @@ private fun buildMissionMetaJson(bundle: MissionBundle): String {
           "bundleVersion": "${bundle.bundleVersion}",
           "artifactVersion": ${bundle.artifacts.missionMeta.version},
           "checksum": "${bundle.artifacts.missionMeta.checksum}",
-          "segments": ${bundle.corridorSegments.size},
-          "verificationPoints": ${bundle.verificationPoints.size},
-          "inspectionViewpoints": ${bundle.inspectionViewpoints.size},
+          "routeMode": "${bundle.routeMode}",
+          "operatingProfile": "${bundle.operatingProfile.wireName}",
+          "waypointCount": ${bundle.orderedWaypoints.size},
+          "implicitReturnToLaunch": ${bundle.implicitReturnToLaunch.toString().lowercase()},
+          "launchPoint": {
+            "label": "${bundle.launchPoint.label}",
+            "lat": ${bundle.launchPoint.location.lat},
+            "lng": ${bundle.launchPoint.location.lng}
+          },
+          "defaultAltitudeMeters": ${bundle.defaultAltitudeMeters},
+          "defaultSpeedMetersPerSecond": ${bundle.defaultSpeedMetersPerSecond},
+          "landingPolicy": "android_auto_landing_with_rc_fallback",
           "safetyDefaults": {
             "semanticTimeout": "${bundle.failsafe.onSemanticTimeout}",
             "batteryCritical": "${bundle.failsafe.onBatteryCritical}",
@@ -123,7 +137,9 @@ private fun writeKmzSeed(target: File, bundle: MissionBundle) {
         zip.write(
             """
             <waylines missionId="${bundle.missionId}">
-              <segmentCount>${bundle.corridorSegments.size}</segmentCount>
+              <launchPoint lat="${bundle.launchPoint.location.lat}" lng="${bundle.launchPoint.location.lng}" />
+              <waypointCount>${bundle.orderedWaypoints.size}</waypointCount>
+              <implicitReturnToLaunch>${bundle.implicitReturnToLaunch}</implicitReturnToLaunch>
             </waylines>
             """.trimIndent().toByteArray(StandardCharsets.UTF_8)
         )

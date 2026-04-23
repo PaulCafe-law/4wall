@@ -9,16 +9,20 @@ data class GeoPointWire(
 )
 
 @Serializable
-data class TargetBuildingWire(
-    val buildingId: String,
-    val label: String
+data class LaunchPointWire(
+    val launchPointId: String,
+    val label: String = "L",
+    val location: GeoPointWire
 )
 
 @Serializable
-data class CorridorPolicyWire(
-    val defaultHalfWidthM: Double,
-    val maxHalfWidthM: Double,
-    val branchConfirmRadiusM: Double
+data class OrderedWaypointWire(
+    val waypointId: String,
+    val sequence: Int,
+    val location: GeoPointWire,
+    val altitudeMeters: Double? = null,
+    val speedMetersPerSecond: Double? = null,
+    val holdSeconds: Double = 0.0
 )
 
 @Serializable
@@ -29,56 +33,15 @@ data class FlightProfileWire(
 )
 
 @Serializable
-data class InspectionViewpointRequestWire(
-    val viewpointId: String,
-    val label: String,
-    val lat: Double,
-    val lng: Double,
-    val yawDeg: Double,
-    val distanceToFacadeM: Double
-)
-
-@Serializable
-data class InspectionIntentWire(
-    val viewpoints: List<InspectionViewpointRequestWire>
-)
-
-@Serializable
 data class MissionPlanRequestWire(
     val missionName: String,
-    val origin: GeoPointWire,
-    val targetBuilding: TargetBuildingWire,
+    val launchPoint: LaunchPointWire,
+    val orderedWaypoints: List<OrderedWaypointWire>,
+    val implicitReturnToLaunch: Boolean = true,
     val routingMode: String,
-    val corridorPolicy: CorridorPolicyWire,
     val flightProfile: FlightProfileWire,
-    val inspectionIntent: InspectionIntentWire,
+    val operatingProfile: String = "outdoor_gps_patrol",
     val demoMode: Boolean
-)
-
-@Serializable
-data class CorridorSegmentWire(
-    val segmentId: String,
-    val polyline: List<GeoPointWire>,
-    val halfWidthMeters: Double,
-    val suggestedAltitudeMeters: Double,
-    val suggestedSpeedMetersPerSecond: Double
-)
-
-@Serializable
-data class VerificationPointWire(
-    val verificationPointId: String,
-    val location: GeoPointWire,
-    val expectedOptions: List<String>,
-    val timeoutMillis: Long
-)
-
-@Serializable
-data class InspectionViewpointWire(
-    val inspectionViewpointId: String,
-    val location: GeoPointWire,
-    val yawDegrees: Double,
-    val captureMode: String,
-    val label: String
 )
 
 @Serializable
@@ -92,11 +55,13 @@ data class MissionFailsafeWire(
 data class MissionBundleWire(
     val missionId: String,
     val routeMode: String,
+    val operatingProfile: String,
+    val launchPoint: LaunchPointWire,
+    val orderedWaypoints: List<OrderedWaypointWire>,
+    val implicitReturnToLaunch: Boolean,
     val defaultAltitudeMeters: Double,
     val defaultSpeedMetersPerSecond: Double,
-    val corridorSegments: List<CorridorSegmentWire>,
-    val verificationPoints: List<VerificationPointWire>,
-    val inspectionViewpoints: List<InspectionViewpointWire>,
+    val bundleVersion: String = "2.0.0",
     val failsafe: MissionFailsafeWire = MissionFailsafeWire()
 )
 
@@ -129,12 +94,14 @@ data class MissionMetaWire(
     val missionId: String,
     val bundleVersion: String,
     val generatedAt: String,
-    val segments: Int,
-    val verificationPoints: Int,
-    val inspectionViewpoints: Int,
-    val corridorHalfWidthM: Double,
-    val suggestedAltitudeM: Double,
-    val suggestedSpeedMps: Double,
+    val routeMode: String,
+    val operatingProfile: String,
+    val launchPoint: LaunchPointWire,
+    val waypointCount: Int,
+    val implicitReturnToLaunch: Boolean,
+    val defaultAltitudeMeters: Double,
+    val defaultSpeedMetersPerSecond: Double,
+    val landingPolicy: String,
     val safetyDefaults: MissionFailsafeWire,
     val artifacts: MissionArtifactsWire
 )
@@ -147,6 +114,11 @@ data class LoginRequestWire(
 
 @Serializable
 data class RefreshRequestWire(
+    val refreshToken: String
+)
+
+@Serializable
+data class LogoutRequestWire(
     val refreshToken: String
 )
 

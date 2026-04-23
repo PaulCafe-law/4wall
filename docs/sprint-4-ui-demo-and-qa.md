@@ -7,6 +7,7 @@ Build operator-facing mission UI, wire demo mode, then run browser-style QA and 
 ## Scope
 
 - 6 mission screens
+- prod-only simulator verification gate ahead of direct aircraft bring-up
 - clear loading / empty / error / success / partial states
 - demo mode events and replay
 - visual polish pass against `docs/ui-mission-flow.md`
@@ -14,6 +15,7 @@ Build operator-facing mission UI, wire demo mode, then run browser-style QA and 
 ## Deliverables
 
 - Mission Setup
+- Simulator Verification
 - Preflight Checklist
 - In-Flight Main
 - Branch Confirm
@@ -24,6 +26,9 @@ Build operator-facing mission UI, wire demo mode, then run browser-style QA and 
 ## Acceptance
 
 - Demo path can run without aircraft
+- Prod path blocks direct aircraft checks until simulator verification passes
+- Simulator verification does not pass until a replay-backed incident export is observed
+- Assistant 2 simulator unavailability is documented and does not block the in-app MSDK simulator path
 - Risk states explain reason and next step
 - UI keeps emergency actions obvious
 

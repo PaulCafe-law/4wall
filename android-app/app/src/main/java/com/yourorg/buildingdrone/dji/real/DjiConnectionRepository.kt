@@ -26,6 +26,21 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+internal fun mapDjiDeviceHealth(statusName: String, summary: String?): DeviceHealthState {
+    if (statusName in GPS_ONLY_DEVICE_STATUSES) {
+        return DeviceHealthState(blocking = false, summary = null)
+    }
+    return DeviceHealthState(
+        blocking = statusName != DJIDeviceStatus.NORMAL.name,
+        summary = summary ?: statusName
+    )
+}
+
+private val GPS_ONLY_DEVICE_STATUSES = setOf(
+    "NON_GPS_NONVISION",
+    "NON_GPS"
+)
+
 class DjiConnectionRepository(
     private val gateway: Gateway = RealGateway()
 ) : HardwareStatusProvider {
@@ -35,6 +50,8 @@ class DjiConnectionRepository(
         fun remoteControllerConnected(): Boolean
         fun productType(): String?
         fun firmwareVersion(): String?
+        fun isFlying(): Boolean
+        fun ultrasonicHeightDm(): Int?
         fun gpsSatelliteCount(): Int
         fun gpsSignalLevel(): String?
         fun userAccountState(): UserAccountState
@@ -55,6 +72,8 @@ class DjiConnectionRepository(
             remoteControllerConnected = gateway.remoteControllerConnected(),
             productType = gateway.productType(),
             firmwareVersion = gateway.firmwareVersion(),
+            isFlying = gateway.isFlying(),
+            ultrasonicHeightDm = gateway.ultrasonicHeightDm(),
             gpsSatelliteCount = gateway.gpsSatelliteCount(),
             gpsSignalLevel = gateway.gpsSignalLevel(),
             userAccount = gateway.userAccountState(),
@@ -68,6 +87,7 @@ class DjiConnectionRepository(
     private class RealGateway : Gateway {
         private var latestHealthInfos: List<DJIDeviceHealthInfo> = emptyList()
         private var latestFlyZone = FlyZoneState()
+        private var listenersRegistered = false
 
         private val healthListener = DJIDeviceHealthInfoChangeListener {
             @Suppress("UNCHECKED_CAST")
@@ -102,49 +122,96 @@ class DjiConnectionRepository(
             }
         }
 
-        init {
-            DeviceHealthManager.getInstance().addDJIDeviceHealthInfoChangeListener(healthListener)
-            UserAccountManager.getInstance().addLoginInfoUpdateListener(loginListener)
-            FlyZoneManager.getInstance().addFlySafeNotificationListener(flySafeListener)
-        }
-
-        override fun registered(): Boolean = SDKManager.getInstance().isRegistered
+        override fun registered(): Boolean =
+            runCatching { SDKManager.getInstance().isRegistered }.getOrDefault(false)
 
         override fun aircraftConnected(): Boolean =
-            KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false)
+            sdkOrDefault(false) {
+                KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyConnection), false)
+            }
 
         override fun remoteControllerConnected(): Boolean =
-            KeyManager.getInstance().getValue(KeyTools.createKey(RemoteControllerKey.KeyConnection), false)
+            sdkOrDefault(false) {
+                KeyManager.getInstance().getValue(KeyTools.createKey(RemoteControllerKey.KeyConnection), false)
+            }
 
         override fun productType(): String? =
-            KeyManager.getInstance().getValue(KeyTools.createKey(ProductKey.KeyProductType), ProductType.UNKNOWN).name
+            sdkOrDefault<String?>(null) {
+                KeyManager.getInstance()
+                    .getValue(KeyTools.createKey(ProductKey.KeyProductType), ProductType.UNKNOWN)
+                    .takeUnless { it == ProductType.UNKNOWN }
+                    ?.name
+            }
 
         override fun firmwareVersion(): String? =
-            KeyManager.getInstance().getValue(KeyTools.createKey(ProductKey.KeyFirmwareVersion), "")
+            sdkOrDefault<String?>(null) {
+                KeyManager.getInstance()
+                    .getValue(KeyTools.createKey(ProductKey.KeyFirmwareVersion), "")
+                    .takeIf { it.isNotBlank() }
+            }
+
+        override fun isFlying(): Boolean =
+            sdkOrDefault(false) {
+                KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyIsFlying), false)
+            }
+
+        override fun ultrasonicHeightDm(): Int? =
+            sdkOrDefault<Int?>(null) {
+                KeyManager.getInstance()
+                    .getValue(KeyTools.createKey(FlightControllerKey.KeyUltrasonicHeight), 0)
+                    .takeIf { it > 0 }
+            }
 
         override fun gpsSatelliteCount(): Int =
-            KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount), 0)
+            sdkOrDefault(0) {
+                KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyGPSSatelliteCount), 0)
+            }
 
         override fun gpsSignalLevel(): String? =
-            KeyManager.getInstance().getValue(KeyTools.createKey(FlightControllerKey.KeyGPSSignalLevel), GPSSignalLevel.LEVEL_0).name
+            sdkOrDefault<String?>(null) {
+                KeyManager.getInstance()
+                    .getValue(KeyTools.createKey(FlightControllerKey.KeyGPSSignalLevel), GPSSignalLevel.LEVEL_0)
+                    .name
+            }
 
-        override fun userAccountState(): UserAccountState {
-            val loginInfo = UserAccountManager.getInstance().loginInfo
-            return UserAccountState(
-                loggedIn = !loginInfo.account.isNullOrBlank(),
-                accountId = loginInfo.account
-            )
+        override fun userAccountState(): UserAccountState =
+            sdkOrDefault(UserAccountState()) {
+                val loginInfo = UserAccountManager.getInstance().loginInfo
+                UserAccountState(
+                    loggedIn = !loginInfo.account.isNullOrBlank(),
+                    accountId = loginInfo.account
+                )
+            }
+
+        override fun deviceHealthState(): DeviceHealthState =
+            sdkOrDefault(DeviceHealthState()) {
+                val status = DeviceStatusManager.getInstance().currentDJIDeviceStatus
+                val summary = latestHealthInfos.firstOrNull()?.description() ?: status.name
+                mapDjiDeviceHealth(status.name, summary)
+            }
+
+        override fun flyZoneState(): FlyZoneState {
+            ensureListenersRegistered()
+            return latestFlyZone
         }
 
-        override fun deviceHealthState(): DeviceHealthState {
-            val status = DeviceStatusManager.getInstance().currentDJIDeviceStatus
-            val summary = latestHealthInfos.firstOrNull()?.description() ?: status.name
-            return DeviceHealthState(
-                blocking = status != DJIDeviceStatus.NORMAL,
-                summary = summary
-            )
+        private fun ensureListenersRegistered() {
+            if (listenersRegistered) {
+                return
+            }
+            val registered = runCatching {
+                DeviceHealthManager.getInstance().addDJIDeviceHealthInfoChangeListener(healthListener)
+                UserAccountManager.getInstance().addLoginInfoUpdateListener(loginListener)
+                FlyZoneManager.getInstance().addFlySafeNotificationListener(flySafeListener)
+            }.isSuccess
+            if (registered) {
+                listenersRegistered = true
+            }
         }
 
-        override fun flyZoneState(): FlyZoneState = latestFlyZone
+        private inline fun <T> sdkOrDefault(defaultValue: T, block: () -> T): T {
+            ensureListenersRegistered()
+            return runCatching(block).getOrDefault(defaultValue)
+        }
     }
 }

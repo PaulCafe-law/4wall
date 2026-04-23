@@ -22,16 +22,17 @@ import { api, ApiError } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { useOrganizationChoices } from '../../lib/organization-choices'
+import { formatAccessMode, formatApiError } from '../../lib/presentation'
 
 const invoiceSchema = z.object({
-  organizationId: z.string().min(1, 'Organization is required'),
-  invoiceNumber: z.string().min(1, 'Invoice number is required'),
-  currency: z.string().length(3, 'Currency must be a 3-letter code'),
+  organizationId: z.string().min(1, '請選擇組織'),
+  invoiceNumber: z.string().min(1, '帳單編號不可為空'),
+  currency: z.string().length(3, '幣別必須是 3 碼代號'),
   subtotal: z.coerce.number().min(0),
   tax: z.coerce.number().min(0),
   total: z.coerce.number().min(0),
-  dueDate: z.string().min(1, 'Due date is required'),
-  paymentInstructions: z.string().min(1, 'Payment instructions are required'),
+  dueDate: z.string().min(1, '到期日不可為空'),
+  paymentInstructions: z.string().min(1, '付款說明不可為空'),
   notes: z.string().default(''),
 })
 
@@ -97,28 +98,28 @@ export function BillingPage() {
     try {
       await createInvoice.mutateAsync(values)
     } catch (error) {
-      const detail = error instanceof ApiError ? error.detail : 'Unable to create invoice'
-      setError('root', { message: detail })
+      const detail = error instanceof ApiError ? error.detail : undefined
+      setError('root', { message: formatApiError(detail, '無法建立帳單，請稍後再試。') })
     }
   })
 
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Billing"
-        title="Invoices"
-        subtitle="Manual invoice and remittance flow is first-class in beta. Hosted checkout stays out of the launch gate."
+        eyebrow="帳務"
+        title="帳單"
+        subtitle="測試版以人工開立帳單與匯款流程為主，託管式結帳不列入本輪上線門檻。"
         action={
           auth.isInternal ? (
             <Modal
               open={isOpen}
               onOpenChange={setIsOpen}
-              title="Create invoice"
-              description="Internal users can issue invoices with due date, notes, and remittance instructions."
-              trigger={<ActionButton>New Invoice</ActionButton>}
+              title="建立帳單"
+              description="內部使用者可以建立帳單，附上到期日、備註與匯款說明。"
+              trigger={<ActionButton>新增帳單</ActionButton>}
             >
               <form className="grid gap-4" onSubmit={onSubmit}>
-                <Field label="Organization" error={errors.organizationId?.message}>
+                <Field label="組織" error={errors.organizationId?.message}>
                   <select
                     className="w-full rounded-2xl border border-chrome-300 bg-white px-4 py-3 text-sm"
                     {...register('organizationId')}
@@ -131,31 +132,31 @@ export function BillingPage() {
                   </select>
                 </Field>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <Field label="Invoice number" error={errors.invoiceNumber?.message}>
+                  <Field label="帳單編號" error={errors.invoiceNumber?.message}>
                     <Input {...register('invoiceNumber')} />
                   </Field>
-                  <Field label="Currency" error={errors.currency?.message}>
+                  <Field label="幣別" error={errors.currency?.message}>
                     <Input {...register('currency')} />
                   </Field>
                 </div>
                 <div className="grid gap-4 md:grid-cols-3">
-                  <Field label="Subtotal" error={errors.subtotal?.message}>
+                  <Field label="未稅金額" error={errors.subtotal?.message}>
                     <Input type="number" {...register('subtotal')} />
                   </Field>
-                  <Field label="Tax" error={errors.tax?.message}>
+                  <Field label="稅額" error={errors.tax?.message}>
                     <Input type="number" {...register('tax')} />
                   </Field>
-                  <Field label="Total" error={errors.total?.message}>
+                  <Field label="總額" error={errors.total?.message}>
                     <Input type="number" {...register('total')} />
                   </Field>
                 </div>
-                <Field label="Due date" error={errors.dueDate?.message}>
+                <Field label="到期日" error={errors.dueDate?.message}>
                   <Input type="datetime-local" {...register('dueDate')} />
                 </Field>
-                <Field label="Payment instructions" error={errors.paymentInstructions?.message}>
+                <Field label="付款說明" error={errors.paymentInstructions?.message}>
                   <TextArea {...register('paymentInstructions')} />
                 </Field>
-                <Field label="Notes" error={errors.notes?.message}>
+                <Field label="備註" error={errors.notes?.message}>
                   <TextArea {...register('notes')} />
                 </Field>
                 {errors.root?.message ? (
@@ -165,7 +166,7 @@ export function BillingPage() {
                 ) : null}
                 <div className="flex justify-end">
                   <ActionButton disabled={createInvoice.isPending} type="submit">
-                    {createInvoice.isPending ? 'Issuing…' : 'Issue Invoice'}
+                    {createInvoice.isPending ? '開立中…' : '開立帳單'}
                   </ActionButton>
                 </div>
               </form>
@@ -175,42 +176,42 @@ export function BillingPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Metric label="Visible invoices" value={invoices.length} />
-        <Metric label="Overdue" value={overdueCount} hint="Use this to surface invoice overdue state in beta." />
-        <Metric label="Access mode" value={auth.isInternal ? 'internal' : 'customer'} />
+        <Metric label="可見帳單" value={invoices.length} />
+        <Metric label="逾期" value={overdueCount} hint="用來標記測試版中的帳單逾期狀態。" />
+        <Metric label="存取模式" value={formatAccessMode(auth.isInternal)} />
       </div>
 
       {invoicesQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">Loading invoices…</p>
+          <p className="text-sm text-chrome-700">正在載入帳單…</p>
         </Panel>
       ) : null}
 
       {!invoicesQuery.isLoading && invoices.length === 0 ? (
         <EmptyState
-          title="No invoice yet"
-          body="Invoices appear here once ops issues a remittance request or marks payment status."
+          title="尚無帳單"
+          body="當營運人員開立帳單或更新付款狀態後，資料會顯示在這裡。"
         />
       ) : null}
 
       <div className="grid gap-4">
         {invoices.map((invoice) => (
           <Panel key={invoice.invoiceId}>
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
+            <div className="flex min-w-0 flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
-                  <h2 className="font-display text-2xl font-semibold text-chrome-950">
+                  <h2 className="break-words font-display text-2xl font-semibold text-chrome-950">
                     {invoice.invoiceNumber}
                   </h2>
                   <StatusBadge status={invoice.status} />
                 </div>
                 <p className="mt-2 text-sm text-chrome-700">
-                  Due {formatDate(invoice.dueDate)} • {formatCurrency(invoice.currency, invoice.total)}
+                  到期日 {formatDate(invoice.dueDate)} · {formatCurrency(invoice.currency, invoice.total)}
                 </p>
                 <p className="mt-3 text-sm text-chrome-700">{invoice.paymentInstructions}</p>
               </div>
-              <div className="rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-3 text-sm text-chrome-700">
-                {invoice.notes || 'No billing notes'}
+              <div className="max-w-full break-words rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-3 text-sm text-chrome-700 md:max-w-sm">
+                {invoice.notes || '尚無帳務備註'}
               </div>
             </div>
           </Panel>

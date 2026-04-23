@@ -1,14 +1,19 @@
 import type {
   AuditEvent,
   BillingInvoice,
+  ControlIntent,
+  ControlIntentAction,
   FlightEventRecord,
   InviteCreateResponse,
+  LiveFlightDetail,
+  LiveFlightSummary,
   MissionDetail,
   MissionPlanResponse,
   MissionSummary,
   OrganizationDetail,
   OrganizationSummary,
   Site,
+  SupportQueueItem,
   TelemetryBatchRecord,
   WebSession,
 } from './types'
@@ -51,7 +56,7 @@ async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
       const payload = (await response.json()) as { detail?: string }
       detail = payload.detail ?? detail
     } catch {
-      // use default detail
+      // fall back to the response status text
     }
     throw new ApiError(response.status, detail)
   }
@@ -90,35 +95,31 @@ export interface MissionPlanPayload {
   organizationId: string
   siteId: string
   missionName: string
-  origin: {
-    lat: number
-    lng: number
-  }
-  targetBuilding: {
-    buildingId: string
+  launchPoint: {
+    launchPointId: string
     label: string
+    location: {
+      lat: number
+      lng: number
+    }
   }
+  orderedWaypoints: Array<{
+    waypointId: string
+    sequence: number
+    holdSeconds: number
+    location: {
+      lat: number
+      lng: number
+    }
+  }>
   routingMode: string
-  corridorPolicy: {
-    defaultHalfWidthM: number
-    maxHalfWidthM: number
-    branchConfirmRadiusM: number
-  }
   flightProfile: {
     defaultAltitudeM: number
     defaultSpeedMps: number
     maxApproachSpeedMps: number
   }
-  inspectionIntent: {
-    viewpoints: Array<{
-      viewpointId: string
-      label: string
-      lat: number
-      lng: number
-      yawDeg: number
-      distanceToFacadeM: number
-    }>
-  }
+  operatingProfile: 'outdoor_gps_patrol' | 'indoor_no_gps'
+  implicitReturnToLaunch: boolean
   demoMode: boolean
 }
 
@@ -138,6 +139,11 @@ export interface InvoicePayload {
 export interface InvitePayload {
   email: string
   role: 'customer_admin' | 'customer_viewer'
+}
+
+export interface ControlIntentPayload {
+  action: ControlIntentAction
+  reason?: string
 }
 
 export const api = {
@@ -201,6 +207,18 @@ export const api = {
     apiFetch<FlightEventRecord[]>(`/v1/flights/${flightId}/events`, { token }),
   listTelemetry: (token: string, flightId: string) =>
     apiFetch<TelemetryBatchRecord[]>(`/v1/flights/${flightId}/telemetry`, { token }),
+  listLiveFlights: (token: string) => apiFetch<LiveFlightSummary[]>('/v1/live-ops/flights', { token }),
+  getLiveFlight: (token: string, flightId: string) =>
+    apiFetch<LiveFlightDetail>(`/v1/live-ops/flights/${flightId}`, { token }),
+  listControlIntents: (token: string, flightId: string) =>
+    apiFetch<ControlIntent[]>(`/v1/live-ops/flights/${flightId}/control-intents`, { token }),
+  requestControlIntent: (token: string, flightId: string, payload: ControlIntentPayload) =>
+    apiFetch<ControlIntent>(`/v1/live-ops/flights/${flightId}/control-intents`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  listSupportQueue: (token: string) => apiFetch<SupportQueueItem[]>('/v1/support/queue', { token }),
 }
 
 export function absoluteArtifactUrl(path: string): string {

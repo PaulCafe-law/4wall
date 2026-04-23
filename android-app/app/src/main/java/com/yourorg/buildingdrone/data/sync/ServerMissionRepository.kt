@@ -2,8 +2,6 @@ package com.yourorg.buildingdrone.data.sync
 
 import com.yourorg.buildingdrone.core.GeoPoint
 import com.yourorg.buildingdrone.data.ActiveFlightContext
-import com.yourorg.buildingdrone.data.CorridorSegment
-import com.yourorg.buildingdrone.data.InspectionViewpoint
 import com.yourorg.buildingdrone.data.MissionArtifact
 import com.yourorg.buildingdrone.data.MissionArtifacts
 import com.yourorg.buildingdrone.data.MissionBundle
@@ -11,18 +9,18 @@ import com.yourorg.buildingdrone.data.MissionBundleVerification
 import com.yourorg.buildingdrone.data.MissionFailsafe
 import com.yourorg.buildingdrone.data.MissionRepository
 import com.yourorg.buildingdrone.data.MissionSyncResult
-import com.yourorg.buildingdrone.data.VerificationPoint
+import com.yourorg.buildingdrone.data.OrderedWaypoint
+import com.yourorg.buildingdrone.data.RouteLaunchPoint
 import com.yourorg.buildingdrone.data.auth.plannerJson
 import com.yourorg.buildingdrone.data.network.CachedMissionRecord
 import com.yourorg.buildingdrone.data.network.MissionArtifactDescriptorWire
-import com.yourorg.buildingdrone.data.network.MissionBundleWire
 import com.yourorg.buildingdrone.data.network.MissionMetaWire
 import com.yourorg.buildingdrone.data.network.MissionPlanRequestWire
 import com.yourorg.buildingdrone.data.network.MissionPlanResponseWire
 import com.yourorg.buildingdrone.data.network.PlannerAuthException
 import com.yourorg.buildingdrone.data.network.PlannerGateway
 import com.yourorg.buildingdrone.data.network.PlannerHttpException
-import com.yourorg.buildingdrone.domain.semantic.BranchDecision
+import com.yourorg.buildingdrone.domain.operations.OperationProfile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -61,6 +59,15 @@ class ServerMissionRepository(
                 missionId = record.missionId,
                 flightId = record.flightId
             )
+        }
+    }
+
+    override suspend fun clearCachedMissionBundle() {
+        withContext(Dispatchers.IO) {
+            activeDirectory.deleteRecursively()
+            stagingDirectory.deleteRecursively()
+            File(cacheRoot, "active-backup").deleteRecursively()
+            stagingDirectory.mkdirs()
         }
     }
 
@@ -277,35 +284,28 @@ class ServerMissionRepository(
         return MissionBundle(
             missionId = record.missionId,
             routeMode = record.missionBundle.routeMode,
-            corridorSegments = record.missionBundle.corridorSegments.map { segment ->
-                CorridorSegment(
-                    segmentId = segment.segmentId,
-                    polyline = segment.polyline.map { GeoPoint(it.lat, it.lng) },
-                    halfWidthMeters = segment.halfWidthMeters,
-                    suggestedAltitudeMeters = segment.suggestedAltitudeMeters,
-                    suggestedSpeedMetersPerSecond = segment.suggestedSpeedMetersPerSecond
+            operatingProfile = OperationProfile.fromWireName(record.missionBundle.operatingProfile),
+            launchPoint = RouteLaunchPoint(
+                label = record.missionBundle.launchPoint.label,
+                location = GeoPoint(
+                    record.missionBundle.launchPoint.location.lat,
+                    record.missionBundle.launchPoint.location.lng
                 )
-            },
-            verificationPoints = record.missionBundle.verificationPoints.map { point ->
-                VerificationPoint(
-                    verificationPointId = point.verificationPointId,
-                    location = GeoPoint(point.location.lat, point.location.lng),
-                    expectedOptions = point.expectedOptions.mapTo(LinkedHashSet()) { option -> option.toBranchDecision() },
-                    timeoutMillis = point.timeoutMillis
+            ),
+            orderedWaypoints = record.missionBundle.orderedWaypoints.map { waypoint ->
+                OrderedWaypoint(
+                    waypointId = waypoint.waypointId,
+                    sequence = waypoint.sequence,
+                    location = GeoPoint(waypoint.location.lat, waypoint.location.lng),
+                    altitudeMeters = waypoint.altitudeMeters,
+                    speedMetersPerSecond = waypoint.speedMetersPerSecond,
+                    holdSeconds = waypoint.holdSeconds
                 )
-            },
-            inspectionViewpoints = record.missionBundle.inspectionViewpoints.map { viewpoint ->
-                InspectionViewpoint(
-                    inspectionViewpointId = viewpoint.inspectionViewpointId,
-                    location = GeoPoint(viewpoint.location.lat, viewpoint.location.lng),
-                    yawDegrees = viewpoint.yawDegrees,
-                    captureMode = viewpoint.captureMode,
-                    label = viewpoint.label
-                )
-            },
+            }.sortedBy { it.sequence },
+            implicitReturnToLaunch = record.missionBundle.implicitReturnToLaunch,
             defaultAltitudeMeters = record.missionBundle.defaultAltitudeMeters,
             defaultSpeedMetersPerSecond = record.missionBundle.defaultSpeedMetersPerSecond,
-            bundleVersion = record.bundleVersion,
+            bundleVersion = record.missionBundle.bundleVersion.ifBlank { record.bundleVersion },
             artifacts = MissionArtifacts(
                 missionKmz = MissionArtifact(
                     name = "mission.kmz",
@@ -323,7 +323,7 @@ class ServerMissionRepository(
                 )
             ),
             verification = MissionBundleVerification(
-                schemaMajor = 1,
+                schemaMajor = 2,
                 missionMetaPresent = missionMeta.exists(),
                 missionKmzPresent = missionKmz.exists(),
                 missionMetaChecksumVerified = missionMetaVerified,
@@ -335,13 +335,6 @@ class ServerMissionRepository(
                 onFrameDrop = record.missionBundle.failsafe.onFrameDrop
             )
         )
-    }
-
-    private fun String.toBranchDecision(): BranchDecision = when (this) {
-        "LEFT" -> BranchDecision.LEFT
-        "RIGHT" -> BranchDecision.RIGHT
-        "STRAIGHT" -> BranchDecision.STRAIGHT
-        else -> BranchDecision.UNKNOWN
     }
 
     private fun sha256(bytes: ByteArray): String {

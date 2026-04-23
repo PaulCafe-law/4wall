@@ -10,10 +10,10 @@ data class StatusCopy(
 
 fun ScreenDataState.toStatusCopy(colorScheme: ColorScheme): StatusCopy {
     return when (this) {
-        ScreenDataState.LOADING -> StatusCopy("載入中", colorScheme.primary)
-        ScreenDataState.EMPTY -> StatusCopy("待命", colorScheme.outline)
-        ScreenDataState.ERROR -> StatusCopy("阻塞", colorScheme.error)
-        ScreenDataState.SUCCESS -> StatusCopy("就緒", colorScheme.primary)
-        ScreenDataState.PARTIAL -> StatusCopy("需人工確認", Color(0xFF8A5A00))
+        ScreenDataState.LOADING -> StatusCopy("Loading", colorScheme.primary)
+        ScreenDataState.EMPTY -> StatusCopy("Idle", colorScheme.outline)
+        ScreenDataState.ERROR -> StatusCopy("Blocked", colorScheme.error)
+        ScreenDataState.SUCCESS -> StatusCopy("Passed", colorScheme.primary)
+        ScreenDataState.PARTIAL -> StatusCopy("Needs Review", Color(0xFF8A5A00))
     }
 }
