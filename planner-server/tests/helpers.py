@@ -12,40 +12,33 @@ from app.security import hash_password
 def valid_request_payload() -> dict:
     return {
         "missionName": "building-a-demo",
-        "launchPoint": {"lat": 25.03391, "lng": 121.56452},
-        "routingMode": "road_network_following",
-        "corridorPolicy": {
-            "defaultHalfWidthM": 8.0,
-            "maxHalfWidthM": 12.0,
-            "branchConfirmRadiusM": 18.0,
+        "launchPoint": {
+            "launchPointId": "launch-01",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "label": "tower-a-launch",
         },
+        "orderedWaypoints": [
+            {
+                "waypointId": "wp-01",
+                "location": {"lat": 25.03412, "lng": 121.56472},
+                "sequence": 1,
+                "holdSeconds": 0,
+            },
+            {
+                "waypointId": "wp-02",
+                "location": {"lat": 25.03441, "lng": 121.56501},
+                "sequence": 2,
+                "holdSeconds": 0,
+            },
+        ],
+        "routingMode": "road_network_following",
         "flightProfile": {
             "defaultAltitudeM": 35.0,
             "defaultSpeedMps": 4.0,
             "maxApproachSpeedMps": 1.0,
         },
-        "waypoints": [
-            {
-                "waypointId": "wp-01",
-                "kind": "transit",
-                "label": "north-east-pass",
-                "lat": 25.03441,
-                "lng": 121.56501,
-                "altitudeM": 35.0,
-                "headingDeg": 225.0,
-                "dwellSeconds": 0,
-            },
-            {
-                "waypointId": "wp-02",
-                "kind": "hold",
-                "label": "north-east-hold",
-                "lat": 25.03451,
-                "lng": 121.56511,
-                "altitudeM": 32.0,
-                "headingDeg": 225.0,
-                "dwellSeconds": 8,
-            },
-        ],
+        "operatingProfile": "outdoor_gps_patrol",
+        "implicitReturnToLaunch": True,
         "demoMode": False,
     }
 

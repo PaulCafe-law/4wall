@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -12,12 +12,15 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.config import Settings
-from app.db import create_engine_for_settings, init_db
-from app.operator_admin import upsert_operator
+from app.db import create_engine_for_settings
+from app.models import OperatorAccount
+from app.security import hash_password
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Create or update a planner-server operator account.")
+    parser = argparse.ArgumentParser(
+        description="Create or update a planner-server operator account."
+    )
     parser.add_argument("--username", required=True, help="Operator username")
     parser.add_argument("--display-name", required=True, help="Operator display name")
     parser.add_argument("--password", required=True, help="Plaintext operator password")
@@ -41,42 +44,39 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    if args.activate and args.deactivate:
-        raise SystemExit("--activate and --deactivate cannot be used together")
-
-    active = None
-    if args.activate:
-        active = True
-    elif args.deactivate:
-        active = False
-
     settings = Settings.from_env()
     engine = create_engine_for_settings(settings)
-    init_db(engine, settings)
 
     with Session(engine) as session:
-        result = upsert_operator(
-            session,
-            username=args.username,
-            display_name=args.display_name,
-            password=args.password,
-            update_password=args.update_password,
-            active=active,
-        )
-        session.commit()
-        session.refresh(result.operator)
-        username = result.operator.username
-        is_active = result.operator.is_active
-        created = result.created
-        password_updated = result.password_updated
+        statement = select(OperatorAccount).where(OperatorAccount.username == args.username)
+        operator = session.exec(statement).first()
 
-    verb = "created" if created else "updated"
-    print(
-        f"{verb} operator "
-        f"username={username} "
-        f"active={is_active} "
-        f"password_updated={password_updated}"
-    )
+        if operator is None:
+            operator = OperatorAccount(
+                username=args.username,
+                display_name=args.display_name,
+                password_hash=hash_password(args.password),
+                is_active=not args.deactivate,
+            )
+            session.add(operator)
+            session.commit()
+            print(f"created operator username={operator.username} active={operator.is_active}")
+            return 0
+
+        operator.display_name = args.display_name
+        if args.update_password:
+            operator.password_hash = hash_password(args.password)
+        if args.activate:
+            operator.is_active = True
+        if args.deactivate:
+            operator.is_active = False
+        session.add(operator)
+        session.commit()
+        print(
+            "updated operator "
+            f"username={operator.username} active={operator.is_active} "
+            f"password_updated={args.update_password}"
+        )
     return 0
 
 

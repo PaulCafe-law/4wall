@@ -11,33 +11,22 @@ def test_mission_plan_request_validates_happy_path() -> None:
     request = MissionPlanRequestDto(**valid_request_payload())
 
     assert request.routingMode == "road_network_following"
-    assert request.launchPoint.lat == 25.03391
-    assert request.origin.lat == 25.03391
-    assert request.waypoints[0].waypointId == "wp-01"
+    assert request.launchPoint.launchPointId == "launch-01"
+    assert request.orderedWaypoints[0].waypointId == "wp-01"
+    assert request.operatingProfile == "outdoor_gps_patrol"
 
 
 def test_mission_plan_request_rejects_empty_waypoints() -> None:
     payload = valid_request_payload()
-    payload["waypoints"] = []
+    payload["orderedWaypoints"] = []
 
     with pytest.raises(ValidationError):
         MissionPlanRequestDto(**payload)
 
 
-def test_mission_plan_request_backfills_launch_point_from_origin() -> None:
+def test_mission_plan_request_requires_contiguous_sequences() -> None:
     payload = valid_request_payload()
-    payload["origin"] = {"lat": 25.044, "lng": 121.577}
-    payload.pop("launchPoint")
-
-    request = MissionPlanRequestDto(**payload)
-
-    assert request.launchPoint.lat == 25.044
-    assert request.origin.lat == 25.044
-
-
-def test_corridor_policy_rejects_smaller_max_width() -> None:
-    payload = valid_request_payload()
-    payload["corridorPolicy"]["maxHalfWidthM"] = 4.0
+    payload["orderedWaypoints"][1]["sequence"] = 3
 
     with pytest.raises(ValidationError):
         MissionPlanRequestDto(**payload)

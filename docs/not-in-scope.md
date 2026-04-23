@@ -16,8 +16,8 @@
   - Server-side planning and mock mission loading are enough for demo
 - Multi-drone or fleet management
   - Not needed for investor demo
-- Production-grade analytics platform beyond the Phase 1 demo event/report slice
-  - Phase 1 now includes mission-linked events, evidence, and downloadable reports, but not a full analytics product
+- Post-flight analytics and reporting portal beyond basic audit/event views
+  - Beta only needs mission status, artifacts, and operator-grade auditability
 - Hosted online checkout as the beta launch gate
   - Manual invoices ship first so billing does not block launch
 - Beyond visual line of sight autonomy

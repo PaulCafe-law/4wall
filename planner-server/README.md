@@ -29,22 +29,6 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --reload
 ```
 
-## Provision an Operator Account
-
-Use the helper script instead of editing the database by hand:
-
-```powershell
-Set-Location .\planner-server
-.\.venv\Scripts\python.exe .\scripts\create_operator.py --username fieldpilot --display-name "Field Pilot" --password "CHANGE_ME_NOW"
-```
-
-Update the password later only when intended:
-
-```powershell
-Set-Location .\planner-server
-.\.venv\Scripts\python.exe .\scripts\create_operator.py --username fieldpilot --display-name "Field Pilot" --password "NEW_SECRET" --update-password --activate
-```
-
 ## Test
 
 ```powershell
@@ -66,13 +50,6 @@ Web beta release smoke:
 ```powershell
 Set-Location .\planner-server
 .\.venv\Scripts\python.exe .\scripts\smoke_test.py --mode web-beta --base-url https://staging-api.example.com --web-email smoke@example.com --web-password CHANGE_ME --app-origin https://staging-app.example.com
-```
-
-Viewer read-only smoke:
-
-```powershell
-Set-Location .\planner-server
-.\.venv\Scripts\python.exe .\scripts\smoke_test.py --mode web-viewer --base-url https://staging-api.example.com --web-email viewer@example.com --web-password CHANGE_ME --app-origin https://staging-app.example.com
 ```
 
 ## Release Notes

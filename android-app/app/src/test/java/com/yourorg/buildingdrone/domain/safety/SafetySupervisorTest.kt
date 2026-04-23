@@ -25,4 +25,48 @@ class SafetySupervisorTest {
             supervisor.evaluate(FlightEventType.BRANCH_VERIFY_TIMEOUT, SafetySnapshot())
         )
     }
+
+    @Test
+    fun frameStreamDrop_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.FRAME_STREAM_DROPPED,
+                SafetySnapshot(frameStreamHealthy = false)
+            )
+        )
+    }
+
+    @Test
+    fun appHealthBad_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.APP_HEALTH_BAD,
+                SafetySnapshot(appHealthy = false)
+            )
+        )
+    }
+
+    @Test
+    fun gpsWeak_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.GPS_WEAK,
+                SafetySnapshot(gpsWeak = true)
+            )
+        )
+    }
+
+    @Test
+    fun rcSignalLost_escalatesToHold() {
+        assertEquals(
+            SafetyDecision.HOLD,
+            supervisor.evaluate(
+                FlightEventType.RC_SIGNAL_LOST,
+                SafetySnapshot(rcSignalHealthy = false)
+            )
+        )
+    }
 }

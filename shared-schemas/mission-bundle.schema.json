@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://4wall.local/schemas/mission-bundle.schema.json",
+  "title": "MissionBundle",
+  "type": "object",
+  "required": [
+    "missionId",
+    "routeMode",
+    "bundleVersion",
+    "operatingProfile",
+    "launchPoint",
+    "orderedWaypoints",
+    "implicitReturnToLaunch",
+    "defaultAltitudeMeters",
+    "defaultSpeedMetersPerSecond",
+    "artifacts",
+    "verification",
+    "failsafe"
+  ],
+  "properties": {
+    "missionId": { "type": "string", "minLength": 1 },
+    "routeMode": { "type": "string", "const": "road_network_following" },
+    "bundleVersion": { "type": "string", "minLength": 1 },
+    "operatingProfile": {
+      "type": "string",
+      "enum": ["outdoor_gps_patrol", "indoor_no_gps"]
+    },
+    "launchPoint": { "$ref": "#/$defs/launchPoint" },
+    "orderedWaypoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/waypoint" }
+    },
+    "implicitReturnToLaunch": { "type": "boolean", "const": true },
+    "defaultAltitudeMeters": { "type": "number", "exclusiveMinimum": 0 },
+    "defaultSpeedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 },
+    "artifacts": {
+      "type": "object",
+      "required": ["missionKmz", "missionMeta"],
+      "properties": {
+        "missionKmz": { "$ref": "#/$defs/artifact" },
+        "missionMeta": { "$ref": "#/$defs/artifact" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["schemaMajor", "missionMetaPresent", "missionKmzPresent", "missionMetaChecksumVerified", "missionKmzChecksumVerified"],
+      "properties": {
+        "schemaMajor": { "type": "integer", "minimum": 1 },
+        "missionMetaPresent": { "type": "boolean" },
+        "missionKmzPresent": { "type": "boolean" },
+        "missionMetaChecksumVerified": { "type": "boolean" },
+        "missionKmzChecksumVerified": { "type": "boolean" }
+      }
+    },
+    "failsafe": {
+      "type": "object",
+      "required": ["onSemanticTimeout", "onBatteryCritical", "onFrameDrop"],
+      "properties": {
+        "onSemanticTimeout": { "type": "string" },
+        "onBatteryCritical": { "type": "string" },
+        "onFrameDrop": { "type": "string" }
+      }
+    },
+    "legacyInspectionViewpoints": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/legacyInspectionViewpoint" }
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["name", "localPath", "checksum", "version", "sizeBytes"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "localPath": { "type": "string", "minLength": 1 },
+        "checksum": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "sizeBytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "geoPoint": {
+      "type": "object",
+      "required": ["lat", "lng"],
+      "properties": {
+        "lat": { "type": "number" },
+        "lng": { "type": "number" }
+      }
+    },
+    "launchPoint": {
+      "type": "object",
+      "required": ["launchPointId", "location"],
+      "properties": {
+        "launchPointId": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/geoPoint" },
+        "label": { "type": "string" }
+      }
+    },
+    "waypoint": {
+      "type": "object",
+      "required": ["waypointId", "location", "sequence"],
+      "properties": {
+        "waypointId": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/geoPoint" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "holdSeconds": { "type": "integer", "minimum": 0 },
+        "speedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 },
+        "altitudeMeters": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "legacyInspectionViewpoint": {
+      "type": "object",
+      "required": ["inspectionViewpointId", "location", "yawDegrees", "captureMode", "label"],
+      "properties": {
+        "inspectionViewpointId": { "type": "string", "minLength": 1 },
+        "location": { "$ref": "#/$defs/geoPoint" },
+        "yawDegrees": { "type": "number" },
+        "captureMode": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

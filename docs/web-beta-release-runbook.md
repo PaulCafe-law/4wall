@@ -11,16 +11,6 @@ This runbook covers the Web Beta RC release path for:
 It does not cover Android field readiness or Sprint 4 hardware validation.
 It also does not own Android implementation details for live monitoring; Android is treated here as an upstream contract dependency only.
 
-The release acceptance checklist lives in:
-
-- `docs/WEB_RELEASE_CHECKLIST.md`
-
-The Phase 1 demo scope and target contracts live in:
-
-- `docs/PHASE_1_DEMO_CONTROL_PLANE_AND_REPORTING.md`
-- `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
-- `docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md`
-
 ## Required Inputs
 
 Reference these docs before shipping any `live-ops` or `support` change:
@@ -50,25 +40,12 @@ Reference these docs before shipping any `live-ops` or `support` change:
 - Web envs:
   - `VITE_API_BASE_URL`
   - `VITE_APP_ENVIRONMENT`
-  - `VITE_GOOGLE_MAPS_API_KEY`
 - Smoke envs:
   - `BETA_API_BASE_URL`
   - `BETA_WEB_LOGIN_URL`
   - `BETA_APP_ORIGIN`
   - `BETA_WEB_SMOKE_EMAIL`
   - `BETA_WEB_SMOKE_PASSWORD`
-  - `BETA_WEB_SMOKE_ADMIN_EMAIL`
-  - `BETA_WEB_SMOKE_ADMIN_PASSWORD`
-  - `BETA_WEB_SMOKE_VIEWER_EMAIL`
-  - `BETA_WEB_SMOKE_VIEWER_PASSWORD`
-
-The current rollout model is:
-
-- seeded data smoke is required and uses `BETA_WEB_SMOKE_EMAIL` / `BETA_WEB_SMOKE_PASSWORD`
-- authenticated admin shell smoke is required
-- browser-level customer admin management smoke is enabled when explicit `BETA_WEB_SMOKE_ADMIN_*` secrets are configured
-- viewer smoke is supported and should be turned on once the environment has a stable seeded `customer_viewer`
-- if any smoke secret is rotated, manually verify that the exact staging/production account can still log in before re-running `Beta Smoke`
 
 ## Staging Deploy
 
@@ -76,59 +53,17 @@ The current rollout model is:
 2. If the release touches `live-ops` or `support`, confirm the expected Android event contract is unchanged or already available. If not, the web surface must stay in placeholder or monitor-only state.
 3. Apply the repo-root `render.yaml` blueprint if service shape changed.
 4. Deploy `four-wall-api-staging`.
-5. Confirm the API deploy log shows `alembic upgrade head` completed successfully.
-6. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
-7. Deploy `four-wall-web-staging`.
-8. Run `.github/workflows/smoke-beta.yml` against staging.
-8. Manually verify self-serve signup and invite acceptance if auth surface changed.
-9. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
-10. Manually verify:
-   - site map and site selection flow
-  - site workspace shows map version, launch points, viewpoints, active route/template summaries, and any internal-defined zones, plus internal Google Maps preview if the release touched control-plane surfaces
-   - route/template records can be created, viewed, or edited without entering any flight-control path
-   - Google Maps waypoint editing only appears for internal users, and customer users stay on summary/read-only route coverage, if the release touched control-plane surfaces
-   - schedule and dispatch records can be created and show the expected planning metadata
-   - control-plane dashboard, route workspace, template workspace, schedule workspace, and dispatch workspace each match the current rehearsal script and provide screenshot-ready presentation copy if the release touched control-plane surfaces
-   - overview pending-action cards, invoice reminders, invite reminders, and setup guidance when the workspace has no sites or no missions
-   - overview demo cards for scheduled/running/failed missions, latest events, and latest reports
-   - mission list delivery badges, clean failure copy, and ready-to-deliver summaries
-   - mission detail publication panel with download metadata, next-step guidance, event count, report summary, evidence/report artifacts, linked route/template/schedule/dispatch metadata, and internal-only raw-contract debug visibility when the release touched control-plane surfaces
-   - internal-only analysis reprocess flow can generate demo findings, clean-pass output, and explicit analysis-failed output when the release touched event/report surfaces
-   - the control-plane walkthrough panel can be used to rehearse the route-to-report story without hidden operator knowledge
-   - team invite lifecycle, including resend / revoke
-   - billing status clarity, payment note, receipt reference rendering, and reminder panels for overdue or due-soon invoices
-11. If the release touches internal ops surfaces, manually verify:
-   - `Support` shows severity/category filters, mission/org/site context, last-observed timing, recommended next steps, and claim / acknowledge / resolve workflow state
-   - `Support` includes analysis/report failure categories, including `report_generation_failed`, if the release touched event/report flows
-   - `Live Ops` shows telemetry freshness, video availability, lease status, dispatch context, report status, event count, report summary, and monitor-only copy when data is degraded
-   - one report-failed mission and one clean-pass mission tell the same story across mission detail, support, and live ops when the release touched event/report flows
+5. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
+6. Deploy `four-wall-web-staging`.
+7. Run `.github/workflows/smoke-beta.yml` against staging.
 
 ## Promotion to Production
 
 1. Confirm staging smoke passed.
 2. Promote the same revision to `four-wall-api`.
-3. Confirm the production API deploy log shows `alembic upgrade head` completed successfully.
-4. Wait for production `/healthz` to return `200`.
-5. Promote the same revision to `four-wall-web`.
-6. Re-run `.github/workflows/smoke-beta.yml` against production values.
-6. Re-check self-serve signup or invite acceptance if the release touched auth flows.
-7. If viewer smoke credentials are configured, confirm the viewer deployed smoke also passed.
-8. Re-check the same overview / mission-delivery / billing manual flows on production before closing the deploy.
-9. Re-check the control-plane route/template/schedule/dispatch flows on production if the release touched the Phase 1 demo surface.
-10. Re-check one mission detail page on production to confirm linked planning metadata still renders after dispatch if the release touched control-plane surfaces.
-11. Re-check team invite lifecycle on production if the release touched team surfaces.
-12. If the release touched internal ops surfaces, confirm the same `Support` and `Live Ops` diagnostics on production before closing the deploy.
-13. If the release touched event/report or internal-ops surfaces, confirm on production that:
-   - clean-pass missions do not surface phantom anomaly warnings
-   - report-failed missions generate a support item and a live-ops report blocker summary
-14. If support handling changed, claim and resolve one support item in staging before promoting the same flow to production.
-
-When the release touches the Phase 1 demo slice, capture the full screenshot and artifact package defined in:
-
-- `docs/PHASE_1_DEMO_REHEARSAL_SCRIPT.md`
-- `docs/PHASE_1_DEMO_EVIDENCE_TEMPLATE.md`
-
-Use `docs/WEB_RELEASE_CHECKLIST.md` to record staging / production acceptance evidence.
+3. Wait for production `/healthz` to return `200`.
+4. Promote the same revision to `four-wall-web`.
+5. Re-run `.github/workflows/smoke-beta.yml` against production values.
 
 ## Live Ops Guardrail
 

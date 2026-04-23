@@ -4,16 +4,8 @@ import { useForm, useWatch } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 
-import {
-  ActionButton,
-  EmptyState,
-  Field,
-  Input,
-  Panel,
-  Select,
-  ShellSection,
-} from '../../components/ui'
-import { ApiError, api } from '../../lib/api'
+import { ActionButton, EmptyState, Field, Input, Panel, Select, ShellSection } from '../../components/ui'
+import { api, ApiError } from '../../lib/api'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { useOrganizationChoices } from '../../lib/organization-choices'
 import { formatApiError } from '../../lib/presentation'
@@ -22,12 +14,13 @@ const plannerSchema = z.object({
   organizationId: z.string().min(1, '請選擇組織'),
   siteId: z.string().min(1, '請選擇場域'),
   missionName: z.string().min(1, '請輸入任務名稱'),
+  operatingProfile: z.enum(['outdoor_gps_patrol', 'indoor_no_gps']),
   launchLat: z.coerce.number(),
   launchLng: z.coerce.number(),
-  waypointLat: z.coerce.number(),
-  waypointLng: z.coerce.number(),
-  waypointAltitudeM: z.coerce.number().min(1, '巡邏點高度至少要大於 1 公尺'),
-  waypointDwellSeconds: z.coerce.number().min(0, '停留秒數不能小於 0'),
+  waypoint1Lat: z.coerce.number(),
+  waypoint1Lng: z.coerce.number(),
+  waypoint2Lat: z.coerce.number(),
+  waypoint2Lng: z.coerce.number(),
 })
 
 type PlannerFormInput = z.input<typeof plannerSchema>
@@ -50,30 +43,33 @@ export function PlannerPage() {
         organizationId: payload.organizationId,
         siteId: payload.siteId,
         missionName: payload.missionName,
-        launchPoint: { lat: payload.launchLat, lng: payload.launchLng },
-        routingMode: 'road_network_following',
-        corridorPolicy: {
-          defaultHalfWidthM: 8,
-          maxHalfWidthM: 12,
-          branchConfirmRadiusM: 18,
+        launchPoint: {
+          launchPointId: 'launch-main',
+          label: 'main-launch',
+          location: { lat: payload.launchLat, lng: payload.launchLng },
         },
+        orderedWaypoints: [
+          {
+            waypointId: 'wp-01',
+            sequence: 1,
+            holdSeconds: 0,
+            location: { lat: payload.waypoint1Lat, lng: payload.waypoint1Lng },
+          },
+          {
+            waypointId: 'wp-02',
+            sequence: 2,
+            holdSeconds: 0,
+            location: { lat: payload.waypoint2Lat, lng: payload.waypoint2Lng },
+          },
+        ],
+        routingMode: 'road_network_following',
         flightProfile: {
           defaultAltitudeM: 35,
           defaultSpeedMps: 4,
           maxApproachSpeedMps: 1,
         },
-        waypoints: [
-          {
-            waypointId: 'wp-01',
-            kind: 'transit',
-            label: 'patrol-point-01',
-            lat: payload.waypointLat,
-            lng: payload.waypointLng,
-            altitudeM: payload.waypointAltitudeM,
-            dwellSeconds: payload.waypointDwellSeconds,
-            headingDeg: 0,
-          },
-        ],
+        operatingProfile: payload.operatingProfile,
+        implicitReturnToLaunch: true,
         demoMode: false,
       }),
     onSuccess: async (mission) => {
@@ -93,13 +89,14 @@ export function PlannerPage() {
     defaultValues: {
       organizationId: choices[0]?.organizationId ?? '',
       siteId: '',
-      missionName: 'security-patrol-demo',
+      missionName: 'patrol-demo',
+      operatingProfile: 'outdoor_gps_patrol',
       launchLat: 25.03391,
       launchLng: 121.56452,
-      waypointLat: 25.03441,
-      waypointLng: 121.56501,
-      waypointAltitudeM: 35,
-      waypointDwellSeconds: 8,
+      waypoint1Lat: 25.03412,
+      waypoint1Lng: 121.56472,
+      waypoint2Lat: 25.03441,
+      waypoint2Lng: 121.56501,
     },
   })
 
@@ -111,7 +108,7 @@ export function PlannerPage() {
       await planMission.mutateAsync(values)
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
-      setError('root', { message: formatApiError(detail, '建立任務失敗，請檢查場域與路徑資料。') })
+      setError('root', { message: formatApiError(detail, '任務建立失敗，請稍後再試。') })
     }
   })
 
@@ -119,7 +116,7 @@ export function PlannerPage() {
     return (
       <EmptyState
         title="目前沒有可寫入的組織"
-        body="請先加入具寫入權限的組織，再建立任務請求。"
+        body="請先建立組織，或確認目前帳號具備 customer_admin 權限。"
       />
     )
   }
@@ -127,9 +124,9 @@ export function PlannerPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="任務建立"
-        title="新增任務請求"
-        subtitle="用 route-owned launch point 與巡邏 waypoint 建立保全巡檢任務。起點與巡邏點屬於任務規劃輸入，實際 mission bundle 會自動閉合回到 launch point。"
+        eyebrow="Mission Planner"
+        title="建立巡邏任務"
+        subtitle="以 patrol-route 形式建立 launch point、ordered waypoints 與 operating profile。"
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -157,34 +154,42 @@ export function PlannerPage() {
               </Field>
             </div>
 
-            <Field label="任務名稱" error={errors.missionName?.message}>
-              <Input {...register('missionName')} />
-            </Field>
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="任務名稱" error={errors.missionName?.message}>
+                <Input {...register('missionName')} />
+              </Field>
+              <Field label="Operating Profile" error={errors.operatingProfile?.message}>
+                <Select {...register('operatingProfile')}>
+                  <option value="outdoor_gps_patrol">戶外 GPS 巡邏</option>
+                  <option value="indoor_no_gps">室內無 GPS 保守模式</option>
+                </Select>
+              </Field>
+            </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="起降點緯度" error={errors.launchLat?.message}>
+              <Field label="Launch 緯度" error={errors.launchLat?.message}>
                 <Input step="0.00001" type="number" {...register('launchLat')} />
               </Field>
-              <Field label="起降點經度" error={errors.launchLng?.message}>
+              <Field label="Launch 經度" error={errors.launchLng?.message}>
                 <Input step="0.00001" type="number" {...register('launchLng')} />
               </Field>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="巡邏點緯度" error={errors.waypointLat?.message}>
-                <Input step="0.00001" type="number" {...register('waypointLat')} />
+              <Field label="Waypoint 1 緯度" error={errors.waypoint1Lat?.message}>
+                <Input step="0.00001" type="number" {...register('waypoint1Lat')} />
               </Field>
-              <Field label="巡邏點經度" error={errors.waypointLng?.message}>
-                <Input step="0.00001" type="number" {...register('waypointLng')} />
+              <Field label="Waypoint 1 經度" error={errors.waypoint1Lng?.message}>
+                <Input step="0.00001" type="number" {...register('waypoint1Lng')} />
               </Field>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="巡邏點高度（公尺）" error={errors.waypointAltitudeM?.message}>
-                <Input step="1" type="number" {...register('waypointAltitudeM')} />
+              <Field label="Waypoint 2 緯度" error={errors.waypoint2Lat?.message}>
+                <Input step="0.00001" type="number" {...register('waypoint2Lat')} />
               </Field>
-              <Field label="停留秒數" error={errors.waypointDwellSeconds?.message}>
-                <Input step="1" type="number" {...register('waypointDwellSeconds')} />
+              <Field label="Waypoint 2 經度" error={errors.waypoint2Lng?.message}>
+                <Input step="0.00001" type="number" {...register('waypoint2Lng')} />
               </Field>
             </div>
 
@@ -196,18 +201,18 @@ export function PlannerPage() {
 
             <div className="flex justify-end">
               <ActionButton disabled={planMission.isPending} type="submit">
-                {planMission.isPending ? '建立中…' : '送出任務請求'}
+                {planMission.isPending ? '建立中' : '建立任務'}
               </ActionButton>
             </div>
           </form>
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">工作區說明</p>
-          <div className="mt-4 space-y-4 text-sm text-chrome-700">
-            <p>這個任務建立頁面只要求 launch point 與巡邏 waypoint，不再要求 viewpoint。</p>
-            <p>route geometry 仍由 internal 在控制平面審核與發布，mission bundle 會固定採 implicit return-to-launch。</p>
-            <p>鏡頭控制屬於執行期能力，不是規劃期資料模型的一部分。</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Planner Notes</p>
+          <div className="mt-4 space-y-3 text-sm text-chrome-700">
+            <p>戶外 GPS 巡邏會以 launch point 與 ordered waypoints 產生 mission.kmz。</p>
+            <p>系統會自動啟用 implicit return-to-launch，因此不需要顯式新增最後一點回到 launch。</p>
+            <p>室內 profile 只保留保守模式，不承諾 waypoint autonomy。</p>
           </div>
         </Panel>
       </div>

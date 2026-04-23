@@ -6,7 +6,6 @@ services:
   - type: web
     name: four-wall-api-staging
     runtime: docker
-    region: singapore
     rootDir: planner-server
     healthCheckPath: /healthz
     autoDeployTrigger: checksPass
@@ -39,10 +38,9 @@ services:
   - type: web
     name: four-wall-api
     runtime: docker
-    region: singapore
     rootDir: planner-server
     healthCheckPath: /healthz
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: "off"
     envVars:
       - key: BUILDING_ROUTE_ENVIRONMENT
         value: production
@@ -75,10 +73,6 @@ services:
     rootDir: web-app
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
     autoDeployTrigger: checksPass
     pullRequestPreviewsEnabled: true
     envVars:
@@ -86,8 +80,6 @@ services:
         sync: false
       - key: VITE_APP_ENVIRONMENT
         value: staging
-      - key: VITE_GOOGLE_MAPS_API_KEY
-        sync: false
 
   - type: web
     name: four-wall-web
@@ -95,16 +87,10 @@ services:
     rootDir: web-app
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: "off"
     pullRequestPreviewsEnabled: true
     envVars:
       - key: VITE_API_BASE_URL
         sync: false
       - key: VITE_APP_ENVIRONMENT
         value: production
-      - key: VITE_GOOGLE_MAPS_API_KEY
-        sync: false

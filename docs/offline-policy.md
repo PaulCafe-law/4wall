@@ -14,7 +14,8 @@ The server is required for planning and artifact retrieval before flight, but no
 ## Upload Backlog
 
 - Flight events and telemetry batches are queued locally on failure.
-- Backlog retries use exponential backoff.
+- The current beta implementation retries on the next enqueue/flush opportunity and preserves the queue on disk.
+- WorkManager-based scheduled retry remains a hardening item, not a shipped guarantee in this sprint.
 - Operator can export logs if upload remains blocked.
 
 ## Unsafe Conditions

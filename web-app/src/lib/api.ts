@@ -197,34 +197,30 @@ export interface MissionPlanPayload {
   siteId: string
   missionName: string
   launchPoint: {
-    lat: number
-    lng: number
-  }
-  targetBuilding?: {
-    buildingId: string
+    launchPointId: string
     label: string
+    location: {
+      lat: number
+      lng: number
+    }
   }
+  orderedWaypoints: Array<{
+    waypointId: string
+    sequence: number
+    holdSeconds: number
+    location: {
+      lat: number
+      lng: number
+    }
+  }>
   routingMode: string
-  corridorPolicy: {
-    defaultHalfWidthM: number
-    maxHalfWidthM: number
-    branchConfirmRadiusM: number
-  }
   flightProfile: {
     defaultAltitudeM: number
     defaultSpeedMps: number
     maxApproachSpeedMps: number
   }
-  waypoints: Array<{
-    waypointId?: string
-    kind?: 'transit' | 'hold'
-    label?: string
-    lat: number
-    lng: number
-    altitudeM: number
-    headingDeg?: number
-    dwellSeconds?: number
-  }>
+  operatingProfile: 'outdoor_gps_patrol' | 'indoor_no_gps'
+  implicitReturnToLaunch: boolean
   demoMode: boolean
 }
 

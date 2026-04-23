@@ -26,7 +26,7 @@ export function useOrganizationChoices(mode: 'read' | 'write' = 'read') {
       }))
     : membershipIds.map((organizationId, index) => ({
         organizationId,
-        name: membershipIds.length === 1 ? '目前組織' : `組織 ${index + 1}`,
+        name: membershipIds.length === 1 ? 'Current organization' : `Organization ${index + 1}`,
       }))
 
   return {

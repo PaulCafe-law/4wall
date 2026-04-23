@@ -1,4 +1,5 @@
-from app.models import Mission
+from datetime import datetime, timezone
+
 from tests.helpers import login_web, seed_organization, seed_user, valid_request_payload
 
 
@@ -67,155 +68,136 @@ def test_mission_list_only_returns_current_org_records(client, session_factory) 
     missions = list_response.json()
     assert len(missions) == 1
     assert missions[0]["organizationId"] == org_a_id
-    assert missions[0]["deliveryStatus"] == "published"
-    assert missions[0]["publishedAt"] is not None
-    assert missions[0]["failureReason"] is None
-    assert missions[0]["reportStatus"] == "not_started"
-    assert missions[0]["eventCount"] == 0
+    assert missions[0]["operatingProfile"] == "outdoor_gps_patrol"
+    assert missions[0]["waypointCount"] == 2
+    assert missions[0]["implicitReturnToLaunch"] is True
+    assert missions[0]["launchPoint"]["label"] == "tower-a-launch"
 
 
-def test_mission_detail_includes_delivery_metadata_and_artifacts(client, session_factory) -> None:
+def test_mission_detail_includes_patrol_route_summary(client, session_factory) -> None:
     with session_factory() as session:
-        org = seed_organization(session, name="Delivery Org")
-        org_id = org.id
+        organization = seed_organization(session, name="Mission Detail Org")
+        organization_id = organization.id
         seed_user(
             session,
-            email="admin@delivery.test",
+            email="admin@mission-detail.test",
             password=PASSWORD,
-            org_roles=[(org_id, "customer_admin")],
+            org_roles=[(organization_id, "customer_admin")],
         )
         session.commit()
 
-    headers, _ = login_web(client, email="admin@delivery.test", password=PASSWORD)
+    headers, _ = login_web(client, email="admin@mission-detail.test", password=PASSWORD)
     site_response = client.post(
         "/v1/sites",
         headers=headers,
         json={
-            "organizationId": org_id,
-            "name": "Delivery Site",
-            "address": "Taipei",
-            "location": {"lat": 25.03391, "lng": 121.56452},
+            "organizationId": organization_id,
+            "name": "Mission Detail Site",
+            "address": "Taichung",
+            "location": {"lat": 24.1477, "lng": 120.6736},
             "notes": "",
         },
     )
     assert site_response.status_code == 200
 
     payload = valid_request_payload()
-    payload["organizationId"] = org_id
+    payload["organizationId"] = organization_id
     payload["siteId"] = site_response.json()["siteId"]
     plan_response = client.post("/v1/missions/plan", headers=headers, json=payload)
+    assert plan_response.status_code == 200, plan_response.text
 
-    assert plan_response.status_code == 200
     mission_id = plan_response.json()["missionId"]
-
     detail_response = client.get(f"/v1/missions/{mission_id}", headers=headers)
 
-    assert detail_response.status_code == 200
+    assert detail_response.status_code == 200, detail_response.text
     detail = detail_response.json()
-    assert detail["delivery"]["state"] == "published"
-    assert detail["delivery"]["publishedAt"] is not None
-    assert detail["delivery"]["failureReason"] is None
-    assert [artifact["artifactName"] for artifact in detail["artifacts"]] == ["mission.kmz", "mission_meta.json"]
-    assert all(artifact["publishedAt"] for artifact in detail["artifacts"])
-    assert detail["reportStatus"] == "not_started"
-    assert detail["eventCount"] == 0
-    assert detail["latestReport"] is None
-    assert detail["events"] == []
-    assert detail["executionSummary"] == {
-        "missionId": mission_id,
-        "phase": "draft",
-        "telemetryFreshness": "missing",
-        "lastTelemetryAt": None,
-        "lastImageryAt": None,
-        "reportStatus": "not_started",
-        "eventCount": 0,
-        "failureReason": None,
-    }
+    assert detail["routeMode"] == "road_network_following"
+    assert detail["operatingProfile"] == "outdoor_gps_patrol"
+    assert detail["waypointCount"] == 2
+    assert detail["implicitReturnToLaunch"] is True
+    assert detail["launchPoint"]["label"] == "tower-a-launch"
 
 
-def test_mission_detail_returns_failure_reason_for_failed_mission(client, session_factory) -> None:
+def test_mission_detail_includes_execution_summary_from_latest_flight_event(
+    client,
+    session_factory,
+    auth_headers,
+) -> None:
     with session_factory() as session:
-        org = seed_organization(session, name="Failure Org")
-        user = seed_user(
+        organization = seed_organization(session, name="Mission Execution Org")
+        organization_id = organization.id
+        seed_user(
             session,
-            email="admin@failure.test",
+            email="admin@mission-execution.test",
             password=PASSWORD,
-            org_roles=[(org.id, "customer_admin")],
+            org_roles=[(organization_id, "customer_admin")],
         )
-        mission = Mission(
-            id="msn_failed_delivery",
-            organization_id=org.id,
-            site_id=None,
-            requested_by_user_id=user.id,
-            mission_name="Failure Mission",
-            status="failed",
-            routing_mode="road_network_following",
-            bundle_version="bundle-failed",
-            demo_mode=False,
-            request_json={"missionName": "Failure Mission"},
-            response_json={"failureReason": "Route provider timed out for this site."},
-        )
-        session.add(mission)
         session.commit()
 
-    headers, _ = login_web(client, email="admin@failure.test", password=PASSWORD)
-    detail_response = client.get("/v1/missions/msn_failed_delivery", headers=headers)
+    headers, _ = login_web(client, email="admin@mission-execution.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": organization_id,
+            "name": "Mission Execution Site",
+            "address": "Tainan",
+            "location": {"lat": 23.0, "lng": 120.2},
+            "notes": "",
+        },
+    )
+    assert site_response.status_code == 200
 
-    assert detail_response.status_code == 200
+    payload = valid_request_payload()
+    payload["organizationId"] = organization_id
+    payload["siteId"] = site_response.json()["siteId"]
+    plan_response = client.post("/v1/missions/plan", headers=headers, json=payload)
+    assert plan_response.status_code == 200, plan_response.text
+
+    mission_id = plan_response.json()["missionId"]
+    now = datetime.now(timezone.utc)
+    events_response = client.post(
+        "/v1/flights/flight-mission-detail-001/events",
+        headers=auth_headers,
+        json={
+            "missionId": mission_id,
+            "events": [
+                {
+                    "eventId": "evt-execution-001",
+                    "type": "MISSION_STAGE_CHANGED",
+                    "timestamp": now.isoformat(),
+                    "payload": {
+                        "stage": "TRANSIT",
+                        "executionState": "transit",
+                        "uploadState": "uploaded",
+                        "waypointProgress": "1 / 2",
+                        "plannedOperatingProfile": "outdoor_gps_patrol",
+                        "executedOperatingProfile": "indoor_no_gps",
+                        "executionMode": "manual_pilot",
+                        "cameraStreamState": "streaming",
+                        "recordingState": "recording",
+                        "landingPhase": "confirmation_required",
+                        "fallbackReason": "",
+                        "statusNote": "Mission started",
+                        "missionUploaded": "true",
+                    },
+                }
+            ],
+        },
+    )
+    assert events_response.status_code == 202, events_response.text
+
+    detail_response = client.get(f"/v1/missions/{mission_id}", headers=headers)
+    assert detail_response.status_code == 200, detail_response.text
     detail = detail_response.json()
-    assert detail["delivery"] == {
-        "state": "failed",
-        "publishedAt": None,
-        "failureReason": "Route provider timed out for this site.",
-    }
-    assert detail["artifacts"] == []
-    assert detail["reportStatus"] == "not_started"
-    assert detail["eventCount"] == 0
-    assert detail["executionSummary"] == {
-        "missionId": "msn_failed_delivery",
-        "phase": "failed",
-        "telemetryFreshness": "missing",
-        "lastTelemetryAt": None,
-        "lastImageryAt": None,
-        "reportStatus": "not_started",
-        "eventCount": 0,
-        "failureReason": "Route provider timed out for this site.",
-    }
-
-
-def test_mission_list_surfaces_failure_reason_for_failed_delivery(client, session_factory) -> None:
-    with session_factory() as session:
-        org = seed_organization(session, name="Failure Summary Org")
-        user = seed_user(
-            session,
-            email="admin@failure-summary.test",
-            password=PASSWORD,
-            org_roles=[(org.id, "customer_admin")],
-        )
-        mission = Mission(
-            id="msn_failed_summary",
-            organization_id=org.id,
-            site_id=None,
-            requested_by_user_id=user.id,
-            mission_name="Summary Failure Mission",
-            status="failed",
-            routing_mode="road_network_following",
-            bundle_version="bundle-failed",
-            demo_mode=False,
-            request_json={"missionName": "Summary Failure Mission"},
-            response_json={"failureReason": "Planner could not publish artifacts."},
-        )
-        session.add(mission)
-        session.commit()
-
-    headers, _ = login_web(client, email="admin@failure-summary.test", password=PASSWORD)
-    list_response = client.get("/v1/missions", headers=headers)
-
-    assert list_response.status_code == 200
-    missions = list_response.json()
-    assert len(missions) == 1
-    assert missions[0]["deliveryStatus"] == "failed"
-    assert missions[0]["publishedAt"] is None
-    assert missions[0]["failureReason"] == "Planner could not publish artifacts."
-    assert missions[0]["reportStatus"] == "not_started"
-    assert missions[0]["eventCount"] == 0
+    assert detail["executionSummary"]["flightId"] == "flight-mission-detail-001"
+    assert detail["executionSummary"]["uploadState"] == "uploaded"
+    assert detail["executionSummary"]["executionState"] == "transit"
+    assert detail["executionSummary"]["waypointProgress"] == "1 / 2"
+    assert detail["executionSummary"]["plannedOperatingProfile"] == "outdoor_gps_patrol"
+    assert detail["executionSummary"]["executedOperatingProfile"] == "indoor_no_gps"
+    assert detail["executionSummary"]["executionMode"] == "manual_pilot"
+    assert detail["executionSummary"]["cameraStreamState"] == "streaming"
+    assert detail["executionSummary"]["recordingState"] == "recording"
+    assert detail["executionSummary"]["landingPhase"] == "confirmation_required"
+    assert detail["executionSummary"]["statusNote"] == "Mission started"

@@ -1,5 +1,4 @@
 import { screen } from '@testing-library/react'
-import { vi } from 'vitest'
 
 import { BillingPage } from './BillingPage'
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils'
@@ -9,7 +8,7 @@ describe('BillingPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('keeps invoice creation hidden for customer roles', async () => {
+  it('客戶角色在沒有資料時看得到繁中空狀態', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify([]), {
         status: 200,
@@ -34,11 +33,11 @@ describe('BillingPage', () => {
       }),
     })
 
-    expect(await screen.findByText('目前還沒有帳單')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '建立帳單' })).not.toBeInTheDocument()
+    expect(await screen.findByText('尚無帳單')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '新增帳單' })).not.toBeInTheDocument()
   })
 
-  it('shows billing status clarity for internal users', async () => {
+  it('內部角色可以看到逾期標記與建立按鈕', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
       if (url.includes('/v1/billing/invoices')) {
@@ -56,9 +55,9 @@ describe('BillingPage', () => {
               status: 'overdue',
               paymentInstructions: 'Bank transfer',
               attachmentRefs: [],
-              notes: 'Follow up with finance.',
-              paymentNote: 'Awaiting transfer confirmation.',
-              receiptRef: 'RCT-001',
+              notes: 'Follow up',
+              paymentNote: '',
+              receiptRef: '',
               voidReason: '',
               createdAt: '2026-04-10T00:00:00Z',
               updatedAt: '2026-04-10T00:00:00Z',
@@ -101,77 +100,7 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('Bank transfer')).toBeInTheDocument()
-    expect(screen.getByText('Awaiting transfer confirmation.')).toBeInTheDocument()
-    expect(screen.getByText('RCT-001')).toBeInTheDocument()
-    expect(screen.getByText('Follow up with finance.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '建立帳單' })).toBeInTheDocument()
-  })
-
-  it('shows a due-soon reminder before invoices become overdue', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = String(input)
-      if (url.includes('/v1/billing/invoices')) {
-        return new Response(
-          JSON.stringify([
-            {
-              invoiceId: 'inv-2',
-              organizationId: 'org-1',
-              invoiceNumber: 'INV-002',
-              currency: 'TWD',
-              subtotal: 2000,
-              tax: 100,
-              total: 2100,
-              dueDate: '2099-04-20T00:00:00Z',
-              status: 'invoice_due',
-              paymentInstructions: 'Bank transfer',
-              attachmentRefs: [],
-              notes: '',
-              paymentNote: '',
-              receiptRef: '',
-              voidReason: '',
-              createdAt: '2099-04-10T00:00:00Z',
-              updatedAt: '2099-04-10T00:00:00Z',
-            },
-          ]),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        )
-      }
-      if (url.includes('/v1/organizations')) {
-        return new Response(
-          JSON.stringify([
-            {
-              organizationId: 'org-1',
-              name: 'Org One',
-              slug: 'org-one',
-              memberCount: 1,
-              siteCount: 1,
-            },
-          ]),
-          {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          },
-        )
-      }
-      return new Response('not found', { status: 404 })
-    })
-
-    renderWithProviders(<BillingPage />, {
-      auth: createAuthValue({
-        session: createSession({
-          globalRoles: ['ops'],
-          memberships: [],
-        }),
-        isInternal: true,
-      }),
-    })
-
-    expect(await screen.findByText('目前有 1 張帳單即將到期')).toBeInTheDocument()
-    expect(screen.getByText('請提早確認付款進度，避免這些帳單變成逾期案件。')).toBeInTheDocument()
-    expect(screen.getByText('目前有 1 張帳單即將到期，建議提前確認付款進度。')).toBeInTheDocument()
+    expect(screen.getAllByText('逾期')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: '新增帳單' })).toBeInTheDocument()
   })
 })

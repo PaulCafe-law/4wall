@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 
 import {
@@ -10,177 +10,51 @@ import {
   Panel,
   ShellSection,
   StatusBadge,
-  formatDateTime,
+  formatDate,
 } from '../../components/ui'
 import { api, ApiError, type ControlIntentPayload } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import {
   formatApiError,
-  formatBoolean,
+  formatCameraStreamState,
   formatControlAction,
   formatControlMode,
+  formatExecutionMode,
+  formatExecutionState,
   formatFlightAlert,
   formatFlightState,
-  formatStatus,
+  formatLandingPhase,
+  formatOperatingProfile,
+  formatRecordingState,
+  formatUploadState,
 } from '../../lib/presentation'
-import type {
-  ControlIntent,
-  ControlIntentAction,
-  LiveFlightDetail,
-  LiveFlightSummary,
-  TelemetryFreshness,
-  VideoAvailability,
-} from '../../lib/types'
+import type { ControlIntentAction, LiveFlightDetail, LiveFlightSummary } from '../../lib/types'
 
 const controlActions: Array<{ action: ControlIntentAction; label: string }> = [
-  { action: 'request_remote_control', label: '申請遠端接管' },
-  { action: 'release_remote_control', label: '釋放遠端接管' },
-  { action: 'pause_mission', label: '暫停任務' },
-  { action: 'resume_mission', label: '恢復任務' },
-  { action: 'hold', label: '保持待命' },
-  { action: 'return_to_home', label: '返航' },
+  { action: 'request_remote_control', label: 'Request Remote Control' },
+  { action: 'release_remote_control', label: 'Release Remote Control' },
+  { action: 'pause_mission', label: 'Pause Mission' },
+  { action: 'resume_mission', label: 'Resume Mission' },
+  { action: 'hold', label: 'Hold' },
+  { action: 'return_to_home', label: 'Return to Home' },
 ]
 
-const freshnessLabels: Record<TelemetryFreshness, string> = {
-  fresh: '遙測正常',
-  stale: '遙測延遲',
-  missing: '遙測缺失',
+function executionProgress(flight: { executionSummary: LiveFlightSummary['executionSummary'] }) {
+  if (flight.executionSummary?.executionMode === 'manual_pilot') {
+    return 'Manual pilot active'
+  }
+  return flight.executionSummary?.waypointProgress ?? 'No waypoint progress'
 }
 
-const videoLabels: Record<VideoAvailability, string> = {
-  live: '影像正常',
-  stale: '影像延遲',
-  unavailable: '影像不可用',
-}
-
-function subtleBadgeClass(kind: 'good' | 'warning' | 'danger' | 'neutral') {
-  if (kind === 'good') {
-    return 'rounded-full bg-moss-300/40 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-moss-600'
+function flightStatus(flight: LiveFlightSummary): string {
+  if (flight.alerts.length > 0) {
+    return 'failed'
   }
-  if (kind === 'warning') {
-    return 'rounded-full bg-amber-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-amber-800'
+  if (flight.executionSummary?.executionState === 'completed') {
+    return 'ready'
   }
-  if (kind === 'danger') {
-    return 'rounded-full bg-red-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-red-700'
-  }
-  return 'rounded-full bg-chrome-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700'
-}
-
-function freshnessBadgeClass(freshness: TelemetryFreshness) {
-  if (freshness === 'fresh') {
-    return subtleBadgeClass('good')
-  }
-  if (freshness === 'stale') {
-    return subtleBadgeClass('warning')
-  }
-  return subtleBadgeClass('danger')
-}
-
-function videoBadgeClass(status: VideoAvailability) {
-  if (status === 'live') {
-    return subtleBadgeClass('good')
-  }
-  if (status === 'stale') {
-    return subtleBadgeClass('warning')
-  }
-  return subtleBadgeClass('danger')
-}
-
-function intentStatusClass(status: ControlIntent['status']) {
-  if (status === 'accepted') {
-    return subtleBadgeClass('good')
-  }
-  if (status === 'rejected' || status === 'superseded') {
-    return subtleBadgeClass('danger')
-  }
-  return subtleBadgeClass('warning')
-}
-
-function formatAgeSeconds(ageSeconds: number | null): string {
-  if (ageSeconds == null) {
-    return '未知'
-  }
-  if (ageSeconds < 60) {
-    return `${ageSeconds} 秒`
-  }
-  const minutes = Math.floor(ageSeconds / 60)
-  if (minutes < 60) {
-    return `${minutes} 分`
-  }
-  const hours = Math.floor(minutes / 60)
-  return `${hours} 小時`
-}
-
-function buildOperatingSummary(flight: LiveFlightDetail) {
-  const reasons: string[] = []
-
-  if (flight.telemetryFreshness !== 'fresh') {
-    reasons.push(freshnessLabels[flight.telemetryFreshness])
-  }
-  if (flight.video.status !== 'live') {
-    reasons.push(videoLabels[flight.video.status])
-  }
-  if (!flight.controlLease.observerReady) {
-    reasons.push('觀察員尚未確認')
-  }
-  if (!flight.controlLease.heartbeatHealthy) {
-    reasons.push('租約心跳異常')
-  }
-
-  if (reasons.length === 0) {
-    return {
-      title: '監看模式運作正常',
-      body: '遙測、影像新鮮度與租約健康度都在可接受範圍內。這個頁面仍維持在飛行關鍵迴路之外，只提供監看與任務層級意圖。',
-      tone: 'good' as const,
-    }
-  }
-
-  return {
-    title: '監看模式已降級',
-    body: `目前因 ${reasons.join('、')} 而降級。所有判斷仍應以觀察員確認與 Android 端安全處理為準。`,
-    tone: 'warning' as const,
-  }
-}
-
-function buildReportingSummary(flight: LiveFlightDetail) {
-  if (flight.reportStatus === 'ready' && flight.eventCount === 0) {
-    return {
-      title: '已產出無異常巡檢報表',
-      body: '此任務已有報表檔，且未記錄異常事件。可前往任務詳情匯出 clean-pass 報表。',
-      tone: 'good' as const,
-    }
-  }
-  if (flight.reportStatus === 'ready') {
-    return {
-      title: '巡檢報表已就緒',
-      body:
-        flight.reportSummary ??
-        `此任務已有 ${flight.eventCount} 筆事件可供檢視證據。`,
-      tone: 'warning' as const,
-    }
-  }
-  if (flight.reportStatus === 'failed') {
-    return {
-      title: '報表產生失敗',
-      body:
-        flight.reportSummary ??
-        '報表流程未產出可用的任務報表。請前往任務詳情重新執行 demo 分析。',
-      tone: 'danger' as const,
-    }
-  }
-  if (flight.reportStatus === 'queued' || flight.reportStatus === 'generating') {
-    return {
-      title: '報表產生中',
-      body: '分析流程已啟動，但最終報表檔案尚未就緒。',
-      tone: 'warning' as const,
-    }
-  }
-  return {
-    title: '尚未產生報表',
-    body: '此任務尚未具備巡檢報表。報表生成仍屬 planner-server 的非飛行關鍵責任。',
-    tone: 'neutral' as const,
-  }
+  return 'planning'
 }
 
 export function LiveOpsPage() {
@@ -228,46 +102,54 @@ export function LiveOpsPage() {
   })
 
   const selectedFlight = detailQuery.data
-  const telemetryRiskCount = flights.filter((flight) => flight.telemetryFreshness !== 'fresh').length
-  const videoRiskCount = flights.filter((flight) => flight.video.status !== 'live').length
+  const remoteActiveCount = flights.filter(
+    (flight) => flight.controlLease.mode === 'remote_control_active',
+  ).length
   const alertCount = flights.filter((flight) => flight.alerts.length > 0).length
-  const reportFailureCount = flights.filter((flight) => flight.reportStatus === 'failed').length
+  const manualPilotCount = flights.filter(
+    (flight) => flight.executionSummary?.executionMode === 'manual_pilot',
+  ).length
 
-  async function onRequestAction(action: ControlIntentAction) {
+  const intentError =
+    requestControlIntent.error instanceof ApiError
+      ? formatApiError(requestControlIntent.error.detail, requestControlIntent.error.detail)
+      : null
+
+  const onRequestAction = async (action: ControlIntentAction) => {
     if (!effectiveFlightId) {
       return
     }
     await requestControlIntent.mutateAsync({
       action,
-      reason: `${auth.user?.displayName ?? '內部使用者'} 透過即時營運頁提出「${formatControlAction(action)}」請求。`,
+      reason: `${formatControlAction(action)} / ${auth.user?.displayName ?? 'web user'}`,
     })
   }
 
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="僅限內部"
-        title="即時營運"
-        subtitle="在不把瀏覽器變成飛行控制介面的前提下，監看遙測、影像新鮮度、租約狀態與任務報表脈絡。"
+        eyebrow="Live Ops"
+        title="Flight Operations"
+        subtitle="Monitor Android execution state, patrol progress, manual pilot sessions, landing phase, and control intents without moving flight authority into web."
       />
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Metric label="飛行工作階段" value={flights.length} hint="目前納入監看的 monitor-only 工作階段。" />
-        <Metric label="遙測風險" value={telemetryRiskCount} hint="遙測延遲或缺失的工作階段。" />
-        <Metric label="影像風險" value={videoRiskCount} hint="影像延遲或不可用的工作階段。" />
-        <Metric label="報表阻塞" value={Math.max(reportFailureCount, alertCount)} hint="報表失敗與目前存在的飛行告警。" />
+      <div className="grid gap-4 md:grid-cols-4">
+        <Metric label="Flight Sessions" value={flights.length} hint="Active Android flight sessions" />
+        <Metric label="Remote Control" value={remoteActiveCount} hint="Remote control leases currently active" />
+        <Metric label="Alerts" value={alertCount} hint="Bridge, battery, telemetry, or execution alerts" />
+        <Metric label="Manual Pilot" value={manualPilotCount} hint="Sessions running direct operator pilot mode" />
       </div>
 
       {flightsQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在載入即時飛行工作階段…</p>
+          <p className="text-sm text-chrome-700">Loading live flight sessions…</p>
         </Panel>
       ) : null}
 
       {!flightsQuery.isLoading && flights.length === 0 ? (
         <EmptyState
-          title="目前沒有可用的即時飛行工作階段"
-          body="在 Android bridge 事件、遙測與影像中繼資料開始流入 planner-server 前，即時營運頁會保持空白。"
+          title="No live flights"
+          body="Android has not reported any live flight sessions yet. Start a flight session or replay telemetry from the field device."
         />
       ) : null}
 
@@ -278,15 +160,15 @@ export function LiveOpsPage() {
             {selectedFlight ? (
               <>
                 <FlightSummaryPanel flight={selectedFlight} />
-                <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-                  <FlightMapPanel flight={selectedFlight} />
-                  <VideoAndLeaseColumn flight={selectedFlight} />
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+                  <FlightTelemetryPanel flight={selectedFlight} />
+                  <VideoAndLeasePanel flight={selectedFlight} />
                 </div>
-                <ReportingPanel flight={selectedFlight} />
                 <ControlIntentPanel
+                  canRequestControl={auth.isInternal}
+                  errorDetail={intentError}
                   flight={selectedFlight}
                   intents={intentsQuery.data ?? []}
-                  errorDetail={requestControlIntent.error instanceof ApiError ? requestControlIntent.error.detail : undefined}
                   isPending={requestControlIntent.isPending}
                   onRequestAction={onRequestAction}
                 />
@@ -311,7 +193,7 @@ function FlightList({
 }) {
   return (
     <Panel>
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">飛行工作階段</p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Flight Sessions</p>
       <div className="mt-4 grid gap-3">
         {flights.map((flight) => (
           <button
@@ -323,24 +205,17 @@ function FlightList({
                 ? 'w-full rounded-2xl border border-ember-300 bg-white px-4 py-4 text-left'
                 : 'w-full rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-4 text-left transition hover:border-chrome-400'
             }
-            aria-label={`select-flight-${flight.flightId}`}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="break-words font-medium text-chrome-950">{flight.missionName}</h2>
-                <p className="mt-1 text-sm text-chrome-700">{flight.siteName ?? '未知場域'}</p>
-              </div>
-              <span className={flight.alerts.length > 0 ? subtleBadgeClass('danger') : subtleBadgeClass('neutral')}>
-                {flight.alerts.length > 0 ? `${flight.alerts.length} 則告警` : '穩定'}
-              </span>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="min-w-0 break-words font-medium text-chrome-950">{flight.missionName}</h2>
+              <StatusBadge status={flightStatus(flight)} />
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className={freshnessBadgeClass(flight.telemetryFreshness)}>{freshnessLabels[flight.telemetryFreshness]}</span>
-              <span className={videoBadgeClass(flight.video.status)}>{videoLabels[flight.video.status]}</span>
-              <StatusBadge status={flight.reportStatus} />
-            </div>
-            <p className="mt-3 text-xs text-chrome-500">
-              {flight.eventCount} 筆事件｜報表 {formatStatus(flight.reportStatus)}
+            <p className="mt-1 text-sm text-chrome-700">{flight.siteName ?? 'No site assigned'}</p>
+            <p className="mt-2 text-xs text-chrome-500">
+              {formatOperatingProfile(flight.executionSummary?.executedOperatingProfile ?? flight.operatingProfile)}
+            </p>
+            <p className="mt-1 text-xs text-chrome-500">
+              {formatExecutionMode(flight.executionSummary?.executionMode)} / {executionProgress(flight)}
             </p>
           </button>
         ))}
@@ -350,212 +225,139 @@ function FlightList({
 }
 
 function FlightSummaryPanel({ flight }: { flight: LiveFlightDetail }) {
-  const operatingSummary = buildOperatingSummary(flight)
-
   return (
     <Panel>
       <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-500">任務脈絡</p>
-          <h2 className="mt-2 break-words font-display text-3xl font-semibold text-chrome-950">{flight.missionName}</h2>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-ember-500">Execution Summary</p>
+          <h2 className="mt-2 break-words font-display text-3xl font-semibold text-chrome-950">
+            {flight.missionName}
+          </h2>
           <p className="mt-2 text-sm text-chrome-700">
-            {flight.siteName ?? '未知場域'} / 飛行工作階段 {flight.flightId}
+            {flight.siteName ?? 'No site'} / Flight {flight.flightId}
+          </p>
+          <p className="mt-2 text-sm text-chrome-700">
+            Planned {formatOperatingProfile(flight.executionSummary?.plannedOperatingProfile ?? flight.operatingProfile)}
+            {' / '}
+            Executed {formatOperatingProfile(flight.executionSummary?.executedOperatingProfile ?? flight.operatingProfile)}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <span className={freshnessBadgeClass(flight.telemetryFreshness)}>{freshnessLabels[flight.telemetryFreshness]}</span>
-          <span className={videoBadgeClass(flight.video.status)}>{videoLabels[flight.video.status]}</span>
-          <span className={subtleBadgeClass(flight.controlLease.remoteControlEnabled ? 'good' : 'neutral')}>
-            {flight.controlLease.remoteControlEnabled ? '租約允許遠端意圖' : '租約僅供監看'}
-          </span>
+          {flight.alerts.length === 0 ? (
+            <span className="rounded-full bg-moss-300/40 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-moss-500">
+              Healthy
+            </span>
+          ) : (
+            flight.alerts.map((alert) => (
+              <span
+                key={alert}
+                className="rounded-full bg-amber-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-amber-800"
+              >
+                {formatFlightAlert(alert)}
+              </span>
+            ))
+          )}
         </div>
       </div>
 
-      <div
-        className={
-          operatingSummary.tone === 'good'
-            ? 'mt-5 rounded-2xl border border-moss-200 bg-moss-50/80 px-4 py-4'
-            : 'mt-5 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-4'
-        }
-      >
-        <p className="font-medium text-chrome-950">{operatingSummary.title}</p>
-        <p className="mt-2 text-sm text-chrome-700">{operatingSummary.body}</p>
-      </div>
-
-      <div className="mt-5 grid gap-4 md:grid-cols-4">
+      <div className="mt-5 grid gap-4 md:grid-cols-4 xl:grid-cols-8">
         <Metric
-          label="電量"
-          value={flight.latestTelemetry ? `${flight.latestTelemetry.batteryPct}%` : '未知'}
-          hint={flight.latestTelemetry ? formatFlightState(flight.latestTelemetry.flightState) : '遙測缺失'}
+          label="Battery"
+          value={flight.latestTelemetry ? `${flight.latestTelemetry.batteryPct}%` : '--'}
+          hint={flight.latestTelemetry ? formatFlightState(flight.latestTelemetry.flightState) : 'No telemetry'}
         />
-        <Metric label="高度" value={flight.latestTelemetry ? `${flight.latestTelemetry.altitudeM.toFixed(1)} m` : '未知'} />
-        <Metric label="地速" value={flight.latestTelemetry ? `${flight.latestTelemetry.groundSpeedMps.toFixed(1)} m/s` : '未知'} />
+        <Metric label="Altitude" value={flight.latestTelemetry ? `${flight.latestTelemetry.altitudeM.toFixed(1)} m` : '--'} />
         <Metric
-          label="告警"
-          value={flight.alerts.length}
-          hint={flight.alerts.length > 0 ? flight.alerts.map(formatFlightAlert).join('、') : '目前沒有告警'}
+          label="Ground Speed"
+          value={flight.latestTelemetry ? `${flight.latestTelemetry.groundSpeedMps.toFixed(1)} m/s` : '--'}
         />
-      </div>
-
-      <div className="mt-5">
-        <DataList
-          rows={[
-            { label: '組織', value: flight.organizationId },
-            { label: '任務', value: flight.missionId },
-            { label: '場域', value: flight.siteName ?? '未知場域' },
-            { label: '最近一次遙測', value: flight.lastTelemetryAt ? formatDateTime(flight.lastTelemetryAt) : '尚無遙測資料' },
-            { label: '最近一次影像', value: flight.lastImageryAt ? formatDateTime(flight.lastImageryAt) : '尚無影像資料' },
-            {
-              label: '遙測新鮮度',
-              value: `${freshnessLabels[flight.telemetryFreshness]} / ${formatAgeSeconds(flight.telemetryAgeSeconds)}`,
-            },
-            { label: '最近一次飛行事件', value: flight.lastEventAt ? formatDateTime(flight.lastEventAt) : '尚無飛行事件' },
-            { label: '租約模式', value: formatControlMode(flight.controlLease.mode) },
-            {
-              label: '執行階段',
-              value: flight.executionSummary ? formatStatus(flight.executionSummary.phase) : '尚未建立執行摘要',
-            },
-          ]}
-        />
+        <Metric label="Upload" value={formatUploadState(flight.executionSummary?.uploadState)} />
+        <Metric label="State" value={formatExecutionState(flight.executionSummary?.executionState)} />
+        <Metric label="Mode" value={formatExecutionMode(flight.executionSummary?.executionMode)} />
+        <Metric label="Camera" value={formatCameraStreamState(flight.executionSummary?.cameraStreamState)} />
+        <Metric label="Recording" value={formatRecordingState(flight.executionSummary?.recordingState)} />
       </div>
     </Panel>
   )
 }
 
-function ReportingPanel({ flight }: { flight: LiveFlightDetail }) {
-  const summary = buildReportingSummary(flight)
-  const toneClass =
-    summary.tone === 'good'
-      ? 'border border-moss-200 bg-moss-50/70'
-      : summary.tone === 'danger'
-        ? 'border border-red-200 bg-red-50/70'
-        : summary.tone === 'warning'
-          ? 'border border-amber-200 bg-amber-50/70'
-          : 'border border-chrome-200 bg-chrome-50/70'
+function FlightTelemetryPanel({ flight }: { flight: LiveFlightDetail }) {
+  const execution = flight.executionSummary
+  const rows = useMemo(
+    () => [
+      { label: 'Mission', value: flight.missionId },
+      { label: 'Last Event', value: execution?.lastEventType ?? 'None' },
+      { label: 'Last Event At', value: execution?.lastEventAt ? formatDate(execution.lastEventAt) : 'None' },
+      { label: 'Progress', value: executionProgress(flight) },
+      { label: 'Landing', value: formatLandingPhase(execution?.landingPhase) },
+      { label: 'Fallback', value: execution?.fallbackReason ?? 'None' },
+      { label: 'Status Note', value: execution?.statusNote ?? 'None' },
+      { label: 'Telemetry Time', value: flight.latestTelemetry ? formatDate(flight.latestTelemetry.timestamp) : 'None' },
+      {
+        label: 'Deviation',
+        value: flight.latestTelemetry ? `${flight.latestTelemetry.corridorDeviationM.toFixed(1)} m` : '--',
+      },
+    ],
+    [execution, flight],
+  )
 
   return (
     <Panel>
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">巡檢報表</p>
-          <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">任務報表脈絡</h3>
-        </div>
-        <Link to={`/missions/${flight.missionId}`} className="text-sm text-ember-600 underline underline-offset-4">
-          開啟任務詳情
-        </Link>
-      </div>
-
-      <div className={`mt-4 rounded-2xl px-4 py-4 ${toneClass}`}>
-        <p className="font-medium text-chrome-950">{summary.title}</p>
-        <p className="mt-2 text-sm text-chrome-700">{summary.body}</p>
-      </div>
-
+      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Telemetry</p>
+      <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Execution Detail</h2>
       <div className="mt-4">
-        <DataList
-          rows={[
-            { label: '報表狀態', value: <StatusBadge status={flight.reportStatus} /> },
-            { label: '產出時間', value: flight.reportGeneratedAt ? formatDateTime(flight.reportGeneratedAt) : '尚未產出' },
-            {
-              label: '執行階段',
-              value: flight.executionSummary ? <StatusBadge status={flight.executionSummary.phase} /> : '尚未建立執行摘要',
-            },
-            { label: '事件數量', value: flight.eventCount },
-            {
-              label: '執行失敗原因',
-              value: flight.executionSummary?.failureReason ?? '目前沒有執行層級失敗原因',
-            },
-            { label: '摘要', value: flight.reportSummary ?? '尚無報表摘要' },
-          ]}
-        />
+        <DataList rows={rows} />
       </div>
     </Panel>
   )
 }
 
-function FlightMapPanel({ flight }: { flight: LiveFlightDetail }) {
-  const sample = flight.latestTelemetry
-
-  if (!sample) {
-    return (
-        <EmptyState
-          title="遙測地圖暫不可用"
-          body="目前尚未取得這個工作階段的最新遙測樣本，因此地圖維持監看用的預留狀態。"
-        />
-      )
-  }
-
-  return (
-    <Panel className="min-w-0">
-      <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">遙測地圖</p>
-      <div className="mt-4 overflow-hidden rounded-[1.5rem] border border-chrome-200 bg-chrome-50">
-        <iframe
-          title="飛行位置地圖"
-          className="h-[20rem] w-full"
-          loading="lazy"
-          src={buildMapEmbedUrl(sample.lat, sample.lng)}
-        />
-      </div>
-      <div className="mt-4">
-        <DataList
-          rows={[
-            { label: '座標', value: `${sample.lat.toFixed(5)}, ${sample.lng.toFixed(5)}` },
-            { label: '走廊偏移量', value: `${sample.corridorDeviationM.toFixed(1)} m` },
-            { label: '樣本時間', value: formatDateTime(sample.timestamp) },
-            {
-              label: '遙測新鮮度',
-              value: `${freshnessLabels[flight.telemetryFreshness]} / ${formatAgeSeconds(flight.telemetryAgeSeconds)}`,
-            },
-          ]}
-        />
-      </div>
-    </Panel>
-  )
-}
-
-function VideoAndLeaseColumn({ flight }: { flight: LiveFlightDetail }) {
+function VideoAndLeasePanel({ flight }: { flight: LiveFlightDetail }) {
   return (
     <div className="space-y-6">
       <Panel>
-        <div className="flex items-center justify-between gap-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">影像通道</p>
-          <span className={videoBadgeClass(flight.video.status)}>{videoLabels[flight.video.status]}</span>
-        </div>
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera</p>
+        <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Preview Channel</h2>
         <div className="mt-4">
           <DataList
             rows={[
-                { label: '檢視連結', value: flight.video.viewerUrl ?? '不可用' },
-                { label: '是否串流中', value: formatBoolean(flight.video.streaming) },
-                { label: '延遲', value: flight.video.latencyMs != null ? `${flight.video.latencyMs} ms` : '未知' },
-                { label: '最近一幀', value: flight.video.lastFrameAt ? formatDateTime(flight.video.lastFrameAt) : '未知' },
-                { label: '影格年齡', value: formatAgeSeconds(flight.video.ageSeconds) },
-              ]}
-            />
-          </div>
-        {flight.video.viewerUrl ? (
-          <div className="mt-4">
-            <a
-              href={flight.video.viewerUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950"
-            >
-              開啟影像檢視器
-            </a>
-          </div>
-        ) : null}
+              { label: 'Available', value: flight.video.available ? 'Yes' : 'No' },
+              { label: 'Streaming', value: flight.video.streaming ? 'Yes' : 'No' },
+              { label: 'Codec', value: flight.video.codec ?? 'Unknown' },
+              {
+                label: 'Latency',
+                value: flight.video.latencyMs !== null ? `${flight.video.latencyMs} ms` : 'Unknown',
+              },
+              {
+                label: 'Viewer',
+                value: flight.video.viewerUrl ? (
+                  <a href={flight.video.viewerUrl} target="_blank" rel="noreferrer" className="text-ember-600 underline underline-offset-4">
+                    Open Stream
+                  </a>
+                ) : (
+                  'No viewer URL'
+                ),
+              },
+            ]}
+          />
+        </div>
       </Panel>
 
       <Panel>
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">控制租約</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Control Lease</p>
+        <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Remote Ops Status</h2>
         <div className="mt-4">
           <DataList
             rows={[
-              { label: '模式', value: formatControlMode(flight.controlLease.mode) },
-              { label: '持有人', value: flight.controlLease.holder },
-              { label: '是否允許遠端意圖', value: formatBoolean(flight.controlLease.remoteControlEnabled) },
-              { label: '觀察員已確認', value: formatBoolean(flight.controlLease.observerReady) },
-              { label: '心跳健康', value: formatBoolean(flight.controlLease.heartbeatHealthy) },
-              { label: '到期時間', value: flight.controlLease.expiresAt ? formatDateTime(flight.controlLease.expiresAt) : '已釋放' },
+              { label: 'Holder', value: flight.controlLease.holder },
+              { label: 'Mode', value: formatControlMode(flight.controlLease.mode) },
+              { label: 'Remote', value: flight.controlLease.remoteControlEnabled ? 'Enabled' : 'Disabled' },
+              { label: 'Observer', value: flight.controlLease.observerReady ? 'Ready' : 'Not Ready' },
+              { label: 'Heartbeat', value: flight.controlLease.heartbeatHealthy ? 'Healthy' : 'Degraded' },
+              {
+                label: 'Expires',
+                value: flight.controlLease.expiresAt ? formatDate(flight.controlLease.expiresAt) : 'No lease expiry',
+              },
             ]}
           />
         </div>
@@ -565,71 +367,75 @@ function VideoAndLeaseColumn({ flight }: { flight: LiveFlightDetail }) {
 }
 
 function ControlIntentPanel({
+  canRequestControl,
+  errorDetail,
   flight,
   intents,
-  errorDetail,
   isPending,
   onRequestAction,
 }: {
+  canRequestControl: boolean
+  errorDetail: string | null
   flight: LiveFlightDetail
-  intents: ControlIntent[]
-  errorDetail?: string
+  intents: Array<{
+    requestId: string
+    action: ControlIntentAction
+    status: string
+    reason: string | null
+    createdAt: string
+  }>
   isPending: boolean
   onRequestAction: (action: ControlIntentAction) => Promise<void>
 }) {
   return (
     <Panel>
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">控制意圖</p>
-          <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">任務層級意圖請求</h3>
-          <p className="mt-2 max-w-3xl text-sm text-chrome-700">
-            這個頁面只記錄高階營運意圖，不會送出直接搖桿命令，也不會取代 Android 端的安全處理。
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Control Intents</p>
+          <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Lease Requests</h2>
+          <p className="mt-2 text-sm text-chrome-700">
+            Control intents stay in the ops layer. They do not move stick authority into web.
           </p>
         </div>
-        <span className={subtleBadgeClass(flight.controlLease.remoteControlEnabled ? 'good' : 'neutral')}>
-          {flight.controlLease.remoteControlEnabled ? '可送出遠端意圖' : '意圖路徑已關閉'}
-        </span>
+        {canRequestControl ? (
+          <div className="flex flex-wrap gap-2">
+            {controlActions.map((item) => (
+              <ActionButton
+                key={item.action}
+                type="button"
+                variant="secondary"
+                disabled={isPending}
+                onClick={() => {
+                  void onRequestAction(item.action)
+                }}
+              >
+                {item.label}
+              </ActionButton>
+            ))}
+          </div>
+        ) : null}
       </div>
-
-      <div className="mt-5 flex flex-wrap gap-3">
-        {controlActions.map((item) => (
-          <ActionButton
-            key={item.action}
-            type="button"
-            disabled={isPending}
-            variant={item.action === 'request_remote_control' ? 'primary' : 'secondary'}
-            onClick={() => void onRequestAction(item.action)}
-          >
-            {item.label}
-          </ActionButton>
-        ))}
-      </div>
-
-      {errorDetail ? (
-        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {formatApiError(errorDetail, '無法送出控制意圖。')}
+      {errorDetail ? <p className="mt-4 text-sm text-red-700">{errorDetail}</p> : null}
+      <div className="mt-4 grid gap-3">
+        <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+          <p className="font-medium text-chrome-950">{flight.missionName}</p>
+          <p className="mt-2 text-sm text-chrome-700">
+            Current lease mode: {formatControlMode(flight.controlLease.mode)}
+          </p>
         </div>
-      ) : null}
-
-      <div className="mt-6 grid gap-3">
         {intents.length === 0 ? (
-          <p className="text-sm text-chrome-700">這個飛行工作階段目前尚未收到控制意圖請求。</p>
+          <div className="rounded-2xl border border-dashed border-chrome-300 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
+            No control intents have been requested for this flight yet.
+          </div>
         ) : (
           intents.map((intent) => (
             <div key={intent.requestId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                <div className="min-w-0">
-                  <p className="font-medium text-chrome-950">{formatControlAction(intent.action)}</p>
-                  <p className="mt-1 text-sm text-chrome-700">{intent.reason ?? '目前沒有操作備註。'}</p>
-                  <p className="mt-2 text-xs text-chrome-500">
-                    申請時間 {formatDateTime(intent.createdAt)}
-                    {intent.acknowledgedAt ? `｜確認時間 ${formatDateTime(intent.acknowledgedAt)}` : ''}
-                  </p>
-                  {intent.resolutionNote ? <p className="mt-1 text-xs text-chrome-500">{intent.resolutionNote}</p> : null}
-                </div>
-                <span className={intentStatusClass(intent.status)}>{formatStatus(intent.status)}</span>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-medium text-chrome-950">{formatControlAction(intent.action)}</span>
+                <StatusBadge status={intent.status} />
               </div>
+              <p className="mt-2 text-sm text-chrome-700">{intent.reason ?? 'No reason provided.'}</p>
+              <p className="mt-2 text-xs text-chrome-500">Created {formatDate(intent.createdAt)}</p>
             </div>
           ))
         )}
@@ -641,41 +447,36 @@ function ControlIntentPanel({
 function RecentEventsPanel({ flight }: { flight: LiveFlightDetail }) {
   return (
     <Panel>
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex items-end justify-between gap-3">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">最近飛行事件</p>
-          <h3 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最近 bridge 與租約遙測</h3>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Recent Events</p>
+          <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Flight Event Trail</h2>
         </div>
         <Link to={`/missions/${flight.missionId}`} className="text-sm text-ember-600 underline underline-offset-4">
-          開啟任務詳情
+          Open Mission Detail
         </Link>
       </div>
-
       <div className="mt-4 grid gap-3">
         {flight.recentEvents.length === 0 ? (
-          <p className="text-sm text-chrome-700">目前尚未記錄最近的飛行事件。</p>
+          <div className="rounded-2xl border border-dashed border-chrome-300 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
+            No recent events.
+          </div>
         ) : (
           flight.recentEvents.map((event) => (
             <div key={event.eventId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="min-w-0">
-                  <p className="font-medium text-chrome-950">{event.eventType}</p>
-                  <p className="mt-1 text-sm text-chrome-700">{formatDateTime(event.eventTimestamp)}</p>
-                </div>
-                <pre className="max-w-full overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50 md:max-w-xl">
-                  {JSON.stringify(event.payload, null, 2)}
-                </pre>
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-medium text-chrome-950">{event.eventType}</span>
+                <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-500">
+                  {formatDate(event.eventTimestamp)}
+                </span>
               </div>
+              <pre className="mt-3 overflow-x-auto rounded-2xl bg-chrome-950 p-4 text-xs text-chrome-50">
+                {JSON.stringify(event.payload, null, 2)}
+              </pre>
             </div>
           ))
         )}
       </div>
     </Panel>
   )
-}
-
-function buildMapEmbedUrl(lat: number, lng: number): string {
-  const delta = 0.004
-  const bbox = [lng - delta, lat - delta, lng + delta, lat + delta].join('%2C')
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lng}`
 }

@@ -10,7 +10,7 @@ describe('route guards', () => {
       <Routes>
         <Route path="/login" element={<div>登入頁</div>} />
         <Route element={<RequireAuthenticated />}>
-          <Route path="/" element={<div>受保護內容</div>} />
+          <Route path="/" element={<div>受保護頁面</div>} />
         </Route>
       </Routes>,
       {
@@ -47,6 +47,6 @@ describe('route guards', () => {
       },
     )
 
-    expect(await screen.findByText('這個頁面僅供內部人員使用')).toBeInTheDocument()
+    expect(await screen.findByText('這個頁面僅提供 internal 使用')).toBeInTheDocument()
   })
 })

@@ -20,7 +20,7 @@ import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import { formatApiError, formatBoolean, formatRole, formatRoleOption } from '../../lib/presentation'
 
 const inviteSchema = z.object({
-  email: z.string().email('請輸入有效的電子郵件地址。'),
+  email: z.string().email('請輸入有效的電子郵件地址'),
   role: z.enum(['customer_admin', 'customer_viewer']),
 })
 
@@ -79,14 +79,17 @@ export function OrganizationsPage() {
   if (organizationsQuery.isLoading) {
     return (
       <Panel>
-        <p className="text-sm text-chrome-700">正在載入組織清單…</p>
+        <p className="text-sm text-chrome-700">正在載入組織…</p>
       </Panel>
     )
   }
 
   if (!organizationsQuery.data?.length) {
     return (
-      <EmptyState title="目前沒有組織" body="當系統建立第一個組織後，這裡就會顯示組織與成員的摘要。" />
+      <EmptyState
+        title="尚無組織"
+        body="請先建立或匯入組織，才能繼續處理邀請管理與稽核分流。"
+      />
     )
   }
 
@@ -97,16 +100,16 @@ export function OrganizationsPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="內部平台"
+        eyebrow="內部主控台"
         title="組織"
-        subtitle="集中查看各個客戶組織的成員數、邀請數量與啟用狀態，方便內部跨租戶追蹤。"
+        subtitle="直接在主應用中查看組織成員、待接受邀請與客戶端存取狀態。"
         action={
           <Modal
             open={isOpen}
             onOpenChange={setIsOpen}
-            title="新增邀請"
-            description="在目前選取的組織下建立新的邀請。"
-            trigger={<ActionButton>建立邀請</ActionButton>}
+            title="發送邀請"
+            description="將客戶管理員或客戶檢視者邀請到目前選取的組織。"
+            trigger={<ActionButton>新增邀請</ActionButton>}
           >
             <form className="grid gap-4" onSubmit={onSubmit}>
               <Field label="電子郵件" error={errors.email?.message}>
@@ -125,7 +128,7 @@ export function OrganizationsPage() {
               ) : null}
               <div className="flex justify-end">
                 <ActionButton disabled={createInvite.isPending} type="submit">
-                  {createInvite.isPending ? '建立中…' : '送出邀請'}
+                  {createInvite.isPending ? '發送中…' : '建立邀請'}
                 </ActionButton>
               </div>
             </form>
@@ -156,9 +159,11 @@ export function OrganizationsPage() {
 
         <div className="space-y-6">
           <Panel>
-            <h2 className="font-display text-3xl font-semibold text-chrome-950">{selectedOrganization?.name}</h2>
+            <h2 className="font-display text-3xl font-semibold text-chrome-950">
+              {selectedOrganization?.name}
+            </h2>
             <p className="mt-2 text-sm text-chrome-700">
-              在這裡查看組織啟用狀態、成員與待接受邀請，協助內部跨租戶管理。
+              待接受邀請會保留原始邀請代碼，方便測試階段由營運人員手動發送。
             </p>
           </Panel>
 
@@ -167,7 +172,7 @@ export function OrganizationsPage() {
               <Panel>
                 <DataList
                   rows={[
-                    { label: '組織代稱', value: detailQuery.data.slug },
+                    { label: '代號', value: detailQuery.data.slug },
                     { label: '啟用狀態', value: formatBoolean(detailQuery.data.isActive) },
                     { label: '成員數', value: detailQuery.data.members.length },
                     { label: '待接受邀請', value: detailQuery.data.pendingInvites.length },
@@ -178,10 +183,9 @@ export function OrganizationsPage() {
               <Panel>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">成員</p>
                 <div className="mt-4 grid gap-3">
-                  {detailQuery.data.members.map((member, index) => (
+                  {detailQuery.data.members.map((member) => (
                     <div key={member.membershipId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
-                      <p className="font-medium text-chrome-950">成員 {index + 1}</p>
-                      <p className="mt-1 text-sm text-chrome-700">{formatRole(member.role)}</p>
+                      <p className="font-medium text-chrome-950">{formatRole(member.role)}</p>
                       <p className="mt-1 text-sm text-chrome-700">{member.isActive ? '啟用中' : '已停用'}</p>
                     </div>
                   ))}

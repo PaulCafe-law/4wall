@@ -38,8 +38,6 @@ jobs:
       - name: Validate migrations
         env:
           BUILDING_ROUTE_DATABASE_URL: sqlite:///./data/ci-migration.db
-        run: |
-          mkdir -p data
-          python -m alembic upgrade head
+        run: python -m alembic upgrade head
       - name: Run tests
         run: python -m pytest tests -q

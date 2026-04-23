@@ -54,7 +54,7 @@ def _prepare_live_mission(client, session_factory) -> tuple[str, str, dict[str, 
     return organization_id, mission_id, admin_headers, viewer_headers, ops_headers
 
 
-def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
+def test_live_ops_detail_is_internal_only_and_returns_execution_summary(
     client,
     session_factory,
     auth_headers,
@@ -94,6 +94,26 @@ def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
                         "lastFrameAt": now.isoformat(),
                     },
                 },
+                {
+                    "eventId": "evt-execution-001",
+                    "type": "MISSION_STAGE_CHANGED",
+                    "timestamp": now.isoformat(),
+                    "payload": {
+                        "stage": "TRANSIT",
+                        "executionState": "transit",
+                        "uploadState": "uploaded",
+                        "waypointProgress": "2 / 3",
+                        "plannedOperatingProfile": "outdoor_gps_patrol",
+                        "executedOperatingProfile": "indoor_no_gps",
+                        "executionMode": "manual_pilot",
+                        "cameraStreamState": "streaming",
+                        "recordingState": "recording",
+                        "landingPhase": "confirmation_required",
+                        "fallbackReason": "",
+                        "statusNote": "Mission started",
+                        "missionUploaded": "true",
+                    },
+                },
             ],
         },
     )
@@ -120,49 +140,38 @@ def test_live_ops_detail_is_internal_only_and_returns_freshness_video_and_lease(
     assert events_response.status_code == 202
     assert telemetry_response.status_code == 202
 
-    reprocess_response = client.post(
-        f"/v1/missions/{mission_id}/analysis/reprocess",
-        headers=ops_headers,
-        json={"mode": "normal"},
-    )
-    assert reprocess_response.status_code == 202, reprocess_response.text
-
     list_response = client.get("/v1/live-ops/flights", headers=ops_headers)
     assert list_response.status_code == 200, list_response.text
-    listed = list_response.json()
-    assert listed[0]["flightId"] == "flight-live-001"
-    assert listed[0]["telemetryFreshness"] == "fresh"
-    assert listed[0]["video"]["status"] == "live"
-    assert listed[0]["reportStatus"] == "ready"
-    assert listed[0]["eventCount"] == 2
-    assert "inspection events" in listed[0]["reportSummary"]
-    assert listed[0]["executionSummary"]["phase"] == "report_ready"
-    assert listed[0]["executionSummary"]["reportStatus"] == "ready"
+    assert list_response.json()[0]["flightId"] == "flight-live-001"
 
     response = client.get("/v1/live-ops/flights/flight-live-001", headers=ops_headers)
-
     assert response.status_code == 200, response.text
+
     body = response.json()
     assert body["organizationId"] == organization_id
     assert body["missionId"] == mission_id
+    assert body["operatingProfile"] == "outdoor_gps_patrol"
     assert body["latestTelemetry"]["batteryPct"] == 78
-    assert body["telemetryFreshness"] == "fresh"
-    assert body["telemetryAgeSeconds"] is not None
-    assert body["telemetryAgeSeconds"] < 30
     assert body["video"]["available"] is True
     assert body["video"]["streaming"] is True
     assert body["video"]["viewerUrl"] == "https://viewer.example.test/live/flight-live-001"
-    assert body["video"]["status"] == "live"
-    assert body["video"]["ageSeconds"] is not None
     assert body["controlLease"]["mode"] == "remote_control_requested"
     assert body["controlLease"]["observerReady"] is True
-    assert body["reportStatus"] == "ready"
-    assert body["eventCount"] == 2
-    assert body["reportGeneratedAt"] is not None
-    assert body["reportSummary"] is not None
-    assert body["executionSummary"]["phase"] == "report_ready"
-    assert body["executionSummary"]["reportStatus"] == "ready"
-    assert body["recentEvents"][0]["eventType"] in {"VIDEO_STREAM_STATE", "CONTROL_LEASE_UPDATED"}
+    assert body["executionSummary"]["flightId"] == "flight-live-001"
+    assert body["executionSummary"]["uploadState"] == "uploaded"
+    assert body["executionSummary"]["executionState"] == "transit"
+    assert body["executionSummary"]["waypointProgress"] == "2 / 3"
+    assert body["executionSummary"]["plannedOperatingProfile"] == "outdoor_gps_patrol"
+    assert body["executionSummary"]["executedOperatingProfile"] == "indoor_no_gps"
+    assert body["executionSummary"]["executionMode"] == "manual_pilot"
+    assert body["executionSummary"]["cameraStreamState"] == "streaming"
+    assert body["executionSummary"]["recordingState"] == "recording"
+    assert body["executionSummary"]["landingPhase"] == "confirmation_required"
+    assert body["recentEvents"][0]["eventType"] in {
+        "MISSION_STAGE_CHANGED",
+        "VIDEO_STREAM_STATE",
+        "CONTROL_LEASE_UPDATED",
+    }
 
     customer_response = client.get("/v1/live-ops/flights/flight-live-001", headers=admin_headers)
     assert customer_response.status_code == 403
@@ -242,7 +251,7 @@ def test_control_intent_request_is_recorded_and_viewer_cannot_request(
     assert any(event.action == "flight.control_intent_requested" for event in audit_events)
 
 
-def test_support_queue_is_internal_only_and_surfaces_triage_context(
+def test_support_queue_is_internal_only_and_surfaces_bridge_battery_and_landing_fallback(
     client,
     session_factory,
     auth_headers,
@@ -250,7 +259,6 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
     _, mission_id, admin_headers, _, ops_headers = _prepare_live_mission(client, session_factory)
     flight_id = "flight-live-003"
     now = datetime.now(timezone.utc)
-    stale_sample_time = now - timedelta(minutes=3)
 
     with session_factory() as session:
         mission = session.get(Mission, mission_id)
@@ -274,7 +282,22 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
                         "code": "uplink_degraded",
                         "summary": "Android bridge reported unstable uplink quality.",
                     },
-                }
+                },
+                {
+                    "eventId": "evt-landing-fallback",
+                    "type": "MISSION_STAGE_CHANGED",
+                    "timestamp": now.isoformat(),
+                    "payload": {
+                        "stage": "LANDING",
+                        "executionState": "landing",
+                        "uploadState": "uploaded",
+                        "waypointProgress": "2 / 2",
+                        "landingPhase": "rc_only_fallback",
+                        "fallbackReason": "Pilot confirmed no descent; switch to RC landing.",
+                        "statusNote": "Landing fallback required",
+                        "missionUploaded": "true",
+                    },
+                },
             ],
         },
     )
@@ -285,7 +308,7 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
             "missionId": mission_id,
             "samples": [
                 {
-                    "timestamp": stale_sample_time.isoformat(),
+                    "timestamp": now.isoformat(),
                     "lat": 25.0341,
                     "lng": 121.5647,
                     "altitudeM": 34.6,
@@ -303,147 +326,14 @@ def test_support_queue_is_internal_only_and_surfaces_triage_context(
     internal_response = client.get("/v1/support/queue", headers=ops_headers)
     assert internal_response.status_code == 200, internal_response.text
     items = internal_response.json()
-
-    by_id = {item["itemId"]: item for item in items}
-    bridge_item = next(item for item in items if item["category"] == "bridge_alert")
-
-    failed_item = by_id[f"mission-failed-{mission_id}"]
-    assert failed_item["category"] == "mission_failed"
-    assert failed_item["organizationName"] == "Acme Build"
-    assert failed_item["missionName"] == "building-a-demo"
-    assert failed_item["siteName"] == "Tower A"
-    assert failed_item["lastObservedAt"] is not None
-    assert failed_item["workflow"]["state"] == "open"
-    assert "mission request" in failed_item["recommendedNextStep"]
-
-    battery_item = by_id[f"battery-{flight_id}"]
-    assert battery_item["category"] == "battery_low"
-    assert battery_item["severity"] == "warning"
-    assert battery_item["flightId"] == flight_id
-    assert battery_item["lastObservedAt"] is not None
-
-    stale_item = by_id[f"telemetry-stale-{flight_id}"]
-    assert stale_item["category"] == "telemetry_stale"
-    assert stale_item["severity"] == "critical"
-    assert stale_item["flightId"] == flight_id
-    assert stale_item["lastObservedAt"] is not None
-    assert "telemetry" in stale_item["summary"].lower()
-
-    assert bridge_item["category"] == "bridge_alert"
-    assert bridge_item["organizationName"] == "Acme Build"
-    assert bridge_item["flightId"] is None
-    assert bridge_item["lastObservedAt"] is not None
-    assert "live ops" in bridge_item["recommendedNextStep"].lower()
+    item_ids = {item["itemId"] for item in items}
+    assert any(item_id.startswith("mission-failed-") for item_id in item_ids)
+    assert any(item_id.startswith("battery-") for item_id in item_ids)
+    assert any(item_id.startswith("bridge-alert-") for item_id in item_ids)
+    assert any(item_id.startswith("landing-fallback-") for item_id in item_ids)
+    assert any("RC-only" in item["title"] for item in items)
+    assert any(item["operatingProfile"] == "outdoor_gps_patrol" for item in items)
 
     customer_response = client.get("/v1/support/queue", headers=admin_headers)
-    assert customer_response.status_code == 403
-    assert customer_response.json()["detail"] == "forbidden_role"
-
-
-def test_support_queue_includes_report_generation_failures(
-    client,
-    session_factory,
-    auth_headers,
-) -> None:
-    _, mission_id, _, _, ops_headers = _prepare_live_mission(client, session_factory)
-
-    reprocess_response = client.post(
-        f"/v1/missions/{mission_id}/analysis/reprocess",
-        headers=ops_headers,
-        json={"mode": "analysis_failed"},
-    )
-    assert reprocess_response.status_code == 202, reprocess_response.text
-
-    internal_response = client.get("/v1/support/queue", headers=ops_headers)
-    assert internal_response.status_code == 200, internal_response.text
-    items = internal_response.json()
-
-    report_item = next(item for item in items if item["category"] == "report_generation_failed")
-    assert report_item["missionId"] == mission_id
-    assert report_item["severity"] == "critical"
-    assert report_item["title"] == "報表產生失敗"
-    assert "demo analysis" in report_item["recommendedNextStep"]
-    assert report_item["workflow"]["state"] == "open"
-
-
-def test_support_queue_actions_update_workflow_and_hide_resolved_items(
-    client,
-    session_factory,
-    auth_headers,
-) -> None:
-    _, mission_id, admin_headers, _, ops_headers = _prepare_live_mission(client, session_factory)
-    flight_id = "flight-live-004"
-    now = datetime.now(timezone.utc)
-
-    with session_factory() as session:
-        mission = session.get(Mission, mission_id)
-        assert mission is not None
-        mission.status = "failed"
-        session.add(mission)
-        session.commit()
-
-    events_response = client.post(
-        f"/v1/flights/{flight_id}/events",
-        headers=auth_headers,
-        json={
-            "missionId": mission_id,
-            "events": [
-                {
-                    "eventId": "evt-bridge-alert-resolve",
-                    "type": "BRIDGE_ALERT",
-                    "timestamp": now.isoformat(),
-                    "payload": {
-                        "severity": "warning",
-                        "code": "viewer_unavailable",
-                        "summary": "Viewer stream was temporarily unavailable.",
-                    },
-                }
-            ],
-        },
-    )
-    assert events_response.status_code == 202
-
-    support_response = client.get("/v1/support/queue", headers=ops_headers)
-    assert support_response.status_code == 200, support_response.text
-    bridge_item = next(item for item in support_response.json() if item["category"] == "bridge_alert")
-    item_id = bridge_item["itemId"]
-
-    claim_response = client.post(
-        f"/v1/support/queue/{item_id}/actions",
-        headers=ops_headers,
-        json={"action": "claim"},
-    )
-    assert claim_response.status_code == 202, claim_response.text
-    assert claim_response.json()["state"] == "claimed"
-
-    after_claim = client.get("/v1/support/queue", headers=ops_headers)
-    claimed_item = next(item for item in after_claim.json() if item["itemId"] == item_id)
-    assert claimed_item["workflow"]["state"] == "claimed"
-    assert claimed_item["workflow"]["assignedToDisplayName"] == "Platform Ops"
-
-    acknowledge_response = client.post(
-        f"/v1/support/queue/{item_id}/actions",
-        headers=ops_headers,
-        json={"action": "acknowledge"},
-    )
-    assert acknowledge_response.status_code == 202
-    assert acknowledge_response.json()["state"] == "acknowledged"
-
-    resolve_response = client.post(
-        f"/v1/support/queue/{item_id}/actions",
-        headers=ops_headers,
-        json={"action": "resolve"},
-    )
-    assert resolve_response.status_code == 202
-    assert resolve_response.json()["state"] == "resolved"
-
-    after_resolve = client.get("/v1/support/queue", headers=ops_headers)
-    assert all(item["itemId"] != item_id for item in after_resolve.json())
-
-    customer_response = client.post(
-        f"/v1/support/queue/{item_id}/actions",
-        headers=admin_headers,
-        json={"action": "claim"},
-    )
     assert customer_response.status_code == 403
     assert customer_response.json()["detail"] == "forbidden_role"

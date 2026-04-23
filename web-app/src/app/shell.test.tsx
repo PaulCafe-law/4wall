@@ -5,15 +5,15 @@ import { AppShell } from './shell'
 import { createAuthValue, createSession, renderWithProviders } from '../test/utils'
 
 describe('AppShell', () => {
-  it('renders customer and internal navigation in separate vertical sections for internal users', () => {
+  it('keeps the authenticated navigation in a vertical rail layout', () => {
     const { container } = renderWithProviders(
       <Routes>
         <Route element={<AppShell />}>
-          <Route path="/" element={<div>overview</div>} />
+          <Route path="/missions" element={<div>任務頁面</div>} />
         </Route>
       </Routes>,
       {
-        route: '/',
+        route: '/missions',
         auth: createAuthValue({
           session: createSession({
             displayName: 'Production Platform Admin',
@@ -25,33 +25,36 @@ describe('AppShell', () => {
       },
     )
 
-    const navs = container.querySelectorAll('nav')
-    expect(navs).toHaveLength(2)
-    for (const nav of navs) {
-      expect(nav).toHaveClass('flex', 'flex-col', 'items-start', 'gap-2')
-    }
+    const nav = container.querySelector('nav')
+    expect(nav).not.toBeNull()
+    expect(nav).toHaveClass('flex', 'flex-col', 'items-start', 'gap-2')
 
-    expect(screen.getByRole('link', { name: '控制平面' })).toBeVisible()
-    expect(screen.getAllByRole('link').length).toBeGreaterThanOrEqual(10)
+    expect(screen.getByRole('link', { name: '總覽' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '場域' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '任務' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '帳務' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '即時營運' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '組織' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '稽核記錄' })).toBeVisible()
   })
 
-  it('shows customer navigation for customer users without internal links', () => {
+  it('hides live ops from customer navigation', () => {
     renderWithProviders(
       <Routes>
         <Route element={<AppShell />}>
-          <Route path="/" element={<div>overview</div>} />
+          <Route path="/missions" element={<div>任務頁面</div>} />
         </Route>
       </Routes>,
       {
-        route: '/',
+        route: '/missions',
         auth: createAuthValue({
           session: createSession({
-            displayName: 'Customer User',
-            email: 'customer@test.dev',
+            displayName: 'Customer Admin',
+            email: 'admin@customer.test',
             memberships: [
               {
                 membershipId: 'membership-1',
-                organizationId: 'org-1',
+                organizationId: 'org-001',
                 role: 'customer_admin',
                 isActive: true,
               },
@@ -62,10 +65,7 @@ describe('AppShell', () => {
       },
     )
 
-    expect(screen.getByRole('link', { name: '控制平面' })).toBeVisible()
     expect(screen.queryByRole('link', { name: '即時營運' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: '組織' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '支援工作台' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: '稽核紀錄' })).not.toBeInTheDocument()
   })
 })

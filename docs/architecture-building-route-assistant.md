@@ -1,190 +1,265 @@
 # Building Route Assistant Architecture
 
-## Goal
+## Product Definition
 
-Deliver a demo for Mini 4 Pro that follows a road or pedestrian network as an aerial corridor, reaches exterior building inspection viewpoints, confirms branches conservatively, performs local avoidance with bounded authority, then auto-hovers for framing.
+This product is a Mini 4 Pro route assistant for VLOS operations. The Sprint 4 primary path is outdoor GPS patrol using `launchPoint + orderedWaypoints + implicitReturnToLaunch`, while `indoor_no_gps` remains a separate conservative operating profile.
 
-## Bootstrap Status
+The customer-facing platform now has two non-flight-equivalent desktop surfaces:
 
-This workspace started greenfield. Current bootstrap status:
+- `web-app`: customer and ops planning, live monitoring, support, billing, and audit portal
+- `Site Control Station`: a Windows control console deployed at the site for low-latency operator interaction
 
-- Git repo: initialized locally
-- Android app: minimal Kotlin app skeleton present under `android-app/`
-- Planner server: FastAPI skeleton present under `planner-server/`
-- Core docs: present under `docs/`
-
-Chosen baseline stack for implementation:
-
-- Android: Kotlin, single-app Gradle project, Jetpack Compose UI, coroutines, StateFlow
-- Planner server: FastAPI, Pydantic, pytest
-- Mission artifacts: JSON mission metadata plus KMZ generator abstraction
+When headquarters needs to operate from a computer, it does so by remote access into the Site Control Station. The web app itself remains outside the active flight-control loop.
 
 ## Non-Negotiable Constraints
 
-- Android app owns the flight-critical loop
-- Server is planning-only, never in the active control loop
-- Main transit uses waypoint mission
-- Virtual stick is limited to low-speed, short-duration micro adjustments
-- Mobile model is limited to branch verify and landmark confirm
-- Local avoidance is limited to `SLOW_DOWN`, `HOLD`, `NUDGE_LEFT`, `NUDGE_RIGHT`
-- Any uncertainty escalates to `HOLD`, then `RTH` or manual takeover
-- No full SLAM in demo scope
+- Android owns the flight-critical runtime.
+- The Site Control Station may present flight controls, but Android still arbitrates safety and DJI link ownership.
+- The planner server is planning-only and never participates in the active control loop.
+- The web app may request high-level control intents and show live status, but it never issues continuous flight control.
+- Main transit uses waypoint mission / KMZ.
+- Virtual stick is limited to low-speed, short-duration local correction windows.
+- Mobile on-device intelligence is limited to branch verify and landmark confirm.
+- Local avoider outputs are limited to `SLOW_DOWN`, `HOLD`, `NUDGE_LEFT`, `NUDGE_RIGHT`.
+- Any uncertainty resolves to `HOLD` first.
+- No SLAM, no free-space planner, no server-issued stick commands.
 
 ## System Boundary
 
 ```text
-+----------------------+        +---------------------------+
-| Planner Server       |        | Android App               |
-| planning only        |        | flight-critical runtime   |
-|                      |        |                           |
-| OSM / OSRM provider  |        | MissionRepository         |
-| Corridor generator   |------->| Mission bundle parser     |
-| MissionMeta builder  | bundle | Route corridor tracker    |
-| KMZ generator        |        | Flight state machine      |
-+----------------------+        | DJI mission adapter       |
-                                | DJI virtual stick adapter |
-                                | Camera / perception       |
-                                | Safety supervisor         |
-                                | Pilot UI                  |
-                                +-------------+-------------+
-                                              |
-                                              v
-                                    +-------------------+
-                                    | DJI Mobile SDK    |
-                                    | aircraft + camera |
-                                    +-------------------+
++---------------------------+        +----------------------------------+
+| Planner Server            |        | Android Pilot App                |
+| planning-only             |        | flight-critical runtime          |
+|                           |        |                                  |
+| Auth                      |        | Auth/session cache               |
+| Route provider            |        | Mission bundle cache             |
+| Patrol route generator    |------->| Mission bundle verifier          |
+| MissionMeta generator     |bundle  | Preflight gate policy            |
+| Artifact persistence      |        | Flight reducer + safety policy   |
+| KMZ generator             |        | Waypoint / simulator adapters    |
+| Event/telemetry ingest    |        | Camera / perception adapters     |
+| Legacy inspection compat  |        | Virtual stick guardrails         |
++---------------------------+        | Operator UI + blackbox export    |
+                                     +----------------+-----------------+
+                                                      |
+                                                      v
+                                            +------------------------+
+                                            | DJI Mobile SDK / FW    |
+                                            | aircraft, RC, camera   |
+                                            +------------------------+
+
+                    +----------------------------------+
+                    | Site Control Station             |
+                    | local Windows ops console        |
+                    |                                  |
+                    | live map / live video / alerts   |
+                    | mission-level controls           |
+                    | camera controls                  |
+                    | manual flight controls           |
+                    | operator identity + audit        |
+                    +----------------+-----------------+
+                                     ^
+                                     |
+                    +----------------+-----------------+
+                    | Desktop Web App                  |
+                    | customer + ops portal            |
+                    |                                  |
+                    | missions / sites / billing       |
+                    | live monitoring                  |
+                    | control intent requests          |
+                    | support queue / audit            |
+                    +----------------+-----------------+
+                                     ^
+                                     |
+                            +--------+--------+
+                            | AnyDesk MVP     |
+                            | remote access   |
+                            +-----------------+
 ```
+
+## Shared Contract
+
+Android and planner-server share versioned artifacts through `shared-schemas/`.
+
+Required contract families:
+
+- mission identity, version, and checksum
+- patrol route geometry:
+  - `launchPoint`
+  - `orderedWaypoints`
+  - `implicitReturnToLaunch`
+- operating profile:
+  - `outdoor_gps_patrol`
+  - `indoor_no_gps`
+- speed/altitude hints and failsafe defaults
+- artifact metadata for `mission.kmz` and `mission_meta.json`
+
+See `docs/PATROL_ROUTE_PROFILE_ARCHITECTURE.md` for the Sprint 4 route model authority.
 
 ## Control Authority Model
 
 ```text
 Planning authority
-  Server:
-    route -> corridor -> mission bundle
+  planner-server:
+    route -> wayline -> artifact generation
+
+Monitoring authority
+  web-app:
+    mission monitoring
+    site-scoped live visibility
+    high-level control intent requests
+    support and audit views
+
+Interactive control authority
+  Site Control Station:
+    local low-latency map + video
+    mission-level commands
+    camera controls
+    manual flight controls
 
 Execution authority
-  Android app:
+  Android:
+    auth/session cache
+    mission artifact verification
     preflight gating
     mission upload
     state transitions
-    branch verification timing
     local avoidance arbitration
     failsafe escalation
 
 Aircraft authority
   DJI firmware / MSDK:
     waypoint execution
+    simulator
     telemetry
     aircraft state
+    camera / perception feeds
 ```
+
+Remote access authority
+  AnyDesk MVP:
+    remote screen + keyboard/mouse only
+    not a safety boundary
+    not a control arbiter
+
+## Runtime Modes
+
+- `demo` flavor: fake adapters, replay-friendly UI, safe local demo data
+- `prod` flavor: real DJI adapters and hardware-backed preflight gates
+
+Both modes share:
+
+- reducer and state machine
+- safety policies
+- mission bundle parsing / validation
+- operator-facing UI model
 
 ## Core Runtime Flow
 
 ```text
-1. Operator requests mission plan on server
-2. Server returns mission bundle + mission artifacts
-3. Android downloads and validates bundle
-4. Preflight checks gate arming and upload
-5. App uploads waypoint mission
-6. Takeoff and transit on waypoint mission
-7. Corridor tracker monitors deviation
-8. Verification point reached
-   -> branch confirm using mobile model
-   -> if uncertain, HOLD
-9. Obstacle signal appears
-   -> local avoider may only slow, hold, or nudge
-10. Inspection zone reached
-    -> switch to low-speed approach / align
-11. Capture
-12. Exit to HOLD / COMPLETE / RTH based on policy
+1. Operator logs in
+2. Server plans a mission and persists artifacts
+3. Android downloads mission artifacts
+4. Android verifies schema version, checksum, and completeness
+5. Preflight gate policy evaluates aircraft, RC, stream, storage, health, fly-safe, GPS, and bundle readiness
+6. Android uploads KMZ waypoint mission
+7. Takeoff and main transit execute through waypoint mission
+8. Obstacle or safety anomaly
+   -> slow / hold / bounded nudge only
+9. Mission complete
+   -> Android starts landing flow
+10. Resume, HOLD, RTH, LAND, or TAKEOVER per profile policy
 ```
 
-## Mission Bundle Contract
+## Preflight Gate Policy
 
-Mission bundle is the handoff boundary between planner and Android runtime.
+Takeoff is blocked if any of these are true:
 
-Required payload families:
+- aircraft disconnected
+- RC disconnected
+- camera stream unavailable
+- device storage below threshold
+- blocking device health issue
+- blocking fly-safe or flight warning
+- GPS status below configured threshold
+- mission bundle missing, incomplete, or verification failed
 
-- Mission identity and version
-- Corridor geometry and thresholds
-- Verification points with semantic expectations
-- Inspection viewpoints with framing intent
-- Suggested altitude and speed per segment
-- Failsafe defaults
-- Artifact references for KMZ and mission meta
+Preflight policy lives in the domain layer and is testable independently of UI.
 
 ## Safety Invariants
 
-- Server unavailability cannot block in-flight safety decisions
-- Unknown semantic result cannot force forward motion
-- Lost frame stream cannot silently continue branch confirmation
-- Local avoidance cannot issue aggressive autonomous lateral behavior
-- Battery critical bypasses feature logic and escalates to `RTH`
-- User takeover wins over every autonomous branch
-
-## Data Flow
-
-```text
-OSM / OSRM route
-  -> densified polyline
-  -> corridor segments
-  -> verification points
-  -> inspection viewpoints
-  -> mission metadata
-  -> KMZ abstraction
-  -> Android mission bundle parser
-  -> flight state machine + UI
-```
+- In-flight server loss cannot block local safety decisions.
+- Invalid artifacts cannot reach takeoff.
+- Unknown route or aircraft state cannot advance the aircraft forward.
+- Lost frame stream cannot silently continue a camera-dependent safety decision.
+- Virtual stick cannot become the main transit controller.
+- User takeover wins over all autonomous behavior.
 
 ## Failure Containment
 
 ```text
 Server failure before flight
-  -> no mission produced
-  -> operator stays in Mission Setup / Preflight
+  -> no verified bundle
+  -> preflight blocked
 
 Server failure during flight
-  -> ignored for control
-  -> event upload can retry later
+  -> mission execution continues safely
+  -> uploads become backlog
 
-Perception uncertainty
+Web failure during flight
+  -> monitoring loss only
+  -> no change to local flight safety behavior
+
+AnyDesk session loss during remote operation
+  -> Site Control Station loses remote operator input
+  -> Android bridge revokes remote lease or enters HOLD / RTH per policy
+
+Perception uncertainty / semantic timeout / frame drop
   -> HOLD
 
-Telemetry degradation
-  -> SafetySupervisor escalates
+Battery critical
+  -> RTH
 
-DJI adapter mismatch
-  -> adapter returns capability/state error
-  -> reducer transitions to HOLD or ABORTED
+App health or adapter mismatch
+  -> HOLD or ABORTED depending on phase
 ```
 
-## Android Runtime Layers
+## Implementation Layers
 
-- `data`: mission parsing, repositories, fake data sources
-- `domain.route`: corridor tracking and mission progress logic
-- `domain.semantic`: branch and landmark confirmation orchestration
-- `domain.avoid`: bounded local avoidance policy
-- `domain.safety`: hold and RTH policy, health supervision
-- `domain.statemachine`: reducer, transition guards, event handling
-- `dji`: adapter boundary for MSDK integration
-- `feature.*`: screen-specific flows
+### Android
 
-## Planner Server Layers
+- `app`: application wiring, flavor-specific bindings
+- `data`: bundle cache, auth/session, repositories
+- `bridge`: live telemetry, video uplink, control lease enforcement, remote-control gating
+- `domain.safety`: preflight and in-flight safety policy
+- `domain.statemachine`: reducer, guards, flight state
+- `dji`: interface boundary with fake and real implementations
+- `feature.*`: pilot-facing screens and UI state models
 
-- `api`: FastAPI routes and DTO validation
-- `providers`: route provider abstraction
-- `planning`: corridor generator and viewpoint synthesis
-- `artifacts`: mission metadata and KMZ generator abstractions
-- `tests`: DTO, provider, planner, artifact tests
+### Planner Server
 
-## What Already Exists
+- `api`: routes and DTO validation
+- `auth`: operator login and refresh
+- `db`: SQLModel models and Alembic migrations
+- `providers`: route-provider abstraction
+- `planning`: patrol route and wayline generation
+- `artifacts`: `mission_meta.json` and KMZ generation
+- `storage`: local filesystem or S3-compatible storage abstraction
+- `live-ops`: flight session summaries, support queue, control intent log
 
-At repo level, nothing reusable exists yet. Reuse will happen at the architecture level:
+### Desktop Web App
 
-- Single source of truth for mission bundle schema
-- Reducer-owned state transitions, no screen-local state machine forks
-- Adapter boundaries for real DJI and fake demo implementations
+- `customer`: sites, missions, billing, team, artifact download
+- `live ops`: map/video/status monitoring and control intent requests
+- `support`: failure queue, alert timeline, audit views
 
-## Not In Scope Here
+### Site Control Station
 
-See [not-in-scope.md](./not-in-scope.md) for explicit deferrals.
+- local low-latency operator console
+- local mission and camera controls
+- guarded manual flight controls
+- remote-access-aware operator handoff
+
+## Release Focus
+
+This architecture is intentionally conservative. The beta is complete only when the prod path is safe, verifiable, and repeatable, not merely when the demo path looks convincing.

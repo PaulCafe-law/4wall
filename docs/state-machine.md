@@ -160,7 +160,9 @@ MANUAL_OVERRIDE
 - Frame stream dropped during confirm or alignment -> `HOLD`
 - Hard obstacle -> `HOLD`
 - Hard corridor deviation -> `HOLD`
+- GPS weak -> `HOLD`
 - GPS lost -> `HOLD`
+- RC signal degraded or lost -> `HOLD`
 - Battery critical -> `RTH`
 - Manual override request -> `MANUAL_OVERRIDE`
 
@@ -199,10 +201,15 @@ It is forbidden in:
 |---|---|---|---|
 | Semantic timeout | model deadline exceeded | `HOLD` | sees timeout + next step |
 | Frame stream dropped | camera stream health bad | `HOLD` | sees sensor degraded |
+| GPS weak | DJI state / telemetry | `HOLD` | sees degraded navigation margin |
 | GPS lost | DJI state / telemetry | `HOLD` | sees navigation degraded |
+| RC signal degraded or lost | DJI telemetry | `HOLD` | sees link degraded and must choose next step |
 | Battery critical | telemetry threshold | `RTH` | sees forced return |
 | App health bad | watchdog | `HOLD` or `ABORTED` | sees app unsafe |
 | Device health blocking | DJI diagnostic | preflight blocked or `HOLD` | sees specific blocker |
+
+Blackbox rule:
+- entering `HOLD`, `RTH`, `MANUAL_OVERRIDE`, `ABORTED`, or `COMPLETED` must be exportable as an incident artifact
 
 ## Test Targets
 

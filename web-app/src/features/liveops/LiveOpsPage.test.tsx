@@ -33,20 +33,20 @@ describe('LiveOpsPage', () => {
     apiMock.requestControlIntent.mockReset()
   })
 
-  it('renders monitor-only flight context and reporting guidance', async () => {
+  it('renders execution summary, execution mode, and intent history', async () => {
     apiMock.listLiveFlights.mockResolvedValue([
       {
         flightId: 'flight-001',
         organizationId: 'org-001',
         missionId: 'mission-001',
         missionName: 'Tower A Demo',
+        operatingProfile: 'outdoor_gps_patrol',
         siteId: 'site-001',
         siteName: 'Tower A',
-        lastEventAt: '2026-04-16T10:00:00Z',
-        lastTelemetryAt: '2026-04-16T09:57:30Z',
-        lastImageryAt: '2026-04-16T09:58:00Z',
+        lastEventAt: '2026-04-14T10:00:00Z',
+        lastTelemetryAt: '2026-04-14T10:00:00Z',
         latestTelemetry: {
-          timestamp: '2026-04-16T09:57:30Z',
+          timestamp: '2026-04-14T10:00:00Z',
           lat: 25.03391,
           lng: 121.56452,
           altitudeM: 38.5,
@@ -55,17 +55,29 @@ describe('LiveOpsPage', () => {
           flightState: 'TRANSIT',
           corridorDeviationM: 0.6,
         },
-        telemetryFreshness: 'stale',
-        telemetryAgeSeconds: 150,
+        executionSummary: {
+          flightId: 'flight-001',
+          lastEventType: 'MISSION_STARTED',
+          lastEventAt: '2026-04-14T10:00:00Z',
+          executionState: 'transit',
+          uploadState: 'uploaded',
+          waypointProgress: '2 / 3',
+          plannedOperatingProfile: 'outdoor_gps_patrol',
+          executedOperatingProfile: 'outdoor_gps_patrol',
+          executionMode: 'manual_pilot',
+          cameraStreamState: 'streaming',
+          recordingState: 'recording',
+          landingPhase: null,
+          fallbackReason: null,
+          statusNote: 'Mission started',
+        },
         video: {
           available: true,
           streaming: true,
           viewerUrl: 'https://viewer.example.test/live',
           codec: 'h264',
           latencyMs: 900,
-          lastFrameAt: '2026-04-16T09:57:00Z',
-          status: 'stale',
-          ageSeconds: 180,
+          lastFrameAt: '2026-04-14T10:00:00Z',
         },
         controlLease: {
           holder: 'hq',
@@ -73,23 +85,9 @@ describe('LiveOpsPage', () => {
           remoteControlEnabled: false,
           observerReady: true,
           heartbeatHealthy: true,
-          expiresAt: '2026-04-16T10:05:00Z',
+          expiresAt: '2026-04-14T10:05:00Z',
         },
         alerts: ['bridge_alert'],
-        reportStatus: 'failed',
-        reportGeneratedAt: '2026-04-16T10:02:00Z',
-        eventCount: 0,
-        reportSummary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
-        executionSummary: {
-          missionId: 'mission-001',
-          phase: 'running',
-          telemetryFreshness: 'stale',
-          lastTelemetryAt: '2026-04-16T09:57:30Z',
-          lastImageryAt: '2026-04-16T09:58:00Z',
-          reportStatus: 'failed',
-          eventCount: 0,
-          failureReason: 'Report generation is blocked until imagery review completes.',
-        },
       },
     ])
     apiMock.getLiveFlight.mockResolvedValue({
@@ -97,13 +95,13 @@ describe('LiveOpsPage', () => {
       organizationId: 'org-001',
       missionId: 'mission-001',
       missionName: 'Tower A Demo',
+      operatingProfile: 'outdoor_gps_patrol',
       siteId: 'site-001',
       siteName: 'Tower A',
-      lastEventAt: '2026-04-16T10:00:00Z',
-      lastTelemetryAt: '2026-04-16T09:57:30Z',
-      lastImageryAt: '2026-04-16T09:58:00Z',
+      lastEventAt: '2026-04-14T10:00:00Z',
+      lastTelemetryAt: '2026-04-14T10:00:00Z',
       latestTelemetry: {
-        timestamp: '2026-04-16T09:57:30Z',
+        timestamp: '2026-04-14T10:00:00Z',
         lat: 25.03391,
         lng: 121.56452,
         altitudeM: 38.5,
@@ -112,17 +110,29 @@ describe('LiveOpsPage', () => {
         flightState: 'TRANSIT',
         corridorDeviationM: 0.6,
       },
-      telemetryFreshness: 'stale',
-      telemetryAgeSeconds: 150,
+      executionSummary: {
+        flightId: 'flight-001',
+        lastEventType: 'MISSION_STARTED',
+        lastEventAt: '2026-04-14T10:00:00Z',
+        executionState: 'transit',
+        uploadState: 'uploaded',
+        waypointProgress: '2 / 3',
+        plannedOperatingProfile: 'outdoor_gps_patrol',
+        executedOperatingProfile: 'outdoor_gps_patrol',
+        executionMode: 'manual_pilot',
+        cameraStreamState: 'streaming',
+        recordingState: 'recording',
+        landingPhase: 'confirmation_required',
+        fallbackReason: null,
+        statusNote: 'Mission started',
+      },
       video: {
         available: true,
         streaming: true,
         viewerUrl: 'https://viewer.example.test/live',
         codec: 'h264',
         latencyMs: 900,
-        lastFrameAt: '2026-04-16T09:57:00Z',
-        status: 'stale',
-        ageSeconds: 180,
+        lastFrameAt: '2026-04-14T10:00:00Z',
       },
       controlLease: {
         holder: 'hq',
@@ -130,28 +140,14 @@ describe('LiveOpsPage', () => {
         remoteControlEnabled: false,
         observerReady: true,
         heartbeatHealthy: true,
-        expiresAt: '2026-04-16T10:05:00Z',
+        expiresAt: '2026-04-14T10:05:00Z',
       },
       alerts: ['bridge_alert'],
-      reportStatus: 'failed',
-      reportGeneratedAt: '2026-04-16T10:02:00Z',
-      eventCount: 0,
-      reportSummary: 'Analysis pipeline could not derive inspection events from the mission imagery.',
-      executionSummary: {
-        missionId: 'mission-001',
-        phase: 'running',
-        telemetryFreshness: 'stale',
-        lastTelemetryAt: '2026-04-16T09:57:30Z',
-        lastImageryAt: '2026-04-16T09:58:00Z',
-        reportStatus: 'failed',
-        eventCount: 0,
-        failureReason: 'Report generation is blocked until imagery review completes.',
-      },
       recentEvents: [
         {
           eventId: 'evt-001',
           eventType: 'CONTROL_LEASE_UPDATED',
-          eventTimestamp: '2026-04-16T10:00:00Z',
+          eventTimestamp: '2026-04-14T10:00:00Z',
           payload: { holder: 'hq' },
         },
       ],
@@ -164,7 +160,7 @@ describe('LiveOpsPage', () => {
         status: 'requested',
         reason: 'HQ takeover drill',
         requestedByUserId: 'user-1',
-        createdAt: '2026-04-16T10:01:00Z',
+        createdAt: '2026-04-14T10:01:00Z',
         acknowledgedAt: null,
         resolutionNote: null,
       },
@@ -174,26 +170,19 @@ describe('LiveOpsPage', () => {
       auth: createAuthValue({
         session: createSession({
           globalRoles: ['ops'],
-          memberships: [{ membershipId: 'm-1', organizationId: 'org-001', role: 'customer_admin', isActive: true }],
+          memberships: [
+            { membershipId: 'm-1', organizationId: 'org-001', role: 'customer_admin', isActive: true },
+          ],
         }),
       }),
     })
 
-    expect(await screen.findByRole('heading', { name: '即時營運' })).toBeInTheDocument()
-    expect(await screen.findAllByText('Tower A Demo')).not.toHaveLength(0)
-    expect(await screen.findByText('監看模式已降級')).toBeInTheDocument()
-    expect(await screen.findAllByText('遙測延遲')).not.toHaveLength(0)
-    expect(await screen.findAllByText('影像延遲')).not.toHaveLength(0)
-    expect(await screen.findByText('報表產生失敗')).toBeInTheDocument()
-    expect(await screen.findAllByText('執行中')).not.toHaveLength(0)
-    expect(
-      await screen.findAllByText('Analysis pipeline could not derive inspection events from the mission imagery.'),
-    ).not.toHaveLength(0)
-    expect(await screen.findByText('Report generation is blocked until imagery review completes.')).toBeInTheDocument()
-    expect(await screen.findByText(/最近一次影像/)).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: '申請遠端接管' })).toBeInTheDocument()
+    expect(await screen.findByText('Flight Operations')).toBeInTheDocument()
+    expect(await screen.findByText('Tower A Demo')).toBeInTheDocument()
+    expect((await screen.findAllByText('Manual Pilot')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Streaming')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Recording')).length).toBeGreaterThan(0)
     expect(await screen.findByText('HQ takeover drill')).toBeInTheDocument()
-    expect(await screen.findByText('CONTROL_LEASE_UPDATED')).toBeInTheDocument()
-    expect(document.querySelector('a[href="/missions/mission-001"]')).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Request Remote Control' })).toBeInTheDocument()
   })
 })

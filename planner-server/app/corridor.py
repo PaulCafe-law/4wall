@@ -5,15 +5,16 @@ from datetime import datetime, timezone
 from math import ceil, cos, radians, sqrt
 
 from app.dto import (
-    CorridorSegmentDto,
     GeoPointDto,
+    InspectionViewpointDto,
+    LaunchPointDto,
     MissionArtifactDescriptorDto,
     MissionArtifactsDto,
     MissionBundleDto,
     MissionFailsafeDto,
     MissionMetaDto,
     MissionPlanRequestDto,
-    VerificationPointDto,
+    OrderedWaypointDto,
 )
 from app.providers import RoutePath
 
@@ -30,33 +31,40 @@ class CorridorGenerator:
         self.densify_spacing_m = densify_spacing_m
 
     def generate(self, request: MissionPlanRequestDto, route_path: RoutePath, mission_id: str) -> CorridorPlan:
-        densified = densify_polyline(route_path.points, max_spacing_m=self.densify_spacing_m)
-        half_width = min(request.corridorPolicy.defaultHalfWidthM, request.corridorPolicy.maxHalfWidthM)
-        verification_points = build_verification_points(densified, request)
-        launch_point = request.launchPoint or request.origin
-        if launch_point is None:
-            raise ValueError("launch point missing")
+        _ = densify_polyline(route_path.points, max_spacing_m=self.densify_spacing_m)
+        legacy_inspection_viewpoints = [
+            InspectionViewpointDto(
+                inspectionViewpointId=viewpoint.viewpointId,
+                location=GeoPointDto(lat=viewpoint.lat, lng=viewpoint.lng),
+                yawDegrees=viewpoint.yawDeg,
+                captureMode="photo_burst",
+                label=viewpoint.label,
+            )
+            for viewpoint in (request.inspectionIntent.viewpoints if request.inspectionIntent is not None else [])
+        ]
         failsafe = MissionFailsafeDto()
-        bundle_version = "1.1.0"
+        bundle_version = "2.0.0"
         mission_bundle = MissionBundleDto(
             missionId=mission_id,
             routeMode="road_network_following",
+            operatingProfile=request.operatingProfile,
+            launchPoint=request.launchPoint,
+            orderedWaypoints=[
+                OrderedWaypointDto(
+                    waypointId=waypoint.waypointId,
+                    location=waypoint.location,
+                    sequence=waypoint.sequence,
+                    holdSeconds=waypoint.holdSeconds,
+                    speedMetersPerSecond=waypoint.speedMetersPerSecond,
+                    altitudeMeters=waypoint.altitudeMeters,
+                )
+                for waypoint in sorted(request.orderedWaypoints, key=lambda item: item.sequence)
+            ],
+            implicitReturnToLaunch=True,
             defaultAltitudeMeters=request.flightProfile.defaultAltitudeM,
             defaultSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
-            launchPoint=launch_point,
-            waypointCount=len(request.waypoints),
-            implicitReturnToLaunch=True,
-            corridorSegments=[
-                CorridorSegmentDto(
-                    segmentId="seg-001",
-                    polyline=densified,
-                    halfWidthMeters=half_width,
-                    suggestedAltitudeMeters=request.flightProfile.defaultAltitudeM,
-                    suggestedSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
-                )
-            ],
-            verificationPoints=verification_points,
             failsafe=failsafe,
+            legacyInspectionViewpoints=legacy_inspection_viewpoints,
         )
         placeholder_descriptor = MissionArtifactDescriptorDto(
             downloadUrl="pending",
@@ -70,14 +78,20 @@ class CorridorGenerator:
             missionId=mission_id,
             bundleVersion=bundle_version,
             generatedAt=datetime.now(timezone.utc),
-            segments=1,
-            verificationPoints=len(verification_points),
-            routeWaypointCount=len(request.waypoints),
+            routeMode="road_network_following",
+            operatingProfile=request.operatingProfile,
+            launchPoint=LaunchPointDto(
+                launchPointId=request.launchPoint.launchPointId,
+                location=request.launchPoint.location,
+                label=request.launchPoint.label,
+            ),
+            waypointCount=len(request.orderedWaypoints),
             implicitReturnToLaunch=True,
-            corridorHalfWidthM=half_width,
-            suggestedAltitudeM=request.flightProfile.defaultAltitudeM,
-            suggestedSpeedMps=request.flightProfile.defaultSpeedMps,
+            defaultAltitudeMeters=request.flightProfile.defaultAltitudeM,
+            defaultSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
+            landingPolicy="android_auto_landing_with_rc_fallback",
             safetyDefaults=failsafe,
+            legacyInspectionViewpointCount=len(legacy_inspection_viewpoints),
             artifacts=MissionArtifactsDto(
                 missionKmz=placeholder_descriptor,
                 missionMeta=placeholder_descriptor,
@@ -88,32 +102,6 @@ class CorridorGenerator:
             mission_bundle=mission_bundle,
             mission_meta=mission_meta,
         )
-
-
-def build_verification_points(
-    polyline: list[GeoPointDto],
-    request: MissionPlanRequestDto,
-) -> list[VerificationPointDto]:
-    if len(polyline) < 3:
-        return []
-    midpoint = polyline[len(polyline) // 2]
-    final_approach = polyline[max(len(polyline) - 3, 0)]
-    return [
-        VerificationPointDto(
-            verificationPointId="vp-branch-001",
-            location=GeoPointDto(lat=midpoint.lat, lng=midpoint.lng),
-            expectedOptions=["STRAIGHT"],
-            timeoutMillis=2500,
-        ),
-        VerificationPointDto(
-            verificationPointId="vp-final-001",
-            location=GeoPointDto(lat=final_approach.lat, lng=final_approach.lng),
-            expectedOptions=["STRAIGHT"],
-            timeoutMillis=max(int(request.corridorPolicy.branchConfirmRadiusM * 100), 1500),
-        ),
-    ]
-
-
 def densify_polyline(points: list[GeoPointDto], max_spacing_m: float) -> list[GeoPointDto]:
     if len(points) < 2:
         return points

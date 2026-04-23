@@ -11,6 +11,21 @@ class GeoPointDto(BaseModel):
     lng: float
 
 
+class LaunchPointDto(BaseModel):
+    launchPointId: str = Field(min_length=1)
+    location: GeoPointDto
+    label: str | None = None
+
+
+class OrderedWaypointDto(BaseModel):
+    waypointId: str = Field(min_length=1)
+    location: GeoPointDto
+    sequence: int = Field(ge=1)
+    holdSeconds: int = Field(default=0, ge=0)
+    speedMetersPerSecond: float | None = Field(default=None, gt=0)
+    altitudeMeters: float | None = Field(default=None, gt=0)
+
+
 class TargetBuildingDto(BaseModel):
     buildingId: str = Field(min_length=1)
     label: str = Field(min_length=1)
@@ -46,18 +61,14 @@ class InspectionViewpointRequestDto(BaseModel):
 
 
 class InspectionIntentDto(BaseModel):
-    viewpoints: list[InspectionViewpointRequestDto] = Field(default_factory=list)
+    viewpoints: list[InspectionViewpointRequestDto]
 
-
-class MissionRouteWaypointRequestDto(BaseModel):
-    waypointId: str | None = None
-    kind: Literal["transit", "hold"] = "transit"
-    label: str | None = None
-    lat: float
-    lng: float
-    altitudeM: float = Field(gt=0)
-    headingDeg: float | None = None
-    dwellSeconds: int = Field(default=0, ge=0)
+    @field_validator("viewpoints")
+    @classmethod
+    def validate_viewpoints(cls, value: list[InspectionViewpointRequestDto]) -> list[InspectionViewpointRequestDto]:
+        if not value:
+            raise ValueError("viewpoints must not be empty")
+        return value
 
 
 class MissionPlanRequestDto(BaseModel):
@@ -65,57 +76,58 @@ class MissionPlanRequestDto(BaseModel):
     siteId: str | None = None
     requestedByUserId: str | None = None
     missionName: str = Field(min_length=1)
-    launchPoint: GeoPointDto | None = None
     origin: GeoPointDto | None = None
     targetBuilding: TargetBuildingDto | None = None
     routingMode: Literal["road_network_following"]
-    corridorPolicy: CorridorPolicyDto
+    corridorPolicy: CorridorPolicyDto | None = None
     flightProfile: FlightProfileDto
-    waypoints: list[MissionRouteWaypointRequestDto] = Field(default_factory=list)
     inspectionIntent: InspectionIntentDto | None = None
+    launchPoint: LaunchPointDto | None = None
+    orderedWaypoints: list[OrderedWaypointDto] = Field(default_factory=list)
+    implicitReturnToLaunch: bool = True
+    operatingProfile: Literal["outdoor_gps_patrol", "indoor_no_gps"] = "outdoor_gps_patrol"
     demoMode: bool = True
 
     @model_validator(mode="after")
-    def normalize_route_geometry(self) -> "MissionPlanRequestDto":
-        if self.launchPoint is None:
-            if self.origin is None:
-                raise ValueError("launchPoint is required")
-            self.launchPoint = self.origin
-        self.origin = self.launchPoint
+    def normalize_patrol_geometry(self) -> "MissionPlanRequestDto":
+        if self.launchPoint is None and self.origin is not None:
+            self.launchPoint = LaunchPointDto(
+                launchPointId="launch-origin",
+                location=self.origin,
+                label="legacy-origin",
+            )
 
-        if not self.waypoints and self.inspectionIntent and self.inspectionIntent.viewpoints:
-            self.waypoints = [
-                MissionRouteWaypointRequestDto(
+        if not self.orderedWaypoints and self.inspectionIntent is not None:
+            self.orderedWaypoints = [
+                OrderedWaypointDto(
                     waypointId=viewpoint.viewpointId,
-                    kind="transit",
-                    label=viewpoint.label,
-                    lat=viewpoint.lat,
-                    lng=viewpoint.lng,
-                    altitudeM=self.flightProfile.defaultAltitudeM,
-                    headingDeg=viewpoint.yawDeg,
-                    dwellSeconds=8,
+                    location=GeoPointDto(lat=viewpoint.lat, lng=viewpoint.lng),
+                    sequence=index + 1,
+                    holdSeconds=0,
                 )
-                for viewpoint in self.inspectionIntent.viewpoints
+                for index, viewpoint in enumerate(self.inspectionIntent.viewpoints)
             ]
 
-        if not self.waypoints:
-            raise ValueError("waypoints must not be empty")
+        if self.launchPoint is None:
+            raise ValueError("launchPoint must not be empty")
+        if not self.orderedWaypoints:
+            raise ValueError("orderedWaypoints must not be empty")
+        if not self.implicitReturnToLaunch:
+            raise ValueError("implicitReturnToLaunch must remain true for patrol-route v1")
+
+        ordered_sequences = [waypoint.sequence for waypoint in self.orderedWaypoints]
+        if ordered_sequences != list(range(1, len(self.orderedWaypoints) + 1)):
+            raise ValueError("orderedWaypoints.sequence must be contiguous and start at 1")
+
         return self
 
 
-class CorridorSegmentDto(BaseModel):
-    segmentId: str
-    polyline: list[GeoPointDto]
-    halfWidthMeters: float
-    suggestedAltitudeMeters: float
-    suggestedSpeedMetersPerSecond: float
-
-
-class VerificationPointDto(BaseModel):
-    verificationPointId: str
+class InspectionViewpointDto(BaseModel):
+    inspectionViewpointId: str
     location: GeoPointDto
-    expectedOptions: list[Literal["LEFT", "RIGHT", "STRAIGHT"]]
-    timeoutMillis: int = Field(gt=0)
+    yawDegrees: float
+    captureMode: str
+    label: str
 
 
 class MissionFailsafeDto(BaseModel):
@@ -127,14 +139,14 @@ class MissionFailsafeDto(BaseModel):
 class MissionBundleDto(BaseModel):
     missionId: str
     routeMode: Literal["road_network_following"]
+    operatingProfile: Literal["outdoor_gps_patrol", "indoor_no_gps"]
+    launchPoint: LaunchPointDto
+    orderedWaypoints: list[OrderedWaypointDto]
+    implicitReturnToLaunch: bool = True
     defaultAltitudeMeters: float
     defaultSpeedMetersPerSecond: float
-    launchPoint: GeoPointDto
-    waypointCount: int
-    implicitReturnToLaunch: bool = True
-    corridorSegments: list[CorridorSegmentDto]
-    verificationPoints: list[VerificationPointDto]
     failsafe: MissionFailsafeDto = Field(default_factory=MissionFailsafeDto)
+    legacyInspectionViewpoints: list[InspectionViewpointDto] = Field(default_factory=list)
 
 
 class MissionArtifactDescriptorDto(BaseModel):
@@ -166,15 +178,17 @@ class MissionMetaDto(BaseModel):
     missionId: str
     bundleVersion: str = "1.0.0"
     generatedAt: datetime
-    segments: int
-    verificationPoints: int
-    routeWaypointCount: int
+    routeMode: Literal["road_network_following"]
+    operatingProfile: Literal["outdoor_gps_patrol", "indoor_no_gps"]
+    launchPoint: LaunchPointDto
+    waypointCount: int = Field(ge=0)
     implicitReturnToLaunch: bool = True
-    corridorHalfWidthM: float
-    suggestedAltitudeM: float
-    suggestedSpeedMps: float
+    defaultAltitudeMeters: float = Field(gt=0)
+    defaultSpeedMetersPerSecond: float = Field(gt=0)
+    landingPolicy: Literal["android_auto_landing_with_rc_fallback"] = "android_auto_landing_with_rc_fallback"
     safetyDefaults: MissionFailsafeDto
     artifacts: MissionArtifactsDto
+    legacyInspectionViewpointCount: int = Field(default=0, ge=0)
 
 
 class FlightEventDto(BaseModel):
@@ -220,6 +234,10 @@ class LoginRequestDto(BaseModel):
 
 
 class AuthRefreshRequestDto(BaseModel):
+    refreshToken: str = Field(min_length=1)
+
+
+class AuthLogoutRequestDto(BaseModel):
     refreshToken: str = Field(min_length=1)
 
 

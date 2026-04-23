@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { MissionsPage } from './MissionsPage'
-import { createAuthValue, renderWithProviders } from '../../test/utils'
+import { renderWithProviders } from '../../test/utils'
 
 const apiMock = vi.hoisted(() => ({
   listMissions: vi.fn(),
@@ -24,67 +24,31 @@ describe('MissionsPage', () => {
     apiMock.listMissions.mockReset()
   })
 
-  it('renders delivery and reporting status in the mission index', async () => {
+  it('renders patrol-route summary and operating profile', async () => {
     apiMock.listMissions.mockResolvedValue([
       {
-        missionId: 'mission-failed',
+        missionId: 'mission-001',
         organizationId: 'org-001',
         siteId: 'site-001',
-        missionName: 'Tower A Failed',
-        status: 'failed',
-        bundleVersion: 'bundle-failed',
-        deliveryStatus: 'failed',
-        publishedAt: null,
-        failureReason: 'Route provider timed out for this site.',
-        reportStatus: 'failed',
-        reportGeneratedAt: null,
-        eventCount: 0,
-        createdAt: '2026-04-15T08:00:00Z',
-      },
-      {
-        missionId: 'mission-published',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        missionName: 'Tower A Published',
+        missionName: 'Tower A Patrol',
         status: 'ready',
-        bundleVersion: 'bundle-published',
-        deliveryStatus: 'published',
-        publishedAt: '2026-04-15T07:00:00Z',
-        failureReason: null,
-        reportStatus: 'ready',
-        reportGeneratedAt: '2026-04-15T07:10:00Z',
-        eventCount: 2,
-        createdAt: '2026-04-15T07:00:00Z',
-      },
-      {
-        missionId: 'mission-planning',
-        organizationId: 'org-001',
-        siteId: 'site-001',
-        missionName: 'Tower A Planning',
-        status: 'planning',
-        bundleVersion: 'bundle-planning',
-        deliveryStatus: 'planning',
-        publishedAt: null,
-        failureReason: null,
-        reportStatus: 'not_started',
-        reportGeneratedAt: null,
-        eventCount: 0,
-        createdAt: '2026-04-15T06:00:00Z',
+        bundleVersion: '1.1.0',
+        operatingProfile: 'outdoor_gps_patrol',
+        launchPoint: {
+          label: 'L1',
+          location: { lat: 25.03391, lng: 121.56452 },
+        },
+        waypointCount: 3,
+        implicitReturnToLaunch: true,
+        createdAt: '2026-04-19T08:00:00Z',
       },
     ])
 
-    renderWithProviders(<MissionsPage />, {
-      auth: createAuthValue(),
-    })
+    renderWithProviders(<MissionsPage />)
 
-    expect(await screen.findByText('Tower A Failed')).toBeInTheDocument()
-    expect(screen.getByText('Tower A Published')).toBeInTheDocument()
-    expect(screen.getByText('Tower A Planning')).toBeInTheDocument()
-    expect(screen.getByText('Route provider timed out for this site.')).toBeInTheDocument()
-    expect(screen.getByText('任務交付')).toBeInTheDocument()
-    expect(screen.getByText('報表已完成')).toBeInTheDocument()
-    expect(screen.getByText('待檢查')).toBeInTheDocument()
-    expect(screen.getByText('已有 1 筆任務成果完成發布。')).toBeInTheDocument()
-    expect(document.querySelectorAll('a[href^="/missions/mission-"]').length).toBe(3)
+    expect(await screen.findByText('任務')).toBeInTheDocument()
+    expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
+    expect(await screen.findByText('戶外 GPS 巡邏')).toBeInTheDocument()
+    expect(await screen.findByText(/Launch L1 \/ 25\.03391, 121\.56452 \/ 3 個 waypoint \/ 含隱含返航/)).toBeInTheDocument()
   })
 })

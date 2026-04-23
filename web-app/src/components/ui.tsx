@@ -53,7 +53,7 @@ export function Panel({
 
 export function StatusBadge({ status }: { status: string }) {
   const classes =
-    status === 'ready' || status === 'paid' || status === 'published'
+    status === 'ready' || status === 'paid'
       ? 'bg-moss-300/40 text-moss-500'
       : status === 'failed' || status === 'overdue' || status === 'void'
         ? 'bg-red-100 text-red-700'
@@ -85,7 +85,7 @@ export function EmptyState({
   return (
     <Panel className="border-dashed border-chrome-300 bg-chrome-50/80 text-center">
       <div className="mx-auto flex max-w-xl flex-col items-center gap-4 py-10">
-        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">空狀態</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">目前沒有資料</p>
         <h2 className="font-display text-2xl font-semibold text-chrome-950">{title}</h2>
         <p className="text-sm text-chrome-700 md:text-base">{body}</p>
         {action}
@@ -117,11 +117,9 @@ export function ActionButton({
   className,
   variant = 'primary',
   ...props
-}: PropsWithChildren<
-  React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: 'primary' | 'secondary' | 'ghost'
-  }
->) {
+}: PropsWithChildren<React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'secondary' | 'ghost'
+}>) {
   const variants = {
     primary: 'bg-chrome-950 text-white hover:bg-chrome-900',
     secondary: 'border border-chrome-300 bg-white text-chrome-950 hover:border-chrome-500',

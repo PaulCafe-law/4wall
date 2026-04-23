@@ -1,31 +1,43 @@
 package com.yourorg.buildingdrone.data
 
 import com.yourorg.buildingdrone.core.GeoPoint
-import com.yourorg.buildingdrone.domain.semantic.BranchDecision
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MissionBundleTest {
     @Test
-    fun demoMissionBundle_isValid() {
+    fun demoMissionBundle_isValidPatrolRoute() {
         val bundle = demoMissionBundle()
 
         assertEquals("demo-mission-001", bundle.missionId)
-        assertEquals(1, bundle.corridorSegments.size)
-        assertEquals(1, bundle.verificationPoints.size)
-        assertEquals(1, bundle.inspectionViewpoints.size)
-        assertTrue(bundle.verificationPoints.first().expectedOptions.contains(BranchDecision.LEFT))
+        assertEquals("outdoor_gps_patrol", bundle.operatingProfile.wireName)
+        assertEquals("L", bundle.launchPoint.label)
+        assertEquals(2, bundle.orderedWaypoints.size)
+        assertTrue(bundle.implicitReturnToLaunch)
+        assertEquals(
+            listOf(1, 2),
+            bundle.orderedWaypoints.map { it.sequence }
+        )
+        assertEquals(
+            listOf(
+                bundle.launchPoint.location,
+                bundle.orderedWaypoints[0].location,
+                bundle.orderedWaypoints[1].location,
+                bundle.launchPoint.location
+            ),
+            bundle.closedLoopPath()
+        )
+        assertTrue(bundle.isArtifactComplete())
+        assertTrue(bundle.isVerified())
     }
 
     @Test(expected = IllegalArgumentException::class)
-    fun corridorSegment_requiresAtLeastTwoPoints() {
-        CorridorSegment(
-            segmentId = "bad-segment",
-            polyline = listOf(GeoPoint(0.0, 0.0)),
-            halfWidthMeters = 8.0,
-            suggestedAltitudeMeters = 30.0,
-            suggestedSpeedMetersPerSecond = 4.0
+    fun orderedWaypoint_requiresPositiveSequence() {
+        OrderedWaypoint(
+            waypointId = "bad-waypoint",
+            sequence = 0,
+            location = GeoPoint(0.0, 0.0)
         )
     }
 }

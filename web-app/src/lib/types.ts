@@ -27,6 +27,8 @@ export type InspectionAlertRuleKind =
 export type InspectionScheduleStatus = 'scheduled' | 'paused' | 'cancelled' | 'completed'
 export type DispatchStatus = 'queued' | 'assigned' | 'sent' | 'accepted' | 'completed' | 'failed'
 export type ExecutionPhase = 'draft' | 'scheduled' | 'dispatched' | 'running' | 'completed' | 'failed' | 'report_ready'
+export type OperatingProfile = 'outdoor_gps_patrol' | 'indoor_no_gps'
+export type ExecutionMode = 'patrol_route' | 'manual_pilot'
 
 export type ControlIntentAction =
   | 'request_remote_control'
@@ -193,6 +195,17 @@ export interface Site {
   updatedAt: string
 }
 
+export interface LaunchPointSummary {
+  launchPointId?: string
+  label?: string
+  location?: {
+    lat: number
+    lng: number
+  }
+  lat?: number
+  lng?: number
+}
+
 export interface EvidenceArtifact {
   artifactName: string
   downloadUrl: string
@@ -318,6 +331,10 @@ export interface MissionSummary {
   missionName: string
   status: string
   bundleVersion: string
+  operatingProfile: OperatingProfile
+  launchPoint: LaunchPointSummary | null
+  waypointCount: number
+  implicitReturnToLaunch: boolean
   deliveryStatus: 'planning' | 'ready' | 'failed' | 'published'
   publishedAt: string | null
   failureReason: string | null
@@ -351,7 +368,12 @@ export interface MissionDetail {
   requestedByUserId: string | null
   missionName: string
   status: string
+  routeMode: string
   bundleVersion: string
+  operatingProfile: OperatingProfile
+  launchPoint: LaunchPointSummary | null
+  waypointCount: number
+  implicitReturnToLaunch: boolean
   request: Record<string, unknown>
   response: Record<string, unknown>
   delivery: MissionDelivery
@@ -371,7 +393,21 @@ export interface MissionDetail {
 
 export interface MissionExecutionSummary {
   missionId: string
+  flightId: string | null
+  lastEventType: string | null
+  lastEventAt: string | null
   phase: ExecutionPhase
+  executionState: string | null
+  uploadState: string | null
+  waypointProgress: string | null
+  plannedOperatingProfile: OperatingProfile | null
+  executedOperatingProfile: OperatingProfile | null
+  executionMode: ExecutionMode | null
+  cameraStreamState: string | null
+  recordingState: string | null
+  landingPhase: string | null
+  fallbackReason: string | null
+  statusNote: string | null
   telemetryFreshness: TelemetryFreshness
   lastTelemetryAt: string | null
   lastImageryAt: string | null
@@ -570,6 +606,7 @@ export interface LiveFlightSummary {
   organizationId: string
   missionId: string
   missionName: string
+  operatingProfile: OperatingProfile
   siteId: string | null
   siteName: string | null
   lastEventAt: string | null
@@ -614,6 +651,7 @@ export interface SupportQueueItem {
   missionId: string | null
   missionName: string | null
   siteName: string | null
+  operatingProfile: OperatingProfile | null
   title: string
   summary: string
   recommendedNextStep: string

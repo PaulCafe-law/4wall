@@ -20,7 +20,7 @@ const viewerSession = {
   },
 }
 
-test('customer viewer can browse but cannot see site mutation controls or internal navigation', async ({ page }) => {
+test('customer viewer can browse but cannot see site mutation controls', async ({ page }) => {
   await page.route('**/v1/web/session/refresh', async (route) => {
     await route.fulfill({
       status: 401,
@@ -58,48 +58,6 @@ test('customer viewer can browse but cannot see site mutation controls or intern
           address: 'Taipei',
           location: { lat: 25.03391, lng: 121.56452 },
           notes: '',
-          siteMap: {
-            baseMapType: 'satellite',
-            center: { lat: 25.03391, lng: 121.56452 },
-            zoom: 18,
-            version: 1,
-            zones: [
-              {
-                zoneId: 'zone-1',
-                label: 'Viewer Site Inspection Zone',
-                kind: 'inspection_boundary',
-                polygon: [
-                  { lat: 25.03381, lng: 121.56442 },
-                  { lat: 25.03381, lng: 121.56462 },
-                  { lat: 25.03401, lng: 121.56462 },
-                  { lat: 25.03401, lng: 121.56442 },
-                ],
-              },
-            ],
-            launchPoints: [
-              {
-                launchPointId: 'launch-1',
-                label: 'Viewer Site Launch',
-                kind: 'primary',
-                location: { lat: 25.03375, lng: 121.56433 },
-                headingDeg: 180,
-              },
-            ],
-            viewpoints: [
-              {
-                viewpointId: 'view-1',
-                label: 'Viewer Site Facade',
-                purpose: 'facade_overview',
-                location: { lat: 25.03411, lng: 121.56471 },
-                altitudeM: 35,
-                distanceToFacadeM: 12,
-              },
-            ],
-          },
-          activeRouteCount: 0,
-          activeTemplateCount: 0,
-          activeRoutes: [],
-          activeTemplates: [],
           createdAt: '2026-04-10T00:00:00Z',
           updatedAt: '2026-04-10T00:00:00Z',
         },
@@ -107,23 +65,13 @@ test('customer viewer can browse but cannot see site mutation controls or intern
     })
   })
 
-  await page.route('**/v1/billing/invoices', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify([]),
-    })
-  })
-
   await page.goto('/login')
-  await page.getByLabel(/電子郵件/).fill('viewer@test.dev')
+  await page.getByLabel('電子郵件').fill('viewer@test.dev')
   await page.getByLabel('密碼').fill('Password123!')
-  await page.getByRole('button', { name: /登入工作區|進入主控台/ }).click()
+  await page.getByRole('button', { name: '進入主控台' }).click()
 
-  await expect(page).toHaveURL(/\/$/)
-  await expect(page.getByRole('link', { name: '組織' })).toHaveCount(0)
-  await page.getByRole('link', { name: '場域' }).click()
+  await page.getByRole('link', { name: '場址' }).click()
 
   await expect(page.getByRole('link', { name: /Viewer Site/i })).toBeVisible()
-  await expect(page.getByRole('button', { name: '新增場域' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '新增場址' })).toHaveCount(0)
 })

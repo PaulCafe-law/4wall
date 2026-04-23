@@ -13,6 +13,7 @@ This app is a pilot console for field operations. It is not a dashboard.
 ## Screen Set
 
 - Mission Setup
+- Simulator Verification
 - Preflight Checklist
 - In-Flight Main
 - Branch Confirm
@@ -28,6 +29,12 @@ Mission Setup
   3. artifact readiness
   4. mission summary
   5. continue CTA
+
+Simulator Verification
+  1. simulator status banner
+  2. external observer note or `Stage 0 unavailable` fallback (`DJI Assistant 2`)
+  3. required replay checklist
+  4. continue CTA to `Connection Guide`
 
 Preflight Checklist
   1. aircraft / RC / stream / GPS readiness
@@ -57,7 +64,8 @@ Inspection Capture
 Emergency / Hold / RTH / Takeover
   1. active reason
   2. next step
-  3. resume / RTH / takeover
+  3. stage-specific primary action (`Resume` / `Confirm RTH` / `Confirm Landing`)
+  4. bottom rail `HOLD / RTH / TAKEOVER`
 ```
 
 ## Mission Flow
@@ -66,6 +74,7 @@ Emergency / Hold / RTH / Takeover
 Mission Setup
   -> authenticate and load mission
   -> verify artifacts
+  -> Simulator Verification
   -> Preflight Checklist
   -> Upload + Start
   -> In-Flight Main
@@ -92,6 +101,7 @@ Mission Setup
 - Timeout fallback is explicit, not silent.
 - The UI never implies it is safe to resume without passing reducer guards.
 - Demo mode is clearly labeled so it cannot be mistaken for real hardware state.
+- `HOLD` must expose `why stopped` and `next step` above the fold before any telemetry detail.
 
 ## Demo And Prod
 

@@ -1,0 +1,72 @@
+package com.yourorg.buildingdrone.app
+
+import android.app.Application
+import com.yourorg.buildingdrone.R
+import com.yourorg.buildingdrone.data.FileDeviceStorageRepository
+import com.yourorg.buildingdrone.data.FileFlightLogRepository
+import com.yourorg.buildingdrone.data.auth.OperatorAuthRepository
+import com.yourorg.buildingdrone.data.network.PlannerApi
+import com.yourorg.buildingdrone.data.network.PlannerTransport
+import com.yourorg.buildingdrone.data.sync.ServerMissionRepository
+import com.yourorg.buildingdrone.data.upload.FileFlightUploadRepository
+import com.yourorg.buildingdrone.dji.real.DjiCameraStreamAdapter
+import com.yourorg.buildingdrone.dji.real.DjiCameraControlAdapter
+import com.yourorg.buildingdrone.dji.real.DjiConnectionRepository
+import com.yourorg.buildingdrone.dji.real.DjiFlightControlAdapter
+import com.yourorg.buildingdrone.dji.real.DjiPerceptionAdapter
+import com.yourorg.buildingdrone.dji.real.DjiSdkSession
+import com.yourorg.buildingdrone.dji.real.DjiSimulatorAdapter
+import com.yourorg.buildingdrone.dji.real.DjiVirtualStickAdapter
+import com.yourorg.buildingdrone.dji.real.DjiWaypointMissionAdapter
+import java.io.File
+import okhttp3.OkHttpClient
+
+fun installModeRuntime(application: Application) {
+    com.cySdkyc.clx.Helper.install(application)
+}
+
+fun createAppContainer(application: Application): AppContainer {
+    val httpClient = OkHttpClient()
+    val plannerBaseUrl = application.getString(R.string.planner_base_url)
+    val rawTransport = PlannerTransport(
+        baseUrl = plannerBaseUrl,
+        client = httpClient
+    )
+    val authRepository = OperatorAuthRepository(
+        context = application,
+        transport = rawTransport
+    )
+    val authenticatedTransport = PlannerTransport(
+        baseUrl = plannerBaseUrl,
+        client = httpClient,
+        tokenProvider = authRepository
+    )
+    val plannerApi = PlannerApi(authenticatedTransport)
+    val missionRepository = ServerMissionRepository(
+        plannerApi = plannerApi,
+        rootDirectory = File(application.filesDir, "planner-cache"),
+        planRequestFactory = ::defaultProdMissionPlanRequest
+    )
+    val flightUploadRepository = FileFlightUploadRepository(
+        plannerApi = plannerApi,
+        rootDirectory = File(application.filesDir, "upload-backlog")
+    )
+
+    return AppContainer(
+        runtimeMode = RuntimeMode.PROD,
+        missionRepository = missionRepository,
+        flightLogRepository = FileFlightLogRepository(File(application.filesDir, "prod-blackbox")),
+        storageRepository = FileDeviceStorageRepository(application.filesDir),
+        mobileSdkSession = DjiSdkSession(),
+        hardwareStatusProvider = DjiConnectionRepository(),
+        waypointMissionAdapter = DjiWaypointMissionAdapter(),
+        flightControlAdapter = DjiFlightControlAdapter(),
+        virtualStickAdapter = DjiVirtualStickAdapter(),
+        cameraStreamAdapter = DjiCameraStreamAdapter(),
+        cameraControlAdapter = DjiCameraControlAdapter(),
+        perceptionAdapter = DjiPerceptionAdapter(),
+        simulatorAdapter = DjiSimulatorAdapter(),
+        operatorAuthRepository = authRepository,
+        flightUploadRepository = flightUploadRepository
+    )
+}

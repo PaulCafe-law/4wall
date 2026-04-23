@@ -1,23 +1,21 @@
-import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom'
 
 import { ActionButton } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { formatRole } from '../lib/presentation'
 
 const customerLinks = [
-  { to: '/control-plane', label: '控制平面' },
-  { to: '/', label: '總覽' },
+  { to: '/overview', label: '總覽' },
   { to: '/sites', label: '場域' },
   { to: '/missions', label: '任務' },
   { to: '/billing', label: '帳務' },
-  { to: '/team', label: '團隊' },
 ]
 
 const internalLinks = [
   { to: '/live-ops', label: '即時營運' },
   { to: '/organizations', label: '組織' },
   { to: '/support', label: '支援工作台' },
-  { to: '/audit', label: '稽核紀錄' },
+  { to: '/audit', label: '稽核記錄' },
 ]
 
 function linkClass(active: boolean) {
@@ -28,29 +26,16 @@ function linkClass(active: boolean) {
 
 export function AppShell() {
   const auth = useAuth()
-  const location = useLocation()
-
-  const isInternalSurface =
-    location.pathname.startsWith('/live-ops') ||
-    location.pathname.startsWith('/organizations') ||
-    location.pathname.startsWith('/support') ||
-    location.pathname.startsWith('/audit')
-
-  const headerScopeLabel = auth.isInternal
-    ? isInternalSurface
-      ? '目前位於內部營運面，可檢視即時營運、支援、組織與稽核資訊。'
-      : '目前位於客戶入口，可檢視場域、任務、報表與帳務資訊。'
-    : '目前位於客戶入口，可檢視場域、任務、報表與帳務資訊。'
 
   return (
     <>
       <div className="md:hidden">
         <div className="min-h-screen bg-grain px-6 py-10">
           <div className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur">
-            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">桌面版工作區</p>
-            <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">請使用較大螢幕開啟網站</h1>
+            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">The Fourth Wall</p>
+            <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">建築巡檢工作區</h1>
             <p className="mt-3 text-sm text-chrome-700">
-              目前這套工作區以桌面操作為主。請改用寬度至少 1280px 的裝置，以取得完整的控制平面、任務、報表與營運視圖。
+              手機版目前只保留提示資訊。完整控制平面、任務與營運工作台請使用桌面版。
             </p>
           </div>
         </div>
@@ -65,21 +50,16 @@ export function AppShell() {
                 建築巡檢工作區
               </h1>
               <p className="mt-2 text-sm text-chrome-700">
-                這裡整合客戶入口、任務交付、自主巡檢控制平面，以及內部即時營運與支援面。網站只負責規劃、營運與交付，不進入飛行關鍵控制迴路。
+                Web 端負責規劃、營運、支援與客戶入口，不進 flight-critical loop。
               </p>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">客戶工作區</p>
                 <nav className="mt-3 flex flex-col items-start gap-2">
                   {customerLinks.map((link) => (
-                    <NavLink
-                      key={link.to}
-                      end={link.to === '/'}
-                      to={link.to}
-                      className={({ isActive }) => linkClass(isActive)}
-                    >
+                    <NavLink key={link.to} to={link.to} className={({ isActive }) => linkClass(isActive)}>
                       {link.label}
                     </NavLink>
                   ))}
@@ -132,7 +112,9 @@ export function AppShell() {
           <header className="sticky top-0 z-20 flex flex-col items-start gap-3 border-b border-white/60 bg-chrome-50/70 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">目前頁面範圍</p>
-              <p className="text-sm text-chrome-700">{headerScopeLabel}</p>
+              <p className="text-sm text-chrome-700">
+                目前位於客戶入口，可檢視場域、任務、報表與帳務資訊。
+              </p>
             </div>
             <ActionButton variant="secondary" onClick={() => void auth.logout()}>
               登出

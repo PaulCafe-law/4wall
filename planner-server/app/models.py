@@ -87,62 +87,7 @@ class Site(SQLModel, table=True):
     address: str
     lat: float
     lng: float
-    map_config_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
-    zones_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
-    launch_points_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
-    viewpoints_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     notes: str = ""
-    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class InspectionRoute(SQLModel, table=True):
-    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
-    organization_id: str = Field(foreign_key="organization.id", index=True)
-    site_id: str = Field(foreign_key="site.id", index=True)
-    name: str = Field(index=True)
-    description: str = ""
-    launch_point_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
-    waypoints_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
-    planning_parameters_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
-    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class InspectionTemplate(SQLModel, table=True):
-    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
-    organization_id: str = Field(foreign_key="organization.id", index=True)
-    site_id: str = Field(foreign_key="site.id", index=True)
-    route_id: str | None = Field(default=None, foreign_key="inspectionroute.id", index=True)
-    name: str = Field(index=True)
-    description: str = ""
-    inspection_profile_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
-    alert_rules_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
-    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class InspectionSchedule(SQLModel, table=True):
-    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
-    organization_id: str = Field(foreign_key="organization.id", index=True)
-    site_id: str = Field(foreign_key="site.id", index=True)
-    route_id: str | None = Field(default=None, foreign_key="inspectionroute.id", index=True)
-    template_id: str | None = Field(default=None, foreign_key="inspectiontemplate.id", index=True)
-    planned_at: datetime | None = None
-    recurrence: str | None = None
-    status: str = Field(default="scheduled", index=True)
-    next_run_at: datetime | None = None
-    last_run_at: datetime | None = None
-    last_dispatched_at: datetime | None = None
-    pause_reason: str | None = None
-    last_outcome: str | None = None
-    alert_rules_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     created_at: datetime = Field(default_factory=utc_now)
@@ -227,56 +172,6 @@ class BillingInvoice(SQLModel, table=True):
     payment_note: str = ""
     receipt_ref: str = ""
     void_reason: str = ""
-    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class DispatchRecord(SQLModel, table=True):
-    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
-    organization_id: str = Field(foreign_key="organization.id", index=True)
-    mission_id: str = Field(foreign_key="mission.id", index=True)
-    route_id: str | None = Field(default=None, foreign_key="inspectionroute.id", index=True)
-    template_id: str | None = Field(default=None, foreign_key="inspectiontemplate.id", index=True)
-    schedule_id: str | None = Field(default=None, foreign_key="inspectionschedule.id", index=True)
-    dispatched_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
-    assignee: str | None = None
-    execution_target: str | None = None
-    status: str = Field(default="queued", index=True)
-    note: str | None = None
-    dispatched_at: datetime = Field(default_factory=utc_now)
-    accepted_at: datetime | None = None
-    closed_at: datetime | None = None
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class InspectionEventRecord(SQLModel, table=True):
-    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
-    organization_id: str = Field(foreign_key="organization.id", index=True)
-    mission_id: str = Field(foreign_key="mission.id", index=True)
-    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
-    category: str = Field(index=True)
-    severity: str = Field(index=True)
-    summary: str
-    detected_at: datetime = Field(default_factory=utc_now, index=True)
-    status: str = Field(default="open", index=True)
-    evidence_artifact_names_json: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
-    source: str = Field(default="demo_analysis", index=True)
-    created_at: datetime = Field(default_factory=utc_now)
-    updated_at: datetime = Field(default_factory=utc_now)
-
-
-class InspectionReport(SQLModel, table=True):
-    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
-    organization_id: str = Field(foreign_key="organization.id", index=True)
-    mission_id: str = Field(foreign_key="mission.id", index=True)
-    status: str = Field(default="not_started", index=True)
-    generated_at: datetime | None = None
-    summary: str | None = None
-    event_count: int = 0
-    artifact_name: str | None = None
-    mode: str = Field(default="normal", index=True)
     created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id")
     created_at: datetime = Field(default_factory=utc_now)
