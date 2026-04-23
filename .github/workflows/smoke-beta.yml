@@ -1,15 +1,11 @@
 name: Beta Smoke
 
+# Post-deploy smoke for staging/production web surfaces.
+# This workflow validates an already deployed environment; it is not a pre-deploy
+# gate because Render staging promotion is not driven by GitHub push state alone.
+
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "render.yaml"
-      - "planner-server/**"
-      - "web-app/**"
-      - ".github/workflows/smoke-beta.yml"
 
 jobs:
   smoke:
