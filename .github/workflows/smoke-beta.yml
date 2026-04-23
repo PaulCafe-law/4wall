@@ -57,6 +57,28 @@ jobs:
           done
           echo "API health never became ready"
           exit 1
+      - name: API web-session CORS preflight
+        env:
+          BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
+          BETA_APP_ORIGIN: ${{ vars.BETA_APP_ORIGIN }}
+        run: |
+          for attempt in $(seq 1 30); do
+            headers=$(curl --silent --show-error -D - -o /dev/null -X OPTIONS \
+              -H "Origin: $BETA_APP_ORIGIN" \
+              -H "Access-Control-Request-Method: POST" \
+              -H "Access-Control-Request-Headers: content-type" \
+              "$BETA_API_BASE_URL/v1/web/session/login") || true
+            normalized=$(printf '%s' "$headers" | tr -d '\r')
+            status=$(printf '%s' "$normalized" | awk 'NR==1 {print $2}')
+            allow_origin=$(printf '%s' "$normalized" | awk -F': ' 'tolower($1)=="access-control-allow-origin" {print $2}' | tail -n 1)
+            allow_credentials=$(printf '%s' "$normalized" | awk -F': ' 'tolower($1)=="access-control-allow-credentials" {print $2}' | tail -n 1)
+            if [ "$status" = "200" ] && [ "$allow_origin" = "$BETA_APP_ORIGIN" ] && [ "$allow_credentials" = "true" ]; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "API web-session CORS preflight never became ready"
+          exit 1
       - name: Web login route
         env:
           WEB_LOGIN_URL: ${{ vars.BETA_WEB_LOGIN_URL }}
