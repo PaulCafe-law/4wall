@@ -9,7 +9,7 @@ describe('AppShell', () => {
     const { container } = renderWithProviders(
       <Routes>
         <Route element={<AppShell />}>
-          <Route path="/missions" element={<div>任務頁面</div>} />
+          <Route path="/missions" element={<div>任務工作區</div>} />
         </Route>
       </Routes>,
       {
@@ -33,16 +33,18 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: '場域' })).toBeVisible()
     expect(screen.getByRole('link', { name: '任務' })).toBeVisible()
     expect(screen.getByRole('link', { name: '帳務' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '控制平面' })).toBeVisible()
     expect(screen.getByRole('link', { name: '即時營運' })).toBeVisible()
     expect(screen.getByRole('link', { name: '組織' })).toBeVisible()
-    expect(screen.getByRole('link', { name: '稽核記錄' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '支援工作台' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '稽核紀錄' })).toBeVisible()
   })
 
-  it('hides live ops from customer navigation', () => {
+  it('hides internal navigation from customer users', () => {
     renderWithProviders(
       <Routes>
         <Route element={<AppShell />}>
-          <Route path="/missions" element={<div>任務頁面</div>} />
+          <Route path="/missions" element={<div>任務工作區</div>} />
         </Route>
       </Routes>,
       {
@@ -65,6 +67,7 @@ describe('AppShell', () => {
       },
     )
 
+    expect(screen.queryByRole('link', { name: '控制平面' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '即時營運' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '支援工作台' })).not.toBeInTheDocument()
   })

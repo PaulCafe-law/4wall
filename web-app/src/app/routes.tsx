@@ -7,6 +7,7 @@ import { AuditPage } from '../features/audit/AuditPage'
 import { InvitePage } from '../features/auth/InvitePage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { BillingPage } from '../features/billing/BillingPage'
+import { ControlPlanePage } from '../features/controlplane/ControlPlanePage'
 import { LiveOpsPage } from '../features/liveops/LiveOpsPage'
 import { MissionDetailPage } from '../features/missions/MissionDetailPage'
 import { MissionsPage } from '../features/missions/MissionsPage'
@@ -37,6 +38,46 @@ export function AppRoutes() {
                 <Route path="/missions/new" element={<PlannerPage />} />
                 <Route path="/missions/:missionId" element={<MissionDetailPage />} />
                 <Route path="/billing" element={<BillingPage />} />
+                <Route
+                  path="/control-plane"
+                  element={
+                    <RequireInternal>
+                      <ControlPlanePage />
+                    </RequireInternal>
+                  }
+                />
+                <Route
+                  path="/control-plane/routes"
+                  element={
+                    <RequireInternal>
+                      <ControlPlanePage />
+                    </RequireInternal>
+                  }
+                />
+                <Route
+                  path="/control-plane/templates"
+                  element={
+                    <RequireInternal>
+                      <ControlPlanePage />
+                    </RequireInternal>
+                  }
+                />
+                <Route
+                  path="/control-plane/schedules"
+                  element={
+                    <RequireInternal>
+                      <ControlPlanePage />
+                    </RequireInternal>
+                  }
+                />
+                <Route
+                  path="/control-plane/dispatch"
+                  element={
+                    <RequireInternal>
+                      <ControlPlanePage />
+                    </RequireInternal>
+                  }
+                />
                 <Route
                   path="/live-ops"
                   element={

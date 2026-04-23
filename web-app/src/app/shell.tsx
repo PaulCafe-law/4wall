@@ -12,10 +12,11 @@ const customerLinks = [
 ]
 
 const internalLinks = [
+  { to: '/control-plane', label: '控制平面' },
   { to: '/live-ops', label: '即時營運' },
   { to: '/organizations', label: '組織' },
   { to: '/support', label: '支援工作台' },
-  { to: '/audit', label: '稽核記錄' },
+  { to: '/audit', label: '稽核紀錄' },
 ]
 
 function linkClass(active: boolean) {
@@ -32,10 +33,14 @@ export function AppShell() {
       <div className="md:hidden">
         <div className="min-h-screen bg-grain px-6 py-10">
           <div className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur">
-            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">The Fourth Wall</p>
-            <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">建築巡檢工作區</h1>
+            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">
+              The Fourth Wall
+            </p>
+            <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">
+              建築巡檢工作區
+            </h1>
             <p className="mt-3 text-sm text-chrome-700">
-              手機版目前只保留提示資訊。完整控制平面、任務與營運工作台請使用桌面版。
+              Web 端負責規劃、營運、支援與客戶入口，不進 flight-critical loop。
             </p>
           </div>
         </div>
@@ -45,7 +50,9 @@ export function AppShell() {
         <aside className="min-w-0 border-r border-white/60 bg-chrome-50/70 px-5 py-6 backdrop-blur">
           <div className="space-y-6">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.34em] text-ember-500">The Fourth Wall</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.34em] text-ember-500">
+                The Fourth Wall
+              </p>
               <h1 className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-chrome-950">
                 建築巡檢工作區
               </h1>
@@ -56,7 +63,9 @@ export function AppShell() {
 
             <div className="space-y-4">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">客戶工作區</p>
+                <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+                  客戶工作區
+                </p>
                 <nav className="mt-3 flex flex-col items-start gap-2">
                   {customerLinks.map((link) => (
                     <NavLink key={link.to} to={link.to} className={({ isActive }) => linkClass(isActive)}>
@@ -68,7 +77,9 @@ export function AppShell() {
 
               {auth.isInternal ? (
                 <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">內部營運</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+                    內部營運
+                  </p>
                   <nav className="mt-3 flex flex-col items-start gap-2">
                     {internalLinks.map((link) => (
                       <NavLink key={link.to} to={link.to} className={({ isActive }) => linkClass(isActive)}>
@@ -81,7 +92,9 @@ export function AppShell() {
             </div>
 
             <div className="rounded-[1.5rem] border border-white/70 bg-white/80 p-4 shadow-panel">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">目前帳號</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+                目前帳號
+              </p>
               <p className="mt-3 text-sm font-medium text-chrome-950">{auth.user?.displayName}</p>
               <p className="mt-1 break-all text-sm text-chrome-600">{auth.user?.email}</p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -111,7 +124,9 @@ export function AppShell() {
         <div className="min-w-0">
           <header className="sticky top-0 z-20 flex flex-col items-start gap-3 border-b border-white/60 bg-chrome-50/70 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
-              <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">目前頁面範圍</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">
+                目前頁面範圍
+              </p>
               <p className="text-sm text-chrome-700">
                 目前位於客戶入口，可檢視場域、任務、報表與帳務資訊。
               </p>
