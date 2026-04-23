@@ -47,9 +47,9 @@ describe('SupportPage', () => {
       }),
     })
 
-    expect(await screen.findByText('Support Queue')).toBeInTheDocument()
+    expect(await screen.findByText('支援佇列')).toBeInTheDocument()
     expect(await screen.findByText('Bridge alert / uplink_degraded')).toBeInTheDocument()
-    expect(await screen.findByText('Profile: Outdoor Patrol')).toBeInTheDocument()
-    expect(await screen.findByRole('link', { name: 'Open Mission' })).toBeInTheDocument()
+    expect(await screen.findByText('模式：戶外 GPS 巡邏')).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: '開啟任務' })).toBeInTheDocument()
   })
 })

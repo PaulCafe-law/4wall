@@ -11,6 +11,7 @@ import {
   type GoogleMapsOverlay,
 } from '../../lib/google-maps'
 import type { InspectionViewpoint, InspectionWaypoint, LaunchPoint, SiteMap } from '../../lib/types'
+import { launchPointMarkerLabel } from './map-labels'
 
 type LatLngPoint = {
   lat: number
@@ -73,6 +74,7 @@ export function GoogleMapCanvas({
   editableWaypoints,
   editableLaunchPoints,
   editableViewpoints,
+  showViewpoints = false,
   internalEditable = false,
   onWaypointMove,
   onLaunchPointMove,
@@ -85,6 +87,7 @@ export function GoogleMapCanvas({
   editableWaypoints?: InspectionWaypoint[]
   editableLaunchPoints?: LaunchPoint[]
   editableViewpoints?: InspectionViewpoint[]
+  showViewpoints?: boolean
   internalEditable?: boolean
   onWaypointMove?: (index: number, point: LatLngPoint) => void
   onLaunchPointMove?: (index: number, point: LatLngPoint) => void
@@ -116,8 +119,9 @@ export function GoogleMapCanvas({
       editableWaypoints: editableWaypoints ?? null,
       editableLaunchPoints: editableLaunchPoints ?? null,
       editableViewpoints: editableViewpoints ?? null,
+      showViewpoints,
     }),
-    [editableLaunchPoints, editableViewpoints, editableWaypoints, routeOverlays, siteMap],
+    [editableLaunchPoints, editableViewpoints, editableWaypoints, routeOverlays, showViewpoints, siteMap],
   )
 
   useEffect(() => {
@@ -185,6 +189,7 @@ export function GoogleMapCanvas({
       editableWaypoints: visibleWaypoints,
       editableLaunchPoints: visibleLaunchPoints,
       editableViewpoints: visibleViewpoints,
+      showViewpoints: shouldShowViewpoints,
     } = renderModel
 
     map.setCenter(visibleSiteMap.center)
@@ -213,7 +218,7 @@ export function GoogleMapCanvas({
         maps,
         map,
         { lat: launchPoint.lat, lng: launchPoint.lng },
-        `L${index + 1}`,
+        launchPointMarkerLabel(index, launchPoints.length),
         launchPointColor(launchPoint.kind),
         internalEditable && Boolean(visibleLaunchPoints),
       )
@@ -227,7 +232,7 @@ export function GoogleMapCanvas({
       overlaysRef.current.push(marker)
     }
 
-    const viewpoints = visibleViewpoints ?? visibleSiteMap.viewpoints
+    const viewpoints = shouldShowViewpoints ? (visibleViewpoints ?? visibleSiteMap.viewpoints) : []
     for (const [index, viewpoint] of viewpoints.entries()) {
       const marker = makeMarker(
         maps,
@@ -320,8 +325,8 @@ export function GoogleMapCanvas({
       ) : (
         <p className="text-sm text-chrome-700">
           {internalEditable
-            ? 'internal 可在地圖上拖拉 route waypoint、launch point 與 viewpoint，並直接把幾何編輯結果儲存回控制平面。'
-            : '目前顯示 site context、route overlay、launch points 與 inspection viewpoints。'}
+            ? '內部人員可在地圖上拖拉起降點與巡邏航點，並把航線幾何儲存回控制平面。'
+            : '目前顯示場域中心、已發布航線與起降點。'}
         </p>
       )}
     </div>

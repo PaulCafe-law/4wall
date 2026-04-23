@@ -11,7 +11,7 @@ import {
 } from '../../lib/presentation'
 
 function recentMissionHint(waypointCount: number, implicitReturnToLaunch: boolean) {
-  return `${waypointCount} waypoints / ${implicitReturnToLaunch ? 'implicit return-to-launch' : 'open route'}`
+  return `${waypointCount} 個航點 / ${implicitReturnToLaunch ? '隱式返航' : '開放路徑'}`
 }
 
 export function OverviewPage() {
@@ -51,31 +51,31 @@ export function OverviewPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Overview"
-        title="Operations Overview"
-        subtitle="Mission coverage, profile mix, and live execution status for Sprint 4 patrol-route and manual-pilot flows."
+        eyebrow="總覽"
+        title="營運總覽"
+        subtitle="檢視任務覆蓋、執行 profile 分布與 Sprint 4 的即時執行狀態。"
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="Sites" value={sites.length} hint="Customer-visible site inventory" />
-        <Metric label="Missions" value={missions.length} hint="Planned missions across all accessible organizations" />
-        <Metric label="Ready" value={readyCount} hint="Mission bundles ready for Android sync" />
-        <Metric label="Failed" value={failedCount} hint="Missions currently surfaced as failed" />
+        <Metric label="場域" value={sites.length} hint="目前角色可見的場域" />
+        <Metric label="任務" value={missions.length} hint="可存取組織中的規劃任務" />
+        <Metric label="已就緒" value={readyCount} hint="可由 Android 同步的任務包" />
+        <Metric label="失敗" value={failedCount} hint="目前標示為失敗的任務" />
       </div>
 
       {missionsQuery.isLoading || sitesQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">Loading overview…</p>
+          <p className="text-sm text-chrome-700">正在載入總覽…</p>
         </Panel>
       ) : null}
 
       {!missionsQuery.isLoading && missions.length === 0 ? (
         <EmptyState
-          title="No missions yet"
-          body="Plan the first patrol route mission to populate mission coverage, profile mix, and live ops status."
+          title="目前沒有任務"
+          body="建立第一筆巡邏任務後，這裡會顯示任務覆蓋、profile 分布與 Live Ops 狀態。"
           action={
             <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
-              Create Mission
+              建立任務
             </Link>
           }
         />
@@ -85,11 +85,11 @@ export function OverviewPage() {
         <Panel>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Mission Feed</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Recent Missions</h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">任務動態</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">最近任務</h2>
             </div>
             <Link to="/missions" className="text-sm text-ember-600 underline underline-offset-4">
-              View All Missions
+              查看全部任務
             </Link>
           </div>
           <div className="mt-4 grid gap-3">
@@ -106,7 +106,7 @@ export function OverviewPage() {
                   <p className="mt-2 text-sm text-chrome-700">
                     {recentMissionHint(mission.waypointCount, mission.implicitReturnToLaunch)}
                   </p>
-                  <p className="mt-2 text-xs text-chrome-500">Created {formatDate(mission.createdAt)}</p>
+                  <p className="mt-2 text-xs text-chrome-500">建立時間 {formatDate(mission.createdAt)}</p>
                 </div>
               </Link>
             ))}
@@ -115,33 +115,33 @@ export function OverviewPage() {
 
         <div className="space-y-6">
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Profile Mix</p>
-            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Execution Profiles</h2>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Profile 分布</p>
+            <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">執行 Profile</h2>
             <div className="mt-4 grid gap-4">
               <Metric
-                label="Outdoor Patrol"
+                label="戶外巡邏"
                 value={missions.length - indoorCount}
-                hint="Route-owned launch point, waypoints, and implicit RTL"
+                hint="起降點、排序航點與隱式返航"
               />
               <Metric
-                label="Indoor Manual"
+                label="室內手動"
                 value={indoorCount}
-                hint="Conservative manual mode with HOLD / LAND / TAKEOVER only"
+                hint="保守手動模式，只保留 HOLD / LAND / TAKEOVER"
               />
             </div>
           </Panel>
 
           {auth.isInternal ? (
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Live Ops Snapshot</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">Active Flight Status</h2>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Live Ops 摘要</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">即時飛行狀態</h2>
               <div className="mt-4 grid gap-4">
-                <Metric label="Flight Sessions" value={liveFlights.length} hint="Android flight sessions reporting telemetry" />
-                <Metric label="Manual Pilot" value={manualPilotFlights} hint="Sessions currently in operator stick control" />
+                <Metric label="飛行 Session" value={liveFlights.length} hint="Android 回報中的飛行紀錄" />
+                <Metric label="手動飛行" value={manualPilotFlights} hint="操作員正在使用雙搖桿控制的 session" />
                 <Metric
-                  label="RC Fallback"
+                  label="遙控器備援"
                   value={activeLandingFallbacks.length}
-                  hint="Landing flows that downgraded to RC-only control"
+                  hint="降落流程已降級到遙控器保底"
                 />
               </div>
               <div className="mt-4 space-y-3">
@@ -157,12 +157,12 @@ export function OverviewPage() {
                       {formatExecutionMode(flight.executionSummary?.executionMode)}
                     </p>
                     <p className="mt-1 text-sm text-chrome-700">
-                      Landing: {formatLandingPhase(flight.executionSummary?.landingPhase)}
+                      降落：{formatLandingPhase(flight.executionSummary?.landingPhase)}
                     </p>
                     <p className="mt-1 text-xs text-chrome-500">
                       {flight.executionSummary?.executionMode === 'manual_pilot'
-                        ? 'Manual pilot active'
-                        : flight.executionSummary?.waypointProgress ?? 'No waypoint progress'}
+                        ? '手動飛行中'
+                        : flight.executionSummary?.waypointProgress ?? '尚無航點進度'}
                     </p>
                   </div>
                 ))}

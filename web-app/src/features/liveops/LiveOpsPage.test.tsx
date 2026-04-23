@@ -177,12 +177,12 @@ describe('LiveOpsPage', () => {
       }),
     })
 
-    expect(await screen.findByText('Flight Operations')).toBeInTheDocument()
+    expect(await screen.findByText('飛行營運監看')).toBeInTheDocument()
     expect(await screen.findByText('Tower A Demo')).toBeInTheDocument()
-    expect((await screen.findAllByText('Manual Pilot')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Streaming')).length).toBeGreaterThan(0)
-    expect((await screen.findAllByText('Recording')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('手動飛行')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('串流中')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('錄影中')).length).toBeGreaterThan(0)
     expect(await screen.findByText('HQ takeover drill')).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'Request Remote Control' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: '請求接管' })).toBeInTheDocument()
   })
 })

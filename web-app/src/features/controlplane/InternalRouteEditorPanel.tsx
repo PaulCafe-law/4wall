@@ -6,6 +6,15 @@ function waypointLabel(index: number, waypoint: InspectionWaypoint) {
   return waypoint.label?.trim() || `巡邏點 ${index + 1}`
 }
 
+function formatLaunchPointKind(kind: LaunchPoint['kind']) {
+  return kind === 'backup' ? '備用起降點' : '主要起降點'
+}
+
+function formatWaypointKind(kind: InspectionWaypoint['kind']) {
+  if (kind === 'hold') return '保持點'
+  return '巡邏點'
+}
+
 function defaultLaunchPoint(site: Site): LaunchPoint {
   return {
     launchPointId: 'launch-draft',
@@ -83,14 +92,13 @@ export function InternalRouteEditorPanel({
     <div className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
       <Panel>
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-          internal route authority
+          內部航線權限
         </p>
         <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
-          Google Maps waypoint 編輯器
+          Google Maps 航點編輯器
         </h2>
         <p className="mt-3 text-sm text-chrome-700">
-          保全巡檢 v1 只保留 route-owned launch point 與 ordered patrol waypoints。客戶只提供場域與需求，
-          最終 route authority 由 internal 規劃團隊持有。
+          保全巡檢 v1 只規劃起降點與巡邏航點。客戶提供場域與需求，最終航線由內部規劃團隊發布。
         </p>
         <div className="mt-4 grid gap-4">
           <Field label="編輯模式">
@@ -98,7 +106,7 @@ export function InternalRouteEditorPanel({
               value={selectedRouteId}
               onChange={(event) => onSelectedRouteIdChange(event.target.value)}
             >
-              <option value="new">新增 route 草稿</option>
+              <option value="new">新增航線草稿</option>
               {routes.map((route) => (
                 <option key={route.routeId} value={route.routeId}>
                   {route.name} (v{route.version})
@@ -161,9 +169,9 @@ export function InternalRouteEditorPanel({
             </ActionButton>
           </div>
           <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-            地圖上的 `L` 是 route-owned launch point，`1..N` 是 patrol waypoints。紅線會永遠以
-            {' `L → waypoints → L` '}
-            顯示閉合巡邏迴路，回到起降點是固定規則，不額外新增一個顯式最後點。
+            地圖上的 `L` 是起降點，`1..N` 是巡邏航點。紅線會永遠以
+            {' `L → 航點 → L` '}
+            顯示閉合巡邏迴路；回到起降點是固定規則，不另外新增最後一個航點。
           </div>
           {routeError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -176,7 +184,7 @@ export function InternalRouteEditorPanel({
               <p className="font-medium text-chrome-950">起降點</p>
               {launchPoint ? (
                 <span className="rounded-full bg-chrome-100 px-3 py-1 text-xs text-chrome-700">
-                  {launchPoint.kind}
+                  {formatLaunchPointKind(launchPoint.kind)}
                 </span>
               ) : null}
             </div>
@@ -205,8 +213,8 @@ export function InternalRouteEditorPanel({
                       })
                     }
                   >
-                    <option value="primary">primary</option>
-                    <option value="backup">backup</option>
+                    <option value="primary">主要起降點</option>
+                    <option value="backup">備用起降點</option>
                   </Select>
                 </Field>
                 <Field label="緯度">
@@ -240,7 +248,7 @@ export function InternalRouteEditorPanel({
           <div className="space-y-3">
             {waypoints.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-chrome-300 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-                目前沒有 patrol waypoints。可以先使用示範初稿，或直接點地圖新增第一個巡邏點。
+                目前沒有巡邏航點。可以先使用示範初稿，或直接點地圖新增第一個巡邏點。
               </div>
             ) : (
               waypoints.map((waypoint, index) => (
@@ -274,8 +282,8 @@ export function InternalRouteEditorPanel({
                           )
                         }
                       >
-                        <option value="transit">transit</option>
-                        <option value="hold">hold</option>
+                        <option value="transit">{formatWaypointKind('transit')}</option>
+                        <option value="hold">{formatWaypointKind('hold')}</option>
                       </Select>
                     </Field>
                     <Field label="標籤">
@@ -375,7 +383,7 @@ export function InternalRouteEditorPanel({
 
       <Panel>
         <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-          route map
+          航線地圖
         </p>
         <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
           Google Maps 航線底圖
@@ -387,7 +395,7 @@ export function InternalRouteEditorPanel({
               routeOverlays={[
                 {
                   routeId: selectedRouteId || 'draft',
-                  name: routeName || 'route draft',
+                  name: routeName || '航線草稿',
                   path: previewPath,
                   active: true,
                 },
@@ -418,13 +426,12 @@ export function InternalRouteEditorPanel({
               }}
             />
             <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-              點擊地圖可新增一個 transit 點；拖拉 `L` 或 `1..N` marker 會立即調整 route geometry。紅線永遠表示
-              發布前的 patrol route preview，而不是 site zone 或 camera target。
+              點擊地圖可新增巡邏點；拖拉 `L` 或 `1..N` 會立即調整航線。紅線只表示發布前的閉合巡邏路徑。
             </div>
           </div>
         ) : (
           <div className="mt-4 rounded-2xl border border-dashed border-chrome-300 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-            請先建立並選擇場域，Google Maps 才能用 route-owned launch point 與 patrol waypoints 顯示閉合巡邏迴路。
+            請先建立並選擇場域，Google Maps 才能用起降點與巡邏航點顯示閉合巡邏迴路。
           </div>
         )}
       </Panel>

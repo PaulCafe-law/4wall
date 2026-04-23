@@ -351,7 +351,7 @@ describe('ControlPlanePage', () => {
     expect(await screen.findByRole('heading', { level: 2, name: '航線摘要' })).toBeInTheDocument()
     expect(await screen.findByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
     expect(await screen.findByText('Tower A patrol loop')).toBeInTheDocument()
-    expect(screen.getByText(/Waypoint authority 由 internal 規劃團隊持有/)).toBeInTheDocument()
+    expect(screen.getByText(/航點規劃權限由內部團隊持有/)).toBeInTheDocument()
     expect(screen.queryByText(/InternalRouteEditorPanelMock:/)).not.toBeInTheDocument()
   })
 

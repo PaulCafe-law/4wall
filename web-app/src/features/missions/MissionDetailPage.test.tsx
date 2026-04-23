@@ -27,7 +27,7 @@ function buildMissionDetail() {
     organizationId: 'org-001',
     siteId: 'site-001',
     requestedByUserId: 'user-001',
-    missionName: 'Tower A Patrol',
+    missionName: '塔樓 A 巡邏',
     status: 'dispatched',
     bundleVersion: 'bundle-v3',
     routeMode: 'closed_loop_patrol',
@@ -38,7 +38,7 @@ function buildMissionDetail() {
     },
     waypointCount: 3,
     implicitReturnToLaunch: true,
-    request: { missionName: 'Tower A Patrol' },
+    request: { missionName: '塔樓 A 巡邏' },
     response: {
       missionId: 'mission-001',
       artifacts: {
@@ -68,7 +68,7 @@ function buildMissionDetail() {
       missionId: 'mission-001',
       status: 'ready',
       generatedAt: '2026-04-14T10:20:00Z',
-      summary: '2 inspection events were generated for Tower A Patrol.',
+      summary: '塔樓 A 巡邏產生 2 筆待檢視事件。',
       eventCount: 2,
       downloadArtifact: {
         artifactName: 'inspection_report.html',
@@ -85,7 +85,7 @@ function buildMissionDetail() {
         siteId: 'site-001',
         category: 'material_discoloration',
         severity: 'warning',
-        summary: 'Surface discoloration detected on the east facade.',
+        summary: '東側巡邏段偵測到表面變色。',
         detectedAt: '2026-04-14T10:18:00Z',
         status: 'open',
         evidenceArtifacts: [
@@ -149,22 +149,26 @@ describe('MissionDetailPage', () => {
       },
     )
 
-    expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
-    expect(screen.getByText('Mission Detail')).toBeInTheDocument()
-    expect(screen.getAllByText('Patrol Route').length).toBeGreaterThan(0)
-    expect(screen.getByRole('heading', { level: 2, name: 'Android Runtime' })).toBeInTheDocument()
-    expect(screen.getAllByRole('heading', { level: 2, name: 'Mission Bundle' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Outdoor Patrol').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('L1 / 25.03391, 121.56452').length).toBeGreaterThan(0)
+    expect(await screen.findByText('塔樓 A 巡邏')).toBeInTheDocument()
+    expect(screen.getByText('任務詳情')).toBeInTheDocument()
+    expect(screen.getAllByText('規劃資訊').length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { level: 2, name: 'Android 執行摘要' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 2, name: '任務包' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('戶外 GPS 巡邏').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('L / 25.03391, 121.56452').length).toBeGreaterThan(0)
     expect(screen.getByText('Waypoint 2 / 3')).toBeInTheDocument()
-    expect(screen.getAllByText('DJI waypoint mission artifact').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Patrol route metadata and landing policy').length).toBeGreaterThan(0)
-    expect(screen.getByText('Raw Contract Debug')).toBeInTheDocument()
-    expect(screen.getByText(/"missionName"\s*:\s*"Tower A Patrol"/s)).not.toBeVisible()
+    expect(screen.getByRole('heading', { level: 2, name: '偵測的事件' })).toBeInTheDocument()
+    expect(screen.getByText('材質變色')).toBeInTheDocument()
+    expect(screen.getByText('東側巡邏段偵測到表面變色。')).toBeInTheDocument()
+    expect(screen.getByText('塔樓 A 巡邏產生 2 筆待檢視事件。')).toBeInTheDocument()
+    expect(screen.getAllByText('DJI 航點任務檔案').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('巡邏航線 metadata 與降落政策').length).toBeGreaterThan(0)
+    expect(screen.getByText('原始契約（除錯）')).toBeInTheDocument()
+    expect(screen.getByText(/"missionName"\s*:\s*"塔樓 A 巡邏"/s)).not.toBeVisible()
 
-    await userEvent.click(screen.getByText('Raw Contract Debug'))
+    await userEvent.click(screen.getByText('原始契約（除錯）'))
 
-    expect(screen.getByText(/"missionName"\s*:\s*"Tower A Patrol"/s)).toBeVisible()
+    expect(screen.getByText(/"missionName"\s*:\s*"塔樓 A 巡邏"/s)).toBeVisible()
     expect(screen.getByText(/"missionId"\s*:\s*"mission-001"/s)).toBeVisible()
   })
 
@@ -201,8 +205,81 @@ describe('MissionDetailPage', () => {
       },
     )
 
-    expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
-    expect(screen.queryByText('Raw Contract Debug')).not.toBeInTheDocument()
-    expect(screen.queryByText(/"missionName"\s*:\s*"Tower A Patrol"/s)).not.toBeInTheDocument()
+    expect(await screen.findByText('塔樓 A 巡邏')).toBeInTheDocument()
+    expect(screen.getByText('判讀尚未完成')).toBeInTheDocument()
+    expect(screen.queryByText('原始契約（除錯）')).not.toBeInTheDocument()
+    expect(screen.queryByText(/"missionName"\s*:\s*"塔樓 A 巡邏"/s)).not.toBeInTheDocument()
+  })
+
+  it('renders clean-pass and analysis-failed event states in Traditional Chinese', async () => {
+    apiMock.getMission.mockResolvedValueOnce({
+      ...buildMissionDetail(),
+      events: [],
+      eventCount: 0,
+      reportStatus: 'ready',
+      latestReport: {
+        ...buildMissionDetail().latestReport,
+        summary: '本次巡邏沒有偵測到異常。',
+        eventCount: 0,
+      },
+    })
+
+    const { unmount } = renderWithProviders(
+      <Routes>
+        <Route path="/missions/:missionId" element={<MissionDetailPage />} />
+      </Routes>,
+      {
+        route: '/missions/mission-001',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [
+              {
+                membershipId: 'membership-001',
+                organizationId: 'org-001',
+                role: 'customer_viewer',
+                isActive: true,
+              },
+            ],
+          }),
+        }),
+      },
+    )
+
+    expect(await screen.findByText('目前沒有偵測到異常事件')).toBeInTheDocument()
+    expect(screen.getByText('本次巡邏沒有偵測到異常。')).toBeInTheDocument()
+    unmount()
+
+    apiMock.getMission.mockResolvedValueOnce({
+      ...buildMissionDetail(),
+      events: [],
+      eventCount: 0,
+      reportStatus: 'failed',
+      latestReport: null,
+      delivery: { state: 'failed', publishedAt: null, failureReason: 'analysis job timeout' },
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/missions/:missionId" element={<MissionDetailPage />} />
+      </Routes>,
+      {
+        route: '/missions/mission-001',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [
+              {
+                membershipId: 'membership-001',
+                organizationId: 'org-001',
+                role: 'customer_viewer',
+                isActive: true,
+              },
+            ],
+          }),
+        }),
+      },
+    )
+
+    expect(await screen.findByText('判讀失敗')).toBeInTheDocument()
+    expect(screen.getByText('analysis job timeout')).toBeInTheDocument()
   })
 })

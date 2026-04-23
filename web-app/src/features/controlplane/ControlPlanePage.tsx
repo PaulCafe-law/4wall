@@ -131,7 +131,7 @@ const WORKSPACE_GUIDES: Record<WorkspaceKey, WorkspacePresentationGuide> = {
     summary:
       '這裡展示的是任務層級的交接，不是飛行控制。畫面應該讓人看見負責人、執行對象、接受時間、關閉時間與交接備註如何與任務/報表狀態對齊。',
     evidenceTargets: ['建立派工表單', '任務佇列', '派工看板'],
-    screenshotHint: '建議截一張同時包含任務佇列與派工看板的畫面，證明 dispatch 是正式 lifecycle，而不是一個按鈕。',
+    screenshotHint: '建議截一張同時包含任務佇列與派工看板的畫面，證明派工是正式流程，而不是單一按鈕。',
     nextStep: '完成派工後，直接打開任務詳情，展示規劃、執行、事件與報表如何匯流。',
   },
 }
@@ -410,7 +410,7 @@ export function ControlPlanePage() {
 
       if (selectedRouteId === 'new') {
         setRouteName(`${selectedSite.name} 巡檢航線`)
-        setRouteDescription('由 internal 規劃團隊在 Google Maps 上編輯並發布的巡檢航線。')
+        setRouteDescription('由內部規劃團隊在 Google Maps 上編輯並發布的巡檢航線。')
         setRouteDraftLaunchPoint(buildDefaultLaunchPoint(selectedSite))
         setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 36)))
         return
@@ -602,11 +602,11 @@ export function ControlPlanePage() {
       return
     }
     if (routeDraftWaypoints.length < 2) {
-      setRouteError('至少需要兩個 waypoint 才能建立或更新航線。')
+      setRouteError('至少需要兩個航點才能建立或更新航線。')
       return
     }
     if (!routeDraftLaunchPoint) {
-      setRouteError('請先設定 route-owned launch point。')
+      setRouteError('請先設定起降點。')
       return
     }
 
@@ -634,7 +634,7 @@ export function ControlPlanePage() {
         organizationId: selectedSite.organizationId,
         siteId: selectedSite.siteId,
         name: routeName.trim(),
-        description: routeDescription.trim() || '由 internal 規劃團隊在 Google Maps 上編輯並發布的巡檢航線。',
+        description: routeDescription.trim() || '由內部規劃團隊在 Google Maps 上編輯並發布的巡檢航線。',
         launchPoint: routeDraftLaunchPoint,
         waypoints: routeDraftWaypoints,
         planningParameters: {
@@ -820,7 +820,7 @@ export function ControlPlanePage() {
           <Metric
             label="待派工任務"
             value={dashboard?.dispatchPendingCount ?? siteDispatches.filter((item) => ['queued', 'assigned', 'sent'].includes(item.status)).length}
-            hint="等候 dispatch 與 handoff"
+            hint="等候派工與交接"
           />
           <Metric
             label="執行中任務"
@@ -846,7 +846,7 @@ export function ControlPlanePage() {
               場域覆蓋與規劃密度
             </h2>
             <p className="mt-2 text-sm text-chrome-700">
-              這裡聚合 site、route、template、schedule、mission 的數量關係，讓評審直接看到控制平面不是單一表單，而是一個持續運作的工作台。
+              這裡聚合場域、航線、模板、排程與任務的數量關係，讓評審直接看到控制平面不是單一表單，而是一個持續運作的工作台。
             </p>
 
             <div className="mt-4 grid gap-4">
@@ -1023,7 +1023,7 @@ export function ControlPlanePage() {
             ) : (
               <EmptyState
                 title="目前沒有執行摘要"
-                body="mission execution summary 會在排程、派工與報表開始產生後出現在這裡。"
+                body="任務執行摘要會在排程、派工與報表開始產生後出現在這裡。"
               />
             )}
           </div>
@@ -1081,16 +1081,16 @@ export function ControlPlanePage() {
             <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">航線摘要</h2>
             <div className="mt-4 space-y-4">
               <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm text-chrome-700">
-                客戶角色只檢視航線版本、預估時間與覆蓋範圍。Waypoint authority 由 internal 規劃團隊持有，不在客戶面開放直接編輯。
+                客戶角色只檢視航線版本、預估時間與覆蓋範圍。航點規劃權限由內部團隊持有，不在客戶面開放直接編輯。
               </div>
               <DataList
                 rows={[
                   { label: '場域', value: selectedSite?.name ?? '尚未選定' },
                   { label: '航線數量', value: siteRoutes.length },
-                  { label: '起降點', value: siteRoutes[0]?.launchPoint?.label ?? '由 internal 定義' },
+                  { label: '起降點', value: siteRoutes[0]?.launchPoint?.label ?? '由內部定義' },
                   {
                     label: '展示重點',
-                    value: '客戶面只看 route summary、launch point、closed patrol loop 與 estimated duration，不直接承擔 route geometry 規劃責任。',
+                    value: '客戶面只看航線摘要、起降點、閉合巡邏路徑與預估時間，不直接承擔航線幾何規劃責任。',
                   },
                 ]}
               />
@@ -1425,7 +1425,7 @@ export function ControlPlanePage() {
                         <div>
                           <p className="font-medium text-chrome-950">{mission.missionName}</p>
                           <p className="mt-1 text-sm text-chrome-700">
-                            mission {mission.status} / report {mission.reportStatus}
+                            任務 {formatStatus(mission.status)} / 報表 {formatStatus(mission.reportStatus)}
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
@@ -1520,7 +1520,7 @@ export function ControlPlanePage() {
               {siteDispatches.length === 0 ? (
                 <EmptyState
                   title="目前沒有派工紀錄"
-                  body="建立派工後，這裡會顯示 assignee、execution target、接受與關閉時間，以及與 mission/report 的對齊狀態。"
+                  body="建立派工後，這裡會顯示負責人、執行目標、接受與關閉時間，以及與任務、報表的對齊狀態。"
                 />
               ) : (
                 siteDispatches.map((dispatch) => {
@@ -1557,9 +1557,9 @@ export function ControlPlanePage() {
                         <Metric label="最後更新" value={formatDateTime(dispatch.lastUpdatedAt)} />
                       </div>
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
-                        <Metric label="route" value={dispatch.routeId ?? '未綁定'} />
-                        <Metric label="template" value={dispatch.templateId ?? '未綁定'} />
-                        <Metric label="schedule" value={dispatch.scheduleId ?? '未綁定'} />
+                        <Metric label="航線" value={dispatch.routeId ?? '未綁定'} />
+                        <Metric label="模板" value={dispatch.templateId ?? '未綁定'} />
+                        <Metric label="排程" value={dispatch.scheduleId ?? '未綁定'} />
                       </div>
                       <div className="mt-4 rounded-2xl border border-chrome-200 bg-white px-4 py-3 text-sm text-chrome-700">
                         {dispatch.note ?? '目前沒有交接備註。'}

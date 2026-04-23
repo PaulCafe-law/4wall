@@ -115,11 +115,11 @@ describe('OverviewPage', () => {
       }),
     })
 
-    expect(await screen.findByText('Operations Overview')).toBeInTheDocument()
+    expect(await screen.findByText('營運總覽')).toBeInTheDocument()
     expect((await screen.findAllByText('Tower A Patrol')).length).toBeGreaterThan(0)
-    expect(await screen.findByText('Execution Profiles')).toBeInTheDocument()
-    expect((await screen.findAllByText('Outdoor Patrol')).length).toBeGreaterThan(0)
-    expect(await screen.findByText('RC Fallback')).toBeInTheDocument()
-    expect((await screen.findAllByText('Manual Pilot')).length).toBeGreaterThan(0)
+    expect(await screen.findByText('執行 Profile')).toBeInTheDocument()
+    expect((await screen.findAllByText(/戶外/)).length).toBeGreaterThan(0)
+    expect(await screen.findByText('遙控器備援')).toBeInTheDocument()
+    expect((await screen.findAllByText(/手動飛行/)).length).toBeGreaterThan(0)
   })
 })

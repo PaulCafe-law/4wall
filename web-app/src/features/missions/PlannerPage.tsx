@@ -124,9 +124,9 @@ export function PlannerPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Mission Planner"
+        eyebrow="任務規劃"
         title="建立巡邏任務"
-        subtitle="以 patrol-route 形式建立 launch point、ordered waypoints 與 operating profile。"
+        subtitle="以巡邏航線形式建立起降點、排序航點與執行 profile。"
       />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -158,7 +158,7 @@ export function PlannerPage() {
               <Field label="任務名稱" error={errors.missionName?.message}>
                 <Input {...register('missionName')} />
               </Field>
-              <Field label="Operating Profile" error={errors.operatingProfile?.message}>
+              <Field label="執行 Profile" error={errors.operatingProfile?.message}>
                 <Select {...register('operatingProfile')}>
                   <option value="outdoor_gps_patrol">戶外 GPS 巡邏</option>
                   <option value="indoor_no_gps">室內無 GPS 保守模式</option>
@@ -167,28 +167,28 @@ export function PlannerPage() {
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Launch 緯度" error={errors.launchLat?.message}>
+              <Field label="起降點緯度" error={errors.launchLat?.message}>
                 <Input step="0.00001" type="number" {...register('launchLat')} />
               </Field>
-              <Field label="Launch 經度" error={errors.launchLng?.message}>
+              <Field label="起降點經度" error={errors.launchLng?.message}>
                 <Input step="0.00001" type="number" {...register('launchLng')} />
               </Field>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Waypoint 1 緯度" error={errors.waypoint1Lat?.message}>
+              <Field label="航點 1 緯度" error={errors.waypoint1Lat?.message}>
                 <Input step="0.00001" type="number" {...register('waypoint1Lat')} />
               </Field>
-              <Field label="Waypoint 1 經度" error={errors.waypoint1Lng?.message}>
+              <Field label="航點 1 經度" error={errors.waypoint1Lng?.message}>
                 <Input step="0.00001" type="number" {...register('waypoint1Lng')} />
               </Field>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Waypoint 2 緯度" error={errors.waypoint2Lat?.message}>
+              <Field label="航點 2 緯度" error={errors.waypoint2Lat?.message}>
                 <Input step="0.00001" type="number" {...register('waypoint2Lat')} />
               </Field>
-              <Field label="Waypoint 2 經度" error={errors.waypoint2Lng?.message}>
+              <Field label="航點 2 經度" error={errors.waypoint2Lng?.message}>
                 <Input step="0.00001" type="number" {...register('waypoint2Lng')} />
               </Field>
             </div>
@@ -208,11 +208,11 @@ export function PlannerPage() {
         </Panel>
 
         <Panel>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Planner Notes</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">規劃說明</p>
           <div className="mt-4 space-y-3 text-sm text-chrome-700">
-            <p>戶外 GPS 巡邏會以 launch point 與 ordered waypoints 產生 mission.kmz。</p>
-            <p>系統會自動啟用 implicit return-to-launch，因此不需要顯式新增最後一點回到 launch。</p>
-            <p>室內 profile 只保留保守模式，不承諾 waypoint autonomy。</p>
+            <p>戶外 GPS 巡邏會以起降點與排序航點產生 mission.kmz。</p>
+            <p>系統會自動啟用隱式返航，因此不需要顯式新增最後一點回到起降點。</p>
+            <p>室內 profile 只保留保守模式，不承諾航點自動巡邏。</p>
           </div>
         </Panel>
       </div>

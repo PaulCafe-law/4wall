@@ -53,9 +53,9 @@ describe('MissionsPage', () => {
     renderWithProviders(<MissionsPage />)
 
     expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
-    expect(screen.getByText('Outdoor Patrol')).toBeInTheDocument()
+    expect(screen.getByText('戶外 GPS 巡邏')).toBeInTheDocument()
     expect(
-      screen.getByText('Launch L1 / 25.03391, 121.56452 / 3 個 waypoint / 含隱含返航'),
+      screen.getByText('起降點 L / 25.03391, 121.56452 / 3 個航點 / 含隱式返航'),
     ).toBeInTheDocument()
   })
 })

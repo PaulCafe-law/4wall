@@ -101,7 +101,7 @@ describe('BillingPage', () => {
     })
 
     expect(await screen.findByText('INV-001')).toBeInTheDocument()
-    expect(screen.getByText('Overdue')).toBeInTheDocument()
+    expect(screen.getAllByText('逾期').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: '新增帳單' })).toBeInTheDocument()
   })
 })
