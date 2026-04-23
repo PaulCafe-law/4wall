@@ -19,6 +19,13 @@ val localPropertiesDjiApiKey = localProperties.getProperty("DJI_API_KEY")
 val resolvedDjiApiKey = djiApiKeyProvider.orNull?.takeIf { it.isNotBlank() }
     ?: localPropertiesDjiApiKey?.takeIf { it.isNotBlank() }
     ?: "MISSING_DJI_API_KEY"
+val plannerBaseUrlProvider = providers.gradleProperty("PLANNER_BASE_URL")
+    .orElse(providers.environmentVariable("PLANNER_BASE_URL"))
+val localPropertiesPlannerBaseUrl = localProperties.getProperty("PLANNER_BASE_URL")
+val defaultPlannerBaseUrl = "http://10.0.2.2:8000"
+val resolvedPlannerBaseUrl = plannerBaseUrlProvider.orNull?.takeIf { it.isNotBlank() }
+    ?: localPropertiesPlannerBaseUrl?.takeIf { it.isNotBlank() }
+    ?: defaultPlannerBaseUrl
 
 android {
     namespace = "com.yourorg.buildingdrone"
@@ -35,7 +42,7 @@ android {
         resValue(
             "string",
             "planner_base_url",
-            project.findProperty("PLANNER_BASE_URL") as String? ?: "http://10.0.2.2:8000"
+            resolvedPlannerBaseUrl
         )
     }
 
@@ -107,6 +114,11 @@ tasks.configureEach {
             if (resolvedDjiApiKey == "MISSING_DJI_API_KEY") {
                 throw GradleException(
                     "DJI_API_KEY is required for prod builds. Pass -PDJI_API_KEY=... or set DJI_API_KEY in the environment."
+                )
+            }
+            if (resolvedPlannerBaseUrl == defaultPlannerBaseUrl) {
+                throw GradleException(
+                    "PLANNER_BASE_URL is required for prod builds. Pass -PPLANNER_BASE_URL=... or set PLANNER_BASE_URL in local.properties/environment."
                 )
             }
         }
