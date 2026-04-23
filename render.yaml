@@ -1,14 +1,15 @@
 # Web Beta RC deploy graph:
-#   main -> staging-api + staging-app -> smoke-beta.yml
-#                                 pass -> promote prod-api + prod-app
-#                                 fail -> rollback previous healthy deploy
+#   main -> staging-api + staging-app (on commit)
+#        -> smoke-beta.yml validates the deployed staging revision
+#        -> pass -> promote prod-api + prod-app
+#        -> fail -> rollback previous healthy deploy
 services:
   - type: web
     name: four-wall-api-staging
     runtime: docker
     rootDir: planner-server
     healthCheckPath: /healthz
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: commit
     envVars:
       - key: BUILDING_ROUTE_ENVIRONMENT
         value: staging
@@ -73,7 +74,7 @@ services:
     rootDir: web-app
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: commit
     pullRequestPreviewsEnabled: true
     envVars:
       - key: VITE_API_BASE_URL
