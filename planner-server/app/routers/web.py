@@ -29,6 +29,7 @@ from app.models import (
     InspectionTemplate,
     Mission,
     MissionArtifact,
+    OperatorAccount,
     Organization,
     OrganizationMembership,
     Site,
@@ -63,6 +64,7 @@ from app.web_dto import (
     InviteDto,
     MissionSummaryDto,
     MembershipDto,
+    OperatorAdminDto,
     OrganizationDetailDto,
     OrganizationMemberDto,
     OrganizationSummaryDto,
@@ -76,6 +78,7 @@ from app.web_dto import (
     UpdateInvoiceRequestDto,
     UpdateMembershipRequestDto,
     UpdateOrganizationRequestDto,
+    UpsertOperatorRequestDto,
     WebSessionDto,
     WebLoginRequestDto,
     WebSignupRequestDto,
@@ -255,6 +258,66 @@ def web_logout(
 @router.get("/v1/web/session/me", response_model=WebSessionUserDto)
 def web_me(current_user: CurrentWebUser = Depends(get_current_web_user)) -> WebSessionUserDto:
     return _serialize_user(current_user)
+
+
+@router.post("/v1/internal/operators", response_model=OperatorAdminDto)
+def upsert_operator_account(
+    request: UpsertOperatorRequestDto,
+    current_user: CurrentWebUser = Depends(require_internal_user),
+    session: Session = Depends(get_session),
+) -> OperatorAdminDto:
+    if "platform_admin" not in current_user.global_roles:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
+
+    username = request.username.strip()
+    display_name = request.displayName.strip()
+    if not username or not display_name:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_operator_profile")
+
+    operator = session.exec(select(OperatorAccount).where(OperatorAccount.username == username)).first()
+    if operator is None and not request.password:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="password_required")
+    if operator is not None and request.updatePassword and not request.password:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="password_required")
+
+    password_updated = False
+    if operator is None:
+        operator = OperatorAccount(
+            username=username,
+            display_name=display_name,
+            password_hash=hash_password(request.password or ""),
+            is_active=request.isActive,
+        )
+        session.add(operator)
+        session.flush()
+        created = True
+        password_updated = True
+    else:
+        created = False
+        operator.display_name = display_name
+        operator.is_active = request.isActive
+        if request.updatePassword:
+            operator.password_hash = hash_password(request.password or "")
+            password_updated = True
+        operator.updated_at = datetime.now(timezone.utc)
+        session.add(operator)
+        session.flush()
+
+    record_audit(
+        session,
+        action="operator.upserted",
+        actor_user_id=current_user.user.id,
+        target_type="operator",
+        target_id=operator.id,
+        metadata={
+            "username": operator.username,
+            "created": created,
+            "passwordUpdated": password_updated,
+            "isActive": operator.is_active,
+        },
+    )
+    session.commit()
+    return _serialize_operator_admin(operator)
 
 
 @router.get("/v1/web/overview", response_model=OverviewDto)
@@ -956,6 +1019,17 @@ def _serialize_user(current_user: CurrentWebUser) -> WebSessionUserDto:
             for membership in current_user.memberships
             if membership.organization_id is not None
         ],
+    )
+
+
+def _serialize_operator_admin(operator: OperatorAccount) -> OperatorAdminDto:
+    return OperatorAdminDto(
+        operatorId=operator.id,
+        username=operator.username,
+        displayName=operator.display_name,
+        isActive=operator.is_active,
+        createdAt=operator.created_at,
+        updatedAt=operator.updated_at,
     )
 
 

@@ -96,6 +96,23 @@ class WebLoginRequestDto(BaseModel):
     password: str = Field(min_length=8)
 
 
+class OperatorAdminDto(BaseModel):
+    operatorId: str
+    username: str
+    displayName: str
+    isActive: bool
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class UpsertOperatorRequestDto(BaseModel):
+    username: str = Field(min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_.-]+$")
+    displayName: str = Field(min_length=1, max_length=120)
+    password: str | None = Field(default=None, min_length=8)
+    updatePassword: bool = False
+    isActive: bool = True
+
+
 class WebSignupRequestDto(BaseModel):
     email: str = Field(min_length=3)
     password: str = Field(min_length=8)
