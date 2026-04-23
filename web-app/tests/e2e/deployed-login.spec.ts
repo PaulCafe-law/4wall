@@ -9,7 +9,10 @@ test('deployed beta login reaches the authenticated missions shell', async ({ pa
   await page.goto('/login')
   await page.getByLabel('電子郵件').fill(smokeEmail!)
   await page.getByLabel('密碼').fill(smokePassword!)
-  await page.getByRole('button', { name: '進入主控台' }).click()
+  await page
+    .locator('form')
+    .getByRole('button', { name: /^(登入工作區|進入主控台)$/ })
+    .click()
 
   await page.waitForURL('**/missions')
   await expect(page.getByRole('heading', { name: '任務' })).toBeVisible()

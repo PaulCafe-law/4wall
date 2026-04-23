@@ -40,15 +40,22 @@ describe('MissionsPage', () => {
         },
         waypointCount: 3,
         implicitReturnToLaunch: true,
+        deliveryStatus: 'ready',
+        publishedAt: '2026-04-19T08:30:00Z',
+        failureReason: null,
+        reportStatus: 'ready',
+        reportGeneratedAt: '2026-04-19T08:45:00Z',
+        eventCount: 0,
         createdAt: '2026-04-19T08:00:00Z',
       },
     ])
 
     renderWithProviders(<MissionsPage />)
 
-    expect(await screen.findByText('任務')).toBeInTheDocument()
     expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
-    expect(await screen.findByText('戶外 GPS 巡邏')).toBeInTheDocument()
-    expect(await screen.findByText(/Launch L1 \/ 25\.03391, 121\.56452 \/ 3 個 waypoint \/ 含隱含返航/)).toBeInTheDocument()
+    expect(screen.getByText('Outdoor Patrol')).toBeInTheDocument()
+    expect(
+      screen.getByText('Launch L1 / 25.03391, 121.56452 / 3 個 waypoint / 含隱含返航'),
+    ).toBeInTheDocument()
   })
 })

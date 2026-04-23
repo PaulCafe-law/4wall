@@ -27,34 +27,39 @@ function buildMissionDetail() {
     organizationId: 'org-001',
     siteId: 'site-001',
     requestedByUserId: 'user-001',
-    missionName: 'Tower A Delivery',
+    missionName: 'Tower A Patrol',
     status: 'dispatched',
     bundleVersion: 'bundle-v3',
-    request: { missionName: 'Tower A Delivery' },
-    response: { missionId: 'mission-001' },
+    routeMode: 'closed_loop_patrol',
+    operatingProfile: 'outdoor_gps_patrol',
+    launchPoint: {
+      label: 'L1',
+      location: { lat: 25.03391, lng: 121.56452 },
+    },
+    waypointCount: 3,
+    implicitReturnToLaunch: true,
+    request: { missionName: 'Tower A Patrol' },
+    response: {
+      missionId: 'mission-001',
+      artifacts: {
+        missionKmz: {
+          artifactName: 'mission.kmz',
+          downloadUrl: '/v1/missions/mission-001/artifacts/mission.kmz',
+          checksumSha256: 'abc123',
+          contentType: 'application/vnd.google-earth.kmz',
+          publishedAt: '2026-04-14T10:15:00Z',
+        },
+        missionMeta: {
+          artifactName: 'mission_meta.json',
+          downloadUrl: '/v1/missions/mission-001/artifacts/mission_meta.json',
+          checksumSha256: 'meta123',
+          contentType: 'application/json',
+          publishedAt: '2026-04-14T10:15:00Z',
+        },
+      },
+    },
     delivery: { state: 'published', publishedAt: '2026-04-14T10:15:00Z', failureReason: null },
-    artifacts: [
-      {
-        artifactName: 'mission.kmz',
-        downloadUrl: '/v1/missions/mission-001/artifacts/mission.kmz',
-        version: 3,
-        checksumSha256: 'abc123',
-        contentType: 'application/vnd.google-earth.kmz',
-        sizeBytes: 1024,
-        cacheControl: 'private, max-age=60',
-        publishedAt: '2026-04-14T10:15:00Z',
-      },
-      {
-        artifactName: 'inspection_report.html',
-        downloadUrl: '/v1/missions/mission-001/artifacts/inspection_report.html',
-        version: 1,
-        checksumSha256: 'report123',
-        contentType: 'text/html',
-        sizeBytes: 4096,
-        cacheControl: 'private, max-age=60',
-        publishedAt: '2026-04-14T10:20:00Z',
-      },
-    ],
+    artifacts: [],
     reportStatus: 'ready',
     reportGeneratedAt: '2026-04-14T10:20:00Z',
     eventCount: 2,
@@ -63,7 +68,7 @@ function buildMissionDetail() {
       missionId: 'mission-001',
       status: 'ready',
       generatedAt: '2026-04-14T10:20:00Z',
-      summary: '2 inspection events were generated for Tower A Delivery.',
+      summary: '2 inspection events were generated for Tower A Patrol.',
       eventCount: 2,
       downloadArtifact: {
         artifactName: 'inspection_report.html',
@@ -94,85 +99,26 @@ function buildMissionDetail() {
         ],
       },
     ],
-    route: {
-      routeId: 'route-001',
-      organizationId: 'org-001',
-      siteId: 'site-001',
-      name: 'Tower A facade loop',
-      description: 'Facade-first route',
-      version: 1,
-      launchPoint: {
-        launchPointId: 'launch-001',
-        label: 'Tower A launch point',
-        kind: 'primary',
-        lat: 25.03391,
-        lng: 121.56452,
-        headingDeg: 180,
-        altitudeM: 0,
-        isActive: true,
-      },
-      implicitReturnToLaunch: true,
-      pointCount: 3,
-      previewPolyline: [],
-      estimatedDurationSec: 480,
-      waypoints: [],
-      planningParameters: {},
-      createdAt: '2026-04-17T08:00:00Z',
-      updatedAt: '2026-04-17T08:00:00Z',
-    },
-    template: {
-      templateId: 'template-001',
-      organizationId: 'org-001',
-      siteId: 'site-001',
-      routeId: 'route-001',
-      name: 'Facade standard',
-      description: 'Operator-reviewed',
-      inspectionProfile: {},
-      alertRules: [],
-      evidencePolicy: 'capture_key_frames',
-      reportMode: 'html_report',
-      reviewMode: 'operator_review',
-      createdAt: '2026-04-17T08:00:00Z',
-      updatedAt: '2026-04-17T08:00:00Z',
-    },
-    schedule: {
-      scheduleId: 'schedule-001',
-      organizationId: 'org-001',
-      siteId: 'site-001',
-      routeId: 'route-001',
-      templateId: 'template-001',
-      plannedAt: '2026-04-18T09:00:00Z',
-      recurrence: 'One-off',
-      status: 'scheduled',
-      alertRules: [],
-      nextRunAt: '2026-04-18T09:00:00Z',
-      lastRunAt: null,
-      lastDispatchedAt: '2026-04-17T08:40:00Z',
-      pauseReason: null,
-      lastOutcome: 'scheduled_for_execution',
-      createdAt: '2026-04-17T08:00:00Z',
-      updatedAt: '2026-04-17T08:00:00Z',
-    },
-    dispatch: {
-      dispatchId: 'dispatch-001',
-      missionId: 'mission-001',
-      routeId: 'route-001',
-      templateId: 'template-001',
-      scheduleId: 'schedule-001',
-      dispatchedAt: '2026-04-17T08:40:00Z',
-      acceptedAt: '2026-04-17T08:42:00Z',
-      closedAt: null,
-      lastUpdatedAt: '2026-04-17T08:42:00Z',
-      dispatchedByUserId: 'user-1',
-      assignee: 'observer-01',
-      executionTarget: 'field-team',
-      status: 'accepted',
-      note: 'Demo walkthrough ready',
-    },
+    route: null,
+    template: null,
+    schedule: null,
+    dispatch: null,
     executionSummary: {
       missionId: 'mission-001',
       phase: 'running',
       telemetryFreshness: 'stale',
+      flightId: 'flight-001',
+      executionMode: 'patrol_route',
+      uploadState: 'uploaded',
+      executionState: 'transit',
+      waypointProgress: 'Waypoint 2 / 3',
+      plannedOperatingProfile: 'outdoor_gps_patrol',
+      executedOperatingProfile: 'outdoor_gps_patrol',
+      cameraStreamState: 'streaming',
+      recordingState: 'recording',
+      landingPhase: 'auto_landing',
+      lastEventType: 'telemetry_update',
+      statusNote: 'Nominal flight',
       lastTelemetryAt: '2026-04-17T08:43:00Z',
       lastImageryAt: '2026-04-17T08:44:00Z',
       reportStatus: 'ready',
@@ -188,7 +134,7 @@ describe('MissionDetailPage', () => {
     apiMock.getMission.mockReset()
   })
 
-  it('renders the main product sections and keeps raw contract collapsed for internal users', async () => {
+  it('renders patrol route sections and keeps raw contract collapsed for internal users', async () => {
     apiMock.getMission.mockResolvedValue(buildMissionDetail())
 
     renderWithProviders(
@@ -203,31 +149,23 @@ describe('MissionDetailPage', () => {
       },
     )
 
-    expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
-    expect(screen.getByText('規劃與任務背景')).toBeInTheDocument()
-    expect(screen.getByText('控制平面規劃串接')).toBeInTheDocument()
-    expect(screen.getByText('派工與執行責任')).toBeInTheDocument()
-    expect(screen.getByText('執行與報表狀態')).toBeInTheDocument()
-    expect(screen.getByText('執行摘要')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: '偵測到的事件' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: '成果檔案' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '產生 demo 異常' })).toBeInTheDocument()
-    expect(screen.getByText('Surface discoloration detected on the east facade.')).toBeInTheDocument()
-    expect(screen.getAllByText('2 inspection events were generated for Tower A Delivery.')).toHaveLength(2)
-    expect(screen.getByText('observer-01')).toBeInTheDocument()
-    expect(screen.getByText(/最近派工/)).toBeInTheDocument()
-    expect(screen.getByText(/最近一次影像/)).toBeInTheDocument()
-    expect(screen.getByText('執行中')).toBeInTheDocument()
-    expect(screen.getByText(/最後更新/)).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 2, name: '原始契約（除錯）' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '查看原始契約（除錯）' })).toBeInTheDocument()
-    expect(screen.queryByText(/"missionName":\s*"Tower A Delivery"/s)).not.toBeInTheDocument()
+    expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
+    expect(screen.getByText('Mission Detail')).toBeInTheDocument()
+    expect(screen.getAllByText('Patrol Route').length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { level: 2, name: 'Android Runtime' })).toBeInTheDocument()
+    expect(screen.getAllByRole('heading', { level: 2, name: 'Mission Bundle' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Outdoor Patrol').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('L1 / 25.03391, 121.56452').length).toBeGreaterThan(0)
+    expect(screen.getByText('Waypoint 2 / 3')).toBeInTheDocument()
+    expect(screen.getAllByText('DJI waypoint mission artifact').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Patrol route metadata and landing policy').length).toBeGreaterThan(0)
+    expect(screen.getByText('Raw Contract Debug')).toBeInTheDocument()
+    expect(screen.getByText(/"missionName"\s*:\s*"Tower A Patrol"/s)).not.toBeVisible()
 
-    await userEvent.click(screen.getByRole('button', { name: '查看原始契約（除錯）' }))
+    await userEvent.click(screen.getByText('Raw Contract Debug'))
 
-    expect(await screen.findByRole('heading', { level: 2, name: '規劃請求與回應' })).toBeInTheDocument()
-    expect(screen.getByText(/"missionName"\s*:\s*"Tower A Delivery"/s)).toBeInTheDocument()
-    expect(screen.getByText(/"missionId"\s*:\s*"mission-001"/s)).toBeInTheDocument()
+    expect(screen.getByText(/"missionName"\s*:\s*"Tower A Patrol"/s)).toBeVisible()
+    expect(screen.getByText(/"missionId"\s*:\s*"mission-001"/s)).toBeVisible()
   })
 
   it('hides raw contract debug surfaces from customer roles', async () => {
@@ -236,10 +174,6 @@ describe('MissionDetailPage', () => {
       latestReport: null,
       artifacts: [],
       events: [],
-      route: null,
-      template: null,
-      schedule: null,
-      dispatch: null,
       executionSummary: null,
       eventCount: 0,
       reportStatus: 'not_started',
@@ -267,9 +201,8 @@ describe('MissionDetailPage', () => {
       },
     )
 
-    expect(await screen.findByText('Tower A Delivery')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { level: 2, name: '原始契約（除錯）' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: '查看原始契約（除錯）' })).not.toBeInTheDocument()
-    expect(screen.queryByText(/"missionName":\s*"Tower A Delivery"/s)).not.toBeInTheDocument()
+    expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
+    expect(screen.queryByText('Raw Contract Debug')).not.toBeInTheDocument()
+    expect(screen.queryByText(/"missionName"\s*:\s*"Tower A Patrol"/s)).not.toBeInTheDocument()
   })
 })

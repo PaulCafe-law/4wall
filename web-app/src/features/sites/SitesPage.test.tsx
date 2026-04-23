@@ -45,11 +45,11 @@ describe('SitesPage', () => {
       {
         siteId: 'site-001',
         organizationId: 'org-001',
-        name: '平實公園',
+        name: 'North Yard',
         externalRef: 'SITE-A',
-        address: '台南市東區平實公園',
+        address: '1 Example Road',
         location: { lat: 22.99635, lng: 120.23634 },
-        notes: '測試用場域',
+        notes: 'Patrol staging area',
         siteMap: {
           baseMapType: 'satellite',
           center: { lat: 22.99635, lng: 120.23634 },
@@ -64,7 +64,7 @@ describe('SitesPage', () => {
         activeRoutes: [
           {
             routeId: 'route-001',
-            name: '平實公園巡檢航線',
+            name: 'North Yard Patrol',
             version: 1,
             pointCount: 3,
             estimatedDurationSec: 480,
@@ -75,7 +75,7 @@ describe('SitesPage', () => {
           {
             templateId: 'template-001',
             routeId: 'route-001',
-            name: '保全巡檢模板',
+            name: 'Standard Patrol',
             evidencePolicy: 'capture_key_frames',
             reportMode: 'html_report',
             reviewMode: 'operator_review',
@@ -92,12 +92,12 @@ describe('SitesPage', () => {
         routeId: 'route-001',
         organizationId: 'org-001',
         siteId: 'site-001',
-        name: '平實公園巡檢航線',
+        name: 'North Yard Patrol',
         description: 'Closed patrol route',
         version: 1,
         launchPoint: {
           launchPointId: 'launch-001',
-          label: '平實公園起降點',
+          label: 'North Yard Launch',
           kind: 'primary',
           lat: 22.9963,
           lng: 120.2363,
@@ -135,14 +135,11 @@ describe('SitesPage', () => {
       },
     )
 
-    expect(await screen.findByRole('heading', { level: 1, name: '場域' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { level: 2, name: '平實公園' })).toBeInTheDocument()
-    expect(screen.getByText('map context')).toBeInTheDocument()
-    expect(screen.getByText('GoogleMapCanvasMock')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { level: 3, name: 'Google Maps 場域規劃' })).not.toBeInTheDocument()
-    expect(
-      screen.getByText(/Site 頁只保留場域參考中心點與基本資料/),
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '場址' })).toBeInTheDocument()
+    expect((await screen.findAllByText('North Yard')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('1 Example Road').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Patrol staging area').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Google Maps 場域規劃')).not.toBeInTheDocument()
   })
 
   it('keeps customer roles on the same read-only site context', async () => {
@@ -167,10 +164,9 @@ describe('SitesPage', () => {
       },
     )
 
-    expect(await screen.findByRole('heading', { level: 1, name: '場域' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { level: 2, name: '平實公園' })).toBeInTheDocument()
-    expect(screen.getByText('GoogleMapCanvasMock')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { level: 3, name: 'Google Maps 場域規劃' })).not.toBeInTheDocument()
-    expect(screen.getByText(/Site 頁只保留場域參考中心點與基本資料/)).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '場址' })).toBeInTheDocument()
+    expect((await screen.findAllByText('North Yard')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('1 Example Road').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Google Maps 場域規劃')).not.toBeInTheDocument()
   })
 })
