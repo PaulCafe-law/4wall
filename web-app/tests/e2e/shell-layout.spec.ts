@@ -58,19 +58,17 @@ for (const viewport of viewports) {
     })
 
     await page.goto('/login')
-    await page.getByLabel('電子郵件').fill('platform@prod.internal.test')
-    await page.getByLabel('密碼').fill('Password123!')
-    await page.getByRole('button', { name: '進入主控台' }).click()
+    await page.locator('form input[type="email"]').fill('platform@prod.internal.test')
+    await page.locator('form input[type="password"]').fill('Password123!')
+    await page.locator('form button[type="submit"]').click()
 
-    await expect(page).toHaveURL(/\/missions$/)
-
-    const sidebar = page.locator('aside')
-    const nav = page.locator('nav')
+    const sidebar = page.locator('aside').first()
+    const nav = sidebar.locator('nav').first()
     const main = page.locator('main')
 
     await expect(sidebar).toBeVisible()
     await expect(nav).toBeVisible()
-    await expect(page.getByRole('link', { name: '稽核記錄' })).toBeVisible()
+    await expect(sidebar.locator('a[href="/audit"]').first()).toBeVisible()
 
     const [sidebarBox, navBox, mainBox] = await Promise.all([
       sidebar.boundingBox(),

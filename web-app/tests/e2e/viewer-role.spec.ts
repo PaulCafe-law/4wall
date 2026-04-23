@@ -58,6 +58,20 @@ test('customer viewer can browse but cannot see site mutation controls', async (
           address: 'Taipei',
           location: { lat: 25.03391, lng: 121.56452 },
           notes: '',
+          siteMap: {
+            siteId: 'site-1',
+            baseMapType: 'satellite',
+            center: { lat: 25.03391, lng: 121.56452 },
+            zoom: 18,
+            zones: [],
+            launchPoints: [],
+            viewpoints: [],
+            updatedAt: '2026-04-10T00:00:00Z',
+          },
+          activeRouteCount: 0,
+          activeTemplateCount: 0,
+          activeRoutes: [],
+          activeTemplates: [],
           createdAt: '2026-04-10T00:00:00Z',
           updatedAt: '2026-04-10T00:00:00Z',
         },
@@ -66,12 +80,14 @@ test('customer viewer can browse but cannot see site mutation controls', async (
   })
 
   await page.goto('/login')
-  await page.getByLabel('電子郵件').fill('viewer@test.dev')
-  await page.getByLabel('密碼').fill('Password123!')
-  await page.getByRole('button', { name: '進入主控台' }).click()
+  await page.locator('form input[type="email"]').fill('viewer@test.dev')
+  await page.locator('form input[type="password"]').fill('Password123!')
+  await page.locator('form button[type="submit"]').click()
 
-  await page.getByRole('link', { name: '場址' }).click()
+  const sidebar = page.locator('aside').first()
+  await expect(sidebar).toBeVisible()
+  await sidebar.locator('a[href="/sites"]').first().click()
 
-  await expect(page.getByRole('link', { name: /Viewer Site/i })).toBeVisible()
-  await expect(page.getByRole('button', { name: '新增場址' })).toHaveCount(0)
+  await expect(page.locator('main').getByRole('link', { name: /Viewer Site/i })).toBeVisible()
+  await expect(page.locator('main').getByRole('button')).toHaveCount(0)
 })

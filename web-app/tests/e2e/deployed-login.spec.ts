@@ -5,16 +5,14 @@ const smokePassword = process.env.PW_WEB_SMOKE_PASSWORD
 
 test.skip(!smokeEmail || !smokePassword, 'requires deployed smoke credentials')
 
-test('deployed beta login reaches the authenticated missions shell', async ({ page }) => {
+test('deployed beta login reaches the authenticated shell', async ({ page }) => {
   await page.goto('/login')
-  await page.getByLabel('電子郵件').fill(smokeEmail!)
-  await page.getByLabel('密碼').fill(smokePassword!)
-  await page
-    .locator('form')
-    .getByRole('button', { name: /^(登入工作區|進入主控台)$/ })
-    .click()
+  await page.locator('form input[type="email"]').fill(smokeEmail!)
+  await page.locator('form input[type="password"]').fill(smokePassword!)
+  await page.locator('form button[type="submit"]').click()
 
-  await page.waitForURL('**/missions')
-  await expect(page.getByRole('heading', { name: '任務' })).toBeVisible()
-  await expect(page.getByRole('link', { name: '場址' })).toBeVisible()
+  const sidebar = page.locator('aside').first()
+  await expect(sidebar).toBeVisible()
+  await expect(sidebar.locator('a[href="/sites"]').first()).toBeVisible()
+  await expect(page.locator('main')).toBeVisible()
 })

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import re
+from uuid import uuid4
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, or_
@@ -16,12 +17,22 @@ from app.deps import (
     get_settings,
     require_internal_user,
 )
+from app.inspection_control import serialize_route_summary, serialize_template_summary
+from app.inspection_reporting import latest_reporting_summaries, load_reporting_state
+from app.mission_delivery import build_artifact_map, summarize_mission_delivery
 from app.models import (
     BillingInvoice,
+    Flight,
+    FlightEvent,
     Invite,
+    InspectionRoute,
+    InspectionTemplate,
+    Mission,
+    MissionArtifact,
     Organization,
     OrganizationMembership,
     Site,
+    TelemetryBatch,
     UserAccount,
 )
 from app.rate_limit import RateLimiter, RateLimitRule, client_identity
@@ -44,12 +55,22 @@ from app.web_dto import (
     CreateInviteRequestDto,
     CreateInvoiceRequestDto,
     CreateOrganizationRequestDto,
+    OverviewDto,
+    OverviewEventSummaryDto,
+    OverviewInviteDto,
+    OverviewSupportSummaryDto,
     InviteCreateResponseDto,
     InviteDto,
+    MissionSummaryDto,
     MembershipDto,
     OrganizationDetailDto,
+    OrganizationMemberDto,
     OrganizationSummaryDto,
     SiteDto,
+    SiteMapDto,
+    SiteZoneDto,
+    LaunchPointDto,
+    InspectionViewpointDto,
     SitePatchRequestDto,
     SiteRequestDto,
     UpdateInvoiceRequestDto,
@@ -57,6 +78,7 @@ from app.web_dto import (
     UpdateOrganizationRequestDto,
     WebSessionDto,
     WebLoginRequestDto,
+    WebSignupRequestDto,
     WebSessionUserDto,
 )
 from app.web_scope import (
@@ -68,6 +90,9 @@ from app.web_scope import (
 
 
 router = APIRouter(tags=["web"])
+STALE_TELEMETRY_SECONDS = 90
+LOW_BATTERY_THRESHOLD = 25
+SITE_MAP_DEFAULT_OFFSET = 0.00012
 
 
 @router.post("/v1/web/session/login", response_model=WebSessionDto)
@@ -103,6 +128,79 @@ def web_login(
         session.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid_credentials")
     record_audit(session, action="web.login_succeeded", actor_user_id=user.id, target_type="user", target_id=user.id)
+    session_dto = _issue_web_session(session, settings, user, response)
+    session.commit()
+    return session_dto
+
+
+@router.post("/v1/web/session/signup", response_model=WebSessionDto)
+def web_signup(
+    request: WebSignupRequestDto,
+    http_request: Request,
+    response: Response,
+    session: Session = Depends(get_session),
+    settings=Depends(get_settings),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> WebSessionDto:
+    _enforce_session_origin(http_request, settings)
+    email = request.email.strip().lower()
+    org_name = request.organizationName.strip()
+    slug = _slugify(request.organizationSlug or org_name)
+    _check_rate_limit(
+        rate_limiter,
+        http_request,
+        scope="web_signup",
+        subject=f"{email}:{slug}",
+        rule=RateLimitRule(
+            max_attempts=settings.web_signup_rate_limit_attempts,
+            window_seconds=settings.web_signup_rate_limit_window_seconds,
+        ),
+    )
+    existing_user = session.exec(select(UserAccount).where(UserAccount.email == email)).first()
+    if existing_user is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="user_email_exists")
+    existing_org = session.exec(select(Organization).where(Organization.slug == slug)).first()
+    if existing_org is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="organization_slug_exists")
+
+    user = UserAccount(
+        email=email,
+        display_name=request.displayName or email.split("@")[0],
+        password_hash=hash_password(request.password),
+    )
+    session.add(user)
+    session.flush()
+
+    organization = Organization(name=org_name, slug=slug)
+    session.add(organization)
+    session.flush()
+
+    session.add(
+        OrganizationMembership(
+            user_id=user.id,
+            organization_id=organization.id,
+            role="customer_admin",
+        )
+    )
+    session.flush()
+
+    record_audit(
+        session,
+        action="web.signup_succeeded",
+        organization_id=organization.id,
+        actor_user_id=user.id,
+        target_type="user",
+        target_id=user.id,
+    )
+    record_audit(
+        session,
+        action="organization.created",
+        organization_id=organization.id,
+        actor_user_id=user.id,
+        target_type="organization",
+        target_id=organization.id,
+        metadata={"selfServe": True},
+    )
     session_dto = _issue_web_session(session, settings, user, response)
     session.commit()
     return session_dto
@@ -157,6 +255,89 @@ def web_logout(
 @router.get("/v1/web/session/me", response_model=WebSessionUserDto)
 def web_me(current_user: CurrentWebUser = Depends(get_current_web_user)) -> WebSessionUserDto:
     return _serialize_user(current_user)
+
+
+@router.get("/v1/web/overview", response_model=OverviewDto)
+def web_overview(
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> OverviewDto:
+    sites = session.exec(apply_org_read_scope(select(Site), Site.organization_id, current_user)).all()
+    missions = session.exec(
+        apply_org_read_scope(
+            select(Mission).where(Mission.organization_id.is_not(None)),
+            Mission.organization_id,
+            current_user,
+        ).order_by(Mission.created_at.desc())
+    ).all()
+    mission_ids = [mission.id for mission in missions]
+    artifact_map = build_artifact_map(session, mission_ids)
+    report_map, event_map, _ = load_reporting_state(session, mission_ids)
+    mission_summaries = [
+        _serialize_mission_summary(
+            mission,
+            artifact_map.get(mission.id, []),
+            report=report_map.get(mission.id),
+            events=event_map.get(mission.id, []),
+        )
+        for mission in missions
+    ]
+
+    invoices = session.exec(
+        apply_org_read_scope(select(BillingInvoice), BillingInvoice.organization_id, current_user).order_by(
+            BillingInvoice.created_at.desc()
+        )
+    ).all()
+    pending_invites = session.exec(
+        apply_org_read_scope(
+            select(Invite, Organization)
+            .join(Organization, Organization.id == Invite.organization_id)
+            .where(Invite.accepted_at.is_(None), Invite.revoked_at.is_(None)),
+            Invite.organization_id,
+            current_user,
+        ).order_by(Invite.created_at.desc())
+    ).all()
+
+    latest_report_summary, latest_event_summary = latest_reporting_summaries(session, mission_ids)
+    planning_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "planning")
+    ready_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "ready")
+    failed_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "failed")
+    published_count = sum(1 for mission in mission_summaries if mission.deliveryStatus == "published")
+    scheduled_count = sum(1 for mission in missions if mission.status in {"scheduled", "dispatched"})
+    running_count = sum(1 for mission in missions if mission.status in {"running", "in_progress"})
+    invoice_due_count = sum(1 for invoice in invoices if invoice.status == "invoice_due")
+    overdue_count = sum(1 for invoice in invoices if invoice.status == "overdue")
+
+    return OverviewDto(
+        siteCount=len(sites),
+        missionCount=len(mission_summaries),
+        planningMissionCount=planning_count,
+        scheduledMissionCount=scheduled_count,
+        runningMissionCount=running_count,
+        readyMissionCount=ready_count,
+        failedMissionCount=failed_count,
+        publishedMissionCount=published_count,
+        invoiceDueCount=invoice_due_count,
+        overdueInvoiceCount=overdue_count,
+        pendingInviteCount=len(pending_invites),
+        recentMissions=mission_summaries[:4],
+        recentDeliveries=[
+            mission
+            for mission in sorted(
+                [mission for mission in mission_summaries if mission.deliveryStatus == "published"],
+                key=lambda item: item.publishedAt or item.createdAt,
+                reverse=True,
+            )[:3]
+        ],
+        recentInvoices=[_serialize_invoice(invoice) for invoice in invoices[:3]],
+        pendingInvites=[
+            _serialize_overview_invite(invite=invite, organization=organization)
+            for invite, organization in pending_invites[:5]
+        ],
+        latestReportSummary=latest_report_summary,
+        latestEventSummary=latest_event_summary,
+        supportSummary=_build_overview_support_summary(session, current_user, failed_count, overdue_count),
+    )
 
 
 @router.get("/v1/organizations", response_model=list[OrganizationSummaryDto])
@@ -254,15 +435,7 @@ def get_organization(
         name=organization.name,
         slug=organization.slug,
         isActive=organization.is_active,
-        members=[
-            MembershipDto(
-                membershipId=membership.id,
-                organizationId=membership.organization_id,
-                role=membership.role,
-                isActive=membership.is_active,
-            )
-            for membership in memberships
-        ],
+        members=_load_organization_members(session, organization_id),
         pendingInvites=[_serialize_invite(invite) for invite in invites],
     )
 
@@ -526,7 +699,7 @@ def list_sites(
                 func.lower(Site.address).like(pattern),
             )
         )
-    return [_serialize_site(site) for site in session.exec(statement).all()]
+    return [_serialize_site(session, site) for site in session.exec(statement).all()]
 
 
 @router.post("/v1/sites", response_model=SiteDto)
@@ -543,10 +716,24 @@ def create_site(
         address=request.address,
         lat=request.location["lat"],
         lng=request.location["lng"],
+        map_config_json={},
+        zones_json=[],
+        launch_points_json=[],
+        viewpoints_json=[],
         notes=request.notes,
         created_by_user_id=current_user.user.id,
         updated_by_user_id=current_user.user.id,
     )
+    if request.siteMap is not None:
+        site_map_payload = _build_site_map_payload(
+            lat=site.lat,
+            lng=site.lng,
+            payload=request.siteMap.model_dump(mode="json"),
+        )
+        site.map_config_json = site_map_payload["mapConfig"]
+        site.zones_json = site_map_payload["zones"]
+        site.launch_points_json = site_map_payload["launchPoints"]
+        site.viewpoints_json = site_map_payload["viewpoints"]
     session.add(site)
     session.flush()
     record_audit(
@@ -558,7 +745,7 @@ def create_site(
         target_id=site.id,
     )
     session.commit()
-    return _serialize_site(site)
+    return _serialize_site(session, site)
 
 
 @router.get("/v1/sites/{site_id}", response_model=SiteDto)
@@ -571,7 +758,7 @@ def get_site(
     if site is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="site_not_found")
     ensure_org_read_access(session, current_user, site.organization_id, action="site.read_access")
-    return _serialize_site(site)
+    return _serialize_site(session, site)
 
 
 @router.patch("/v1/sites/{site_id}", response_model=SiteDto)
@@ -596,6 +783,16 @@ def patch_site(
         site.lng = request.location["lng"]
     if request.notes is not None:
         site.notes = request.notes
+    if request.siteMap is not None:
+        site_map_payload = _build_site_map_payload(
+            lat=site.lat,
+            lng=site.lng,
+            payload=request.siteMap.model_dump(mode="json"),
+        )
+        site.map_config_json = site_map_payload["mapConfig"]
+        site.zones_json = site_map_payload["zones"]
+        site.launch_points_json = site_map_payload["launchPoints"]
+        site.viewpoints_json = site_map_payload["viewpoints"]
     site.updated_by_user_id = current_user.user.id
     site.updated_at = datetime.now(timezone.utc)
     session.add(site)
@@ -608,7 +805,7 @@ def patch_site(
         target_id=site.id,
     )
     session.commit()
-    return _serialize_site(site)
+    return _serialize_site(session, site)
 
 
 @router.get("/v1/billing/invoices", response_model=list[BillingInvoiceDto])
@@ -762,19 +959,67 @@ def _serialize_user(current_user: CurrentWebUser) -> WebSessionUserDto:
     )
 
 
+def _load_organization_members(session: Session, organization_id: str) -> list[OrganizationMemberDto]:
+    rows = session.exec(
+        select(OrganizationMembership, UserAccount)
+        .join(UserAccount, UserAccount.id == OrganizationMembership.user_id)
+        .where(OrganizationMembership.organization_id == organization_id)
+        .order_by(
+            OrganizationMembership.is_active.desc(),
+            OrganizationMembership.role.asc(),
+            UserAccount.display_name.asc(),
+            UserAccount.email.asc(),
+        )
+    ).all()
+    return [
+        OrganizationMemberDto(
+            membershipId=membership.id,
+            organizationId=membership.organization_id or "",
+            userId=user.id,
+            email=user.email,
+            displayName=user.display_name,
+            role=membership.role,
+            isActive=membership.is_active,
+        )
+        for membership, user in rows
+    ]
+
+
 def _serialize_invite(invite: Invite) -> InviteDto:
     return InviteDto(
         inviteId=invite.id,
         organizationId=invite.organization_id,
         email=invite.email,
         role=invite.role,
+        createdAt=invite.created_at,
         expiresAt=invite.expires_at,
         acceptedAt=invite.accepted_at,
         revokedAt=invite.revoked_at,
     )
 
+def _serialize_overview_invite(*, invite: Invite, organization: Organization | None) -> OverviewInviteDto:
+    return OverviewInviteDto(
+        inviteId=invite.id,
+        organizationId=invite.organization_id,
+        organizationName=organization.name if organization is not None else None,
+        email=invite.email,
+        role=invite.role,
+        createdAt=invite.created_at,
+        expiresAt=invite.expires_at,
+    )
 
-def _serialize_site(site: Site) -> SiteDto:
+
+def _serialize_site(session: Session, site: Site) -> SiteDto:
+    routes = session.exec(
+        select(InspectionRoute)
+        .where(InspectionRoute.site_id == site.id)
+        .order_by(InspectionRoute.updated_at.desc(), InspectionRoute.created_at.desc())
+    ).all()
+    templates = session.exec(
+        select(InspectionTemplate)
+        .where(InspectionTemplate.site_id == site.id)
+        .order_by(InspectionTemplate.updated_at.desc(), InspectionTemplate.created_at.desc())
+    ).all()
     return SiteDto(
         siteId=site.id,
         organizationId=site.organization_id,
@@ -783,6 +1028,11 @@ def _serialize_site(site: Site) -> SiteDto:
         address=site.address,
         location={"lat": site.lat, "lng": site.lng},
         notes=site.notes,
+        siteMap=_serialize_site_map(site),
+        activeRouteCount=len(routes),
+        activeTemplateCount=len(templates),
+        activeRoutes=[serialize_route_summary(route) for route in routes[:4]],
+        activeTemplates=[serialize_template_summary(template) for template in templates[:4]],
         createdAt=site.created_at,
         updatedAt=site.updated_at,
     )
@@ -807,6 +1057,147 @@ def _serialize_invoice(invoice: BillingInvoice) -> BillingInvoiceDto:
         voidReason=invoice.void_reason,
         createdAt=invoice.created_at,
         updatedAt=invoice.updated_at,
+    )
+
+
+def _serialize_mission_summary(
+    mission: Mission,
+    artifacts: list[MissionArtifact],
+    *,
+    report=None,
+    events: list | None = None,
+) -> MissionSummaryDto:
+    delivery_status, published_at, failure_reason = summarize_mission_delivery(mission, artifacts)
+    return MissionSummaryDto(
+        missionId=mission.id,
+        organizationId=mission.organization_id,
+        siteId=mission.site_id,
+        missionName=mission.mission_name,
+        status=mission.status,
+        bundleVersion=mission.bundle_version,
+        deliveryStatus=delivery_status,
+        publishedAt=published_at,
+        failureReason=failure_reason,
+        reportStatus=report.status if report is not None else "not_started",
+        reportGeneratedAt=report.generated_at if report is not None else None,
+        eventCount=len(events or []),
+        createdAt=mission.created_at,
+    )
+
+
+def _empty_site_map_payload(*, lat: float, lng: float) -> dict[str, object]:
+    return {
+        "mapConfig": {
+            "baseMapType": "satellite",
+            "center": {"lat": lat, "lng": lng},
+            "zoom": 18,
+            "version": 1,
+        },
+        "zones": [],
+        "launchPoints": [],
+        "viewpoints": [],
+    }
+
+
+def _build_site_map_payload(
+    *,
+    lat: float,
+    lng: float,
+    payload: dict | None = None,
+) -> dict[str, object]:
+    default_map = _empty_site_map_payload(lat=lat, lng=lng)
+    payload = payload or {}
+    return {
+        "mapConfig": {
+            "baseMapType": str(payload.get("baseMapType") or default_map["mapConfig"]["baseMapType"]),
+            "center": payload.get("center") or {"lat": lat, "lng": lng},
+            "zoom": int(payload.get("zoom") or default_map["mapConfig"]["zoom"]),
+            "version": int(payload.get("version") or default_map["mapConfig"]["version"]),
+        },
+        "zones": payload.get("zones") or [],
+        "launchPoints": payload.get("launchPoints") or [],
+        "viewpoints": payload.get("viewpoints") or [],
+    }
+
+
+def _is_legacy_placeholder_zone(site: Site, zone: dict) -> bool:
+    if zone.get("kind") != "inspection_boundary":
+        return False
+    polygon = zone.get("polygon")
+    if not isinstance(polygon, list) or len(polygon) != 4:
+        return False
+    expected = [
+        {"lat": site.lat - SITE_MAP_DEFAULT_OFFSET, "lng": site.lng - SITE_MAP_DEFAULT_OFFSET},
+        {"lat": site.lat - SITE_MAP_DEFAULT_OFFSET, "lng": site.lng + SITE_MAP_DEFAULT_OFFSET},
+        {"lat": site.lat + SITE_MAP_DEFAULT_OFFSET, "lng": site.lng + SITE_MAP_DEFAULT_OFFSET},
+        {"lat": site.lat + SITE_MAP_DEFAULT_OFFSET, "lng": site.lng - SITE_MAP_DEFAULT_OFFSET},
+    ]
+    for point, wanted in zip(polygon, expected):
+        if abs(float(point.get("lat", 0)) - wanted["lat"]) > 1e-9:
+            return False
+        if abs(float(point.get("lng", 0)) - wanted["lng"]) > 1e-9:
+            return False
+    return True
+
+
+def _serialize_site_map(site: Site) -> SiteMapDto:
+    default_map = _empty_site_map_payload(lat=site.lat, lng=site.lng)
+    map_config = site.map_config_json or default_map["mapConfig"]
+    zones = [zone for zone in (site.zones_json or []) if not _is_legacy_placeholder_zone(site, zone)]
+    launch_points = site.launch_points_json or []
+    viewpoints = site.viewpoints_json or []
+    return SiteMapDto(
+        baseMapType=map_config.get("baseMapType", "satellite"),
+        center=map_config.get("center", {"lat": site.lat, "lng": site.lng}),
+        zoom=int(map_config.get("zoom", 18)),
+        version=int(map_config.get("version", 1)),
+        zones=[SiteZoneDto.model_validate(zone) for zone in zones],
+        launchPoints=[LaunchPointDto.model_validate(point) for point in launch_points],
+        viewpoints=[InspectionViewpointDto.model_validate(point) for point in viewpoints],
+    )
+
+
+def _build_overview_support_summary(
+    session: Session,
+    current_user: CurrentWebUser,
+    failed_mission_count: int,
+    overdue_invoice_count: int,
+) -> OverviewSupportSummaryDto | None:
+    if not current_user.global_roles.intersection({"platform_admin", "ops"}):
+        return None
+
+    flights = session.exec(
+        apply_org_read_scope(
+            select(Flight).where(Flight.organization_id.is_not(None)),
+            Flight.organization_id,
+            current_user,
+        )
+    ).all()
+    telemetry_stale_count = 0
+    battery_low_count = 0
+    now = datetime.now(timezone.utc)
+    for flight in flights:
+        latest_batch = session.exec(
+            select(TelemetryBatch)
+            .where(TelemetryBatch.flight_id == flight.id)
+            .order_by(TelemetryBatch.last_timestamp.desc())
+        ).first()
+        if latest_batch is not None and latest_batch.payload_json:
+            latest_sample = latest_batch.payload_json[-1]
+            battery_pct = int(latest_sample.get("batteryPct", 0))
+            if battery_pct < LOW_BATTERY_THRESHOLD:
+                battery_low_count += 1
+        if flight.last_telemetry_at is not None:
+            last_telemetry_at = _as_utc(flight.last_telemetry_at)
+            if last_telemetry_at is not None and now - last_telemetry_at > timedelta(seconds=STALE_TELEMETRY_SECONDS):
+                telemetry_stale_count += 1
+
+    critical_count = failed_mission_count + telemetry_stale_count
+    warning_count = overdue_invoice_count + battery_low_count
+    return OverviewSupportSummaryDto(
+        openCount=critical_count + warning_count,
+        criticalCount=critical_count,
+        warningCount=warning_count,
     )
 
 

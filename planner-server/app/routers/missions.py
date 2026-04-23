@@ -18,6 +18,7 @@ from app.deps import (
     get_current_web_user,
     get_route_provider,
     get_session,
+    require_internal_user,
 )
 from app.dto import (
     FlightEventsAcceptedDto,
@@ -35,9 +36,26 @@ from app.mission_profile import (
     derive_operating_profile,
     derive_waypoint_count,
 )
+from app.inspection_control import load_mission_control_plane
+from app.inspection_reporting import (
+    load_reporting_state,
+    reprocess_demo_analysis,
+    serialize_event,
+    serialize_report,
+)
+from app.mission_delivery import build_artifact_map, serialize_mission_delivery
 from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
 from app.providers import RouteProvider, RouteProviderError
-from app.web_dto import FlightEventRecordDto, MissionDetailDto, MissionSummaryDto, TelemetryBatchRecordDto
+from app.web_dto import (
+    FlightEventRecordDto,
+    InspectionEventDto,
+    InspectionReportSummaryDto,
+    MissionArtifactDownloadDto,
+    MissionDetailDto,
+    MissionSummaryDto,
+    ReprocessMissionAnalysisRequestDto,
+    TelemetryBatchRecordDto,
+)
 from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
 
 
@@ -217,6 +235,13 @@ def get_mission_detail(
     if mission is None or mission.organization_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
     ensure_org_read_access(session, current_user, mission.organization_id, action="mission.read_access")
+    route, template, schedule, dispatch = load_mission_control_plane(session, mission)
+    artifact_map = build_artifact_map(session, [mission.id])
+    mission_artifacts = artifact_map.get(mission.id, [])
+    report_map, event_map, reporting_artifact_map = load_reporting_state(session, [mission.id])
+    report = report_map.get(mission.id)
+    events = event_map.get(mission.id, [])
+    latest_report = serialize_report(report, artifact_map=reporting_artifact_map)
     return MissionDetailDto(
         missionId=mission.id,
         organizationId=mission.organization_id,
@@ -233,8 +258,77 @@ def get_mission_detail(
         executionSummary=derive_execution_summary(session, mission_id=mission.id),
         request=mission.request_json,
         response=mission.response_json,
+        delivery=serialize_mission_delivery(mission, mission_artifacts),
+        artifacts=[_serialize_artifact_download(mission.id, artifact) for artifact in mission_artifacts],
+        reportStatus=report.status if report is not None else None,
+        reportGeneratedAt=report.generated_at if report is not None else None,
+        eventCount=len(events),
+        latestReport=latest_report,
+        events=[serialize_event(event, artifact_map=reporting_artifact_map) for event in events],
+        route=route,
+        template=template,
+        schedule=schedule,
+        dispatch=dispatch,
         createdAt=mission.created_at,
     )
+
+
+@router.get("/v1/missions/{mission_id}/events", response_model=list[InspectionEventDto])
+def get_mission_events(
+    mission_id: str,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> list[InspectionEventDto]:
+    mission = session.get(Mission, mission_id)
+    if mission is None or mission.organization_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
+    ensure_org_read_access(session, current_user, mission.organization_id, action="mission.read_access")
+    _, event_map, artifact_map = load_reporting_state(session, [mission.id])
+    return [serialize_event(event, artifact_map=artifact_map) for event in event_map.get(mission.id, [])]
+
+
+@router.get("/v1/missions/{mission_id}/report", response_model=InspectionReportSummaryDto | None)
+def get_mission_report(
+    mission_id: str,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> InspectionReportSummaryDto | None:
+    mission = session.get(Mission, mission_id)
+    if mission is None or mission.organization_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
+    ensure_org_read_access(session, current_user, mission.organization_id, action="mission.read_access")
+    report_map, _, artifact_map = load_reporting_state(session, [mission.id])
+    return serialize_report(report_map.get(mission.id), artifact_map=artifact_map)
+
+
+@router.post(
+    "/v1/missions/{mission_id}/analysis/reprocess",
+    response_model=InspectionReportSummaryDto,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def reprocess_mission_analysis(
+    mission_id: str,
+    request: ReprocessMissionAnalysisRequestDto,
+    current_user: CurrentWebUser = Depends(require_internal_user),
+    session: Session = Depends(get_session),
+    artifact_service=Depends(get_artifact_service),
+) -> InspectionReportSummaryDto:
+    mission = session.get(Mission, mission_id)
+    if mission is None or mission.organization_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
+    report = reprocess_demo_analysis(
+        session,
+        mission=mission,
+        artifact_service=artifact_service,
+        actor_user_id=current_user.user.id,
+        mode=request.mode,
+    )
+    session.commit()
+    _, _, artifact_map = load_reporting_state(session, [mission.id])
+    serialized = serialize_report(report, artifact_map=artifact_map)
+    if serialized is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="report_generation_failed")
+    return serialized
 
 
 @router.get("/v1/missions/{mission_id}/artifacts/mission.kmz")
@@ -266,6 +360,27 @@ def get_mission_meta(
     artifact_service=Depends(get_artifact_service),
 ) -> Response:
     artifact = _get_artifact(session, mission_id, "mission_meta.json")
+    _authorize_mission_artifact(session, current_actor, artifact.organization_id)
+    payload = artifact_service.read(artifact.storage_key)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="artifact_missing")
+    response.headers["Cache-Control"] = artifact.cache_control
+    response.headers["ETag"] = artifact.checksum_sha256
+    response.headers["X-Artifact-Version"] = str(artifact.version)
+    response.headers["X-Artifact-Checksum"] = artifact.checksum_sha256
+    return Response(content=payload, media_type=artifact.content_type, headers=response.headers)
+
+
+@router.get("/v1/missions/{mission_id}/artifacts/{artifact_name:path}")
+def get_mission_artifact(
+    mission_id: str,
+    artifact_name: str,
+    response: Response,
+    current_actor: CurrentActor = Depends(get_current_actor),
+    session: Session = Depends(get_session),
+    artifact_service=Depends(get_artifact_service),
+) -> Response:
+    artifact = _get_artifact(session, mission_id, artifact_name)
     _authorize_mission_artifact(session, current_actor, artifact.organization_id)
     payload = artifact_service.read(artifact.storage_key)
     if payload is None:
@@ -400,6 +515,19 @@ def _artifact_descriptors(mission_id: str, artifacts):
             cacheControl=artifacts.mission_meta_json.cache_control,
         ),
     }
+
+
+def _serialize_artifact_download(mission_id: str, artifact: MissionArtifact) -> MissionArtifactDownloadDto:
+    return MissionArtifactDownloadDto(
+        artifactName=artifact.artifact_name,
+        downloadUrl=f"/v1/missions/{mission_id}/artifacts/{artifact.artifact_name}",
+        version=artifact.version,
+        checksumSha256=artifact.checksum_sha256,
+        contentType=artifact.content_type,
+        sizeBytes=artifact.size_bytes,
+        cacheControl=artifact.cache_control,
+        publishedAt=artifact.created_at,
+    )
 
 
 def _get_artifact(session: Session, mission_id: str, artifact_name: str) -> MissionArtifact:
