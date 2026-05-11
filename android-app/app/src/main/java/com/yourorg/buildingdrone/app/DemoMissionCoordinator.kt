@@ -29,7 +29,6 @@ import com.yourorg.buildingdrone.feature.preflight.IndoorConfirmationItem
 import com.yourorg.buildingdrone.feature.preflight.PreflightActionState
 import com.yourorg.buildingdrone.feature.preflight.PreflightChecklistItem
 import com.yourorg.buildingdrone.feature.preflight.PreflightUiState
-import com.yourorg.buildingdrone.feature.simulator.SimulatorVerificationUiState
 import com.yourorg.buildingdrone.feature.transit.TelemetryField
 import com.yourorg.buildingdrone.feature.transit.TransitUiState
 import com.yourorg.buildingdrone.ui.ScreenDataState
@@ -87,14 +86,6 @@ data class CommandActionResult(
     val success: Boolean,
     val message: String? = null,
 )
-
-enum class SimulatorVerificationAction {
-    REFRESH,
-    ENABLE,
-    DISABLE,
-    REPLAY_BRANCH_HOLD_RTH,
-    REPLAY_INSPECTION_CAPTURE,
-}
 
 private enum class LandingPromptSource {
     DJI_CONFIRMATION_REQUIRED,
@@ -154,18 +145,10 @@ class DemoMissionCoordinator(
         get() = if (runtimeMode == RuntimeMode.PROD) {
             buildList {
                 add(ConsoleScreen.MISSION_SETUP)
-                if (!showSimulatorVerification) {
-                    add(ConsoleScreen.CONNECTION_GUIDE)
-                    add(ConsoleScreen.PREFLIGHT)
-                    add(
-                        if (selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT) {
-                            ConsoleScreen.MANUAL_PILOT
-                        } else {
-                            ConsoleScreen.IN_FLIGHT
-                        },
-                    )
-                    add(ConsoleScreen.EMERGENCY)
-                }
+                add(ConsoleScreen.CONNECTION_GUIDE)
+                add(ConsoleScreen.PREFLIGHT)
+                add(ConsoleScreen.IN_FLIGHT)
+                add(ConsoleScreen.EMERGENCY)
             }
         } else {
             ConsoleScreen.entries.filter { it != ConsoleScreen.CONNECTION_GUIDE }
@@ -204,10 +187,6 @@ class DemoMissionCoordinator(
         private set
     var connectionGuide by mutableStateOf(ConnectionGuideUiState())
         private set
-    var simulatorVerification by mutableStateOf(SimulatorVerificationUiState())
-        private set
-    var showSimulatorVerification by mutableStateOf(false)
-        private set
     var transit by mutableStateOf(
         TransitUiState(
             stateLabel = "待命",
@@ -237,12 +216,6 @@ class DemoMissionCoordinator(
 
     var connectionGuideRefreshToken by mutableStateOf(0)
         private set
-    var simulatorVerificationAction by mutableStateOf(SimulatorVerificationAction.REFRESH)
-        private set
-    var simulatorVerificationCommandToken by mutableStateOf(0)
-        private set
-    var simulatorBenchOnlyFallbackRequested by mutableStateOf(false)
-        private set
 
     private var latestPreflightEvaluation: PreflightEvaluation? = null
     private var hoverReadyForMissionStart by mutableStateOf(false)
@@ -268,6 +241,10 @@ class DemoMissionCoordinator(
     ) {
         missionBundle = bundle
         plannedOperatingProfile = bundle?.operatingProfile
+        if (runtimeMode == RuntimeMode.PROD) {
+            selectedConsoleMode = OperatorConsoleMode.OUTDOOR_PATROL
+            operationProfile = OperationProfile.OUTDOOR_GPS_REQUIRED
+        }
         val bundleVerified = bundle?.isVerified() == true
         val missionContextMode = selectedConsoleMode.resolveMissionContextMode(bundleVerified)
         indoorAutonomyCapability = if (operationProfile == OperationProfile.INDOOR_NO_GPS) {
@@ -290,6 +267,7 @@ class DemoMissionCoordinator(
             bundleLoaded = bundle != null,
             plannedOperatingProfile = plannedOperatingProfile,
             selectedConsoleMode = selectedConsoleMode,
+            selectableConsoleModes = selectableConsoleModes(),
             selectionLocked = activeScreen != ConsoleScreen.MISSION_SETUP,
             status = when {
                 bundle == null -> ScreenDataState.EMPTY
@@ -348,8 +326,22 @@ class DemoMissionCoordinator(
         if (activeScreen != ConsoleScreen.MISSION_SETUP) {
             return
         }
-        selectedConsoleMode = mode
-        operationProfile = mode.executedOperatingProfile
+        val effectiveMode = if (runtimeMode == RuntimeMode.PROD) {
+            OperatorConsoleMode.OUTDOOR_PATROL
+        } else {
+            mode
+        }
+        if (runtimeMode == RuntimeMode.PROD && !mode.isProdV1Selectable) {
+            selectedConsoleMode = effectiveMode
+            operationProfile = effectiveMode.executedOperatingProfile
+            refreshMissionSetupProfile()
+            refreshConnectionGuidePresentation()
+            refreshPreflightPresentation()
+            refreshFlightPanels()
+            return
+        }
+        selectedConsoleMode = effectiveMode
+        operationProfile = effectiveMode.executedOperatingProfile
         indoorConfirmationState = IndoorNoGpsConfirmationState()
         indoorAutonomyCapability = if (operationProfile == OperationProfile.INDOOR_NO_GPS) {
             AutonomyCapability.UNKNOWN
@@ -359,8 +351,6 @@ class DemoMissionCoordinator(
         hoverReadyForMissionStart = false
         lastTakeoffPath = null
         clearLandingFlowState()
-        showSimulatorVerification = false
-        simulatorBenchOnlyFallbackRequested = false
         flightState = flightState.copy(
             missionBundleLoaded = missionBundle != null,
             missionBundleVerified = bundleVerified(),
@@ -420,11 +410,7 @@ class DemoMissionCoordinator(
         attachBundle(bundle = demoMissionBundle(), statusMessage = "Demo mission bundle loaded.")
     }
 
-    fun openSimulatorVerification() {
-        if (!simulatorRequired()) {
-            openConnectionGuide()
-            return
-        }
+    fun continueFromMissionSetup() {
         if (selectedConsoleMode.requiresMissionBundle && !bundleVerified()) {
             missionSetup = missionSetup.copy(
                 status = ScreenDataState.ERROR,
@@ -433,102 +419,23 @@ class DemoMissionCoordinator(
             refreshMissionSetupProfile()
             return
         }
-        showSimulatorVerification = true
-        activeScreen = ConsoleScreen.MISSION_SETUP
-        markSimulatorVerificationLoading("Checking in-app simulator gate...")
-    }
-
-    fun markSimulatorVerificationLoading(message: String) {
-        simulatorVerification = simulatorVerification.copy(
-            status = ScreenDataState.LOADING,
-            warning = message,
-            canContinueToConnectionGuide = false,
-        )
-    }
-
-    fun applySimulatorVerification(state: SimulatorVerificationUiState) {
-        simulatorVerification = if (operationProfile == OperationProfile.INDOOR_NO_GPS) {
-            state.copy(canContinueToConnectionGuide = true)
-        } else {
-            state
-        }
-    }
-
-    fun activateBenchOnlyFallback() {
-        simulatorBenchOnlyFallbackRequested = true
-        showSimulatorVerification = true
-        activeScreen = ConsoleScreen.MISSION_SETUP
-        simulatorVerification = simulatorVerification.copy(
-            status = ScreenDataState.PARTIAL,
-            summary = "Simulator verification was skipped for a bench-only session.",
-            warning = "Simulator unavailable. Continue with bench-only checks.",
-            nextStep = "Continue to Connection Guide. Prop-on stays blocked in this session.",
-            benchOnlyFallbackActive = true,
-            canContinueToConnectionGuide = true,
-            continueLabel = "Continue to Connection Guide (Bench Only)",
-            propOnBlockedReason = "Simulator unavailable. Prop-on remains blocked.",
-            simulatorActionsEnabled = false,
-        )
-    }
-
-    fun refreshSimulatorVerification() = requestSimulatorVerificationAction(
-        SimulatorVerificationAction.REFRESH,
-        "Refreshing simulator gate...",
-    )
-
-    fun enableSimulatorVerification() = requestSimulatorVerificationAction(
-        SimulatorVerificationAction.ENABLE,
-        "Enabling in-app simulator...",
-    )
-
-    fun disableSimulatorVerification() = requestSimulatorVerificationAction(
-        SimulatorVerificationAction.DISABLE,
-        "Disabling in-app simulator...",
-    )
-
-    fun runBranchHoldRthReplay() = requestSimulatorVerificationAction(
-        SimulatorVerificationAction.REPLAY_BRANCH_HOLD_RTH,
-        "Replaying Branch -> HOLD -> RTH...",
-    )
-
-    fun runInspectionCaptureReplay() = requestSimulatorVerificationAction(
-        SimulatorVerificationAction.REPLAY_INSPECTION_CAPTURE,
-        "Replaying Inspection -> Capture...",
-    )
-
-    private fun requestSimulatorVerificationAction(
-        action: SimulatorVerificationAction,
-        loadingMessage: String,
-    ) {
-        showSimulatorVerification = true
-        activeScreen = ConsoleScreen.MISSION_SETUP
-        simulatorVerificationAction = action
-        simulatorVerificationCommandToken += 1
-        markSimulatorVerificationLoading(loadingMessage)
-    }
-
-    fun continueFromSimulatorVerification() {
-        if (!showSimulatorVerification) {
+        if (runtimeMode == RuntimeMode.PROD) {
             openConnectionGuide()
-            return
+        } else {
+            openPreflightChecklist()
         }
-        if (!simulatorVerification.canContinueToConnectionGuide) {
-            simulatorVerification = simulatorVerification.copy(
-                status = ScreenDataState.ERROR,
-                warning = "Simulator gate is still blocking Connection Guide.",
-            )
-            return
-        }
-        showSimulatorVerification = false
-        openConnectionGuide()
     }
 
     fun openConnectionGuide() {
-        if (runtimeMode == RuntimeMode.PROD && simulatorRequired() && !simulatorVerification.canContinueToConnectionGuide) {
-            openSimulatorVerification()
+        if (selectedConsoleMode.requiresMissionBundle && !bundleVerified()) {
+            missionSetup = missionSetup.copy(
+                status = ScreenDataState.ERROR,
+                warning = "Load and verify a mission bundle first.",
+            )
+            activeScreen = ConsoleScreen.MISSION_SETUP
+            refreshMissionSetupProfile()
             return
         }
-        showSimulatorVerification = false
         activeScreen = ConsoleScreen.CONNECTION_GUIDE
         retryConnectionGuide()
     }
@@ -558,8 +465,16 @@ class DemoMissionCoordinator(
     }
 
     fun openPreflightChecklist() {
-        if (runtimeMode == RuntimeMode.PROD && simulatorRequired() && !simulatorVerification.canContinueToConnectionGuide) {
-            openSimulatorVerification()
+        if (runtimeMode == RuntimeMode.PROD && activeScreen != ConsoleScreen.CONNECTION_GUIDE) {
+            openConnectionGuide()
+            return
+        }
+        if (runtimeMode == RuntimeMode.PROD && !connectionGuide.canContinueToPreflight) {
+            activeScreen = ConsoleScreen.CONNECTION_GUIDE
+            connectionGuide = connectionGuide.copy(
+                status = ScreenDataState.ERROR,
+                warning = "Complete Connection Guide before opening Preflight.",
+            )
             return
         }
         activeScreen = ConsoleScreen.PREFLIGHT
@@ -672,6 +587,34 @@ class DemoMissionCoordinator(
     fun selectScreen(screen: ConsoleScreen) {
         if (screen !in visibleScreens) {
             return
+        }
+        if (runtimeMode == RuntimeMode.PROD) {
+            when (screen) {
+                ConsoleScreen.CONNECTION_GUIDE -> {
+                    openConnectionGuide()
+                    return
+                }
+                ConsoleScreen.PREFLIGHT -> {
+                    openPreflightChecklist()
+                    return
+                }
+                ConsoleScreen.IN_FLIGHT -> {
+                    if (flightState.stage !in setOf(
+                            FlightStage.TAKEOFF,
+                            FlightStage.HOVER_READY,
+                            FlightStage.TRANSIT,
+                            FlightStage.HOLD,
+                            FlightStage.RTH,
+                            FlightStage.LANDING,
+                            FlightStage.COMPLETED,
+                            FlightStage.ABORTED,
+                        )
+                    ) {
+                        return
+                    }
+                }
+                else -> Unit
+            }
         }
         activeScreen = screen
     }
@@ -891,13 +834,6 @@ class DemoMissionCoordinator(
             )
             return
         }
-        if (benchOnlyFallbackActive()) {
-            preflight = buildPreflightState(evaluation).copy(
-                status = ScreenDataState.ERROR,
-                warning = simulatorVerification.propOnBlockedReason ?: "Bench-only mode still blocks prop-on flight.",
-            )
-            return
-        }
         val uploadResult = runCommand(
             executor = missionUploadExecutor?.let { uploader ->
                 suspend { uploader.invoke(bundle) }
@@ -954,6 +890,7 @@ class DemoMissionCoordinator(
         missionSetup = missionSetup.copy(
             plannedOperatingProfile = plannedOperatingProfile,
             selectedConsoleMode = selectedConsoleMode,
+            selectableConsoleModes = selectableConsoleModes(),
             selectionLocked = activeScreen != ConsoleScreen.MISSION_SETUP,
             status = when {
                 missionBundle == null && !selectedConsoleMode.requiresMissionBundle -> ScreenDataState.PARTIAL
@@ -982,12 +919,12 @@ class DemoMissionCoordinator(
                 missionContextMode == MissionContextMode.UNPLANNED_MANUAL ->
                     "這次會以未綁定任務包的現場手動飛行進入連線檢查與起飛前檢查。"
 
-                selectedConsoleMode.requiresSimulatorGate ->
+                false ->
                     "先完成模擬驗證，再進入連線檢查。"
 
                 else -> "前往連線檢查與起飛前檢查。"
             },
-            continueLabel = if (selectedConsoleMode.requiresSimulatorGate) "前往模擬驗證" else "前往連線檢查",
+            continueLabel = if (runtimeMode == RuntimeMode.PROD) "Go to Connection Guide" else "前往連線檢查",
             canContinue = canContinue,
             missionContextMode = missionContextMode,
             profileMismatchWarning = plannedOperatingProfile
@@ -996,6 +933,9 @@ class DemoMissionCoordinator(
                     "Planned profile 與目前操作模式不同；這次會依照操作員選擇的 console mode 執行。"
                 },
         )
+        if (runtimeMode == RuntimeMode.PROD && missionSetup.profileMismatchWarning != null) {
+            missionSetup = missionSetup.copy(profileMismatchWarning = null)
+        }
     }
 
     private fun refreshConnectionGuidePresentation() {
@@ -1010,11 +950,6 @@ class DemoMissionCoordinator(
 
     private fun buildPreflightState(evaluation: PreflightEvaluation): PreflightUiState {
         val blockers = evaluation.blockers.map { it.detail }
-        val propOnBlockedReason = if (benchOnlyFallbackActive()) {
-            simulatorVerification.propOnBlockedReason ?: "Simulator unavailable. Prop-on remains blocked."
-        } else {
-            null
-        }
         val readyForPatrolStart = selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE &&
             flightState.stage == FlightStage.HOVER_READY &&
             flightState.missionUploaded
@@ -1025,7 +960,6 @@ class DemoMissionCoordinator(
         return PreflightUiState(
             status = when {
                 blockers.isNotEmpty() -> ScreenDataState.ERROR
-                propOnBlockedReason != null -> ScreenDataState.PARTIAL
                 else -> ScreenDataState.SUCCESS
             },
             blockers = blockers,
@@ -1062,8 +996,8 @@ class DemoMissionCoordinator(
             } else {
                 "戶外 patrol 一律由 KMZ / waypoint mission 擔任主航段 authority。"
             },
-            propOnBlocked = propOnBlockedReason != null,
-            propOnBlockReason = propOnBlockedReason,
+            propOnBlocked = false,
+            propOnBlockReason = null,
             uploadActionLabel = when {
                 selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT -> "進入手動飛行"
                 flightState.stage == FlightStage.HOVER_READY && flightState.missionUploaded -> "開始巡邏"
@@ -1404,12 +1338,12 @@ class DemoMissionCoordinator(
         return PreflightChecklistItem(label = label, passed = gate.passed, detail = gate.detail)
     }
 
-    private fun simulatorRequired(): Boolean {
-        return runtimeMode == RuntimeMode.PROD && selectedConsoleMode == OperatorConsoleMode.OUTDOOR_PATROL
-    }
-
-    private fun benchOnlyFallbackActive(): Boolean {
-        return runtimeMode == RuntimeMode.PROD && simulatorVerification.benchOnlyFallbackActive
+    private fun selectableConsoleModes(): List<OperatorConsoleMode> {
+        return if (runtimeMode == RuntimeMode.PROD) {
+            OperatorConsoleMode.entries.filter { it.isProdV1Selectable }
+        } else {
+            OperatorConsoleMode.entries
+        }
     }
 
     private fun stageLabel(stage: FlightStage): String {

@@ -28,7 +28,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
-import com.yourorg.buildingdrone.core.GeoPoint
 import com.yourorg.buildingdrone.data.ActiveFlightContext
 import com.yourorg.buildingdrone.data.BlackboxRecorder
 import com.yourorg.buildingdrone.data.MissionBundle
@@ -40,10 +39,6 @@ import com.yourorg.buildingdrone.dji.CameraControlStatus
 import com.yourorg.buildingdrone.dji.CameraStreamStatus
 import com.yourorg.buildingdrone.dji.HardwareSnapshot
 import com.yourorg.buildingdrone.dji.PerceptionSnapshot
-import com.yourorg.buildingdrone.dji.SimulatorScenario
-import com.yourorg.buildingdrone.dji.SimulatorScenarioHarness
-import com.yourorg.buildingdrone.dji.SimulatorScenarioReplay
-import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.dji.VirtualStickCommand
 import com.yourorg.buildingdrone.dji.VirtualStickWindow
 import com.yourorg.buildingdrone.domain.operations.ExecutionMode
@@ -111,23 +106,12 @@ class MainActivity : ComponentActivity() {
                 }
                 detected
             }
-            var simulatorStatus by remember { mutableStateOf(SimulatorStatus()) }
-            var simulatorObservedThisSession by remember { mutableStateOf(false) }
-            var branchSimulatorReplay by remember { mutableStateOf<SimulatorScenarioReplay?>(null) }
-            var inspectionSimulatorReplay by remember { mutableStateOf<SimulatorScenarioReplay?>(null) }
-            var simulatorVerificationError by remember { mutableStateOf<String?>(null) }
             val sdkSessionState by container.mobileSdkSession.state.collectAsState()
             val incidentExportDirectory = remember { application.filesDir.resolve("incident-exports") }
             val blackboxRecorder = remember(container) {
                 BlackboxRecorder(
                     repository = container.flightLogRepository,
                     exportDirectory = incidentExportDirectory
-                )
-            }
-            val simulatorHarness = remember(container) {
-                SimulatorScenarioHarness(
-                    simulatorAdapter = container.simulatorAdapter,
-                    reducer = container.flightReducer
                 )
             }
             val coordinatorRef = remember { mutableStateOf<DemoMissionCoordinator?>(null) }
@@ -354,25 +338,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            DisposableEffect(container) {
-                val listenerId = "main-activity-simulator"
-                simulatorStatus = safeSimulatorStatus(container)
-                if (simulatorStatus.hasObservedStateUpdate()) {
-                    simulatorObservedThisSession = true
-                }
-                runCatching {
-                    container.simulatorAdapter.addStateListener(listenerId) { status ->
-                        simulatorStatus = status
-                        if (status.hasObservedStateUpdate()) {
-                            simulatorObservedThisSession = true
-                        }
-                    }
-                }
-                onDispose {
-                    runCatching { container.simulatorAdapter.removeStateListener(listenerId) }
-                }
-            }
-
             LaunchedEffect(usbAccessoryIntentToken) {
                 refreshUsbAccessoryState()
             }
@@ -471,179 +436,6 @@ class MainActivity : ComponentActivity() {
                     runCatching { container.virtualStickAdapter.disable() }
                     manualPilotRefreshTick += 1
                 }
-            }
-
-            LaunchedEffect(attachedBundle?.missionId) {
-                simulatorObservedThisSession = false
-                branchSimulatorReplay = null
-                inspectionSimulatorReplay = null
-                simulatorVerificationError = null
-                coordinator.applySimulatorVerification(coordinator.simulatorVerification.copy())
-            }
-
-            LaunchedEffect(
-                coordinator.activeScreen,
-                signedIn,
-                attachedBundle,
-                coordinator.simulatorVerificationCommandToken
-            ) {
-                if (container.runtimeMode != RuntimeMode.PROD) {
-                    return@LaunchedEffect
-                }
-                if (!signedIn || attachedBundle?.isVerified() != true || !coordinator.showSimulatorVerification) {
-                    return@LaunchedEffect
-                }
-
-                val bundle = attachedBundle ?: return@LaunchedEffect
-                val initialLocation = bundle.simulatorInitialLocation()
-                val altitudeMeters = bundle.defaultAltitudeMeters
-                simulatorVerificationError = null
-
-                when (coordinator.simulatorVerificationAction) {
-                    SimulatorVerificationAction.REFRESH -> Unit
-
-                    SimulatorVerificationAction.ENABLE -> {
-                        val enabled = runCatching {
-                            container.simulatorAdapter.enable(initialLocation, altitudeMeters)
-                        }.getOrDefault(false)
-                        simulatorStatus = safeSimulatorStatus(container)
-                        if (!enabled) {
-                            simulatorVerificationError = container.simulatorAdapter.lastCommandError()
-                                ?: "Failed to enable the in-app simulator."
-                        }
-                    }
-
-                    SimulatorVerificationAction.DISABLE -> {
-                        val disabled = runCatching {
-                            container.simulatorAdapter.disable()
-                        }.getOrDefault(false)
-                        simulatorStatus = safeSimulatorStatus(container)
-                        if (!disabled) {
-                            simulatorVerificationError = container.simulatorAdapter.lastCommandError()
-                                ?: "Failed to disable the in-app simulator."
-                        }
-                    }
-
-                    SimulatorVerificationAction.REPLAY_BRANCH_HOLD_RTH -> {
-                        branchSimulatorReplay = runCatching {
-                            simulatorHarness.replay(
-                                initialLocation = initialLocation,
-                                altitudeMeters = altitudeMeters,
-                                initialState = simulatorInitialFlightState(),
-                                scenario = SimulatorScenario.TRANSIT_BRANCH_HOLD_RTH
-                            )
-                        }.getOrElse { error ->
-                            simulatorVerificationError = "Branch replay failed: ${error.message ?: "unknown error"}"
-                            null
-                        }
-                        branchSimulatorReplay?.let { replay ->
-                            if (replay.listenerObserved || replay.enabledSampleObserved) {
-                                simulatorObservedThisSession = true
-                            }
-                            if (!replay.enableSucceeded || !replay.enabledSampleObserved) {
-                                simulatorVerificationError = replay.failureReason
-                                    ?: "Branch replay did not observe a real simulator sample."
-                            }
-                        }
-                        branchSimulatorReplay?.let { replay ->
-                            runCatching {
-                                persistSimulatorReplayArtifacts(
-                                    recorder = blackboxRecorder,
-                                    container = container,
-                                    missionId = activeFlightContext?.missionId ?: bundle.missionId,
-                                    flightId = activeFlightContext?.flightId,
-                                    replay = replay,
-                                    reason = "Simulator branch HOLD/RTH replay"
-                                )
-                            }.onSuccess {
-                                lastIncidentExportKey = "simulator|branch|${replay.finalState.stage.name}"
-                            }.onFailure { error ->
-                                simulatorVerificationError =
-                                    "Branch replay artifacts failed: ${error.message ?: "unknown error"}"
-                            }
-                        }
-                    }
-
-                    SimulatorVerificationAction.REPLAY_INSPECTION_CAPTURE -> {
-                        inspectionSimulatorReplay = runCatching {
-                            simulatorHarness.replay(
-                                initialLocation = initialLocation,
-                                altitudeMeters = altitudeMeters,
-                                initialState = simulatorInitialFlightState(),
-                                scenario = SimulatorScenario.TRANSIT_INSPECTION_CAPTURE
-                            )
-                        }.getOrElse { error ->
-                            simulatorVerificationError = "Inspection replay failed: ${error.message ?: "unknown error"}"
-                            null
-                        }
-                        inspectionSimulatorReplay?.let { replay ->
-                            if (replay.listenerObserved || replay.enabledSampleObserved) {
-                                simulatorObservedThisSession = true
-                            }
-                            if (!replay.enableSucceeded || !replay.enabledSampleObserved) {
-                                simulatorVerificationError = replay.failureReason
-                                    ?: "Inspection replay did not observe a real simulator sample."
-                            }
-                        }
-                        inspectionSimulatorReplay?.let { replay ->
-                            runCatching {
-                                persistSimulatorReplayArtifacts(
-                                    recorder = blackboxRecorder,
-                                    container = container,
-                                    missionId = activeFlightContext?.missionId ?: bundle.missionId,
-                                    flightId = activeFlightContext?.flightId,
-                                    replay = replay,
-                                    reason = "Simulator inspection/capture replay"
-                                )
-                            }.onSuccess {
-                                lastIncidentExportKey = "simulator|inspection|${replay.finalState.stage.name}"
-                            }.onFailure { error ->
-                                simulatorVerificationError =
-                                    "Inspection replay artifacts failed: ${error.message ?: "unknown error"}"
-                            }
-                        }
-                    }
-                }
-            }
-
-            LaunchedEffect(
-                coordinator.activeScreen,
-                signedIn,
-                attachedBundle,
-                coordinator.showSimulatorVerification,
-                coordinator.simulatorBenchOnlyFallbackRequested,
-                simulatorStatus,
-                simulatorObservedThisSession,
-                branchSimulatorReplay,
-                inspectionSimulatorReplay,
-                simulatorVerificationError,
-                lastIncidentExportKey
-            ) {
-                if (container.runtimeMode != RuntimeMode.PROD) {
-                    return@LaunchedEffect
-                }
-                if (!signedIn || attachedBundle?.isVerified() != true || !coordinator.showSimulatorVerification) {
-                    return@LaunchedEffect
-                }
-
-                val state = container.evaluateSimulatorVerification(
-                    missionBundle = attachedBundle,
-                    simulatorStatus = simulatorStatus,
-                    simulatorObservedThisSession = simulatorObservedThisSession,
-                    branchReplay = branchSimulatorReplay,
-                    inspectionReplay = inspectionSimulatorReplay,
-                    benchOnlyFallbackRequested = coordinator.simulatorBenchOnlyFallbackRequested,
-                    simulatorCommandError = simulatorVerificationError,
-                    blackboxArmed = true,
-                    incidentExportObserved = lastIncidentExportKey != null
-                )
-                val mergedWarning = listOfNotNull(
-                    state.warning,
-                    simulatorVerificationError
-                ).distinct().joinToString(" ").ifBlank { null }
-                coordinator.applySimulatorVerification(
-                    state.copy(warning = mergedWarning)
-                )
             }
 
             LaunchedEffect(
@@ -760,8 +552,7 @@ class MainActivity : ComponentActivity() {
                     flightId = flightId,
                     state = state,
                     hardwareSnapshot = safeHardwareSnapshot(container),
-                    perceptionSnapshot = safePerceptionSnapshot(container),
-                    simulatorStatus = safeSimulatorStatus(container)
+                    perceptionSnapshot = safePerceptionSnapshot(container)
                 )
 
                 val exportKey = if (state.stage in setOf(
@@ -1065,10 +856,6 @@ class MainActivity : ComponentActivity() {
                                         activeFlightContext = null
                                         lastUploadedEventKey = null
                                         lastIncidentExportKey = null
-                                        branchSimulatorReplay = null
-                                        inspectionSimulatorReplay = null
-                                        simulatorVerificationError = null
-                                        simulatorObservedThisSession = false
                                         coordinator.attachBundle(
                                             bundle = null,
                                             statusMessage = null,
@@ -1123,41 +910,6 @@ private fun TransitUiState.toTelemetrySample(): TelemetrySampleWire {
     )
 }
 
-private fun MissionBundle.simulatorInitialLocation(): GeoPoint {
-    return launchPoint.location
-}
-
-private fun simulatorInitialFlightState(): com.yourorg.buildingdrone.domain.statemachine.FlightState {
-    return com.yourorg.buildingdrone.domain.statemachine.FlightState(
-        stage = FlightStage.TRANSIT,
-        missionUploaded = true
-    )
-}
-
-private suspend fun persistSimulatorReplayArtifacts(
-    recorder: BlackboxRecorder,
-    container: AppContainer,
-    missionId: String,
-    flightId: String?,
-    replay: SimulatorScenarioReplay,
-    reason: String
-) {
-    recorder.record(
-        missionId = missionId,
-        flightId = flightId,
-        state = replay.finalState,
-        hardwareSnapshot = safeHardwareSnapshot(container),
-        perceptionSnapshot = safePerceptionSnapshot(container),
-        simulatorStatus = replay.simulatorSamples.lastOrNull() ?: safeSimulatorStatus(container)
-    )
-    recorder.exportIncident(
-        missionId = missionId,
-        flightId = flightId,
-        stage = replay.finalState.stage,
-        reason = reason
-    )
-}
-
 private fun safeHardwareSnapshot(container: AppContainer): HardwareSnapshot {
     return runCatching { container.hardwareStatusProvider.currentSnapshot() }
         .getOrDefault(HardwareSnapshot())
@@ -1166,15 +918,6 @@ private fun safeHardwareSnapshot(container: AppContainer): HardwareSnapshot {
 private fun safePerceptionSnapshot(container: AppContainer): PerceptionSnapshot {
     return runCatching { container.perceptionAdapter.currentSnapshot() }
         .getOrDefault(PerceptionSnapshot())
-}
-
-private fun safeSimulatorStatus(container: AppContainer): SimulatorStatus {
-    return runCatching { container.simulatorAdapter.status() }
-        .getOrDefault(SimulatorStatus())
-}
-
-private fun SimulatorStatus.hasObservedStateUpdate(): Boolean {
-    return location != null || altitudeMeters != 0.0 || satelliteCount > 0
 }
 
 private fun UploadBacklogSnapshot.toCoordinatorStatus(): NetworkSyncStatus {

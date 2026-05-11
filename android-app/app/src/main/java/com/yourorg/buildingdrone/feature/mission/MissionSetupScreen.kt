@@ -65,7 +65,7 @@ fun MissionSetupScreen(
             subtitle = "先決定這次任務用哪一種 console，再進入下一頁。",
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OperatorConsoleMode.entries.forEach { mode ->
+                state.selectableConsoleModes.forEach { mode ->
                     FilterChip(
                         selected = state.selectedConsoleMode == mode,
                         onClick = { onSelectConsoleMode(mode) },

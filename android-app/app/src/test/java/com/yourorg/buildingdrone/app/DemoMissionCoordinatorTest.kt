@@ -8,8 +8,6 @@ import com.yourorg.buildingdrone.domain.safety.PreflightEvaluation
 import com.yourorg.buildingdrone.domain.safety.PreflightGateId
 import com.yourorg.buildingdrone.domain.safety.PreflightGateResult
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
-import com.yourorg.buildingdrone.feature.simulator.SimulatorVerificationUiState
-import com.yourorg.buildingdrone.ui.ScreenDataState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -112,30 +110,93 @@ class DemoMissionCoordinatorTest {
     }
 
     @Test
-    fun prodOutdoorMissionSetup_routesToSimulatorVerification() {
+    fun prodMissionSetup_routesToConnectionGuide() {
+        val coordinator = prodCoordinator()
+
+        coordinator.continueFromMissionSetup()
+
+        assertEquals(ConsoleScreen.CONNECTION_GUIDE, coordinator.activeScreen)
+    }
+
+    @Test
+    fun prodOpenPreflightBeforeConnectionGuide_redirectsToConnectionGuide() {
         val coordinator = prodCoordinator()
 
         coordinator.openPreflightChecklist()
 
-        assertEquals(ConsoleScreen.MISSION_SETUP, coordinator.activeScreen)
-        assertTrue(coordinator.showSimulatorVerification)
+        assertEquals(ConsoleScreen.CONNECTION_GUIDE, coordinator.activeScreen)
+        assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
     }
 
     @Test
-    fun continueFromSimulatorVerification_routesToConnectionGuideAfterPass() {
+    fun prodScreenSelectorCannotBypassConnectionGuideToPreflight() {
         val coordinator = prodCoordinator()
-        coordinator.openSimulatorVerification()
-        coordinator.applySimulatorVerification(
-            SimulatorVerificationUiState(
-                status = ScreenDataState.SUCCESS,
-                canContinueToConnectionGuide = true
-            )
-        )
 
-        coordinator.continueFromSimulatorVerification()
+        coordinator.selectScreen(ConsoleScreen.PREFLIGHT)
 
         assertEquals(ConsoleScreen.CONNECTION_GUIDE, coordinator.activeScreen)
-        assertFalse(coordinator.showSimulatorVerification)
+        assertEquals(FlightStage.IDLE, coordinator.flightState.stage)
+    }
+
+    @Test
+    fun prodConsoleModeList_exposesOnlyOutdoorPatrol() {
+        val coordinator = prodCoordinator()
+
+        assertEquals(listOf(OperatorConsoleMode.OUTDOOR_PATROL), coordinator.missionSetup.selectableConsoleModes)
+    }
+
+    @Test
+    fun demoConsoleModeList_keepsManualDebugModes() {
+        val coordinator = demoCoordinator()
+
+        assertTrue(coordinator.missionSetup.selectableConsoleModes.contains(OperatorConsoleMode.INDOOR_MANUAL))
+        assertTrue(coordinator.missionSetup.selectableConsoleModes.contains(OperatorConsoleMode.OUTDOOR_MANUAL_PILOT))
+    }
+
+    @Test
+    fun prodHiddenConsoleModeSelection_isIgnored() {
+        val coordinator = prodCoordinator()
+
+        coordinator.selectConsoleMode(OperatorConsoleMode.INDOOR_MANUAL)
+        assertEquals(OperatorConsoleMode.OUTDOOR_PATROL, coordinator.selectedConsoleMode)
+        assertEquals(OperationProfile.OUTDOOR_GPS_REQUIRED, coordinator.operationProfile)
+
+        coordinator.selectConsoleMode(OperatorConsoleMode.OUTDOOR_MANUAL_PILOT)
+        assertEquals(OperatorConsoleMode.OUTDOOR_PATROL, coordinator.selectedConsoleMode)
+        assertEquals(OperationProfile.OUTDOOR_GPS_REQUIRED, coordinator.operationProfile)
+    }
+
+    @Test
+    fun prodIndoorBundleProfile_isCoercedToOutdoorPatrolWithoutWarning() {
+        val coordinator = prodCoordinator()
+        val indoorBundle = com.yourorg.buildingdrone.data.demoMissionBundle()
+            .copy(operatingProfile = OperationProfile.INDOOR_NO_GPS)
+
+        coordinator.attachBundle(indoorBundle)
+
+        assertEquals(OperatorConsoleMode.OUTDOOR_PATROL, coordinator.selectedConsoleMode)
+        assertEquals(OperationProfile.OUTDOOR_GPS_REQUIRED, coordinator.operationProfile)
+        assertEquals(OperationProfile.INDOOR_NO_GPS, coordinator.missionSetup.plannedOperatingProfile)
+        assertEquals(null, coordinator.missionSetup.profileMismatchWarning)
+    }
+
+    @Test
+    fun prodVisibleScreens_excludeManualBranchAndInspection() {
+        val coordinator = prodCoordinator()
+
+        assertFalse(coordinator.visibleScreens.contains(ConsoleScreen.MANUAL_PILOT))
+        assertFalse(coordinator.visibleScreens.contains(ConsoleScreen.BRANCH_CONFIRM))
+        assertFalse(coordinator.visibleScreens.contains(ConsoleScreen.INSPECTION))
+    }
+
+    @Test
+    fun prodTakeoverUsesEmergencyInsteadOfManualPilotUi() {
+        val coordinator = prodCoordinator()
+
+        coordinator.requestTakeover()
+
+        assertEquals(FlightStage.MANUAL_OVERRIDE, coordinator.flightState.stage)
+        assertEquals(ConsoleScreen.EMERGENCY, coordinator.activeScreen)
     }
 
     @Test

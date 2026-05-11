@@ -2,7 +2,6 @@ package com.yourorg.buildingdrone.dji
 
 import android.app.Application
 import android.view.TextureView
-import com.yourorg.buildingdrone.core.GeoPoint
 import com.yourorg.buildingdrone.data.MissionBundle
 import com.yourorg.buildingdrone.domain.semantic.BranchDecision
 import com.yourorg.buildingdrone.domain.semantic.BranchPrompt
@@ -348,48 +347,5 @@ class FakePerceptionAdapter(
     fun updateSnapshot(snapshot: PerceptionSnapshot) {
         this.snapshot = snapshot
         listeners.values.forEach { it(snapshot) }
-    }
-}
-
-class FakeSimulatorAdapter(
-    initialStatus: SimulatorStatus = SimulatorStatus()
-) : SimulatorAdapter {
-    private val listeners = linkedMapOf<String, (SimulatorStatus) -> Unit>()
-    private var status = initialStatus
-
-    override fun status(): SimulatorStatus = status
-
-    override fun addStateListener(listenerId: String, listener: (SimulatorStatus) -> Unit) {
-        listeners[listenerId] = listener
-    }
-
-    override fun removeStateListener(listenerId: String) {
-        listeners.remove(listenerId)
-    }
-
-    override suspend fun enable(initialLocation: GeoPoint, altitudeMeters: Double): Boolean {
-        status = SimulatorStatus(
-            enabled = true,
-            location = initialLocation,
-            altitudeMeters = altitudeMeters,
-            satelliteCount = 12
-        )
-        publish()
-        return true
-    }
-
-    override suspend fun disable(): Boolean {
-        status = SimulatorStatus()
-        publish()
-        return true
-    }
-
-    fun advance(location: GeoPoint, altitudeMeters: Double) {
-        status = status.copy(location = location, altitudeMeters = altitudeMeters)
-        publish()
-    }
-
-    private fun publish() {
-        listeners.values.forEach { it(status) }
     }
 }

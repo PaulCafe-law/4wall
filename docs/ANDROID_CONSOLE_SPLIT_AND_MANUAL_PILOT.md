@@ -1,5 +1,20 @@
 # Android Console Split And Manual Pilot
 
+## Current Status
+
+This document is historical and is superseded for the current Android V1
+production operator flow.
+
+The current prod beta app is intentionally patrol-only:
+
+- `Outdoor Patrol` is the only selectable production console mode.
+- `Indoor Manual` and `Outdoor Manual Pilot` remain non-prod/demo concepts.
+- Unplanned manual flight is not part of the current prod Android V1 flow.
+- Simulator verification is not a production app gate.
+
+Use this file only as background for a future manual-pilot product pass. Do not
+use it to reintroduce manual modes into the current prod operator surface.
+
 ## Purpose
 
 This document defines the Sprint 4 production Android console split for Mini 4 Pro patrol operations.

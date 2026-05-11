@@ -15,7 +15,6 @@ import com.yourorg.buildingdrone.dji.real.DjiConnectionRepository
 import com.yourorg.buildingdrone.dji.real.DjiFlightControlAdapter
 import com.yourorg.buildingdrone.dji.real.DjiPerceptionAdapter
 import com.yourorg.buildingdrone.dji.real.DjiSdkSession
-import com.yourorg.buildingdrone.dji.real.DjiSimulatorAdapter
 import com.yourorg.buildingdrone.dji.real.DjiVirtualStickAdapter
 import com.yourorg.buildingdrone.dji.real.DjiWaypointMissionAdapter
 import java.io.File
@@ -64,7 +63,6 @@ fun createAppContainer(application: Application): AppContainer {
         cameraStreamAdapter = DjiCameraStreamAdapter(),
         cameraControlAdapter = DjiCameraControlAdapter(),
         perceptionAdapter = DjiPerceptionAdapter(),
-        simulatorAdapter = DjiSimulatorAdapter(),
         operatorAuthRepository = authRepository,
         flightUploadRepository = flightUploadRepository
     )

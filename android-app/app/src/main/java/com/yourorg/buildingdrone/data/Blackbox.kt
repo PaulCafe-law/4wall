@@ -2,7 +2,6 @@ package com.yourorg.buildingdrone.data
 
 import com.yourorg.buildingdrone.dji.HardwareSnapshot
 import com.yourorg.buildingdrone.dji.PerceptionSnapshot
-import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
 import com.yourorg.buildingdrone.domain.statemachine.FlightState
 import java.io.File
@@ -50,7 +49,6 @@ data class BlackboxEntry(
     val aircraftConnected: Boolean,
     val remoteControllerConnected: Boolean,
     val gpsReady: Boolean,
-    val simulatorEnabled: Boolean,
     val perceptionSummary: String? = null
 )
 
@@ -83,8 +81,7 @@ class BlackboxRecorder(
         flightId: String?,
         state: FlightState,
         hardwareSnapshot: HardwareSnapshot,
-        perceptionSnapshot: PerceptionSnapshot,
-        simulatorStatus: SimulatorStatus
+        perceptionSnapshot: PerceptionSnapshot
     ) {
         val entry = BlackboxEntry(
             timestamp = Instant.now(clock).toString(),
@@ -97,7 +94,6 @@ class BlackboxRecorder(
             aircraftConnected = hardwareSnapshot.aircraftConnected,
             remoteControllerConnected = hardwareSnapshot.remoteControllerConnected,
             gpsReady = hardwareSnapshot.gpsReady,
-            simulatorEnabled = simulatorStatus.enabled,
             perceptionSummary = perceptionSnapshot.summary
         )
         repository.append(lineJson.encodeToString(entry))
