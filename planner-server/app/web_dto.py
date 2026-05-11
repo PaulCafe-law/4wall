@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.dto import MissionArtifactsDto, MissionBundleDto
+
 
 RoleLiteral = Literal["platform_admin", "ops", "customer_admin", "customer_viewer"]
 InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdue", "void"]
@@ -111,6 +113,19 @@ class UpsertOperatorRequestDto(BaseModel):
     password: str | None = Field(default=None, min_length=8)
     updatePassword: bool = False
     isActive: bool = True
+
+
+class CreateRouteFlightTaskRequestDto(BaseModel):
+    assignee: str | None = Field(default="fieldpilot", max_length=80)
+
+
+class RouteFlightTaskResponseDto(BaseModel):
+    missionId: str
+    dispatchId: str
+    status: str = "ready"
+    bundleVersion: str
+    missionBundle: MissionBundleDto
+    artifacts: MissionArtifactsDto
 
 
 class WebSignupRequestDto(BaseModel):

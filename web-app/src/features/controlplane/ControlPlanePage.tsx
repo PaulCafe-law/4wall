@@ -100,12 +100,12 @@ const WORKSPACE_GUIDES: Record<WorkspaceKey, WorkspacePresentationGuide> = {
   },
   routes: {
     eyebrow: '展示重點',
-    title: '航線工作區要讓人看見可重用的巡檢路徑資產',
+    title: '航線工作區先完成真機短航線主線',
     summary:
-      '重點不是單次建立表單，而是航線版本、預估時間、預覽折線與場域上下文可以被後續模板、排程與任務重用。',
-    evidenceTargets: ['建立航線表單', '航線庫', '預估時間與預覽折線摘要'],
-    screenshotHint: '建議同框截到建立表單與右側航線庫，讓畫面同時呈現建立與重用兩件事。',
-    nextStep: '建立或選定一條航線後，切到模板工作區，把巡檢策略、證據與報表政策掛上去。',
+      'v1 重點是把 L、巡邏航點與閉合返航路徑產生成 Android 可同步的任務包。模板、排程與完整派工仍保留，但不再阻擋短航線驗證。',
+    evidenceTargets: ['Google Maps 航點編輯', '航線庫', '一鍵產生任務包'],
+    screenshotHint: '建議同框截到航點編輯器與航線庫，並展示「送到飛行 App」成功訊息。',
+    nextStep: '建立或選定一條航線後，直接產生任務包，再到 Android 使用 fieldpilot 同步任務。',
   },
   templates: {
     eyebrow: '展示重點',
@@ -291,6 +291,12 @@ export function ControlPlanePage() {
   const [templateError, setTemplateError] = useState<string | null>(null)
   const [scheduleError, setScheduleError] = useState<string | null>(null)
   const [dispatchError, setDispatchError] = useState<string | null>(null)
+  const [flightTaskError, setFlightTaskError] = useState<string | null>(null)
+  const [flightTaskSuccess, setFlightTaskSuccess] = useState<{
+    routeId: string
+    missionId: string
+    dispatchId: string
+  } | null>(null)
 
   const dashboardQuery = useAuthedQuery({
     queryKey: ['control-plane-dashboard'],
@@ -560,6 +566,35 @@ export function ControlPlanePage() {
     },
   })
 
+  const createFlightTask = useAuthedMutation({
+    mutationKey: ['inspection', 'routes', 'flight-task'],
+    mutationFn: ({
+      token,
+      payload,
+    }: {
+      token: string
+      payload: { routeId: string }
+    }) => api.createRouteFlightTask(token, payload.routeId, { assignee: 'fieldpilot' }),
+    onSuccess: async (response, payload) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['missions'] }),
+        queryClient.invalidateQueries({ queryKey: ['mission'] }),
+        queryClient.invalidateQueries({ queryKey: ['web-overview'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['control-plane-alerts'] }),
+        queryClient.invalidateQueries({ queryKey: ['inspection', 'dispatch'] }),
+        queryClient.invalidateQueries({ queryKey: ['support', 'queue'] }),
+        queryClient.invalidateQueries({ queryKey: ['live-ops', 'flights'] }),
+      ])
+      setFlightTaskSuccess({
+        routeId: payload.routeId,
+        missionId: response.missionId,
+        dispatchId: response.dispatchId,
+      })
+      setFlightTaskError(null)
+    },
+  })
+
   const updateDispatch = useAuthedMutation({
     mutationKey: ['inspection', 'dispatch', 'update'],
     mutationFn: ({
@@ -604,8 +639,8 @@ export function ControlPlanePage() {
       setRouteError('請輸入航線名稱。')
       return
     }
-    if (routeDraftWaypoints.length < 2) {
-      setRouteError('至少需要兩個航點才能建立或更新航線。')
+    if (routeDraftWaypoints.length < 1) {
+      setRouteError('至少需要一個巡邏航點才能建立或更新航線。')
       return
     }
     if (!routeDraftLaunchPoint) {
@@ -746,6 +781,18 @@ export function ControlPlanePage() {
     } catch (error) {
       setDispatchError(
         formatApiError(error instanceof ApiError ? error.detail : undefined, '建立派工或產生任務包失敗。'),
+      )
+    }
+  }
+
+  async function handleCreateFlightTask(routeId: string) {
+    try {
+      setFlightTaskError(null)
+      setFlightTaskSuccess(null)
+      await createFlightTask.mutateAsync({ routeId })
+    } catch (error) {
+      setFlightTaskError(
+        formatApiError(error instanceof ApiError ? error.detail : undefined, '產生任務包失敗。請確認航線已有起降點與至少一個巡邏航點。'),
       )
     }
   }
@@ -1104,11 +1151,16 @@ export function ControlPlanePage() {
         <Panel>
           {eyebrowLabel('航線資產')}
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">航線庫</h2>
+          {flightTaskError ? (
+            <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {flightTaskError}
+            </div>
+          ) : null}
           <div className="mt-4 space-y-4">
             {siteRoutes.length === 0 ? (
               <EmptyState
                 title="目前沒有航線"
-                body="先建立示範航線，才能把場域、模板與排程串成完整控制平面故事。"
+                body="先建立航線，才能把場域、巡邏航點與 Android 任務包串成真機短航線主線。"
               />
             ) : (
               siteRoutes.map((route) => (
@@ -1134,6 +1186,32 @@ export function ControlPlanePage() {
                     <Metric label="閉合路徑" value={route.implicitReturnToLaunch ? '回到 L' : '未閉合'} />
                     <Metric label="更新時間" value={formatDateTime(route.updatedAt)} />
                   </div>
+                  {auth.isInternal && canWriteSelectedSite ? (
+                    <div className="mt-4 rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <p className="font-medium text-chrome-950">建立飛行任務</p>
+                          <p className="mt-1 text-sm text-chrome-700">
+                            直接建立 mission、指派給 fieldpilot，並產生 Android 可同步的任務包。
+                          </p>
+                          {flightTaskSuccess?.routeId === route.routeId ? (
+                            <p className="mt-2 text-sm font-medium text-emerald-700">
+                              任務包已產生，請到 Android 使用 fieldpilot 同步任務。{' '}
+                              <Link className="underline" to={`/missions/${flightTaskSuccess.missionId}`}>
+                                查看任務
+                              </Link>
+                            </p>
+                          ) : null}
+                        </div>
+                        <ActionButton
+                          disabled={createFlightTask.isPending || route.pointCount < 1}
+                          onClick={() => void handleCreateFlightTask(route.routeId)}
+                        >
+                          {createFlightTask.isPending ? '產生中…' : '送到飛行 App'}
+                        </ActionButton>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ))
             )}

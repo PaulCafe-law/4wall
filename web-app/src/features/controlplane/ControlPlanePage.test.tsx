@@ -1,4 +1,5 @@
 import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { vi } from 'vitest'
 
@@ -20,6 +21,7 @@ const apiMock = vi.hoisted(() => ({
   patchInspectionSchedule: vi.fn(),
   dispatchMission: vi.fn(),
   materializeDispatchMission: vi.fn(),
+  createRouteFlightTask: vi.fn(),
   patchInspectionDispatch: vi.fn(),
 }))
 
@@ -53,6 +55,7 @@ vi.mock('../../lib/api', async () => {
       patchInspectionSchedule: apiMock.patchInspectionSchedule,
       dispatchMission: apiMock.dispatchMission,
       materializeDispatchMission: apiMock.materializeDispatchMission,
+      createRouteFlightTask: apiMock.createRouteFlightTask,
       patchInspectionDispatch: apiMock.patchInspectionDispatch,
     },
   }
@@ -294,6 +297,57 @@ describe('ControlPlanePage', () => {
         createdAt: '2026-04-17T08:00:00Z',
       },
     ])
+    apiMock.createRouteFlightTask.mockResolvedValue({
+      missionId: 'mission-shortcut-001',
+      dispatchId: 'dispatch-shortcut-001',
+      status: 'ready',
+      bundleVersion: '1.1.0',
+      missionBundle: {
+        missionId: 'mission-shortcut-001',
+        routeMode: 'road_network_following',
+        operatingProfile: 'outdoor_gps_patrol',
+        launchPoint: {
+          launchPointId: 'launch-001',
+          label: 'Tower A launch point',
+          location: { lat: 25.03391, lng: 121.56452 },
+        },
+        orderedWaypoints: [
+          {
+            waypointId: 'wp-001',
+            sequence: 1,
+            holdSeconds: 0,
+            location: { lat: 25.0337, lng: 121.5643 },
+          },
+        ],
+        implicitReturnToLaunch: true,
+        defaultAltitudeMeters: 36,
+        defaultSpeedMetersPerSecond: 4,
+        failsafe: {
+          onSemanticTimeout: 'HOLD',
+          onBatteryCritical: 'RTH',
+          onFrameDrop: 'HOLD',
+        },
+        legacyInspectionViewpoints: [],
+      },
+      artifacts: {
+        missionKmz: {
+          downloadUrl: '/v1/missions/mission-shortcut-001/artifacts/mission.kmz',
+          version: 1,
+          checksumSha256: 'sha',
+          contentType: 'application/vnd.dji.wpmz',
+          sizeBytes: 1024,
+          cacheControl: 'private, max-age=0',
+        },
+        missionMeta: {
+          downloadUrl: '/v1/missions/mission-shortcut-001/artifacts/mission_meta.json',
+          version: 1,
+          checksumSha256: 'sha',
+          contentType: 'application/json',
+          sizeBytes: 512,
+          cacheControl: 'private, max-age=0',
+        },
+      },
+    })
   })
 
   it('renders dashboard workspace with the productized control-plane IA', async () => {
@@ -374,6 +428,36 @@ describe('ControlPlanePage', () => {
     expect(screen.getByText(/InternalRouteEditorPanelMock:/)).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: '航線庫' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 2, name: '航線摘要' })).not.toBeInTheDocument()
+  })
+
+  it('lets an internal user create a flight task from a route without template or schedule input', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/control-plane/routes" element={<ControlPlanePage />} />
+      </Routes>,
+      {
+        route: '/control-plane/routes',
+        auth: createAuthValue({
+          session: createSession({ globalRoles: ['platform_admin'] }),
+        }),
+      },
+    )
+
+    expect(await screen.findByText('Tower A patrol loop')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '送到飛行 App' }))
+
+    expect(apiMock.createRouteFlightTask).toHaveBeenCalledWith(
+      expect.any(String),
+      'route-001',
+      { assignee: 'fieldpilot' },
+    )
+    expect(await screen.findByText(/任務包已產生/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '查看任務' })).toHaveAttribute(
+      'href',
+      '/missions/mission-shortcut-001',
+    )
   })
 
   it('renders the dispatch workspace with lifecycle fields', async () => {
