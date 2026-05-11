@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
@@ -14,6 +15,7 @@ from app.deps import (
     get_current_web_user,
     get_route_provider,
     get_session,
+    require_internal_user,
 )
 from app.dto import MissionPlanResponseDto
 from app.control_plane_read_models import build_control_plane_alerts, build_control_plane_dashboard
@@ -38,10 +40,12 @@ from app.web_dto import (
     CreateInspectionRouteRequestDto,
     CreateInspectionScheduleRequestDto,
     CreateInspectionTemplateRequestDto,
+    CreateRouteFlightTaskRequestDto,
     DispatchRecordDto,
     InspectionRouteDto,
     InspectionScheduleDto,
     InspectionTemplateDto,
+    RouteFlightTaskResponseDto,
     UpdateDispatchRequestDto,
     UpdateInspectionRouteRequestDto,
     UpdateInspectionScheduleRequestDto,
@@ -558,6 +562,106 @@ def patch_dispatch(
     )
     session.commit()
     return serialize_dispatch(dispatch)
+
+
+@router.post("/v1/control-plane/routes/{route_id}/flight-task", response_model=RouteFlightTaskResponseDto)
+def create_route_flight_task(
+    route_id: str,
+    request: CreateRouteFlightTaskRequestDto,
+    current_user: CurrentWebUser = Depends(require_internal_user),
+    session: Session = Depends(get_session),
+    provider: RouteProvider = Depends(get_route_provider),
+    generator=Depends(get_corridor_generator),
+    artifact_service=Depends(get_artifact_service),
+) -> RouteFlightTaskResponseDto:
+    route = session.get(InspectionRoute, route_id)
+    if route is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="inspection_route_not_found")
+    ensure_org_write_access(session, current_user, route.organization_id, action="inspection.route.flight_task_access")
+    site = _require_site(session, route.site_id, organization_id=route.organization_id)
+
+    mission_id = f"msn_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}_{uuid4().hex[:8]}"
+    assignee = (request.assignee or "fieldpilot").strip() or "fieldpilot"
+    mission = Mission(
+        id=mission_id,
+        organization_id=route.organization_id,
+        site_id=route.site_id,
+        requested_by_user_id=current_user.user.id,
+        mission_name=f"{site.name} / {route.name} 飛行任務",
+        status="dispatched",
+        routing_mode="road_network_following",
+        bundle_version="pending",
+        demo_mode=False,
+        request_json={},
+        response_json={},
+    )
+    dispatch = DispatchRecord(
+        organization_id=route.organization_id,
+        mission_id=mission.id,
+        route_id=route.id,
+        template_id=None,
+        schedule_id=None,
+        dispatched_by_user_id=current_user.user.id,
+        assignee=assignee,
+        execution_target="android_app",
+        status="assigned",
+        note="由航線一鍵建立的保全巡檢 v1 飛行任務。",
+        dispatched_at=datetime.now(timezone.utc),
+    )
+    normalize_dispatch_state(dispatch, changed_at=dispatch.dispatched_at)
+    mission.status = mission_status_for_dispatch(dispatch.status)
+    session.add(mission)
+    session.add(dispatch)
+    session.flush()
+
+    try:
+        response = materialize_dispatch_mission(
+            session=session,
+            dispatch=dispatch,
+            mission=mission,
+            route=route,
+            provider=provider,
+            generator=generator,
+            artifact_service=artifact_service,
+        )
+    except DispatchMaterializationError as exc:
+        session.rollback()
+        fail_closed_status = (
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+            if exc.detail
+            in {
+                "route_launch_point_required",
+                "route_waypoints_required",
+                "route_lat_required",
+                "route_lng_required",
+            }
+            else status.HTTP_409_CONFLICT
+        )
+        raise HTTPException(status_code=fail_closed_status, detail=exc.detail) from exc
+
+    record_audit(
+        session,
+        action="mission.flight_task_created",
+        organization_id=mission.organization_id,
+        actor_user_id=current_user.user.id,
+        target_type="mission",
+        target_id=mission.id,
+        metadata={
+            "dispatchId": dispatch.id,
+            "routeId": route.id,
+            "assignee": dispatch.assignee,
+            "artifactSource": "assigned_dispatch",
+        },
+    )
+    session.commit()
+    return RouteFlightTaskResponseDto(
+        missionId=response.missionId,
+        dispatchId=dispatch.id,
+        status=response.status,
+        bundleVersion=response.bundleVersion,
+        missionBundle=response.missionBundle,
+        artifacts=response.artifacts,
+    )
 
 
 @router.post("/v1/control-plane/dispatches/{dispatch_id}/materialize-mission", response_model=MissionPlanResponseDto)

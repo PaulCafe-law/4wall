@@ -304,6 +304,19 @@ export interface DispatchPayload {
   note?: string
 }
 
+export interface RouteFlightTaskPayload {
+  assignee?: string
+}
+
+export interface RouteFlightTaskResponse {
+  missionId: string
+  dispatchId: string
+  status: string
+  bundleVersion: string
+  missionBundle: MissionPlanResponse['missionBundle']
+  artifacts: MissionPlanResponse['artifacts']
+}
+
 export interface ReprocessMissionAnalysisPayload {
   mode?: 'normal' | 'no_findings' | 'analysis_failed'
   note?: string
@@ -522,6 +535,12 @@ export const api = {
     apiFetch<MissionPlanResponse>(`/v1/control-plane/dispatches/${dispatchId}/materialize-mission`, {
       method: 'POST',
       token,
+    }),
+  createRouteFlightTask: (token: string, routeId: string, payload: RouteFlightTaskPayload = {}) =>
+    apiFetch<RouteFlightTaskResponse>(`/v1/control-plane/routes/${routeId}/flight-task`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
     }),
   patchInspectionDispatch: (token: string, dispatchId: string, payload: Partial<DispatchPayload>) =>
     apiFetch<DispatchRecord>(`/v1/inspection/dispatch/${dispatchId}`, {

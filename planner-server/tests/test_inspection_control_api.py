@@ -3,7 +3,8 @@ from zipfile import ZipFile
 
 from sqlmodel import select
 
-from app.models import Site
+from app.models import InspectionRoute, OperatorAccount, Site
+from app.security import hash_password
 from tests.helpers import login_web, seed_organization, seed_user, valid_request_payload
 
 
@@ -225,6 +226,226 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     assert body["dispatch"]["executionTarget"] == "field-team"
     assert body["dispatch"]["acceptedAt"] is not None
     assert body["dispatch"]["closedAt"] is not None
+
+
+def test_route_flight_task_shortcut_creates_assigned_bundle_for_fieldpilot(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Flight Task Shortcut Org")
+        org_id = org.id
+        seed_user(
+            session,
+            email="admin@flight-task-shortcut.test",
+            password=PASSWORD,
+            global_roles=["platform_admin"],
+        )
+        session.add(
+            OperatorAccount(
+                username="fieldpilot",
+                display_name="Field Pilot",
+                password_hash=hash_password("Operator123!"),
+            )
+        )
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@flight-task-shortcut.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "name": "Shortcut Site",
+            "address": "Taipei",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "notes": "V1 flight task shortcut",
+        },
+    )
+    assert site_response.status_code == 200, site_response.text
+    site_id = site_response.json()["siteId"]
+
+    route_response = client.post(
+        "/v1/inspection/routes",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "name": "Shortcut patrol loop",
+            "description": "Route-only v1 patrol",
+            "launchPoint": {
+                "label": "Shortcut launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+                "altitudeM": 0,
+            },
+            "planningParameters": {"routeMode": "route_owned_launch_waypoints_v1"},
+            "waypoints": [
+                {
+                    "kind": "transit",
+                    "lat": 25.03412,
+                    "lng": 121.56472,
+                    "altitudeM": 35,
+                    "label": "patrol point",
+                    "dwellSeconds": 0,
+                }
+            ],
+        },
+    )
+    assert route_response.status_code == 200, route_response.text
+    route_id = route_response.json()["routeId"]
+
+    shortcut_response = client.post(
+        f"/v1/control-plane/routes/{route_id}/flight-task",
+        headers=headers,
+        json={},
+    )
+    assert shortcut_response.status_code == 200, shortcut_response.text
+    shortcut = shortcut_response.json()
+    mission_id = shortcut["missionId"]
+    dispatch_id = shortcut["dispatchId"]
+    assert shortcut["missionBundle"]["launchPoint"]["label"] == "Shortcut launch"
+    assert shortcut["missionBundle"]["orderedWaypoints"][0]["sequence"] == 1
+    assert shortcut["missionBundle"]["implicitReturnToLaunch"] is True
+    assert shortcut["artifacts"]["missionKmz"]["downloadUrl"].endswith("/mission.kmz")
+
+    kmz_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission.kmz", headers=headers)
+    assert kmz_response.status_code == 200, kmz_response.text
+    with ZipFile(BytesIO(kmz_response.content)) as archive:
+        assert "wpmz/template.kml" in archive.namelist()
+        assert "wpmz/waylines.wpml" in archive.namelist()
+
+    operator_login = client.post("/v1/auth/login", json={"username": "fieldpilot", "password": "Operator123!"})
+    assert operator_login.status_code == 200, operator_login.text
+    active_bundle = client.get(
+        "/v1/operator/missions/active-bundle",
+        headers={"Authorization": f"Bearer {operator_login.json()['accessToken']}"},
+    )
+    assert active_bundle.status_code == 200, active_bundle.text
+    assert active_bundle.json()["missionId"] == mission_id
+
+    mission_detail = client.get(f"/v1/missions/{mission_id}", headers=headers)
+    assert mission_detail.status_code == 200, mission_detail.text
+    detail = mission_detail.json()
+    assert detail["route"]["routeId"] == route_id
+    assert detail["template"] is None
+    assert detail["schedule"] is None
+    assert detail["dispatch"]["dispatchId"] == dispatch_id
+    assert detail["dispatch"]["assignee"] == "fieldpilot"
+
+
+def test_route_flight_task_shortcut_fails_without_patrol_waypoints(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Flight Task Fail Closed Org")
+        org_id = org.id
+        user = seed_user(
+            session,
+            email="admin@flight-task-fail.test",
+            password=PASSWORD,
+            global_roles=["platform_admin"],
+        )
+        site = Site(
+            organization_id=org_id,
+            name="Fail Closed Shortcut Site",
+            address="Taipei",
+            lat=25.03391,
+            lng=121.56452,
+            created_by_user_id=user.id,
+            updated_by_user_id=user.id,
+        )
+        session.add(site)
+        session.flush()
+        route = InspectionRoute(
+            organization_id=org_id,
+            site_id=site.id,
+            name="Invalid shortcut route",
+            description="Missing patrol waypoints",
+            launch_point_json={
+                "launchPointId": "launch-001",
+                "label": "Invalid launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+            },
+            waypoints_json=[],
+            planning_parameters_json={"routeMode": "route_owned_launch_waypoints_v1"},
+            created_by_user_id=user.id,
+            updated_by_user_id=user.id,
+        )
+        session.add(route)
+        session.commit()
+        route_id = route.id
+
+    headers, _ = login_web(client, email="admin@flight-task-fail.test", password=PASSWORD)
+    shortcut_response = client.post(
+        f"/v1/control-plane/routes/{route_id}/flight-task",
+        headers=headers,
+        json={},
+    )
+
+    assert shortcut_response.status_code == 422
+    assert shortcut_response.json()["detail"] == "route_waypoints_required"
+
+
+def test_route_flight_task_shortcut_requires_internal_user(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Flight Task Internal Only Org")
+        org_id = org.id
+        seed_user(
+            session,
+            email="admin@flight-task-internal-only.test",
+            password=PASSWORD,
+            org_roles=[(org_id, "customer_admin")],
+        )
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@flight-task-internal-only.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "name": "Customer Shortcut Site",
+            "address": "Taipei",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "notes": "",
+        },
+    )
+    assert site_response.status_code == 200, site_response.text
+    site_id = site_response.json()["siteId"]
+
+    route_response = client.post(
+        "/v1/inspection/routes",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "name": "Customer-created route",
+            "launchPoint": {
+                "label": "Customer launch",
+                "kind": "primary",
+                "lat": 25.03391,
+                "lng": 121.56452,
+            },
+            "waypoints": [
+                {
+                    "kind": "transit",
+                    "lat": 25.03412,
+                    "lng": 121.56472,
+                    "altitudeM": 35,
+                    "label": "patrol point",
+                }
+            ],
+        },
+    )
+    assert route_response.status_code == 200, route_response.text
+
+    shortcut_response = client.post(
+        f"/v1/control-plane/routes/{route_response.json()['routeId']}/flight-task",
+        headers=headers,
+        json={},
+    )
+
+    assert shortcut_response.status_code == 403
+    assert shortcut_response.json()["detail"] == "forbidden_role"
 
 
 def test_customer_viewer_can_read_but_not_write_control_plane_records(client, session_factory) -> None:

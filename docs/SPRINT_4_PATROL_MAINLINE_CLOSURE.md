@@ -4,7 +4,7 @@
 
 Close the production patrol chain:
 
-`Web route -> dispatch materialization -> mission.kmz / mission_meta.json -> Android assigned bundle download -> DJI MSDK KMZ upload -> takeoff -> waypoint loop -> return to L -> Android landing`.
+`Web route -> create flight task -> mission.kmz / mission_meta.json -> Android assigned bundle download -> DJI MSDK KMZ upload -> takeoff -> waypoint loop -> return to L -> Android landing`.
 
 ## Current Gap
 
@@ -15,7 +15,8 @@ Close the production patrol chain:
 ## Implementation Contract
 
 - Web route remains planning authority only. It never sends stick control and never enters the flight-critical loop.
-- Dispatch materialization turns the selected route into mission artifacts. It must fail closed if route, template, schedule, mission, or site ownership is inconsistent.
+- Route flight-task creation turns the selected route into a mission, an assigned dispatch, and mission artifacts. It must fail closed if route, mission, dispatch, or site ownership is inconsistent.
+- Template and schedule records stay available for advanced operations, but they are not required for the v1 short-loop hardware path.
 - `mission.kmz` must contain DJI WPML files:
   - `wpmz/template.kml`
   - `wpmz/waylines.wpml`
@@ -27,8 +28,8 @@ Close the production patrol chain:
 ## Field Runbook
 
 1. Internal user creates or edits a route in `/control-plane/routes`.
-2. Internal user dispatches a mission with the intended route/template/schedule and assignee `fieldpilot` or the active operator username.
-3. Control plane materializes the dispatch into mission artifacts.
+2. Internal user clicks `送到飛行 App` on the route.
+3. Control plane creates the mission, assigns it to `fieldpilot`, and generates mission artifacts.
 4. Field operator logs into Android.
 5. Android downloads `/v1/operator/missions/active-bundle`.
 6. Android verifies artifact checksums, schema, and KMZ structure.
