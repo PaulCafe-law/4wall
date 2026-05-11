@@ -26,13 +26,25 @@ enum class ExecutionMode(
 ) {
     PATROL_ROUTE(
         wireName = "patrol_route",
-        displayLabel = "自動巡邏",
+        displayLabel = "巡邏航線",
     ),
     MANUAL_PILOT(
         wireName = "manual_pilot",
         displayLabel = "手動飛行",
-    );
+    ),
 }
+
+enum class MissionContextMode {
+    PLANNED_BUNDLE,
+    UNPLANNED_MANUAL,
+}
+
+data class ConsoleExecutionPolicy(
+    val requiresMissionBundle: Boolean,
+    val requiresGpsGate: Boolean,
+    val requiresSimulatorGate: Boolean,
+    val allowsMissionUpload: Boolean,
+)
 
 enum class OperatorConsoleMode(
     val modeId: String,
@@ -42,37 +54,75 @@ enum class OperatorConsoleMode(
     val executionMode: ExecutionMode,
     val patrolRouteEnabled: Boolean,
     val manualPilotEnabled: Boolean,
+    val executionPolicy: ConsoleExecutionPolicy,
 ) {
     INDOOR_MANUAL(
         modeId = "indoor_manual",
-        displayLabel = "Indoor Manual",
-        detail = "室內模式只保留手動飛行、降落與接管，不啟用航點巡邏。",
+        displayLabel = "室內手動",
+        detail = "室內 / 無 GPS 手動飛行。可直接進入 Manual Pilot，不走 waypoint mission。",
         executedOperatingProfile = OperationProfile.INDOOR_NO_GPS,
         executionMode = ExecutionMode.MANUAL_PILOT,
         patrolRouteEnabled = false,
         manualPilotEnabled = true,
+        executionPolicy = ConsoleExecutionPolicy(
+            requiresMissionBundle = false,
+            requiresGpsGate = false,
+            requiresSimulatorGate = false,
+            allowsMissionUpload = false,
+        ),
     ),
     OUTDOOR_PATROL(
         modeId = "outdoor_patrol",
-        displayLabel = "Outdoor Patrol",
-        detail = "戶外模式使用已規劃航線執行自動巡邏，保留返航與降落流程。",
+        displayLabel = "戶外巡邏",
+        detail = "戶外 GPS 巡邏。需已驗證 mission bundle，並經過 simulator / preflight gate。",
         executedOperatingProfile = OperationProfile.OUTDOOR_GPS_REQUIRED,
         executionMode = ExecutionMode.PATROL_ROUTE,
         patrolRouteEnabled = true,
         manualPilotEnabled = false,
+        executionPolicy = ConsoleExecutionPolicy(
+            requiresMissionBundle = true,
+            requiresGpsGate = true,
+            requiresSimulatorGate = true,
+            allowsMissionUpload = true,
+        ),
     ),
     OUTDOOR_MANUAL_PILOT(
         modeId = "outdoor_manual_pilot",
-        displayLabel = "Outdoor Manual Pilot",
-        detail = "戶外模式直接進入相機預覽與雙搖桿手動飛行，不啟動航點任務。",
+        displayLabel = "戶外手動",
+        detail = "戶外手動飛行。可直接進入 Manual Pilot；GPS 只做診斷，不走 waypoint mission。",
         executedOperatingProfile = OperationProfile.OUTDOOR_GPS_REQUIRED,
         executionMode = ExecutionMode.MANUAL_PILOT,
         patrolRouteEnabled = false,
         manualPilotEnabled = true,
+        executionPolicy = ConsoleExecutionPolicy(
+            requiresMissionBundle = false,
+            requiresGpsGate = false,
+            requiresSimulatorGate = false,
+            allowsMissionUpload = false,
+        ),
     );
 
     val supportsRth: Boolean
         get() = executedOperatingProfile == OperationProfile.OUTDOOR_GPS_REQUIRED
+
+    val requiresMissionBundle: Boolean
+        get() = executionPolicy.requiresMissionBundle
+
+    val requiresGpsGate: Boolean
+        get() = executionPolicy.requiresGpsGate
+
+    val requiresSimulatorGate: Boolean
+        get() = executionPolicy.requiresSimulatorGate
+
+    val allowsMissionUpload: Boolean
+        get() = executionPolicy.allowsMissionUpload
+
+    fun resolveMissionContextMode(bundleVerified: Boolean): MissionContextMode {
+        return when {
+            executionMode == ExecutionMode.MANUAL_PILOT && !bundleVerified -> MissionContextMode.UNPLANNED_MANUAL
+            else -> MissionContextMode.PLANNED_BUNDLE
+        }
+    }
 
     companion object {
         fun defaultForProfile(profile: OperationProfile): OperatorConsoleMode {

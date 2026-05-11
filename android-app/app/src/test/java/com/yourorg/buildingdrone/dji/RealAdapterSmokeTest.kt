@@ -173,6 +173,8 @@ class RealAdapterSmokeTest {
                 }
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             }
         )
 
@@ -201,6 +203,8 @@ class RealAdapterSmokeTest {
                 override fun addFrameListener(cameraId: String, listener: DjiCameraStreamAdapter.FrameListener) = Unit
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             },
             startupTimeoutMillis = 1L
         )
@@ -229,6 +233,8 @@ class RealAdapterSmokeTest {
                 override fun addFrameListener(cameraId: String, listener: DjiCameraStreamAdapter.FrameListener) = Unit
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             }
         )
 
@@ -268,6 +274,8 @@ class RealAdapterSmokeTest {
                 }
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             }
         )
 

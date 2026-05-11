@@ -168,7 +168,7 @@ fun MissionSetupScreen(
         FilledTonalButton(
             onClick = onGoPreflight,
             modifier = Modifier.fillMaxWidth(),
-            enabled = state.bundleLoaded,
+            enabled = state.canContinue,
             colors = ButtonDefaults.filledTonalButtonColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,

@@ -33,7 +33,9 @@ import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.dji.VirtualStickAdapter
 import com.yourorg.buildingdrone.dji.WaypointMissionAdapter
 import com.yourorg.buildingdrone.domain.operations.IndoorNoGpsConfirmationState
+import com.yourorg.buildingdrone.domain.operations.MissionContextMode
 import com.yourorg.buildingdrone.domain.operations.OperationProfile
+import com.yourorg.buildingdrone.domain.operations.OperatorConsoleMode
 import com.yourorg.buildingdrone.domain.safety.DefaultHoldPolicy
 import com.yourorg.buildingdrone.domain.safety.DefaultLandingPolicy
 import com.yourorg.buildingdrone.domain.safety.DefaultPreflightGatePolicy
@@ -113,15 +115,19 @@ class AppContainer(
         sdkState: SdkSessionState,
         usbAccessoryAttached: Boolean,
         handoffNotice: String? = null,
-        operationProfile: OperationProfile = OperationProfile.OUTDOOR_GPS_REQUIRED
+        consoleMode: OperatorConsoleMode = OperatorConsoleMode.OUTDOOR_PATROL,
+        operationProfile: OperationProfile = consoleMode.executedOperatingProfile,
     ): ConnectionGuideUiState {
+        val effectiveConsoleMode = resolveConsoleMode(consoleMode, operationProfile)
         val hardware = hardwareStatusProvider.currentSnapshot()
         val stream = cameraStreamAdapter.status()
-        val missionReady = missionBundle?.isVerified() == true
+        val bundleVerified = missionBundle?.isVerified() == true
+        val missionContextMode = effectiveConsoleMode.resolveMissionContextMode(bundleVerified)
+        val missionReady = bundleVerified || !effectiveConsoleMode.requiresMissionBundle
         val controllerReady = hardware.remoteControllerConnected
         val aircraftReady = controllerReady && hardware.aircraftConnected
         val cameraReady = aircraftReady && stream.available
-        val gpsBlocking = operationProfile == OperationProfile.OUTDOOR_GPS_REQUIRED
+        val gpsBlocking = effectiveConsoleMode.requiresGpsGate
         val gpsPassed = !gpsBlocking || hardware.gpsReady
         val djiPrereqReady = when {
             !sdkState.initialized -> false
@@ -131,7 +137,7 @@ class AppContainer(
         }
 
         val blockers = buildList {
-            if (!missionReady) {
+            if (effectiveConsoleMode.requiresMissionBundle && !missionReady) {
                 add("Mission bundle 尚未下載或驗證完成。")
             }
             if (controllerReady && !usbAccessoryAttached) {
@@ -470,11 +476,14 @@ class AppContainer(
 
     fun evaluatePreflight(
         missionBundle: MissionBundle?,
-        operationProfile: OperationProfile = OperationProfile.OUTDOOR_GPS_REQUIRED,
+        consoleMode: OperatorConsoleMode = OperatorConsoleMode.OUTDOOR_PATROL,
+        operationProfile: OperationProfile = consoleMode.executedOperatingProfile,
         indoorConfirmationState: IndoorNoGpsConfirmationState = IndoorNoGpsConfirmationState()
     ): PreflightEvaluation {
+        val effectiveConsoleMode = resolveConsoleMode(consoleMode, operationProfile)
         val hardware = hardwareStatusProvider.currentSnapshot()
         val stream = cameraStreamAdapter.status()
+        val bundleVerified = missionBundle?.isVerified() == true
 
         return preflightGatePolicy.evaluate(
             PreflightSnapshot(
@@ -491,11 +500,27 @@ class AppContainer(
                 gpsReady = hardware.gpsReady,
                 gpsDetail = hardware.gpsSignalLevel?.let { "GPS signal $it with ${hardware.gpsSatelliteCount} satellites" },
                 missionBundlePresent = missionBundle?.isArtifactComplete() == true,
-                missionBundleVerified = missionBundle?.isVerified() == true,
+                missionBundleVerified = bundleVerified,
+                consoleMode = effectiveConsoleMode,
+                missionContextMode = effectiveConsoleMode.resolveMissionContextMode(bundleVerified),
                 operationProfile = operationProfile,
                 indoorConfirmationState = indoorConfirmationState
             )
         )
+    }
+
+    private fun resolveConsoleMode(
+        consoleMode: OperatorConsoleMode,
+        operationProfile: OperationProfile,
+    ): OperatorConsoleMode {
+        return if (consoleMode.executedOperatingProfile == operationProfile) {
+            consoleMode
+        } else {
+            when (operationProfile) {
+                OperationProfile.INDOOR_NO_GPS -> OperatorConsoleMode.INDOOR_MANUAL
+                OperationProfile.OUTDOOR_GPS_REQUIRED -> consoleMode
+            }
+        }
     }
 
     private fun cameraStatusDetail(stream: CameraStreamStatus): String {

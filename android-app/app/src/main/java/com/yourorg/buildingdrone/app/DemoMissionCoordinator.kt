@@ -9,6 +9,7 @@ import com.yourorg.buildingdrone.dji.HardwareSnapshot
 import com.yourorg.buildingdrone.domain.operations.AutonomyCapability
 import com.yourorg.buildingdrone.domain.operations.ExecutionMode
 import com.yourorg.buildingdrone.domain.operations.IndoorNoGpsConfirmationState
+import com.yourorg.buildingdrone.domain.operations.MissionContextMode
 import com.yourorg.buildingdrone.domain.operations.OperationProfile
 import com.yourorg.buildingdrone.domain.operations.OperatorConsoleMode
 import com.yourorg.buildingdrone.domain.safety.PreflightEvaluation
@@ -267,10 +268,8 @@ class DemoMissionCoordinator(
     ) {
         missionBundle = bundle
         plannedOperatingProfile = bundle?.operatingProfile
-        if (activeScreen == ConsoleScreen.MISSION_SETUP && bundle != null) {
-            selectedConsoleMode = OperatorConsoleMode.defaultForProfile(bundle.operatingProfile)
-            operationProfile = selectedConsoleMode.executedOperatingProfile
-        }
+        val bundleVerified = bundle?.isVerified() == true
+        val missionContextMode = selectedConsoleMode.resolveMissionContextMode(bundleVerified)
         indoorAutonomyCapability = if (operationProfile == OperationProfile.INDOOR_NO_GPS) {
             AutonomyCapability.UNKNOWN
         } else {
@@ -283,7 +282,8 @@ class DemoMissionCoordinator(
             stage = FlightStage.IDLE,
             missionId = bundle?.missionId,
             missionBundleLoaded = bundle != null,
-            missionBundleVerified = bundle?.isVerified() == true,
+            missionBundleVerified = bundleVerified,
+            missionContextMode = missionContextMode,
             demoMode = runtimeMode == RuntimeMode.DEMO,
         )
         missionSetup = missionSetup.copy(
@@ -296,7 +296,11 @@ class DemoMissionCoordinator(
                 bundle.isVerified() -> ScreenDataState.SUCCESS
                 else -> ScreenDataState.ERROR
             },
-            missionLabel = bundle?.missionId ?: "No mission bundle loaded",
+            missionLabel = bundle?.missionId ?: if (selectedConsoleMode.requiresMissionBundle) {
+                "No mission bundle loaded"
+            } else {
+                "Unplanned manual flight"
+            },
             summary = bundle?.let {
                 listOf(
                     "Launch point: ${it.launchPoint.label} / ${it.launchPoint.location.lat}, ${it.launchPoint.location.lng}",
@@ -306,12 +310,16 @@ class DemoMissionCoordinator(
                 )
             } ?: emptyList(),
             artifactStatus = when {
+                bundle == null && !selectedConsoleMode.requiresMissionBundle ->
+                    "No mission bundle is attached. This session will run as unplanned manual flight."
                 bundle == null -> "Mission artifacts are missing."
                 bundle.isVerified() -> "mission.kmz and mission_meta.json are verified."
                 else -> "Mission bundle verification failed."
             },
             warning = statusMessage,
             authStatus = authStatus,
+            missionContextMode = missionContextMode,
+            canContinue = bundleVerified || !selectedConsoleMode.requiresMissionBundle,
         )
         refreshMissionSetupProfile()
         refreshConnectionGuidePresentation()
@@ -352,6 +360,11 @@ class DemoMissionCoordinator(
         clearLandingFlowState()
         showSimulatorVerification = false
         simulatorBenchOnlyFallbackRequested = false
+        flightState = flightState.copy(
+            missionBundleLoaded = missionBundle != null,
+            missionBundleVerified = bundleVerified(),
+            missionContextMode = currentMissionContextMode(),
+        )
         refreshMissionSetupProfile()
         refreshConnectionGuidePresentation()
         refreshPreflightPresentation()
@@ -411,7 +424,7 @@ class DemoMissionCoordinator(
             openConnectionGuide()
             return
         }
-        if (missionBundle == null) {
+        if (selectedConsoleMode.requiresMissionBundle && !bundleVerified()) {
             missionSetup = missionSetup.copy(
                 status = ScreenDataState.ERROR,
                 warning = "Load and verify a mission bundle first.",
@@ -562,7 +575,7 @@ class DemoMissionCoordinator(
     }
 
     fun approvePreflight() {
-        val evaluation = latestPreflightEvaluation ?: defaultPreflightEvaluation()
+        val evaluation = evaluatePreflight()
         latestPreflightEvaluation = evaluation
         if (!evaluation.canTakeoff) {
             preflight = buildPreflightState(evaluation).copy(
@@ -575,17 +588,16 @@ class DemoMissionCoordinator(
             stage = FlightStage.MISSION_READY,
             preflightReady = true,
             lastEvent = FlightEventType.PREFLIGHT_OK,
+            missionBundleLoaded = missionBundle != null,
+            missionBundleVerified = bundleVerified(),
+            missionContextMode = currentMissionContextMode(),
         )
         refreshPreflightPresentation()
         refreshFlightPanels()
     }
 
     fun uploadAndStartMission() {
-        val bundle = missionBundle ?: run {
-            preflight = preflight.copy(status = ScreenDataState.ERROR, warning = "Mission bundle is missing.")
-            return
-        }
-        val evaluation = latestPreflightEvaluation ?: defaultPreflightEvaluation()
+        val evaluation = evaluatePreflight()
         if (!evaluation.canTakeoff) {
             preflight = buildPreflightState(evaluation).copy(
                 status = ScreenDataState.ERROR,
@@ -594,13 +606,22 @@ class DemoMissionCoordinator(
             return
         }
         when (selectedConsoleMode.executionMode) {
-            ExecutionMode.PATROL_ROUTE -> handlePatrolRouteStart(bundle, evaluation)
+            ExecutionMode.PATROL_ROUTE -> {
+                val bundle = missionBundle ?: run {
+                    preflight = preflight.copy(
+                        status = ScreenDataState.ERROR,
+                        warning = "Mission bundle is missing.",
+                    )
+                    return
+                }
+                handlePatrolRouteStart(bundle, evaluation)
+            }
             ExecutionMode.MANUAL_PILOT -> handleManualPilotEntry(evaluation)
         }
     }
 
     fun requestAppTakeoff() {
-        val evaluation = latestPreflightEvaluation ?: defaultPreflightEvaluation()
+        val evaluation = evaluatePreflight()
         if (!evaluation.canTakeoff || flightState.stage !in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF)) {
             preflight = buildPreflightState(evaluation).copy(
                 status = ScreenDataState.ERROR,
@@ -619,6 +640,7 @@ class DemoMissionCoordinator(
         flightState = flightState.copy(
             stage = FlightStage.HOVER_READY,
             lastEvent = FlightEventType.APP_TAKEOFF_COMPLETED,
+            missionContextMode = currentMissionContextMode(),
         )
         hoverReadyForMissionStart = true
         lastTakeoffPath = "app_takeoff"
@@ -627,7 +649,7 @@ class DemoMissionCoordinator(
     }
 
     fun confirmRcHoverReady() {
-        val evaluation = latestPreflightEvaluation ?: defaultPreflightEvaluation()
+        val evaluation = evaluatePreflight()
         if (!evaluation.canTakeoff || flightState.stage !in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF)) {
             preflight = buildPreflightState(evaluation).copy(
                 status = ScreenDataState.ERROR,
@@ -638,6 +660,7 @@ class DemoMissionCoordinator(
         flightState = flightState.copy(
             stage = FlightStage.HOVER_READY,
             lastEvent = FlightEventType.RC_HOVER_CONFIRMED,
+            missionContextMode = currentMissionContextMode(),
         )
         hoverReadyForMissionStart = true
         lastTakeoffPath = "rc_manual_takeoff"
@@ -853,6 +876,7 @@ class DemoMissionCoordinator(
             flightState = flightState.copy(
                 stage = FlightStage.TRANSIT,
                 lastEvent = FlightEventType.MISSION_UPLOADED,
+                missionContextMode = MissionContextMode.PLANNED_BUNDLE,
             )
             activeScreen = ConsoleScreen.IN_FLIGHT
             refreshFlightPanels()
@@ -890,6 +914,7 @@ class DemoMissionCoordinator(
             stage = FlightStage.TAKEOFF,
             missionUploaded = true,
             lastEvent = FlightEventType.MISSION_UPLOADED,
+            missionContextMode = MissionContextMode.PLANNED_BUNDLE,
         )
         refreshPreflightPresentation()
         refreshFlightPanels()
@@ -907,6 +932,7 @@ class DemoMissionCoordinator(
             stage = FlightStage.MANUAL_OVERRIDE,
             lastEvent = FlightEventType.USER_TAKEOVER_REQUESTED,
             statusNote = "Manual Pilot active.",
+            missionContextMode = currentMissionContextMode(),
         )
         activeScreen = ConsoleScreen.MANUAL_PILOT
         refreshFlightPanels()
@@ -920,24 +946,53 @@ class DemoMissionCoordinator(
     }
 
     private fun refreshMissionSetupProfile() {
+        val bundleVerified = bundleVerified()
+        val missionContextMode = currentMissionContextMode()
+        val canContinue = canContinueFromMissionSetup()
+
         missionSetup = missionSetup.copy(
             plannedOperatingProfile = plannedOperatingProfile,
             selectedConsoleMode = selectedConsoleMode,
             selectionLocked = activeScreen != ConsoleScreen.MISSION_SETUP,
-            profileSummary = "在這裡決定要使用 Indoor Manual、Outdoor Patrol，或 Outdoor Manual Pilot。",
+            status = when {
+                missionBundle == null && !selectedConsoleMode.requiresMissionBundle -> ScreenDataState.PARTIAL
+                missionBundle == null -> ScreenDataState.EMPTY
+                bundleVerified -> ScreenDataState.SUCCESS
+                else -> ScreenDataState.ERROR
+            },
+            profileSummary = when (selectedConsoleMode) {
+                OperatorConsoleMode.INDOOR_MANUAL ->
+                    "室內手動飛行保留現場操控與保守安全確認，不要求任務包。"
+
+                OperatorConsoleMode.OUTDOOR_PATROL ->
+                    "室外巡邏維持任務包、模擬驗證、起飛前檢查與 waypoint patrol 主路徑。"
+
+                OperatorConsoleMode.OUTDOOR_MANUAL_PILOT ->
+                    "室外手動飛行可直接進入連線檢查與起飛前檢查，不要求任務包。"
+            },
             autonomyStatus = when (selectedConsoleMode.executionMode) {
-                ExecutionMode.PATROL_ROUTE -> "這次任務會使用航點主航段；Android 只監看與執行。"
-                ExecutionMode.MANUAL_PILOT -> "這次任務會使用 Android 本地 Manual Pilot；離開畫面就停止 stick stream。"
+                ExecutionMode.PATROL_ROUTE -> "Patrol Route 由 mission bundle 與 KMZ / waypoint mission 驅動。"
+                ExecutionMode.MANUAL_PILOT -> "Manual Pilot 由 Android 本地操控，不建立 planner authority。"
             },
             nextStep = when {
-                missionBundle == null -> "先同步 mission bundle。"
-                else -> "確認模式後，前往連線與起飛前檢查。"
+                selectedConsoleMode.requiresMissionBundle && !bundleVerified ->
+                    "請先同步並驗證任務包，再進入連線檢查。"
+
+                missionContextMode == MissionContextMode.UNPLANNED_MANUAL ->
+                    "這次會以未綁定任務包的現場手動飛行進入連線檢查與起飛前檢查。"
+
+                selectedConsoleMode.requiresSimulatorGate ->
+                    "先完成模擬驗證，再進入連線檢查。"
+
+                else -> "前往連線檢查與起飛前檢查。"
             },
-            continueLabel = "前往任務控台",
+            continueLabel = if (selectedConsoleMode.requiresSimulatorGate) "前往模擬驗證" else "前往連線檢查",
+            canContinue = canContinue,
+            missionContextMode = missionContextMode,
             profileMismatchWarning = plannedOperatingProfile
                 ?.takeIf { it != selectedConsoleMode.executedOperatingProfile }
                 ?.let {
-                    "Planned profile 與這次實際執行模式不同。這會被記錄成 operator preflight override。"
+                    "Planned profile 與目前操作模式不同；這次會依照操作員選擇的 console mode 執行。"
                 },
         )
     }
@@ -947,7 +1002,7 @@ class DemoMissionCoordinator(
     }
 
     private fun refreshPreflightPresentation() {
-        val evaluation = latestPreflightEvaluation ?: defaultPreflightEvaluation()
+        val evaluation = evaluatePreflight()
         latestPreflightEvaluation = evaluation
         preflight = buildPreflightState(evaluation)
     }
@@ -1082,6 +1137,8 @@ class DemoMissionCoordinator(
                     "Use the dual-stick panel and keep HOLD / LAND / TAKEOVER available."
                 flightState.stage == FlightStage.TRANSIT ->
                     "Monitor waypoint progress, upload state, and any landing fallback warning."
+                flightState.stage == FlightStage.COMPLETED && flightState.missionContextMode == MissionContextMode.UNPLANNED_MANUAL ->
+                    "This unplanned manual flight does not keep blackbox or incident export artifacts."
                 flightState.stage == FlightStage.COMPLETED ->
                     "Export blackbox logs and incident artifacts."
                 else -> "Continue the current mission flow."
@@ -1172,7 +1229,11 @@ class DemoMissionCoordinator(
                 reason = "Flight flow completed.",
                 status = ScreenDataState.SUCCESS,
                 mode = EmergencyMode.INFO,
-                nextStep = "Review blackbox records and export mission artifacts.",
+                nextStep = if (flightState.missionContextMode == MissionContextMode.UNPLANNED_MANUAL) {
+                    "Record operator notes now. This unplanned manual flight does not keep blackbox or mission artifacts."
+                } else {
+                    "Review blackbox records and export mission artifacts."
+                },
                 primaryActionEnabled = false,
                 secondaryActionEnabled = false,
             )
@@ -1253,7 +1314,11 @@ class DemoMissionCoordinator(
         executor: (suspend () -> CommandActionResult)?,
         fallbackMessage: String,
     ): CommandActionResult {
-        val block = executor ?: return CommandActionResult(success = false, message = fallbackMessage)
+        val block = executor ?: return if (runtimeMode == RuntimeMode.DEMO) {
+            CommandActionResult(success = true)
+        } else {
+            CommandActionResult(success = false, message = fallbackMessage)
+        }
         return runCatching { runBlocking { block.invoke() } }
             .getOrElse { error ->
                 CommandActionResult(
@@ -1263,14 +1328,31 @@ class DemoMissionCoordinator(
             }
     }
 
+    private fun bundleVerified(): Boolean = missionBundle?.isVerified() == true
+
+    private fun currentMissionContextMode(): MissionContextMode =
+        selectedConsoleMode.resolveMissionContextMode(bundleVerified())
+
+    private fun canContinueFromMissionSetup(): Boolean =
+        bundleVerified() || !selectedConsoleMode.requiresMissionBundle
+
+    private fun evaluatePreflight(): PreflightEvaluation =
+        preflightEvaluator?.invoke() ?: defaultPreflightEvaluation()
+
     private fun defaultPreflightEvaluation(): PreflightEvaluation {
-        val bundleReady = missionBundle?.isVerified() == true
+        val bundleReady = bundleVerified()
+        val bundleBlocking = selectedConsoleMode.requiresMissionBundle
         val gates = mutableListOf(
             PreflightGateResult(
                 gateId = PreflightGateId.MISSION_BUNDLE,
-                passed = bundleReady,
-                blocking = true,
-                detail = if (bundleReady) "Mission bundle verified" else "Mission bundle missing or unverified",
+                passed = if (bundleBlocking) bundleReady else true,
+                blocking = bundleBlocking,
+                detail = when {
+                    bundleBlocking && bundleReady -> "Mission bundle verified"
+                    bundleBlocking -> "Mission bundle missing or unverified"
+                    bundleReady -> "Mission bundle optional in manual mode"
+                    else -> "No verified mission bundle. This session will run as unplanned manual flight"
+                },
             ),
         )
         if (selectedConsoleMode == OperatorConsoleMode.INDOOR_MANUAL) {
@@ -1362,6 +1444,7 @@ class DemoMissionCoordinator(
 
     private fun uploadState(): String {
         return when {
+            flightState.missionContextMode == MissionContextMode.UNPLANNED_MANUAL -> "not_applicable"
             flightState.missionUploaded -> "uploaded"
             missionBundle == null -> "bundle_missing"
             missionBundle?.isVerified() == true -> "pending_upload"

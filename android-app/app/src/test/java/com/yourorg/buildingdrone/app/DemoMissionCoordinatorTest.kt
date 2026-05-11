@@ -1,8 +1,9 @@
 package com.yourorg.buildingdrone.app
 
 import com.yourorg.buildingdrone.dji.HardwareSnapshot
-import com.yourorg.buildingdrone.domain.operations.AutonomyCapability
+import com.yourorg.buildingdrone.domain.operations.MissionContextMode
 import com.yourorg.buildingdrone.domain.operations.OperationProfile
+import com.yourorg.buildingdrone.domain.operations.OperatorConsoleMode
 import com.yourorg.buildingdrone.domain.safety.PreflightEvaluation
 import com.yourorg.buildingdrone.domain.safety.PreflightGateId
 import com.yourorg.buildingdrone.domain.safety.PreflightGateResult
@@ -89,6 +90,13 @@ class DemoMissionCoordinatorTest {
                     detail = "Indoor no-GPS confirmations complete"
                 )
             )
+        )
+    }
+
+    private fun manualNoBundleReadyEvaluation(): PreflightEvaluation {
+        return PreflightEvaluation(
+            canTakeoff = true,
+            gates = emptyList(),
         )
     }
 
@@ -189,13 +197,46 @@ class DemoMissionCoordinatorTest {
     }
 
     @Test
-    fun indoorMissionStartFailure_marksAutonomyUnsupported() {
+    fun manualNoBundle_canProceedFromMissionSetupAndEnterManualPilot() {
+        val coordinator = DemoMissionCoordinator(
+            reducer = AppContainer().flightReducer,
+            preflightEvaluator = { manualNoBundleReadyEvaluation() },
+            appTakeoffExecutor = { CommandActionResult(success = true) }
+        )
+        coordinator.attachBundle(bundle = null)
+        coordinator.selectConsoleMode(OperatorConsoleMode.OUTDOOR_MANUAL_PILOT)
+
+        assertTrue(coordinator.missionSetup.canContinue)
+        assertEquals(MissionContextMode.UNPLANNED_MANUAL, coordinator.missionSetup.missionContextMode)
+
+        coordinator.openConnectionGuide()
+        coordinator.openPreflightChecklist()
+        coordinator.approvePreflight()
+        coordinator.requestAppTakeoff()
+        coordinator.uploadAndStartMission()
+
+        assertEquals(FlightStage.MANUAL_OVERRIDE, coordinator.flightState.stage)
+        assertEquals(MissionContextMode.UNPLANNED_MANUAL, coordinator.flightState.missionContextMode)
+        assertEquals(ConsoleScreen.MANUAL_PILOT, coordinator.activeScreen)
+    }
+
+    @Test
+    fun patrolWithoutBundle_staysBlockedInMissionSetup() {
+        val coordinator = DemoMissionCoordinator(
+            reducer = AppContainer().flightReducer,
+            preflightEvaluator = { outdoorReadyEvaluation() }
+        )
+        coordinator.attachBundle(bundle = null)
+        coordinator.selectConsoleMode(OperatorConsoleMode.OUTDOOR_PATROL)
+
+        assertFalse(coordinator.missionSetup.canContinue)
+        assertEquals(MissionContextMode.PLANNED_BUNDLE, coordinator.missionSetup.missionContextMode)
+    }
+
+    @Test
+    fun indoorManual_entersManualPilotInsteadOfMissionAutonomy() {
         val coordinator = demoCoordinator(
             preflightEvaluation = indoorReadyEvaluation(),
-            missionUpload = { CommandActionResult(success = true) },
-            missionStart = {
-                CommandActionResult(success = false, message = "DJI rejected indoor mission start.")
-            }
         )
         coordinator.selectOperationProfile(OperationProfile.INDOOR_NO_GPS)
 
@@ -204,10 +245,9 @@ class DemoMissionCoordinatorTest {
         coordinator.requestAppTakeoff()
         coordinator.uploadAndStartMission()
 
-        assertEquals(FlightStage.HOVER_READY, coordinator.flightState.stage)
-        assertEquals(AutonomyCapability.UNSUPPORTED, coordinator.indoorAutonomyCapability)
-        assertFalse(coordinator.preflight.readyToUpload)
-        assertEquals(ScreenDataState.ERROR, coordinator.preflight.status)
+        assertEquals(FlightStage.MANUAL_OVERRIDE, coordinator.flightState.stage)
+        assertEquals(ConsoleScreen.MANUAL_PILOT, coordinator.activeScreen)
+        assertEquals(MissionContextMode.PLANNED_BUNDLE, coordinator.flightState.missionContextMode)
     }
 
     @Test
@@ -237,7 +277,7 @@ class DemoMissionCoordinatorTest {
     }
 
     @Test
-    fun landingConfirmationPrompt_allowsContinueHover() {
+    fun landingConfirmationPrompt_confirmsLandingAndCompletesFlight() {
         val coordinator = demoCoordinator(
             preflightEvaluation = indoorReadyEvaluation(),
             appTakeoff = { CommandActionResult(success = true) },
@@ -253,8 +293,8 @@ class DemoMissionCoordinatorTest {
         coordinator.requestLand()
         coordinator.runPrimaryEmergencyAction()
 
-        assertEquals(ConsoleScreen.IN_FLIGHT, coordinator.activeScreen)
-        assertEquals(FlightStage.HOVER_READY, coordinator.flightState.stage)
+        assertEquals(ConsoleScreen.MANUAL_PILOT, coordinator.activeScreen)
+        assertEquals(FlightStage.COMPLETED, coordinator.flightState.stage)
     }
 
     @Test

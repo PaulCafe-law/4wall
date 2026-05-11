@@ -48,6 +48,7 @@ import com.yourorg.buildingdrone.dji.VirtualStickCommand
 import com.yourorg.buildingdrone.dji.VirtualStickWindow
 import com.yourorg.buildingdrone.domain.operations.ExecutionMode
 import com.yourorg.buildingdrone.domain.operations.IndoorNoGpsConfirmationState
+import com.yourorg.buildingdrone.domain.operations.MissionContextMode
 import com.yourorg.buildingdrone.domain.operations.OperationProfile
 import com.yourorg.buildingdrone.domain.statemachine.FlightEventType
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
@@ -160,6 +161,8 @@ class MainActivity : ComponentActivity() {
                     preflightEvaluator = {
                         container.evaluatePreflight(
                             missionBundle = attachedBundle,
+                            consoleMode = coordinatorRef.value?.selectedConsoleMode
+                                ?: com.yourorg.buildingdrone.domain.operations.OperatorConsoleMode.OUTDOOR_PATROL,
                             operationProfile = coordinatorRef.value?.operationProfile
                                 ?: OperationProfile.OUTDOOR_GPS_REQUIRED,
                             indoorConfirmationState = coordinatorRef.value?.indoorConfirmationState
@@ -169,6 +172,9 @@ class MainActivity : ComponentActivity() {
                     syncReporter = syncReporter@{ state ->
                         val uploadRepository = container.flightUploadRepository
                             ?: return@syncReporter NetworkSyncStatus()
+                        if (state.missionContextMode == MissionContextMode.UNPLANNED_MANUAL) {
+                            return@syncReporter uploadRepository.snapshot().toCoordinatorStatus()
+                        }
                         val flightContext = activeFlightContext
                             ?: return@syncReporter uploadRepository.snapshot().toCoordinatorStatus()
                         val eventType = state.lastEvent
@@ -228,6 +234,9 @@ class MainActivity : ComponentActivity() {
                     telemetryReporter = telemetryReporter@{ transitState ->
                         val uploadRepository = container.flightUploadRepository
                             ?: return@telemetryReporter NetworkSyncStatus()
+                        if (coordinatorRef.value?.flightState?.missionContextMode == MissionContextMode.UNPLANNED_MANUAL) {
+                            return@telemetryReporter uploadRepository.snapshot().toCoordinatorStatus()
+                        }
                         val flightContext = activeFlightContext
                             ?: return@telemetryReporter uploadRepository.snapshot().toCoordinatorStatus()
                         uploadRepository.enqueueTelemetryBatch(
@@ -311,7 +320,11 @@ class MainActivity : ComponentActivity() {
                             UsbManager.ACTION_USB_ACCESSORY_ATTACHED -> {
                                 usbAccessoryAttached = true
                                 usbGuideMessage = null
-                                if (container.runtimeMode == RuntimeMode.PROD && signedIn && attachedBundle != null) {
+                                if (
+                                    container.runtimeMode == RuntimeMode.PROD &&
+                                    signedIn &&
+                                    ((attachedBundle?.isVerified() == true) || !coordinator.selectedConsoleMode.requiresMissionBundle)
+                                ) {
                                     coordinator.openConnectionGuide()
                                 }
                             }
@@ -367,7 +380,11 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 refreshUsbAccessoryState()
                 val cachedBundle = container.missionRepository.loadMissionBundle()
-                activeFlightContext = container.missionRepository.loadActiveFlightContext()
+                activeFlightContext = if (cachedBundle?.isVerified() == true) {
+                    container.missionRepository.loadActiveFlightContext()
+                } else {
+                    null
+                }
                 val restoredSession = container.operatorAuthRepository?.currentSession()
                 signedIn = restoredSession != null || container.runtimeMode == RuntimeMode.DEMO
                 attachedBundle = cachedBundle
@@ -388,7 +405,7 @@ class MainActivity : ComponentActivity() {
                 if (
                     container.runtimeMode == RuntimeMode.PROD &&
                     restoredSession != null &&
-                    cachedBundle != null &&
+                    ((cachedBundle?.isVerified() == true) || !coordinator.selectedConsoleMode.requiresMissionBundle) &&
                     usbAccessoryAttached
                 ) {
                     coordinator.openConnectionGuide()
@@ -473,7 +490,7 @@ class MainActivity : ComponentActivity() {
                 if (container.runtimeMode != RuntimeMode.PROD) {
                     return@LaunchedEffect
                 }
-                if (!signedIn || attachedBundle == null || !coordinator.showSimulatorVerification) {
+                if (!signedIn || attachedBundle?.isVerified() != true || !coordinator.showSimulatorVerification) {
                     return@LaunchedEffect
                 }
 
@@ -605,7 +622,7 @@ class MainActivity : ComponentActivity() {
                 if (container.runtimeMode != RuntimeMode.PROD) {
                     return@LaunchedEffect
                 }
-                if (!signedIn || attachedBundle == null || !coordinator.showSimulatorVerification) {
+                if (!signedIn || attachedBundle?.isVerified() != true || !coordinator.showSimulatorVerification) {
                     return@LaunchedEffect
                 }
 
@@ -638,7 +655,11 @@ class MainActivity : ComponentActivity() {
                 if (container.runtimeMode != RuntimeMode.PROD) {
                     return@LaunchedEffect
                 }
-                if (!signedIn || attachedBundle == null || coordinator.activeScreen != ConsoleScreen.CONNECTION_GUIDE) {
+                if (
+                    !signedIn ||
+                    ((attachedBundle?.isVerified() != true) && coordinator.selectedConsoleMode.requiresMissionBundle) ||
+                    coordinator.activeScreen != ConsoleScreen.CONNECTION_GUIDE
+                ) {
                     return@LaunchedEffect
                 }
                 requestMissingDjiRuntimePermissionsIfNeeded()
@@ -656,7 +677,11 @@ class MainActivity : ComponentActivity() {
                 if (container.runtimeMode != RuntimeMode.PROD) {
                     return@LaunchedEffect
                 }
-                if (!signedIn || attachedBundle == null || coordinator.activeScreen != ConsoleScreen.CONNECTION_GUIDE) {
+                if (
+                    !signedIn ||
+                    ((attachedBundle?.isVerified() != true) && coordinator.selectedConsoleMode.requiresMissionBundle) ||
+                    coordinator.activeScreen != ConsoleScreen.CONNECTION_GUIDE
+                ) {
                     return@LaunchedEffect
                 }
 
@@ -680,6 +705,7 @@ class MainActivity : ComponentActivity() {
                         !observedUsbAccessoryAttached -> usbGuideMessage
                         else -> null
                     },
+                    consoleMode = coordinator.selectedConsoleMode,
                     operationProfile = coordinator.operationProfile
                 )
                 val sdkDiagnostic = sdkSessionState.lastError?.takeIf {
@@ -702,7 +728,11 @@ class MainActivity : ComponentActivity() {
                 if (container.runtimeMode != RuntimeMode.PROD) {
                     return@LaunchedEffect
                 }
-                if (!signedIn || attachedBundle == null || coordinator.activeScreen != ConsoleScreen.PREFLIGHT) {
+                if (
+                    !signedIn ||
+                    ((attachedBundle?.isVerified() != true) && coordinator.selectedConsoleMode.requiresMissionBundle) ||
+                    coordinator.activeScreen != ConsoleScreen.PREFLIGHT
+                ) {
                     return@LaunchedEffect
                 }
                 coordinator.markPreflightBootstrap("正在檢查主相機串流…")
@@ -720,6 +750,9 @@ class MainActivity : ComponentActivity() {
                 attachedBundle
             ) {
                 val state = coordinator.flightState
+                if (state.missionContextMode == MissionContextMode.UNPLANNED_MANUAL) {
+                    return@LaunchedEffect
+                }
                 val missionId = activeFlightContext?.missionId ?: attachedBundle?.missionId
                 val flightId = activeFlightContext?.flightId
                 blackboxRecorder.record(
