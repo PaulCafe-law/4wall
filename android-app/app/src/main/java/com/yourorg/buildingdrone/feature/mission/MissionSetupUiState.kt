@@ -12,6 +12,7 @@ data class MissionSetupUiState(
     val demoMode: Boolean,
     val plannedOperatingProfile: OperationProfile? = null,
     val selectedConsoleMode: OperatorConsoleMode = OperatorConsoleMode.OUTDOOR_PATROL,
+    val selectableConsoleModes: List<OperatorConsoleMode> = OperatorConsoleMode.entries,
     val selectionLocked: Boolean = false,
     val status: ScreenDataState = if (bundleLoaded) ScreenDataState.SUCCESS else ScreenDataState.EMPTY,
     val missionLabel: String = if (bundleLoaded) "任務包已載入" else "尚未載入任務包",

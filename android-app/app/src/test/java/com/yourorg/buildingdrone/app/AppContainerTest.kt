@@ -11,14 +11,12 @@ import com.yourorg.buildingdrone.dji.DeviceHealthState
 import com.yourorg.buildingdrone.dji.FakeMobileSdkSession
 import com.yourorg.buildingdrone.dji.FakeCameraControlAdapter
 import com.yourorg.buildingdrone.dji.FakePerceptionAdapter
-import com.yourorg.buildingdrone.dji.FakeSimulatorAdapter
 import com.yourorg.buildingdrone.dji.FakeVirtualStickAdapter
 import com.yourorg.buildingdrone.dji.FakeWaypointMissionAdapter
 import com.yourorg.buildingdrone.dji.FlyZoneState
 import com.yourorg.buildingdrone.dji.HardwareSnapshot
 import com.yourorg.buildingdrone.dji.HardwareStatusProvider
 import com.yourorg.buildingdrone.dji.SdkSessionState
-import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.dji.UserAccountState
 import com.yourorg.buildingdrone.domain.operations.IndoorNoGpsConfirmationState
 import com.yourorg.buildingdrone.domain.operations.OperationProfile
@@ -49,7 +47,6 @@ class AppContainerTest {
             cameraStreamAdapter = StaticCameraStreamAdapter(cameraStatus),
             cameraControlAdapter = FakeCameraControlAdapter(),
             perceptionAdapter = FakePerceptionAdapter(),
-            simulatorAdapter = FakeSimulatorAdapter()
         )
     }
 
@@ -413,53 +410,6 @@ class AppContainerTest {
 
         assertTrue(state.canContinueToPreflight)
         assertFalse(state.blockers.any { it.contains("Mission bundle", ignoreCase = true) })
-    }
-
-    @Test
-    fun evaluateSimulatorVerification_reportsUnsupportedMsdkSimulator() {
-        val container = createContainer(hardwareSnapshot = HardwareSnapshot())
-        val error =
-            "DJI MSDK simulator is unavailable on this aircraft / firmware combination (REQUEST_HANDLER_NOT_FOUND for FLIGHTCONTROLLER.StartSimulator)."
-
-        val state = container.evaluateSimulatorVerification(
-            missionBundle = demoMissionBundle(),
-            simulatorStatus = SimulatorStatus(),
-            simulatorObservedThisSession = false,
-            branchReplay = null,
-            inspectionReplay = null,
-            simulatorCommandError = error,
-            blackboxArmed = true,
-            incidentExportObserved = false
-        )
-
-        assertTrue(state.canContinueToConnectionGuide)
-        assertTrue(state.benchOnlyFallbackActive)
-        assertFalse(state.simulatorActionsEnabled)
-        assertTrue(state.propOnBlockedReason?.isNotBlank() == true)
-        assertEquals(error, state.checklist[1].detail)
-    }
-
-    @Test
-    fun evaluateSimulatorVerification_allowsExplicitBenchOnlyFallback() {
-        val container = createContainer(hardwareSnapshot = HardwareSnapshot())
-
-        val state = container.evaluateSimulatorVerification(
-            missionBundle = demoMissionBundle(),
-            simulatorStatus = SimulatorStatus(),
-            simulatorObservedThisSession = false,
-            branchReplay = null,
-            inspectionReplay = null,
-            benchOnlyFallbackRequested = true,
-            simulatorCommandError = null,
-            blackboxArmed = true,
-            incidentExportObserved = false
-        )
-
-        assertTrue(state.benchOnlyFallbackActive)
-        assertTrue(state.canContinueToConnectionGuide)
-        assertEquals("Continue to Connection Guide (Bench Only)", state.continueLabel)
-        assertFalse(state.canActivateBenchOnlyFallback)
-        assertFalse(state.simulatorActionsEnabled)
     }
 
     private class StaticHardwareStatusProvider(

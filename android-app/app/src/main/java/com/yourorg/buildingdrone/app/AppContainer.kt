@@ -19,7 +19,6 @@ import com.yourorg.buildingdrone.dji.FakeFlightControlAdapter
 import com.yourorg.buildingdrone.dji.FakeHardwareStatusProvider
 import com.yourorg.buildingdrone.dji.FakeMobileSdkSession
 import com.yourorg.buildingdrone.dji.FakePerceptionAdapter
-import com.yourorg.buildingdrone.dji.FakeSimulatorAdapter
 import com.yourorg.buildingdrone.dji.FakeVirtualStickAdapter
 import com.yourorg.buildingdrone.dji.FakeWaypointMissionAdapter
 import com.yourorg.buildingdrone.dji.FlightControlAdapter
@@ -27,9 +26,6 @@ import com.yourorg.buildingdrone.dji.HardwareStatusProvider
 import com.yourorg.buildingdrone.dji.MobileSdkSession
 import com.yourorg.buildingdrone.dji.PerceptionAdapter
 import com.yourorg.buildingdrone.dji.SdkSessionState
-import com.yourorg.buildingdrone.dji.SimulatorAdapter
-import com.yourorg.buildingdrone.dji.SimulatorScenarioReplay
-import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.dji.VirtualStickAdapter
 import com.yourorg.buildingdrone.dji.WaypointMissionAdapter
 import com.yourorg.buildingdrone.domain.operations.IndoorNoGpsConfirmationState
@@ -46,11 +42,8 @@ import com.yourorg.buildingdrone.domain.safety.PreflightGatePolicy
 import com.yourorg.buildingdrone.domain.safety.PreflightSnapshot
 import com.yourorg.buildingdrone.domain.statemachine.DefaultTransitionGuard
 import com.yourorg.buildingdrone.domain.statemachine.FlightReducer
-import com.yourorg.buildingdrone.domain.statemachine.FlightStage
 import com.yourorg.buildingdrone.feature.connection.ConnectionGuideStep
 import com.yourorg.buildingdrone.feature.connection.ConnectionGuideUiState
-import com.yourorg.buildingdrone.feature.simulator.SimulatorVerificationChecklistItem
-import com.yourorg.buildingdrone.feature.simulator.SimulatorVerificationUiState
 import com.yourorg.buildingdrone.ui.ScreenDataState
 
 enum class RuntimeMode {
@@ -71,7 +64,6 @@ class AppContainer(
     val cameraStreamAdapter: CameraStreamAdapter,
     val cameraControlAdapter: CameraControlAdapter,
     val perceptionAdapter: PerceptionAdapter,
-    val simulatorAdapter: SimulatorAdapter,
     val operatorAuthRepository: OperatorAuthRepository? = null,
     val flightUploadRepository: FlightUploadRepository? = null,
     val minimumStorageBytes: Long = 256L * 1024L * 1024L,
@@ -91,8 +83,7 @@ class AppContainer(
         virtualStickAdapter = FakeVirtualStickAdapter(),
         cameraStreamAdapter = FakeCameraStreamAdapter(),
         cameraControlAdapter = FakeCameraControlAdapter(),
-        perceptionAdapter = FakePerceptionAdapter(),
-        simulatorAdapter = FakeSimulatorAdapter()
+        perceptionAdapter = FakePerceptionAdapter()
     )
 
     private val holdPolicy = DefaultHoldPolicy()
@@ -263,214 +254,6 @@ class AppContainer(
             } else {
                 "DJI account 狀態僅作診斷，不作為日常 preflight gate。"
             }
-        )
-    }
-
-    fun evaluateSimulatorVerification(
-        missionBundle: MissionBundle?,
-        simulatorStatus: SimulatorStatus,
-        simulatorObservedThisSession: Boolean = false,
-        branchReplay: SimulatorScenarioReplay?,
-        inspectionReplay: SimulatorScenarioReplay?,
-        benchOnlyFallbackRequested: Boolean = false,
-        simulatorCommandError: String? = null,
-        blackboxArmed: Boolean = runtimeMode == RuntimeMode.PROD,
-        incidentExportObserved: Boolean = false
-    ): SimulatorVerificationUiState {
-        val missionReady = missionBundle?.isVerified() == true
-        val branchExpected = listOf(
-            FlightStage.TRANSIT,
-            FlightStage.BRANCH_VERIFY,
-            FlightStage.HOLD,
-            FlightStage.RTH
-        )
-        val inspectionExpected = listOf(
-            FlightStage.TRANSIT,
-            FlightStage.APPROACH_VIEWPOINT,
-            FlightStage.VIEW_ALIGN,
-            FlightStage.CAPTURE,
-            FlightStage.HOLD
-        )
-        val branchSequencePassed = branchReplay?.visitedStages == branchExpected
-        val inspectionSequencePassed = inspectionReplay?.visitedStages == inspectionExpected
-        val branchObserved = branchReplay?.let { it.enableSucceeded && (it.listenerObserved || it.enabledSampleObserved) } == true
-        val inspectionObserved = inspectionReplay?.let { it.enableSucceeded && (it.listenerObserved || it.enabledSampleObserved) } == true
-        val branchPassed = branchSequencePassed && branchObserved
-        val inspectionPassed = inspectionSequencePassed && inspectionObserved
-        val simulatorObserved = simulatorObservedThisSession
-        val combinedSimulatorErrors = listOfNotNull(
-            simulatorCommandError,
-            branchReplay?.failureReason,
-            inspectionReplay?.failureReason
-        )
-        val simulatorUnsupported = combinedSimulatorErrors.any {
-            val normalized = it.lowercase()
-            normalized.contains("request_handler_not_found") && normalized.contains("startsimulator")
-        }
-
-        val simulatorStatusLabel = when {
-            simulatorUnsupported -> simulatorCommandError
-                ?: combinedSimulatorErrors.firstOrNull()
-                ?: "DJI MSDK simulator is unavailable on this aircraft / firmware combination."
-
-            simulatorObserved && simulatorStatus.location != null ->
-                "Enabled at ${simulatorStatus.location.lat}, ${simulatorStatus.location.lng} / alt ${simulatorStatus.altitudeMeters}m / sats ${simulatorStatus.satelliteCount}"
-
-            simulatorObserved -> "Listener active. Latest simulator sample is idle."
-            else -> "No simulator state observed yet."
-        }
-
-        val branchDetail = when {
-            simulatorUnsupported -> "Not applicable: the in-app MSDK simulator is unavailable on this aircraft / firmware combination."
-            branchReplay == null -> "Run the Transit -> Branch -> HOLD -> RTH replay."
-            !branchReplay.enableSucceeded -> branchReplay.failureReason ?: "Replay could not enable the in-app simulator."
-            !branchObserved -> branchReplay.failureReason ?: "Replay visited reducer stages, but no real MSDK simulator state was observed."
-            branchPassed -> "Visited ${branchReplay.visitedStages.joinToString(" -> ")}."
-            else -> "Expected ${branchExpected.joinToString(" -> ")}, got ${branchReplay.visitedStages.joinToString(" -> ")}."
-        }
-
-        val inspectionDetail = when {
-            simulatorUnsupported -> "Not applicable: the in-app MSDK simulator is unavailable on this aircraft / firmware combination."
-            inspectionReplay == null -> "Run the Transit -> Approach -> View Align -> Capture replay."
-            !inspectionReplay.enableSucceeded -> inspectionReplay.failureReason ?: "Replay could not enable the in-app simulator."
-            !inspectionObserved -> inspectionReplay.failureReason ?: "Replay visited reducer stages, but no real MSDK simulator state was observed."
-            inspectionPassed -> "Visited ${inspectionReplay.visitedStages.joinToString(" -> ")}."
-            else -> "Expected ${inspectionExpected.joinToString(" -> ")}, got ${inspectionReplay.visitedStages.joinToString(" -> ")}."
-        }
-
-        val blackboxDetail = when {
-            simulatorUnsupported -> "Keep blackbox and operator notes, but do not treat simulator artifacts as available evidence on this hardware path."
-            !blackboxArmed -> "Blackbox recorder is not armed in the current runtime."
-            !incidentExportObserved ->
-                "Blackbox recorder is armed, but no incident export has been observed yet. Run a replay that produces a HOLD / RTH artifact and verify the export lands on disk."
-            else -> "Blackbox recorder is armed and at least one incident export was observed in this session."
-        }
-
-        val warning = listOfNotNull(
-            if (benchOnlyFallbackRequested && !simulatorUnsupported) {
-                "Operator selected the explicit props-off bench fallback. Treat this session as bench-only."
-            } else {
-                null
-            },
-            if (simulatorUnsupported) {
-                "MSDK simulator is unavailable on this aircraft / firmware combination. Record Stage 1 as unavailable, then switch to the props-off bench fallback."
-            } else {
-                null
-            },
-            if (!simulatorObserved && (branchReplay != null || inspectionReplay != null)) {
-                "MSDK simulator listener is still pending. Reducer-only replay evidence does not satisfy this gate."
-            } else {
-                null
-            },
-            simulatorCommandError?.takeIf { it.isNotBlank() },
-            branchReplay?.failureReason?.takeIf { !branchPassed && !it.isNullOrBlank() },
-            inspectionReplay?.failureReason?.takeIf { !inspectionPassed && !it.isNullOrBlank() }
-        ).distinct().joinToString(" ").ifBlank { null }
-
-        val checklist = listOf(
-            SimulatorVerificationChecklistItem(
-                label = "Mission bundle verified",
-                passed = missionReady,
-                detail = if (missionReady) {
-                    "mission.kmz and mission_meta.json are present and verified."
-                } else {
-                    "Sync and verify a mission bundle before simulator verification."
-                }
-            ),
-            SimulatorVerificationChecklistItem(
-                label = "MSDK simulator listener",
-                passed = simulatorObserved,
-                detail = simulatorStatusLabel
-            ),
-            SimulatorVerificationChecklistItem(
-                label = "Transit -> Branch -> HOLD -> RTH",
-                passed = branchPassed,
-                detail = branchDetail
-            ),
-            SimulatorVerificationChecklistItem(
-                label = "Transit -> Approach -> View Align -> Capture",
-                passed = inspectionPassed,
-                detail = inspectionDetail
-            ),
-            SimulatorVerificationChecklistItem(
-                label = "Blackbox / incident export",
-                passed = blackboxArmed && incidentExportObserved,
-                detail = blackboxDetail
-            )
-        )
-
-        val benchOnlyFallbackActive = simulatorUnsupported || benchOnlyFallbackRequested
-        val propOnBlockedReason = if (benchOnlyFallbackActive) {
-            "MSDK simulator is unavailable on this Mini 4 Pro / firmware combination. Continue with props-off bench only; do not upload or take off."
-        } else {
-            null
-        }
-        val canContinue = if (benchOnlyFallbackActive) {
-            missionReady
-        } else {
-            missionReady &&
-                simulatorObserved &&
-                branchPassed &&
-                inspectionPassed &&
-                blackboxArmed &&
-                incidentExportObserved
-        }
-        val status = when {
-            simulatorUnsupported -> ScreenDataState.PARTIAL
-            !missionReady -> ScreenDataState.ERROR
-            branchReplay != null && !branchPassed -> ScreenDataState.ERROR
-            inspectionReplay != null && !inspectionPassed -> ScreenDataState.ERROR
-            !blackboxArmed -> ScreenDataState.ERROR
-            canContinue -> ScreenDataState.SUCCESS
-            simulatorObserved || branchReplay != null || inspectionReplay != null -> ScreenDataState.PARTIAL
-            else -> ScreenDataState.EMPTY
-        }
-
-        val summary = when {
-            benchOnlyFallbackRequested && !simulatorUnsupported ->
-                "Simulator was skipped by operator. Continue to props-off bench only."
-            simulatorUnsupported ->
-                "DJI MSDK simulator is unavailable on this Mini 4 Pro / firmware combination. Record Stage 1 as unavailable, then continue to props-off bench only."
-            !missionReady -> "Load and verify a mission bundle before simulator verification."
-            !blackboxArmed -> "Blackbox recording is not armed for this runtime."
-            !simulatorObserved -> "Enable the in-app simulator and confirm that the app receives state updates."
-            !branchPassed || !inspectionPassed ->
-                "Run both required simulator replays and confirm each one observes a real MSDK simulator state."
-            !incidentExportObserved -> "Confirm at least one incident export before direct aircraft checks."
-            canContinue -> "MSDK simulator verification passed. Continue to Connection Guide."
-            else -> "Run both required simulator replays and confirm each one observes a real MSDK simulator state."
-        }
-
-        val nextStep = when {
-            benchOnlyFallbackRequested && !simulatorUnsupported ->
-                "Continue to Connection Guide / Preflight for props-off bench only, and keep prop-on blocked."
-            simulatorUnsupported ->
-                "Record Stage 1 as unavailable, continue to Connection Guide / Preflight for props-off bench only, and keep prop-on blocked."
-            !missionReady -> "Return to Mission Setup and sync a verified bundle."
-            !simulatorObserved -> "Enable the in-app simulator from this screen, wait for a real listener update, then refresh the gate."
-            !branchPassed -> "Run the Transit -> Branch -> HOLD -> RTH replay and require a real simulator sample before trusting it."
-            !inspectionPassed -> "Run the Transit -> Approach -> View Align -> Capture replay and require a real simulator sample before trusting it."
-            !incidentExportObserved -> "Verify that a replay produced a blackbox-backed incident export on disk."
-            else -> "Continue to Connection Guide and verify USB / RC / aircraft gates."
-        }
-
-        return SimulatorVerificationUiState(
-            status = status,
-            summary = summary,
-            warning = warning,
-            nextStep = nextStep,
-            simulatorStatusLabel = simulatorStatusLabel,
-            checklist = checklist,
-            canActivateBenchOnlyFallback = missionReady && !benchOnlyFallbackActive,
-            benchOnlyFallbackActive = benchOnlyFallbackActive,
-            propOnBlockedReason = propOnBlockedReason,
-            canContinueToConnectionGuide = canContinue,
-            continueLabel = if (benchOnlyFallbackActive) {
-                "Continue to Connection Guide (Bench Only)"
-            } else {
-                "Continue to Connection Guide"
-            },
-            simulatorActionsEnabled = !benchOnlyFallbackActive
         )
     }
 

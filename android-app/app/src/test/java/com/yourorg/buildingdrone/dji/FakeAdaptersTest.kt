@@ -1,6 +1,5 @@
 package com.yourorg.buildingdrone.dji
 
-import com.yourorg.buildingdrone.core.GeoPoint
 import com.yourorg.buildingdrone.data.seedMissionBundle
 import com.yourorg.buildingdrone.domain.semantic.BranchDecision
 import com.yourorg.buildingdrone.domain.semantic.BranchPrompt
@@ -58,13 +57,4 @@ class FakeAdaptersTest {
         assertEquals(BranchDecision.UNKNOWN, adapter.confirmBranch(prompt))
     }
 
-    @Test
-    fun fakeSimulatorAdapter_publishesStateChanges() = runTest {
-        val adapter = FakeSimulatorAdapter()
-
-        assertTrue(adapter.enable(GeoPoint(25.0, 121.0), 10.0))
-        assertTrue(adapter.status().enabled)
-        assertTrue(adapter.disable())
-        assertFalse(adapter.status().enabled)
-    }
 }

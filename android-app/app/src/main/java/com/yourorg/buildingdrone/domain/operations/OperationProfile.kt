@@ -42,7 +42,6 @@ enum class MissionContextMode {
 data class ConsoleExecutionPolicy(
     val requiresMissionBundle: Boolean,
     val requiresGpsGate: Boolean,
-    val requiresSimulatorGate: Boolean,
     val allowsMissionUpload: Boolean,
 )
 
@@ -67,14 +66,13 @@ enum class OperatorConsoleMode(
         executionPolicy = ConsoleExecutionPolicy(
             requiresMissionBundle = false,
             requiresGpsGate = false,
-            requiresSimulatorGate = false,
             allowsMissionUpload = false,
         ),
     ),
     OUTDOOR_PATROL(
         modeId = "outdoor_patrol",
         displayLabel = "戶外巡邏",
-        detail = "戶外 GPS 巡邏。需已驗證 mission bundle，並經過 simulator / preflight gate。",
+        detail = "Outdoor GPS patrol. Requires a verified mission bundle and preflight gates.",
         executedOperatingProfile = OperationProfile.OUTDOOR_GPS_REQUIRED,
         executionMode = ExecutionMode.PATROL_ROUTE,
         patrolRouteEnabled = true,
@@ -82,7 +80,6 @@ enum class OperatorConsoleMode(
         executionPolicy = ConsoleExecutionPolicy(
             requiresMissionBundle = true,
             requiresGpsGate = true,
-            requiresSimulatorGate = true,
             allowsMissionUpload = true,
         ),
     ),
@@ -97,7 +94,6 @@ enum class OperatorConsoleMode(
         executionPolicy = ConsoleExecutionPolicy(
             requiresMissionBundle = false,
             requiresGpsGate = false,
-            requiresSimulatorGate = false,
             allowsMissionUpload = false,
         ),
     );
@@ -111,11 +107,11 @@ enum class OperatorConsoleMode(
     val requiresGpsGate: Boolean
         get() = executionPolicy.requiresGpsGate
 
-    val requiresSimulatorGate: Boolean
-        get() = executionPolicy.requiresSimulatorGate
-
     val allowsMissionUpload: Boolean
         get() = executionPolicy.allowsMissionUpload
+
+    val isProdV1Selectable: Boolean
+        get() = this == OUTDOOR_PATROL
 
     fun resolveMissionContextMode(bundleVerified: Boolean): MissionContextMode {
         return when {

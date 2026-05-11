@@ -23,7 +23,7 @@ Close the production patrol chain:
 - The executable path is always `L -> waypoint[1..N] -> L`.
 - The KMZ finish action is `noAction`. Android owns landing through `startAutoLanding()`, landing confirmation, timeout, and RC fallback.
 - Android `Outdoor Patrol` downloads the assigned dispatch bundle. It no longer generates a prod patrol request from hard-coded coordinates.
-- Android `Indoor Manual` and `Outdoor Manual Pilot` no-bundle behavior remains unchanged.
+- Android V1 prod is patrol-only for this closure. `Indoor Manual` and `Outdoor Manual Pilot` are not selectable production modes in this pass.
 
 ## Field Runbook
 
@@ -45,4 +45,4 @@ Close the production patrol chain:
 - Unzipping `mission.kmz` shows valid XML at `wpmz/template.kml` and `wpmz/waylines.wpml`.
 - Android prod patrol sync does not call `/v1/missions/plan`.
 - A Mini 4 Pro bench run can upload the assigned KMZ without failing local KMZ validation.
-- Field validation remains blocked until props-off, simulator, and short-loop protocol pass.
+- Field validation remains blocked until props-off bench and controlled short-loop protocol pass.

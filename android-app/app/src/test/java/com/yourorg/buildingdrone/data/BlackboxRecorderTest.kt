@@ -2,7 +2,6 @@ package com.yourorg.buildingdrone.data
 
 import com.yourorg.buildingdrone.dji.HardwareSnapshot
 import com.yourorg.buildingdrone.dji.PerceptionSnapshot
-import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.domain.statemachine.FlightEventType
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
 import com.yourorg.buildingdrone.domain.statemachine.FlightState
@@ -11,6 +10,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.io.path.createTempDirectory
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -34,8 +34,7 @@ class BlackboxRecorderTest {
                 holdReason = "Branch confirm timeout"
             ),
             hardwareSnapshot = HardwareSnapshot(aircraftConnected = true, remoteControllerConnected = true),
-            perceptionSnapshot = PerceptionSnapshot(summary = "branch uncertainty"),
-            simulatorStatus = SimulatorStatus(enabled = true)
+            perceptionSnapshot = PerceptionSnapshot(summary = "branch uncertainty")
         )
 
         val report = recorder.exportIncident(
@@ -48,6 +47,7 @@ class BlackboxRecorderTest {
         assertTrue(report.file.exists())
         assertTrue(report.entryCount >= 1)
         assertTrue(report.file.readText().contains("mission-1"))
+        assertFalse(report.file.readText().contains("simulatorEnabled"))
 
         root.deleteRecursively()
     }

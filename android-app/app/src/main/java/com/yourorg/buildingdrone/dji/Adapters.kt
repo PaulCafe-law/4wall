@@ -3,7 +3,6 @@ package com.yourorg.buildingdrone.dji
 import android.app.Application
 import android.view.TextureView
 import androidx.lifecycle.DefaultLifecycleObserver
-import com.yourorg.buildingdrone.core.GeoPoint
 import com.yourorg.buildingdrone.data.MissionBundle
 import com.yourorg.buildingdrone.domain.operations.AutonomyCapability
 import com.yourorg.buildingdrone.domain.semantic.BranchDecision
@@ -137,13 +136,6 @@ data class PerceptionSnapshot(
     val summary: String? = null
 )
 
-data class SimulatorStatus(
-    val enabled: Boolean = false,
-    val location: GeoPoint? = null,
-    val altitudeMeters: Double = 0.0,
-    val satelliteCount: Int = 0
-)
-
 interface WaypointMissionAdapter {
     suspend fun loadKmzMission(request: MissionLoadRequest): MissionLoadStatus
     suspend fun uploadMission(missionBundle: MissionBundle): Boolean
@@ -198,13 +190,4 @@ interface PerceptionAdapter {
     fun addObstacleListener(listenerId: String, listener: (PerceptionSnapshot) -> Unit)
     fun removeObstacleListener(listenerId: String)
     suspend fun confirmBranch(prompt: BranchPrompt): BranchDecision
-}
-
-interface SimulatorAdapter {
-    fun status(): SimulatorStatus
-    fun addStateListener(listenerId: String, listener: (SimulatorStatus) -> Unit)
-    fun removeStateListener(listenerId: String)
-    suspend fun enable(initialLocation: GeoPoint, altitudeMeters: Double): Boolean
-    suspend fun disable(): Boolean
-    fun lastCommandError(): String? = null
 }

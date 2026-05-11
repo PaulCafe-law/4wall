@@ -5,11 +5,12 @@ import com.yourorg.buildingdrone.data.FileFlightLogRepository
 import com.yourorg.buildingdrone.data.FakeMissionRepository
 import com.yourorg.buildingdrone.data.StaticDeviceStorageRepository
 import com.yourorg.buildingdrone.data.demoMissionBundle
+import com.yourorg.buildingdrone.dji.FakeCameraControlAdapter
 import com.yourorg.buildingdrone.dji.FakeCameraStreamAdapter
+import com.yourorg.buildingdrone.dji.FakeFlightControlAdapter
 import com.yourorg.buildingdrone.dji.FakeHardwareStatusProvider
 import com.yourorg.buildingdrone.dji.FakeMobileSdkSession
 import com.yourorg.buildingdrone.dji.FakePerceptionAdapter
-import com.yourorg.buildingdrone.dji.FakeSimulatorAdapter
 import com.yourorg.buildingdrone.dji.FakeVirtualStickAdapter
 import com.yourorg.buildingdrone.dji.FakeWaypointMissionAdapter
 
@@ -24,9 +25,10 @@ fun createAppContainer(application: Application): AppContainer {
         mobileSdkSession = FakeMobileSdkSession(),
         hardwareStatusProvider = FakeHardwareStatusProvider(),
         waypointMissionAdapter = FakeWaypointMissionAdapter(),
+        flightControlAdapter = FakeFlightControlAdapter(),
         virtualStickAdapter = FakeVirtualStickAdapter(),
         cameraStreamAdapter = FakeCameraStreamAdapter(),
+        cameraControlAdapter = FakeCameraControlAdapter(),
         perceptionAdapter = FakePerceptionAdapter(),
-        simulatorAdapter = FakeSimulatorAdapter()
     )
 }

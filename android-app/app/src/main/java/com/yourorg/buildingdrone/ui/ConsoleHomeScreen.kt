@@ -35,7 +35,6 @@ import com.yourorg.buildingdrone.feature.manualpilot.ManualPilotScreen
 import com.yourorg.buildingdrone.feature.manualpilot.ManualPilotUiState
 import com.yourorg.buildingdrone.feature.mission.MissionSetupScreen
 import com.yourorg.buildingdrone.feature.preflight.PreflightChecklistScreen
-import com.yourorg.buildingdrone.feature.simulator.SimulatorVerificationScreen
 import com.yourorg.buildingdrone.feature.transit.InFlightMainScreen
 
 @Composable
@@ -113,23 +112,12 @@ fun ConsoleHomeScreen(
                     onSelected = demoCoordinator::selectScreen,
                 )
                 when (demoCoordinator.activeScreen) {
-                    ConsoleScreen.MISSION_SETUP -> if (demoCoordinator.showSimulatorVerification) {
-                        SimulatorVerificationScreen(
-                            state = demoCoordinator.simulatorVerification,
-                            onRefresh = demoCoordinator::refreshSimulatorVerification,
-                            onEnableSimulator = demoCoordinator::enableSimulatorVerification,
-                            onDisableSimulator = demoCoordinator::disableSimulatorVerification,
-                            onRunBranchReplay = demoCoordinator::runBranchHoldRthReplay,
-                            onRunInspectionReplay = demoCoordinator::runInspectionCaptureReplay,
-                            onActivateBenchOnlyFallback = demoCoordinator::activateBenchOnlyFallback,
-                            onContinue = demoCoordinator::continueFromSimulatorVerification,
-                        )
-                    } else {
+                    ConsoleScreen.MISSION_SETUP -> {
                         MissionSetupScreen(
                             state = demoCoordinator.missionSetup,
                             onLoadMockMission = demoCoordinator::loadMockMission,
                             onReplay = demoCoordinator::replayTelemetry,
-                            onGoPreflight = demoCoordinator::openPreflightChecklist,
+                            onGoPreflight = demoCoordinator::continueFromMissionSetup,
                             onSelectConsoleMode = demoCoordinator::selectConsoleMode,
                         )
                     }
