@@ -1,3 +1,6 @@
+from io import BytesIO
+from zipfile import ZipFile
+
 from sqlmodel import select
 
 from app.models import Site
@@ -144,7 +147,7 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
             "routeId": route_id,
             "templateId": template_id,
             "scheduleId": schedule_id,
-            "assignee": "observer-01",
+            "assignee": "pilot",
             "executionTarget": "field-team",
             "status": "assigned",
             "note": "Ready for demo dispatch",
@@ -156,6 +159,31 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     assert dispatch_response.json()["closedAt"] is None
 
     dispatch_id = dispatch_response.json()["dispatchId"]
+    materialize_response = client.post(
+        f"/v1/control-plane/dispatches/{dispatch_id}/materialize-mission",
+        headers=headers,
+    )
+    assert materialize_response.status_code == 200, materialize_response.text
+    materialized = materialize_response.json()
+    assert materialized["missionId"] == mission_id
+    assert materialized["missionBundle"]["launchPoint"]["label"] == "Tower A launch"
+    assert materialized["missionBundle"]["orderedWaypoints"][0]["sequence"] == 1
+
+    kmz_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission.kmz", headers=headers)
+    assert kmz_response.status_code == 200, kmz_response.text
+    with ZipFile(BytesIO(kmz_response.content)) as archive:
+        assert "wpmz/template.kml" in archive.namelist()
+        assert "wpmz/waylines.wpml" in archive.namelist()
+
+    operator_login = client.post("/v1/auth/login", json={"username": "pilot", "password": "pilot-dev-only"})
+    assert operator_login.status_code == 200, operator_login.text
+    active_bundle = client.get(
+        "/v1/operator/missions/active-bundle",
+        headers={"Authorization": f"Bearer {operator_login.json()['accessToken']}"},
+    )
+    assert active_bundle.status_code == 200, active_bundle.text
+    assert active_bundle.json()["missionId"] == mission_id
+
     dispatch_list = client.get(
         f"/v1/inspection/dispatch?siteId={site_id}",
         headers=headers,
@@ -193,7 +221,7 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     assert body["template"]["templateId"] == template_id
     assert body["schedule"]["scheduleId"] == schedule_id
     assert body["schedule"]["lastDispatchedAt"] is not None
-    assert body["dispatch"]["assignee"] == "observer-01"
+    assert body["dispatch"]["assignee"] == "pilot"
     assert body["dispatch"]["executionTarget"] == "field-team"
     assert body["dispatch"]["acceptedAt"] is not None
     assert body["dispatch"]["closedAt"] is not None
@@ -294,6 +322,74 @@ def test_customer_viewer_can_read_but_not_write_control_plane_records(client, se
     assert list_response.status_code == 200, list_response.text
     assert len(list_response.json()) == 1
     assert create_response.status_code == 403
+
+
+def test_dispatch_materialization_requires_route_link(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Materialize Fail Closed Org")
+        org_id = org.id
+        seed_user(
+            session,
+            email="admin@materialize-fail.test",
+            password=PASSWORD,
+            org_roles=[(org_id, "customer_admin")],
+        )
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@materialize-fail.test", password=PASSWORD)
+    site_response = client.post(
+        "/v1/sites",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "name": "Fail Closed Site",
+            "address": "Taipei",
+            "location": {"lat": 25.03391, "lng": 121.56452},
+            "notes": "",
+        },
+    )
+    assert site_response.status_code == 200, site_response.text
+    site_id = site_response.json()["siteId"]
+
+    template_response = client.post(
+        "/v1/inspection/templates",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "name": "Template without route",
+            "inspectionProfile": {"profile": "manual-review"},
+            "alertRules": [{"kind": "mission_failure"}],
+        },
+    )
+    assert template_response.status_code == 200, template_response.text
+    template_id = template_response.json()["templateId"]
+
+    payload = valid_request_payload()
+    payload["organizationId"] = org_id
+    payload["siteId"] = site_id
+    plan_response = client.post("/v1/missions/plan", headers=headers, json=payload)
+    assert plan_response.status_code == 200, plan_response.text
+    mission_id = plan_response.json()["missionId"]
+
+    dispatch_response = client.post(
+        f"/v1/missions/{mission_id}/dispatch",
+        headers=headers,
+        json={
+            "templateId": template_id,
+            "assignee": "pilot",
+            "executionTarget": "field-team",
+            "status": "assigned",
+        },
+    )
+    assert dispatch_response.status_code == 200, dispatch_response.text
+    materialize_response = client.post(
+        f"/v1/control-plane/dispatches/{dispatch_response.json()['dispatchId']}/materialize-mission",
+        headers=headers,
+    )
+
+    assert materialize_response.status_code == 422
+    assert materialize_response.json()["detail"] == "dispatch_route_required"
 
 
 def test_site_detail_returns_site_map_context_and_active_route_template_summaries(client, session_factory) -> None:

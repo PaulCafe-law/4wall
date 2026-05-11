@@ -153,6 +153,7 @@ interface WaypointMissionAdapter {
     suspend fun stopMission(): Boolean
     fun executionState(): MissionExecutionState
     fun lastLoadedMission(): MissionLoadStatus?
+    fun uploadProgressPercent(): Int? = null
     fun lastCommandError(): String? = null
 }
 

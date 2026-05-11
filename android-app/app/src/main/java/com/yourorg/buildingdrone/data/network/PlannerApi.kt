@@ -12,6 +12,7 @@ data class DownloadedArtifact(
 
 interface PlannerGateway {
     suspend fun planMission(request: MissionPlanRequestWire): MissionPlanResponseWire
+    suspend fun activeMissionBundle(): MissionPlanResponseWire
     suspend fun downloadArtifact(pathOrUrl: String): DownloadedArtifact
     suspend fun uploadFlightEvents(flightId: String, request: FlightEventsRequestWire): FlightEventsAcceptedWire
     suspend fun uploadTelemetryBatch(flightId: String, request: TelemetryBatchRequestWire): TelemetryBatchAcceptedWire
@@ -25,6 +26,14 @@ class PlannerApi(
         val response = authenticatedTransport.postJson(
             pathOrUrl = "/v1/missions/plan",
             body = json.encodeToString(MissionPlanRequestWire.serializer(), request),
+            authenticated = true
+        )
+        return decode(response.body, MissionPlanResponseWire.serializer())
+    }
+
+    override suspend fun activeMissionBundle(): MissionPlanResponseWire {
+        val response = authenticatedTransport.get(
+            pathOrUrl = "/v1/operator/missions/active-bundle",
             authenticated = true
         )
         return decode(response.body, MissionPlanResponseWire.serializer())

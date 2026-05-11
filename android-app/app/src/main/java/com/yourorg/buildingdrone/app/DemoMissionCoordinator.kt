@@ -307,6 +307,7 @@ class DemoMissionCoordinator(
                     "Waypoint count: ${it.orderedWaypoints.size}",
                     "Implicit RTL: ${it.implicitReturnToLaunch}",
                     "Planned profile: ${it.operatingProfile.displayLabel}",
+                    "Mission source: ${it.missionSource}",
                 )
             } ?: emptyList(),
             artifactStatus = when {

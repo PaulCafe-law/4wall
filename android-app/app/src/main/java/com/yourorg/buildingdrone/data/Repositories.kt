@@ -133,7 +133,7 @@ private fun buildMissionMetaJson(bundle: MissionBundle): String {
 
 private fun writeKmzSeed(target: File, bundle: MissionBundle) {
     ZipOutputStream(target.outputStream().buffered()).use { zip ->
-        zip.putNextEntry(ZipEntry("waylines.wpml"))
+        zip.putNextEntry(ZipEntry("wpmz/waylines.wpml"))
         zip.write(
             """
             <waylines missionId="${bundle.missionId}">
@@ -145,7 +145,7 @@ private fun writeKmzSeed(target: File, bundle: MissionBundle) {
         )
         zip.closeEntry()
 
-        zip.putNextEntry(ZipEntry("mission.kml"))
+        zip.putNextEntry(ZipEntry("wpmz/template.kml"))
         zip.write(
             """
             <kml>

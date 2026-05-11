@@ -518,6 +518,11 @@ export const api = {
       token,
       body: JSON.stringify(payload),
     }),
+  materializeDispatchMission: (token: string, dispatchId: string) =>
+    apiFetch<MissionPlanResponse>(`/v1/control-plane/dispatches/${dispatchId}/materialize-mission`, {
+      method: 'POST',
+      token,
+    }),
   patchInspectionDispatch: (token: string, dispatchId: string, payload: Partial<DispatchPayload>) =>
     apiFetch<DispatchRecord>(`/v1/inspection/dispatch/${dispatchId}`, {
       method: 'PATCH',

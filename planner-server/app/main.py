@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlmodel import Session, select
 
-from app.artifacts import MissionArtifactService, MockMissionKmzGenerator
+from app.artifacts import DjiWpmlKmzGenerator, MissionArtifactService
 from app.config import Settings
 from app.corridor import CorridorGenerator
 from app.db import create_engine_for_settings, create_session_factory, init_db
@@ -36,7 +36,7 @@ def build_app(
     storage = artifact_storage or _build_artifact_storage(app_settings)
     artifact_service = MissionArtifactService(
         storage=storage,
-        kmz_generator=MockMissionKmzGenerator(),
+        kmz_generator=DjiWpmlKmzGenerator(),
     )
 
     @asynccontextmanager

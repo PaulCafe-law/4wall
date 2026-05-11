@@ -7,7 +7,15 @@ from sqlalchemy import or_
 from sqlmodel import Session, select
 
 from app.audit import record_audit
-from app.deps import CurrentWebUser, get_current_web_user, get_session
+from app.deps import (
+    CurrentWebUser,
+    get_artifact_service,
+    get_corridor_generator,
+    get_current_web_user,
+    get_route_provider,
+    get_session,
+)
+from app.dto import MissionPlanResponseDto
 from app.control_plane_read_models import build_control_plane_alerts, build_control_plane_dashboard
 from app.inspection_control import (
     mark_schedule_dispatched,
@@ -21,6 +29,8 @@ from app.inspection_control import (
     serialize_template,
 )
 from app.models import DispatchRecord, InspectionRoute, InspectionSchedule, InspectionTemplate, Mission, Site
+from app.mission_materialization import DispatchMaterializationError, materialize_dispatch_mission
+from app.providers import RouteProvider
 from app.web_dto import (
     AlertCenterItemDto,
     ControlPlaneDashboardDto,
@@ -548,6 +558,63 @@ def patch_dispatch(
     )
     session.commit()
     return serialize_dispatch(dispatch)
+
+
+@router.post("/v1/control-plane/dispatches/{dispatch_id}/materialize-mission", response_model=MissionPlanResponseDto)
+def materialize_dispatch(
+    dispatch_id: str,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+    provider: RouteProvider = Depends(get_route_provider),
+    generator=Depends(get_corridor_generator),
+    artifact_service=Depends(get_artifact_service),
+) -> MissionPlanResponseDto:
+    dispatch = session.get(DispatchRecord, dispatch_id)
+    if dispatch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_not_found")
+    mission = session.get(Mission, dispatch.mission_id)
+    if mission is None or mission.organization_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
+    ensure_org_write_access(session, current_user, mission.organization_id, action="mission.materialize_access")
+    if mission.site_id is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mission_site_required_for_materialization")
+    if dispatch.route_id is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="dispatch_route_required")
+
+    route = _require_route(session, dispatch.route_id, organization_id=mission.organization_id, site_id=mission.site_id)
+    if dispatch.template_id is not None:
+        _require_template(session, dispatch.template_id, organization_id=mission.organization_id, site_id=mission.site_id)
+    if dispatch.schedule_id is not None:
+        _require_schedule(session, dispatch.schedule_id, organization_id=mission.organization_id, site_id=mission.site_id)
+
+    try:
+        response = materialize_dispatch_mission(
+            session=session,
+            dispatch=dispatch,
+            mission=mission,
+            route=route,
+            provider=provider,
+            generator=generator,
+            artifact_service=artifact_service,
+        )
+    except DispatchMaterializationError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.detail) from exc
+
+    record_audit(
+        session,
+        action="mission.materialized_for_dispatch",
+        organization_id=mission.organization_id,
+        actor_user_id=current_user.user.id,
+        target_type="mission",
+        target_id=mission.id,
+        metadata={
+            "dispatchId": dispatch.id,
+            "routeId": route.id,
+            "artifactSource": "assigned_dispatch",
+        },
+    )
+    session.commit()
+    return response
 
 
 def _require_site(session: Session, site_id: str, *, organization_id: str) -> Site:

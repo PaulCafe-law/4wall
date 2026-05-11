@@ -84,6 +84,7 @@ class RealAdapterSmokeTest {
             gateway = object : DjiWaypointMissionAdapter.Gateway {
                 override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) {
                     uploadedPath = path
+                    callback.onProgressUpdate(0.5)
                     callback.onSuccess()
                 }
 
@@ -107,6 +108,7 @@ class RealAdapterSmokeTest {
         assertEquals(bundle.artifacts.missionKmz.localPath, uploadedPath)
         assertEquals(bundle.missionId, startedMissionId)
         assertEquals(MissionExecutionState.RUNNING, adapter.executionState())
+        assertEquals(100, adapter.uploadProgressPercent())
 
         seedRoot.deleteRecursively()
     }

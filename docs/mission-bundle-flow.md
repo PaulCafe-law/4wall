@@ -23,7 +23,7 @@ It no longer means every prod flight requires a bundle.
 ## Android Lifecycle
 
 1. Operator authenticates.
-2. If the selected execution path is a planned-bundle flow, the app requests mission plan.
+2. If the selected execution path is `Outdoor Patrol`, the app downloads the assigned dispatch bundle.
 3. App downloads `mission_meta.json`.
 4. App downloads `mission.kmz`.
 5. App verifies schema version, checksum, and file presence.
@@ -32,6 +32,9 @@ It no longer means every prod flight requires a bundle.
 8. App rewrites the local bundle manifest with the active file paths after promotion.
 9. Preflight policy reads the active bundle state.
 10. `Outdoor Patrol` TAKEOFF remains blocked unless the bundle is complete and verified.
+
+For production patrol, Android uses `GET /v1/operator/missions/active-bundle`.
+It does not call `/v1/missions/plan` or generate patrol coordinates locally.
 
 For `unplanned manual flight`:
 

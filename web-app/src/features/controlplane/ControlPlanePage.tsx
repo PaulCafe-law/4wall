@@ -284,7 +284,7 @@ export function ControlPlanePage() {
   const [templateName, setTemplateName] = useState('')
   const [plannedAt, setPlannedAt] = useState('')
   const [schedulePauseReason, setSchedulePauseReason] = useState('天候不佳，暫停起飛窗口。')
-  const [dispatchAssignee, setDispatchAssignee] = useState('observer-01')
+  const [dispatchAssignee, setDispatchAssignee] = useState('fieldpilot')
   const [dispatchExecutionTarget, setDispatchExecutionTarget] = useState('field-team')
   const [dispatchNote, setDispatchNote] = useState('')
   const [routeError, setRouteError] = useState<string | null>(null)
@@ -524,22 +524,25 @@ export function ControlPlanePage() {
 
   const dispatchMission = useAuthedMutation({
     mutationKey: ['inspection', 'dispatch'],
-    mutationFn: ({
+    mutationFn: async ({
       token,
       payload,
     }: {
       token: string
       payload: { missionId: string }
-    }) =>
-      api.dispatchMission(token, payload.missionId, {
-          routeId: siteRoutes[0]?.routeId,
-          templateId: siteTemplates[0]?.templateId,
-          scheduleId: siteSchedules[0]?.scheduleId,
-          assignee: dispatchAssignee.trim() || undefined,
-          executionTarget: dispatchExecutionTarget.trim() || undefined,
+    }) => {
+      const dispatch = await api.dispatchMission(token, payload.missionId, {
+        routeId: siteRoutes[0]?.routeId,
+        templateId: siteTemplates[0]?.templateId,
+        scheduleId: siteSchedules[0]?.scheduleId,
+        assignee: dispatchAssignee.trim() || undefined,
+        executionTarget: dispatchExecutionTarget.trim() || undefined,
         status: 'assigned',
         note: dispatchNote.trim() || undefined,
-      }),
+      })
+      await api.materializeDispatchMission(token, dispatch.dispatchId)
+      return dispatch
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['missions'] }),
@@ -742,7 +745,7 @@ export function ControlPlanePage() {
       await dispatchMission.mutateAsync({ missionId })
     } catch (error) {
       setDispatchError(
-        formatApiError(error instanceof ApiError ? error.detail : undefined, '建立派工失敗。'),
+        formatApiError(error instanceof ApiError ? error.detail : undefined, '建立派工或產生任務包失敗。'),
       )
     }
   }
@@ -1361,7 +1364,7 @@ export function ControlPlanePage() {
               <Input
                 value={dispatchAssignee}
                 onChange={(event) => setDispatchAssignee(event.target.value)}
-                placeholder="例如：observer-01"
+                placeholder="例如：fieldpilot"
               />
             </Field>
             <Field label="執行對象">
@@ -1375,7 +1378,7 @@ export function ControlPlanePage() {
               <TextArea
                 value={dispatchNote}
                 onChange={(event) => setDispatchNote(event.target.value)}
-                placeholder="例如：由 observer-01 進行現場執行與回報。"
+                placeholder="例如：由 fieldpilot 進行現場執行與回報。"
               />
             </Field>
             <div className="grid gap-3 md:grid-cols-3">
