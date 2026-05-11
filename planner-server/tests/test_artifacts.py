@@ -1,6 +1,8 @@
 from pathlib import Path
+from zipfile import ZipFile
+import xml.etree.ElementTree as ET
 
-from app.artifacts import MissionArtifactService, MockMissionKmzGenerator
+from app.artifacts import DjiWpmlKmzGenerator, MissionArtifactService
 from app.corridor import CorridorGenerator
 from app.dto import MissionPlanRequestDto
 from app.providers import MockRouteProvider
@@ -17,7 +19,7 @@ def test_local_artifact_storage_persists_generated_kmz_and_meta(tmp_path: Path) 
     )
     service = MissionArtifactService(
         storage=LocalFileArtifactStorage(str(tmp_path / "artifacts")),
-        kmz_generator=MockMissionKmzGenerator(),
+        kmz_generator=DjiWpmlKmzGenerator(),
     )
 
     artifacts = service.generate_and_store(
@@ -31,3 +33,21 @@ def test_local_artifact_storage_persists_generated_kmz_and_meta(tmp_path: Path) 
     assert service.read(artifacts.mission_meta_json.storage_key) is not None
     assert artifacts.mission_kmz.checksum_sha256
     assert artifacts.mission_meta_json.checksum_sha256
+
+    kmz_path = tmp_path / "artifact.kmz"
+    kmz_path.write_bytes(service.read(artifacts.mission_kmz.storage_key) or b"")
+    with ZipFile(kmz_path) as archive:
+        names = set(archive.namelist())
+        assert "wpmz/template.kml" in names
+        assert "wpmz/waylines.wpml" in names
+        template = archive.read("wpmz/template.kml")
+        waylines = archive.read("wpmz/waylines.wpml")
+
+    ET.fromstring(template)
+    waylines_root = ET.fromstring(waylines)
+    coordinates = [
+        element.text
+        for element in waylines_root.findall(".//{http://www.opengis.net/kml/2.2}coordinates")
+    ]
+    assert len(coordinates) == 4
+    assert coordinates[0] == coordinates[-1]

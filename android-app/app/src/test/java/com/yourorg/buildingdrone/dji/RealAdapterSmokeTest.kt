@@ -84,6 +84,7 @@ class RealAdapterSmokeTest {
             gateway = object : DjiWaypointMissionAdapter.Gateway {
                 override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) {
                     uploadedPath = path
+                    callback.onProgressUpdate(0.5)
                     callback.onSuccess()
                 }
 
@@ -107,6 +108,7 @@ class RealAdapterSmokeTest {
         assertEquals(bundle.artifacts.missionKmz.localPath, uploadedPath)
         assertEquals(bundle.missionId, startedMissionId)
         assertEquals(MissionExecutionState.RUNNING, adapter.executionState())
+        assertEquals(100, adapter.uploadProgressPercent())
 
         seedRoot.deleteRecursively()
     }
@@ -173,6 +175,8 @@ class RealAdapterSmokeTest {
                 }
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             }
         )
 
@@ -201,6 +205,8 @@ class RealAdapterSmokeTest {
                 override fun addFrameListener(cameraId: String, listener: DjiCameraStreamAdapter.FrameListener) = Unit
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             },
             startupTimeoutMillis = 1L
         )
@@ -229,6 +235,8 @@ class RealAdapterSmokeTest {
                 override fun addFrameListener(cameraId: String, listener: DjiCameraStreamAdapter.FrameListener) = Unit
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             }
         )
 
@@ -268,6 +276,8 @@ class RealAdapterSmokeTest {
                 }
 
                 override fun removeFrameListener(listener: DjiCameraStreamAdapter.FrameListener) = Unit
+                override fun bindSurface(cameraId: String, surface: android.view.Surface, width: Int, height: Int) = Unit
+                override fun unbindSurface(surface: android.view.Surface) = Unit
             }
         )
 

@@ -1,5 +1,7 @@
 package com.yourorg.buildingdrone.domain.safety
 
+import com.yourorg.buildingdrone.domain.operations.MissionContextMode
+import com.yourorg.buildingdrone.domain.operations.OperatorConsoleMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -59,5 +61,56 @@ class PreflightGatePolicyTest {
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.FLY_ZONE })
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.GPS })
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.MISSION_BUNDLE })
+    }
+
+    @Test
+    fun outdoorManual_allowsTakeoffWithoutBundleAndGps() {
+        val evaluation = policy.evaluate(
+            PreflightSnapshot(
+                aircraftConnected = true,
+                remoteControllerConnected = true,
+                cameraStreamAvailable = true,
+                availableStorageBytes = 1_000_000_000L,
+                minimumStorageBytes = 100_000_000L,
+                deviceHealthBlocking = false,
+                flyZoneBlocking = false,
+                gpsReady = false,
+                gpsDetail = "GPS unavailable",
+                missionBundlePresent = false,
+                missionBundleVerified = false,
+                consoleMode = OperatorConsoleMode.OUTDOOR_MANUAL_PILOT,
+                missionContextMode = MissionContextMode.UNPLANNED_MANUAL,
+            ),
+        )
+
+        assertTrue(evaluation.canTakeoff)
+        assertTrue(evaluation.blockers.isEmpty())
+        assertTrue(evaluation.gates.first { it.gateId == PreflightGateId.GPS }.passed)
+        assertTrue(evaluation.gates.first { it.gateId == PreflightGateId.MISSION_BUNDLE }.passed)
+    }
+
+    @Test
+    fun outdoorManual_flyZoneStillBlocksTakeoff() {
+        val evaluation = policy.evaluate(
+            PreflightSnapshot(
+                aircraftConnected = true,
+                remoteControllerConnected = true,
+                cameraStreamAvailable = true,
+                availableStorageBytes = 1_000_000_000L,
+                minimumStorageBytes = 100_000_000L,
+                deviceHealthBlocking = false,
+                flyZoneBlocking = true,
+                flyZoneMessage = "Restricted zone nearby",
+                gpsReady = false,
+                missionBundlePresent = false,
+                missionBundleVerified = false,
+                consoleMode = OperatorConsoleMode.OUTDOOR_MANUAL_PILOT,
+                missionContextMode = MissionContextMode.UNPLANNED_MANUAL,
+            ),
+        )
+
+        assertFalse(evaluation.canTakeoff)
+        assertEquals(1, evaluation.blockers.size)
+        assertEquals(PreflightGateId.FLY_ZONE, evaluation.blockers.single().gateId)
     }
 }

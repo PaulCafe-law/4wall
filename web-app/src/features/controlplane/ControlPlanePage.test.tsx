@@ -19,6 +19,7 @@ const apiMock = vi.hoisted(() => ({
   createInspectionSchedule: vi.fn(),
   patchInspectionSchedule: vi.fn(),
   dispatchMission: vi.fn(),
+  materializeDispatchMission: vi.fn(),
   patchInspectionDispatch: vi.fn(),
 }))
 
@@ -51,6 +52,7 @@ vi.mock('../../lib/api', async () => {
       createInspectionSchedule: apiMock.createInspectionSchedule,
       patchInspectionSchedule: apiMock.patchInspectionSchedule,
       dispatchMission: apiMock.dispatchMission,
+      materializeDispatchMission: apiMock.materializeDispatchMission,
       patchInspectionDispatch: apiMock.patchInspectionDispatch,
     },
   }
@@ -401,7 +403,7 @@ describe('ControlPlanePage', () => {
     expect(screen.getByRole('heading', { level: 2, name: '任務佇列' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { level: 2, name: '派工看板' })).toBeInTheDocument()
     expect(await screen.findAllByText('Tower A morning run')).toHaveLength(2)
-    expect(screen.getByDisplayValue('observer-01')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('fieldpilot')).toBeInTheDocument()
     expect(screen.getByDisplayValue('field-team')).toBeInTheDocument()
     expect(await screen.findByText('Ready for field handoff')).toBeInTheDocument()
   })

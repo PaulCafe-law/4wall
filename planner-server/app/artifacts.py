@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO
 import json
+from math import atan2, cos, radians, sin, sqrt
 from zipfile import ZIP_DEFLATED, ZipFile
+from xml.sax.saxutils import escape
 
 from app.dto import MissionArtifactDescriptorDto, MissionArtifactsDto, MissionBundleDto, MissionMetaDto
 from app.storage import ArtifactStorage, StoredArtifact
@@ -14,17 +16,16 @@ class MissionKmzGenerator:
         raise NotImplementedError
 
 
-class MockMissionKmzGenerator(MissionKmzGenerator):
+class DjiWpmlKmzGenerator(MissionKmzGenerator):
     def generate(self, mission_bundle: MissionBundleDto, mission_meta: MissionMetaDto) -> bytes:
         buffer = BytesIO()
         with ZipFile(buffer, "w", compression=ZIP_DEFLATED) as archive:
-            archive.writestr("mission_bundle.json", mission_bundle.model_dump_json(indent=2))
-            archive.writestr("mission_meta.json", mission_meta.model_dump_json(indent=2))
-            archive.writestr(
-                "README.txt",
-                "Placeholder KMZ for product beta. Replace with DJI-compatible packing in production hardening.",
-            )
+            archive.writestr("wpmz/template.kml", _build_template_kml(mission_bundle, mission_meta))
+            archive.writestr("wpmz/waylines.wpml", _build_waylines_wpml(mission_bundle, mission_meta))
         return buffer.getvalue()
+
+
+MockMissionKmzGenerator = DjiWpmlKmzGenerator
 
 
 @dataclass(frozen=True)
@@ -132,3 +133,165 @@ class MissionArtifactService:
 
     def read(self, storage_key: str) -> bytes | None:
         return self.storage.read(storage_key)
+
+
+def _build_template_kml(mission_bundle: MissionBundleDto, mission_meta: MissionMetaDto) -> str:
+    placemarks = "\n".join(_waypoint_placemark(index, point, mission_bundle) for index, point in enumerate(_closed_path(mission_bundle)))
+    return _document_xml(
+        mission_bundle=mission_bundle,
+        mission_meta=mission_meta,
+        folder_body=f"""
+      <wpml:templateId>0</wpml:templateId>
+      <wpml:templateType>waypoint</wpml:templateType>
+      <wpml:waylineId>0</wpml:waylineId>
+      <wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode>
+      <wpml:autoFlightSpeed>{_fmt(mission_bundle.defaultSpeedMetersPerSecond)}</wpml:autoFlightSpeed>
+      <wpml:globalHeight>{_fmt(mission_bundle.defaultAltitudeMeters)}</wpml:globalHeight>
+      <wpml:globalUseStraightLine>1</wpml:globalUseStraightLine>
+      <wpml:globalWaypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:globalWaypointTurnMode>
+{placemarks}
+""",
+    )
+
+
+def _build_waylines_wpml(mission_bundle: MissionBundleDto, mission_meta: MissionMetaDto) -> str:
+    distance_m = _path_distance_m(mission_bundle)
+    placemarks = "\n".join(_waypoint_placemark(index, point, mission_bundle) for index, point in enumerate(_closed_path(mission_bundle)))
+    return _document_xml(
+        mission_bundle=mission_bundle,
+        mission_meta=mission_meta,
+        folder_body=f"""
+      <wpml:templateId>0</wpml:templateId>
+      <wpml:waylineId>0</wpml:waylineId>
+      <wpml:executeHeightMode>relativeToStartPoint</wpml:executeHeightMode>
+      <wpml:distance>{_fmt(distance_m)}</wpml:distance>
+      <wpml:duration>{_fmt(distance_m / mission_bundle.defaultSpeedMetersPerSecond)}</wpml:duration>
+      <wpml:autoFlightSpeed>{_fmt(mission_bundle.defaultSpeedMetersPerSecond)}</wpml:autoFlightSpeed>
+{placemarks}
+""",
+    )
+
+
+def _document_xml(*, mission_bundle: MissionBundleDto, mission_meta: MissionMetaDto, folder_body: str) -> str:
+    generated_ms = int(mission_meta.generatedAt.timestamp() * 1000)
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:wpml="http://www.dji.com/wpmz/1.0.2">
+  <Document>
+    <wpml:author>4Wall AI</wpml:author>
+    <wpml:createTime>{generated_ms}</wpml:createTime>
+    <wpml:updateTime>{generated_ms}</wpml:updateTime>
+    <wpml:missionConfig>
+      <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
+      <wpml:finishAction>noAction</wpml:finishAction>
+      <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
+      <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
+      <wpml:takeOffSecurityHeight>{_fmt(max(20.0, mission_bundle.defaultAltitudeMeters / 2))}</wpml:takeOffSecurityHeight>
+      <wpml:globalTransitionalSpeed>{_fmt(mission_bundle.defaultSpeedMetersPerSecond)}</wpml:globalTransitionalSpeed>
+    </wpml:missionConfig>
+    <Folder>
+      <wpml:missionId>{escape(mission_bundle.missionId)}</wpml:missionId>
+{folder_body.rstrip()}
+    </Folder>
+  </Document>
+</kml>
+"""
+
+
+def _waypoint_placemark(
+    index: int,
+    point: tuple[str, float, float, float | None, float | None, int | None],
+    mission_bundle: MissionBundleDto,
+) -> str:
+    label, lat, lng, altitude, speed, hold_seconds = point
+    height = altitude or mission_bundle.defaultAltitudeMeters
+    waypoint_speed = speed or mission_bundle.defaultSpeedMetersPerSecond
+    return f"""      <Placemark>
+        <name>{escape(label)}</name>
+        <Point>
+          <coordinates>{_fmt(lng)},{_fmt(lat)}</coordinates>
+        </Point>
+        <wpml:index>{index}</wpml:index>
+        <wpml:executeHeight>{_fmt(height)}</wpml:executeHeight>
+        <wpml:ellipsoidHeight>{_fmt(height)}</wpml:ellipsoidHeight>
+        <wpml:waypointSpeed>{_fmt(waypoint_speed)}</wpml:waypointSpeed>
+        <wpml:useGlobalSpeed>0</wpml:useGlobalSpeed>
+        <wpml:useGlobalHeight>0</wpml:useGlobalHeight>
+        <wpml:useGlobalHeadingParam>1</wpml:useGlobalHeadingParam>
+        <wpml:useGlobalTurnParam>1</wpml:useGlobalTurnParam>
+        <wpml:useStraightLine>1</wpml:useStraightLine>
+        <wpml:waypointTurnMode>toPointAndStopWithDiscontinuityCurvature</wpml:waypointTurnMode>
+        <wpml:actionGroup>
+          <wpml:actionGroupId>{index}</wpml:actionGroupId>
+          <wpml:actionGroupStartIndex>{index}</wpml:actionGroupStartIndex>
+          <wpml:actionGroupEndIndex>{index}</wpml:actionGroupEndIndex>
+          <wpml:actionGroupMode>sequence</wpml:actionGroupMode>
+          <wpml:actionTrigger>
+            <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
+          </wpml:actionTrigger>
+          <wpml:action>
+            <wpml:actionId>0</wpml:actionId>
+            <wpml:actionActuatorFunc>hover</wpml:actionActuatorFunc>
+            <wpml:actionActuatorFuncParam>
+              <wpml:hoverTime>{max(0, hold_seconds or 0)}</wpml:hoverTime>
+            </wpml:actionActuatorFuncParam>
+          </wpml:action>
+        </wpml:actionGroup>
+      </Placemark>"""
+
+
+def _closed_path(mission_bundle: MissionBundleDto) -> list[tuple[str, float, float, float | None, float | None, int | None]]:
+    launch = mission_bundle.launchPoint
+    points: list[tuple[str, float, float, float | None, float | None, int | None]] = [
+        (
+            launch.label or "L",
+            launch.location.lat,
+            launch.location.lng,
+            mission_bundle.defaultAltitudeMeters,
+            mission_bundle.defaultSpeedMetersPerSecond,
+            0,
+        )
+    ]
+    for waypoint in sorted(mission_bundle.orderedWaypoints, key=lambda item: item.sequence):
+        points.append(
+            (
+                str(waypoint.sequence),
+                waypoint.location.lat,
+                waypoint.location.lng,
+                waypoint.altitudeMeters,
+                waypoint.speedMetersPerSecond,
+                waypoint.holdSeconds,
+            )
+        )
+    points.append(
+        (
+            "L",
+            launch.location.lat,
+            launch.location.lng,
+            mission_bundle.defaultAltitudeMeters,
+            mission_bundle.defaultSpeedMetersPerSecond,
+            0,
+        )
+    )
+    return points
+
+
+def _path_distance_m(mission_bundle: MissionBundleDto) -> float:
+    points = _closed_path(mission_bundle)
+    return sum(_distance_m(points[index], points[index + 1]) for index in range(len(points) - 1))
+
+
+def _distance_m(
+    start: tuple[str, float, float, float | None, float | None, int | None],
+    end: tuple[str, float, float, float | None, float | None, int | None],
+) -> float:
+    radius_m = 6371000.0
+    lat_1 = radians(start[1])
+    lat_2 = radians(end[1])
+    delta_lat = radians(end[1] - start[1])
+    delta_lng = radians(end[2] - start[2])
+    haversine = sin(delta_lat / 2) ** 2 + cos(lat_1) * cos(lat_2) * sin(delta_lng / 2) ** 2
+    return 2 * radius_m * atan2(sqrt(haversine), sqrt(1 - haversine))
+
+
+def _fmt(value: float) -> str:
+    return f"{value:.7f}".rstrip("0").rstrip(".")

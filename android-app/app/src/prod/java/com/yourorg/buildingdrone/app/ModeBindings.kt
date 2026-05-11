@@ -44,8 +44,7 @@ fun createAppContainer(application: Application): AppContainer {
     val plannerApi = PlannerApi(authenticatedTransport)
     val missionRepository = ServerMissionRepository(
         plannerApi = plannerApi,
-        rootDirectory = File(application.filesDir, "planner-cache"),
-        planRequestFactory = ::defaultProdMissionPlanRequest
+        rootDirectory = File(application.filesDir, "planner-cache")
     )
     val flightUploadRepository = FileFlightUploadRepository(
         plannerApi = plannerApi,

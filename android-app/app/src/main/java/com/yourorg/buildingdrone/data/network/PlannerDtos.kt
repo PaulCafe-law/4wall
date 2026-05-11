@@ -92,6 +92,9 @@ data class MissionPlanResponseWire(
 @Serializable
 data class MissionMetaWire(
     val missionId: String,
+    val routeId: String? = null,
+    val dispatchId: String? = null,
+    val missionSource: String? = null,
     val bundleVersion: String,
     val generatedAt: String,
     val routeMode: String,

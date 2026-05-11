@@ -38,6 +38,7 @@ Rules:
    - Confirm `TAKEOFF` stays blocked when any gate fails.
    - Confirm camera stream, RC link, GPS readiness, and device health surfaces are visible.
    - For `Indoor Manual` and `Outdoor Manual Pilot`, verify live preview, dual-stick enable / disable, photo, record, and gimbal pitch controls.
+   - For manual modes with no verified bundle, verify the app clearly shows an `unplanned manual flight` posture.
 
 4. Bench test, simulator on aircraft
    - Verify waypoint mission load / upload / start / pause / stop.
@@ -76,9 +77,9 @@ Rules:
 
 ## Required Artifacts
 
-- Mission bundle used in the test
-- Blackbox log
-- Incident export for any `HOLD`, `RTH`, `Takeover`, or abort
+- Mission bundle used in the test for planned-bundle sessions
+- Blackbox log for planned-bundle sessions
+- Incident export for any `HOLD`, `RTH`, `Takeover`, or abort in planned-bundle sessions
 - Operator notes with exact UTC timestamps
 
 ## Pass Criteria
@@ -86,7 +87,8 @@ Rules:
 - No unexplained autonomous movement
 - All preflight gates behave conservatively
 - Every failsafe path is understandable by the operator on-device
-- Blackbox and incident export capture the test session end-to-end
+- Planned-bundle sessions retain blackbox and incident export end-to-end
+- Unplanned manual sessions clearly state that no blackbox or incident export is being retained
 
 ## Simulator Unavailable Default
 
@@ -119,3 +121,4 @@ When the session is explicitly configured as `indoor_no_gps`:
 - after `TAKEOVER`, landing authority is RC-only and the app must not offer app-controlled landing
 - indoor autonomy may proceed only after the current aircraft path proves it can accept mission upload and mission start
 - if upload or start is rejected, the session must downgrade to `manual indoor only`
+- if the operator proceeds without a verified mission bundle, treat the session as `unplanned manual flight`

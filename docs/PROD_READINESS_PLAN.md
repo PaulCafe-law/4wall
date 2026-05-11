@@ -11,6 +11,8 @@ Production-ready beta means:
 - Android remains safe when the server or desktop web app is unavailable during flight.
 - Failsafe and operator takeover paths are explicit, test-covered, and documented.
 - Internal deployment, smoke test, rollback, and canary steps are repeatable.
+- Manual flight can run in a reviewed lower-audit path when the operator explicitly chooses
+  `Indoor Manual` or `Outdoor Manual Pilot` without a verified mission bundle.
 
 It does not mean:
 
@@ -65,6 +67,9 @@ It does not mean:
 - Blackbox export exists.
 - Field and emergency procedures are documented.
 - Review finds no blocking state-machine, tenancy, or safety issues.
+- Repo docs clearly distinguish:
+  - planned-bundle patrol / manual sessions
+  - unplanned manual sessions with no server flight context and no blackbox retention
 
 ### Release
 
@@ -85,6 +90,8 @@ It does not mean:
 - Any blocker in MSDK activation, fly-safe, or device health holds the mission at preflight.
 - Any backend auth or storage regression blocks deployment until fixed.
 - Any web-app regression must fail closed on protected data and must not alter Android safety behavior.
+- Any confusion between `Outdoor Patrol` and `unplanned manual flight` blocks deployment until fixed;
+  the operator must always know whether the current session is producing planned mission artifacts.
 
 ## Sprint Order
 

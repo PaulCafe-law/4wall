@@ -3,6 +3,8 @@ package com.yourorg.buildingdrone.data.network
 class FakePlannerGateway : PlannerGateway {
     var planMissionHandler: suspend (MissionPlanRequestWire) -> MissionPlanResponseWire =
         { error("planMissionHandler not set") }
+    var activeMissionBundleHandler: suspend () -> MissionPlanResponseWire =
+        { error("activeMissionBundleHandler not set") }
     var downloadArtifactHandler: suspend (String) -> DownloadedArtifact =
         { error("downloadArtifactHandler not set") }
     var uploadFlightEventsHandler: suspend (String, FlightEventsRequestWire) -> FlightEventsAcceptedWire =
@@ -15,6 +17,10 @@ class FakePlannerGateway : PlannerGateway {
 
     override suspend fun planMission(request: MissionPlanRequestWire): MissionPlanResponseWire {
         return planMissionHandler(request)
+    }
+
+    override suspend fun activeMissionBundle(): MissionPlanResponseWire {
+        return activeMissionBundleHandler()
     }
 
     override suspend fun downloadArtifact(pathOrUrl: String): DownloadedArtifact {

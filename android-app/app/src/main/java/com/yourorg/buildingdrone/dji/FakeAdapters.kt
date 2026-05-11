@@ -59,6 +59,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     private var lastUploadedMissionId: String? = null
     private var executionState: MissionExecutionState = MissionExecutionState.IDLE
     private var lastError: String? = null
+    private var uploadProgressPercent: Int? = null
 
     override suspend fun loadKmzMission(request: MissionLoadRequest): MissionLoadStatus {
         val file = File(request.kmzPath)
@@ -67,12 +68,15 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
         } else {
             ZipFile(file).use { zip ->
                 val entries = zip.entries().asSequence().toList()
+                val names = entries.map { it.name }.toSet()
+                val valid = "wpmz/template.kml" in names && "wpmz/waylines.wpml" in names
                 MissionLoadStatus(
-                    valid = entries.any { it.name.endsWith(".wpml") || it.name.endsWith(".kml") },
+                    valid = valid,
                     missionId = request.expectedMissionId,
                     waylineCount = entries.count { it.name.endsWith(".wpml") },
                     entryCount = entries.size,
-                    sizeBytes = file.length()
+                    sizeBytes = file.length(),
+                    error = if (valid) null else "KMZ missing DJI WPML entries."
                 )
             }
         }
@@ -83,6 +87,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     override suspend fun uploadMission(missionBundle: MissionBundle): Boolean {
         lastUploadedMissionId = missionBundle.missionId
         executionState = MissionExecutionState.UPLOADED
+        uploadProgressPercent = 100
         lastError = null
         return true
     }
@@ -121,6 +126,8 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     override fun executionState(): MissionExecutionState = executionState
 
     override fun lastLoadedMission(): MissionLoadStatus? = loadedMission
+
+    override fun uploadProgressPercent(): Int? = uploadProgressPercent
 
     override fun lastCommandError(): String? = lastError
 

@@ -22,6 +22,16 @@ The production APK stays single-binary, but the operator UI is split into three 
 
 These are **operator console modes**, not new planner route schemas.
 
+`Outdoor Patrol` remains a planned-bundle flow.
+
+`Indoor Manual` and `Outdoor Manual Pilot` now also support an explicit
+`unplanned manual flight` path:
+
+- prod mode still requires operator login
+- a verified mission bundle is optional in manual modes
+- manual modes may continue into `Connection Guide`, `Preflight`, takeoff, and Manual Pilot with no bundle
+- when no verified bundle is attached, the session is treated as `unplanned manual flight`
+
 The planner contract remains patrol-route oriented:
 
 - `launchPoint`
@@ -74,11 +84,27 @@ Must not show:
 - patrol-route start controls
 - inspection / branch / capture tabs
 
+Bundle / audit rules:
+
+- operator login is still required in prod
+- mission bundle is optional
+- no verified bundle means the session is `unplanned manual flight`
+- unplanned manual flight does not create server flight context
+- unplanned manual flight does not upload event / telemetry data
+- unplanned manual flight does not keep blackbox / incident export artifacts
+
 ### Outdoor Patrol
 
 Purpose:
 
 - planned autonomous patrol using DJI waypoint mission / KMZ
+
+Bundle / audit rules:
+
+- a verified mission bundle is mandatory
+- GPS is a takeoff gate
+- simulator gate remains mandatory
+- server flight context, blackbox, and incident export remain enabled
 
 Required surfaces:
 
@@ -121,6 +147,17 @@ Must not show:
 - waypoint progress as the main state
 - inspection / branch / capture tabs
 
+Bundle / audit rules:
+
+- operator login is still required in prod
+- mission bundle is optional
+- GPS remains visible as a diagnostic, but does not block takeoff
+- fly-zone remains blocking
+- no verified bundle means the session is `unplanned manual flight`
+- unplanned manual flight does not create server flight context
+- unplanned manual flight does not upload event / telemetry data
+- unplanned manual flight does not keep blackbox / incident export artifacts
+
 ## Mission Setup Rules
 
 Mission Setup now chooses an **execution path**, not just an operating profile.
@@ -146,6 +183,8 @@ Rules:
 - Android must expose both:
   - `plannedOperatingProfile`
   - `executedOperatingProfile`
+- `Outdoor Patrol` still requires a verified mission bundle before leaving Mission Setup
+- `Indoor Manual` and `Outdoor Manual Pilot` may leave Mission Setup without a bundle
 
 ## Manual Pilot Definition
 
@@ -228,3 +267,5 @@ Web / ops surfaces must distinguish:
 - indoor v1 still does not expose RTH
 - outdoor patrol still uses DJI waypoint mission as transit authority
 - server and web remain outside the flight-critical loop
+- unplanned manual flight is intentionally a lower-audit mode than planned patrol
+- if a manual session starts without a verified bundle, operator notes become the primary audit artifact

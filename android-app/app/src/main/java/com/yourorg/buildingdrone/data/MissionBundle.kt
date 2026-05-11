@@ -125,6 +125,7 @@ data class MissionBundle(
     val defaultAltitudeMeters: Double,
     val defaultSpeedMetersPerSecond: Double,
     val bundleVersion: String = "2.0.0",
+    val missionSource: String = "demo",
     val artifacts: MissionArtifacts = demoMissionArtifacts(),
     val verification: MissionBundleVerification = MissionBundleVerification(),
     val failsafe: MissionFailsafe = MissionFailsafe(),

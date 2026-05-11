@@ -9,6 +9,7 @@ import com.yourorg.buildingdrone.dji.CameraStreamAdapter
 import com.yourorg.buildingdrone.dji.CameraStreamStatus
 import com.yourorg.buildingdrone.dji.DeviceHealthState
 import com.yourorg.buildingdrone.dji.FakeMobileSdkSession
+import com.yourorg.buildingdrone.dji.FakeCameraControlAdapter
 import com.yourorg.buildingdrone.dji.FakePerceptionAdapter
 import com.yourorg.buildingdrone.dji.FakeSimulatorAdapter
 import com.yourorg.buildingdrone.dji.FakeVirtualStickAdapter
@@ -21,6 +22,7 @@ import com.yourorg.buildingdrone.dji.SimulatorStatus
 import com.yourorg.buildingdrone.dji.UserAccountState
 import com.yourorg.buildingdrone.domain.operations.IndoorNoGpsConfirmationState
 import com.yourorg.buildingdrone.domain.operations.OperationProfile
+import com.yourorg.buildingdrone.domain.operations.OperatorConsoleMode
 import com.yourorg.buildingdrone.domain.safety.PreflightGateId
 import com.yourorg.buildingdrone.ui.ScreenDataState
 import org.junit.Assert.assertEquals
@@ -45,6 +47,7 @@ class AppContainerTest {
             waypointMissionAdapter = FakeWaypointMissionAdapter(),
             virtualStickAdapter = FakeVirtualStickAdapter(),
             cameraStreamAdapter = StaticCameraStreamAdapter(cameraStatus),
+            cameraControlAdapter = FakeCameraControlAdapter(),
             perceptionAdapter = FakePerceptionAdapter(),
             simulatorAdapter = FakeSimulatorAdapter()
         )
@@ -334,6 +337,82 @@ class AppContainerTest {
 
         assertFalse(evaluation.canTakeoff)
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.INDOOR_PROFILE_CONFIRMATION })
+    }
+
+    @Test
+    fun evaluatePreflight_allowsIndoorManualWithoutBundleWhenConfirmationsComplete() {
+        val container = createContainer(
+            hardwareSnapshot = HardwareSnapshot(
+                sdkRegistered = true,
+                aircraftConnected = true,
+                remoteControllerConnected = true,
+                productType = "Mini 4 Pro",
+                firmwareVersion = "01.00.1100",
+                gpsSatelliteCount = 0,
+                gpsSignalLevel = "LEVEL_0",
+                deviceHealth = DeviceHealthState(blocking = false),
+                flyZone = FlyZoneState(blocking = false)
+            ),
+            cameraStatus = CameraStreamStatus(
+                available = true,
+                streaming = true,
+                selectedCameraIndex = "LEFT_OR_MAIN",
+                sourceAvailable = true,
+                lastFrameTimestampMillis = 888L
+            )
+        )
+
+        val evaluation = container.evaluatePreflight(
+            missionBundle = null,
+            consoleMode = OperatorConsoleMode.INDOOR_MANUAL,
+            operationProfile = OperationProfile.INDOOR_NO_GPS,
+            indoorConfirmationState = IndoorNoGpsConfirmationState(
+                siteConfirmed = true,
+                rthUnavailableAcknowledged = true,
+                observerReady = true,
+                takeoffZoneClear = true,
+                manualTakeoverReady = true
+            )
+        )
+
+        assertTrue(evaluation.canTakeoff)
+        assertFalse(evaluation.blockers.any { it.gateId == PreflightGateId.MISSION_BUNDLE })
+    }
+
+    @Test
+    fun evaluateConnectionGuide_allowsOutdoorManualWithoutBundle() {
+        val container = createContainer(
+            hardwareSnapshot = HardwareSnapshot(
+                sdkRegistered = true,
+                aircraftConnected = true,
+                remoteControllerConnected = true,
+                productType = "Mini 4 Pro",
+                firmwareVersion = "01.00.1100",
+                gpsSatelliteCount = 0,
+                gpsSignalLevel = "LEVEL_0",
+                deviceHealth = DeviceHealthState(blocking = false),
+                flyZone = FlyZoneState(blocking = false),
+                userAccount = UserAccountState(loggedIn = true, accountId = "pilot")
+            ),
+            cameraStatus = CameraStreamStatus(
+                available = true,
+                streaming = true,
+                selectedCameraIndex = "LEFT_OR_MAIN",
+                sourceAvailable = true,
+                lastFrameTimestampMillis = 999L
+            )
+        )
+
+        val state = container.evaluateConnectionGuide(
+            missionBundle = null,
+            sdkState = SdkSessionState(initialized = true, registered = true),
+            usbAccessoryAttached = true,
+            consoleMode = OperatorConsoleMode.OUTDOOR_MANUAL_PILOT,
+            operationProfile = OperationProfile.OUTDOOR_GPS_REQUIRED
+        )
+
+        assertTrue(state.canContinueToPreflight)
+        assertFalse(state.blockers.any { it.contains("Mission bundle", ignoreCase = true) })
     }
 
     @Test

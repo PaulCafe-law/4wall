@@ -30,6 +30,7 @@ class DjiWaypointMissionAdapter(
     private var loadedMissionId: String? = null
     private var executionState = MissionExecutionState.IDLE
     private var lastCommandError: String? = null
+    private var uploadProgressPercent: Int? = null
 
     override suspend fun loadKmzMission(request: MissionLoadRequest): MissionLoadStatus {
         val file = File(request.kmzPath)
@@ -38,13 +39,15 @@ class DjiWaypointMissionAdapter(
         } else {
             ZipFile(file).use { zip ->
                 val entries = zip.entries().asSequence().toList()
+                val names = entries.map { it.name }.toSet()
+                val valid = "wpmz/template.kml" in names && "wpmz/waylines.wpml" in names
                 MissionLoadStatus(
-                    valid = entries.any { it.name.endsWith(".wpml") || it.name.endsWith(".kml") },
+                    valid = valid,
                     missionId = request.expectedMissionId,
                     waylineCount = entries.count { it.name.endsWith(".wpml") },
                     entryCount = entries.size,
                     sizeBytes = file.length(),
-                    error = null
+                    error = if (valid) null else "KMZ missing DJI WPML entries."
                 )
             }
         }
@@ -76,11 +79,15 @@ class DjiWaypointMissionAdapter(
             }
         }
 
+        uploadProgressPercent = 0
         val uploaded = suspendCoroutine { continuation ->
             gateway.uploadKmz(kmzPath, object : CommonCallbacks.CompletionCallbackWithProgress<Double> {
-                override fun onProgressUpdate(progress: Double) = Unit
+                override fun onProgressUpdate(progress: Double) {
+                    uploadProgressPercent = progress.asPercent()
+                }
 
                 override fun onSuccess() {
+                    uploadProgressPercent = 100
                     lastCommandError = null
                     continuation.resume(true)
                 }
@@ -96,6 +103,10 @@ class DjiWaypointMissionAdapter(
     }
 
     override suspend fun startMission(): Boolean {
+        if (executionState !in setOf(MissionExecutionState.UPLOADED, MissionExecutionState.PAUSED)) {
+            lastCommandError = "Mission is not uploaded."
+            return false
+        }
         val missionId = loadedMissionId ?: run {
             lastCommandError = "No loaded mission ID."
             return false
@@ -136,7 +147,14 @@ class DjiWaypointMissionAdapter(
 
     override fun lastLoadedMission(): MissionLoadStatus? = loadedMission
 
+    override fun uploadProgressPercent(): Int? = uploadProgressPercent
+
     override fun lastCommandError(): String? = lastCommandError
+
+    private fun Double.asPercent(): Int {
+        val normalized = if (this <= 1.0) this * 100.0 else this
+        return normalized.coerceIn(0.0, 100.0).toInt()
+    }
 
     private suspend fun suspendCompletion(
         block: (CommonCallbacks.CompletionCallback) -> Unit

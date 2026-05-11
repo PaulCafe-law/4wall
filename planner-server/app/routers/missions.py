@@ -44,7 +44,7 @@ from app.inspection_reporting import (
     serialize_report,
 )
 from app.mission_delivery import build_artifact_map, serialize_mission_delivery
-from app.models import Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
+from app.models import DispatchRecord, Flight, FlightEvent, Mission, MissionArtifact, OperatorAccount, Site, TelemetryBatch
 from app.providers import RouteProvider, RouteProviderError
 from app.web_dto import (
     FlightEventRecordDto,
@@ -60,6 +60,34 @@ from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_o
 
 
 router = APIRouter(tags=["missions"])
+
+
+@router.get("/v1/operator/missions/active-bundle", response_model=MissionPlanResponseDto)
+def get_operator_active_bundle(
+    current_operator: OperatorAccount = Depends(get_current_operator),
+    session: Session = Depends(get_session),
+) -> MissionPlanResponseDto:
+    assignee_candidates = [current_operator.username, current_operator.display_name, current_operator.id]
+    dispatch = session.exec(
+        select(DispatchRecord)
+        .where(DispatchRecord.status.in_(["assigned", "sent", "accepted"]))
+        .where(DispatchRecord.assignee.in_(assignee_candidates))
+        .order_by(DispatchRecord.updated_at.desc(), DispatchRecord.dispatched_at.desc())
+    ).first()
+    if dispatch is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="assigned_mission_not_found")
+
+    mission = session.get(Mission, dispatch.mission_id)
+    if mission is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="mission_not_found")
+    if not mission.response_json:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mission_artifacts_not_ready")
+
+    try:
+        response = MissionPlanResponseDto.model_validate(mission.response_json)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mission_artifacts_not_ready") from exc
+    return response
 
 
 @router.post("/v1/missions/plan", response_model=MissionPlanResponseDto)

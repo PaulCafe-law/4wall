@@ -15,7 +15,6 @@ import com.yourorg.buildingdrone.data.auth.plannerJson
 import com.yourorg.buildingdrone.data.network.CachedMissionRecord
 import com.yourorg.buildingdrone.data.network.MissionArtifactDescriptorWire
 import com.yourorg.buildingdrone.data.network.MissionMetaWire
-import com.yourorg.buildingdrone.data.network.MissionPlanRequestWire
 import com.yourorg.buildingdrone.data.network.MissionPlanResponseWire
 import com.yourorg.buildingdrone.data.network.PlannerAuthException
 import com.yourorg.buildingdrone.data.network.PlannerGateway
@@ -30,11 +29,11 @@ import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.UUID
+import java.util.zip.ZipInputStream
 
 class ServerMissionRepository(
     private val plannerApi: PlannerGateway,
     rootDirectory: File,
-    private val planRequestFactory: () -> MissionPlanRequestWire,
     private val json: Json = plannerJson
 ) : MissionRepository {
     private val cacheRoot = File(rootDirectory, "missions")
@@ -74,8 +73,8 @@ class ServerMissionRepository(
     override suspend fun syncMissionBundle(): MissionSyncResult {
         return withContext(Dispatchers.IO) {
             try {
-                val response = retryWithBackoff("mission plan") {
-                    plannerApi.planMission(planRequestFactory())
+                val response = retryWithBackoff("assigned mission bundle") {
+                    plannerApi.activeMissionBundle()
                 }
                 val cached = readCachedRecord()
                 if (cached != null &&
@@ -112,6 +111,7 @@ class ServerMissionRepository(
                     versionHeader = kmz.versionHeader,
                     artifactName = "mission.kmz"
                 )
+                validateMissionKmz(kmz.bytes)
                 verifyArtifact(
                     bytes = meta.bytes,
                     descriptor = response.artifacts.missionMeta,
@@ -215,6 +215,27 @@ class ServerMissionRepository(
         }
     }
 
+    private fun validateMissionKmz(bytes: ByteArray) {
+        val entries = mutableSetOf<String>()
+        try {
+            ZipInputStream(bytes.inputStream()).use { zip ->
+                while (true) {
+                    val entry = zip.nextEntry ?: break
+                    entries += entry.name
+                    zip.closeEntry()
+                }
+            }
+        } catch (error: IOException) {
+            throw IOException("mission.kmz is not a valid KMZ archive", error)
+        }
+        require("wpmz/template.kml" in entries) {
+            "mission.kmz missing wpmz/template.kml"
+        }
+        require("wpmz/waylines.wpml" in entries) {
+            "mission.kmz missing wpmz/waylines.wpml"
+        }
+    }
+
     private fun validateMissionMeta(
         bytes: ByteArray,
         response: MissionPlanResponseWire
@@ -306,6 +327,7 @@ class ServerMissionRepository(
             defaultAltitudeMeters = record.missionBundle.defaultAltitudeMeters,
             defaultSpeedMetersPerSecond = record.missionBundle.defaultSpeedMetersPerSecond,
             bundleVersion = record.missionBundle.bundleVersion.ifBlank { record.bundleVersion },
+            missionSource = "assigned_dispatch",
             artifacts = MissionArtifacts(
                 missionKmz = MissionArtifact(
                     name = "mission.kmz",

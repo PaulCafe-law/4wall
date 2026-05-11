@@ -176,6 +176,9 @@ class MissionPlanResponseDto(BaseModel):
 
 class MissionMetaDto(BaseModel):
     missionId: str
+    routeId: str | None = None
+    dispatchId: str | None = None
+    missionSource: str | None = None
     bundleVersion: str = "1.0.0"
     generatedAt: datetime
     routeMode: Literal["road_network_following"]

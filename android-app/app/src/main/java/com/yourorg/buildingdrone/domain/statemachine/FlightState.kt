@@ -1,5 +1,7 @@
 package com.yourorg.buildingdrone.domain.statemachine
 
+import com.yourorg.buildingdrone.domain.operations.MissionContextMode
+
 enum class FlightStage {
     IDLE,
     PRECHECK,
@@ -66,6 +68,7 @@ data class FlightState(
     val missionId: String? = null,
     val missionBundleLoaded: Boolean = false,
     val missionBundleVerified: Boolean = false,
+    val missionContextMode: MissionContextMode = MissionContextMode.PLANNED_BUNDLE,
     val preflightReady: Boolean = false,
     val missionUploaded: Boolean = false,
     val authValid: Boolean = true,
@@ -81,6 +84,7 @@ data class FlightState(
 data class TransitionContext(
     val missionBundleLoaded: Boolean = false,
     val missionBundleVerified: Boolean = false,
+    val missionContextMode: MissionContextMode? = null,
     val preflightReady: Boolean = false,
     val missionUploaded: Boolean = false,
     val authValid: Boolean? = null,
@@ -119,13 +123,18 @@ class DefaultTransitionGuard : TransitionGuard {
         to: FlightStage,
         context: TransitionContext
     ): Boolean {
+        val effectiveMissionContextMode = context.missionContextMode ?: from.missionContextMode
+        val unplannedManual = effectiveMissionContextMode == MissionContextMode.UNPLANNED_MANUAL
+
         return when (to) {
             FlightStage.PRECHECK -> from.stage == FlightStage.IDLE
-            FlightStage.MISSION_READY -> (context.missionBundleLoaded || from.missionBundleLoaded) &&
-                (context.missionBundleVerified || from.missionBundleVerified)
+            FlightStage.MISSION_READY -> unplannedManual || (
+                (context.missionBundleLoaded || from.missionBundleLoaded) &&
+                    (context.missionBundleVerified || from.missionBundleVerified)
+                )
 
-            FlightStage.TAKEOFF -> (context.missionUploaded || from.missionUploaded) &&
-                (context.preflightReady || from.preflightReady)
+            FlightStage.TAKEOFF -> (context.preflightReady || from.preflightReady) &&
+                (unplannedManual || context.missionUploaded || from.missionUploaded)
 
             FlightStage.HOVER_READY -> context.preflightReady || from.preflightReady
             FlightStage.TRANSIT -> from.missionUploaded || context.missionUploaded

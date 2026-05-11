@@ -4,7 +4,6 @@ import com.yourorg.buildingdrone.data.MissionSyncResult
 import com.yourorg.buildingdrone.data.auth.plannerJson
 import com.yourorg.buildingdrone.data.network.DownloadedArtifact
 import com.yourorg.buildingdrone.data.network.FakePlannerGateway
-import com.yourorg.buildingdrone.data.network.FlightProfileWire
 import com.yourorg.buildingdrone.data.network.GeoPointWire
 import com.yourorg.buildingdrone.data.network.LaunchPointWire
 import com.yourorg.buildingdrone.data.network.MissionArtifactDescriptorWire
@@ -12,7 +11,6 @@ import com.yourorg.buildingdrone.data.network.MissionArtifactsWire
 import com.yourorg.buildingdrone.data.network.MissionBundleWire
 import com.yourorg.buildingdrone.data.network.MissionFailsafeWire
 import com.yourorg.buildingdrone.data.network.MissionMetaWire
-import com.yourorg.buildingdrone.data.network.MissionPlanRequestWire
 import com.yourorg.buildingdrone.data.network.MissionPlanResponseWire
 import com.yourorg.buildingdrone.data.network.OrderedWaypointWire
 import kotlinx.coroutines.test.runTest
@@ -20,8 +18,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.MessageDigest
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.io.path.createTempDirectory
 
 class ServerMissionRepositoryTest {
@@ -29,7 +30,7 @@ class ServerMissionRepositoryTest {
     fun syncMissionBundle_downloadsAndCachesVerifiedBundle() = runTest {
         val gateway = FakePlannerGateway()
         val fixture = missionFixture("msn-001")
-        gateway.planMissionHandler = { fixture.response }
+        gateway.activeMissionBundleHandler = { fixture.response }
         gateway.downloadArtifactHandler = { path ->
             when {
                 path.endsWith("mission.kmz") -> fixture.kmz
@@ -39,8 +40,7 @@ class ServerMissionRepositoryTest {
         }
         val repository = ServerMissionRepository(
             plannerApi = gateway,
-            rootDirectory = createTempDirectory(prefix = "mission-sync").toFile(),
-            planRequestFactory = ::defaultRequest
+            rootDirectory = createTempDirectory(prefix = "mission-sync").toFile()
         )
 
         val result = repository.syncMissionBundle()
@@ -64,7 +64,7 @@ class ServerMissionRepositoryTest {
     fun syncMissionBundle_checksumFailure_preservesPreviousVerifiedCache() = runTest {
         val gateway = FakePlannerGateway()
         val firstFixture = missionFixture("msn-001")
-        gateway.planMissionHandler = { firstFixture.response }
+        gateway.activeMissionBundleHandler = { firstFixture.response }
         gateway.downloadArtifactHandler = { path ->
             when {
                 path.endsWith("mission.kmz") -> firstFixture.kmz
@@ -75,13 +75,12 @@ class ServerMissionRepositoryTest {
         val root = createTempDirectory(prefix = "mission-sync").toFile()
         val repository = ServerMissionRepository(
             plannerApi = gateway,
-            rootDirectory = root,
-            planRequestFactory = ::defaultRequest
+            rootDirectory = root
         )
         repository.syncMissionBundle()
 
         val corruptFixture = missionFixture("msn-002")
-        gateway.planMissionHandler = { corruptFixture.response }
+        gateway.activeMissionBundleHandler = { corruptFixture.response }
         gateway.downloadArtifactHandler = { path ->
             when {
                 path.endsWith("mission.kmz") -> corruptFixture.kmz
@@ -102,7 +101,7 @@ class ServerMissionRepositoryTest {
     fun loadMissionBundle_revalidatesCachedChecksumsOnRead() = runTest {
         val gateway = FakePlannerGateway()
         val fixture = missionFixture("msn-003")
-        gateway.planMissionHandler = { fixture.response }
+        gateway.activeMissionBundleHandler = { fixture.response }
         gateway.downloadArtifactHandler = { path ->
             when {
                 path.endsWith("mission.kmz") -> fixture.kmz
@@ -113,8 +112,7 @@ class ServerMissionRepositoryTest {
         val root = createTempDirectory(prefix = "mission-sync").toFile()
         val repository = ServerMissionRepository(
             plannerApi = gateway,
-            rootDirectory = root,
-            planRequestFactory = ::defaultRequest
+            rootDirectory = root
         )
         repository.syncMissionBundle()
 
@@ -132,7 +130,7 @@ class ServerMissionRepositoryTest {
     fun clearCachedMissionBundle_removesActiveBundleAndFlightContext() = runTest {
         val gateway = FakePlannerGateway()
         val fixture = missionFixture("msn-004")
-        gateway.planMissionHandler = { fixture.response }
+        gateway.activeMissionBundleHandler = { fixture.response }
         gateway.downloadArtifactHandler = { path ->
             when {
                 path.endsWith("mission.kmz") -> fixture.kmz
@@ -142,8 +140,7 @@ class ServerMissionRepositoryTest {
         }
         val repository = ServerMissionRepository(
             plannerApi = gateway,
-            rootDirectory = createTempDirectory(prefix = "mission-sync").toFile(),
-            planRequestFactory = ::defaultRequest
+            rootDirectory = createTempDirectory(prefix = "mission-sync").toFile()
         )
         repository.syncMissionBundle()
 
@@ -153,8 +150,33 @@ class ServerMissionRepositoryTest {
         assertEquals(null, repository.loadActiveFlightContext())
     }
 
-    private fun missionFixture(missionId: String): MissionFixture {
-        val kmzBytes = "kmz-$missionId".toByteArray()
+    @Test
+    fun syncMissionBundle_rejectsKmzWithoutDjiWpmlEntries() = runTest {
+        val gateway = FakePlannerGateway()
+        val fixture = missionFixture("msn-placeholder", kmzBytes = placeholderKmzBytes())
+        gateway.activeMissionBundleHandler = { fixture.response }
+        gateway.downloadArtifactHandler = { path ->
+            when {
+                path.endsWith("mission.kmz") -> fixture.kmz
+                path.endsWith("mission_meta.json") -> fixture.meta
+                else -> error("Unexpected path $path")
+            }
+        }
+        val repository = ServerMissionRepository(
+            plannerApi = gateway,
+            rootDirectory = createTempDirectory(prefix = "mission-sync").toFile()
+        )
+
+        val result = repository.syncMissionBundle()
+
+        assertTrue(result is MissionSyncResult.Failure)
+        assertEquals(null, repository.loadMissionBundle())
+    }
+
+    private fun missionFixture(
+        missionId: String,
+        kmzBytes: ByteArray = djiWpmlKmzBytes(missionId)
+    ): MissionFixture {
         val kmzChecksum = sha256(kmzBytes)
         val launchPoint = LaunchPointWire(
             launchPointId = "launch-01",
@@ -258,49 +280,44 @@ class ServerMissionRepositoryTest {
         )
     }
 
-    private fun defaultRequest(): MissionPlanRequestWire {
-        return MissionPlanRequestWire(
-            missionName = "test",
-            launchPoint = LaunchPointWire(
-                launchPointId = "launch-01",
-                label = "tower-a-launch",
-                location = GeoPointWire(
-                    lat = 25.03391,
-                    lng = 121.56452
-                )
-            ),
-            orderedWaypoints = listOf(
-                OrderedWaypointWire(
-                    waypointId = "wp-001",
-                    sequence = 1,
-                    location = GeoPointWire(
-                        lat = 25.03412,
-                        lng = 121.56472
-                    ),
-                    altitudeMeters = 35.0,
-                    speedMetersPerSecond = 4.0
-                ),
-                OrderedWaypointWire(
-                    waypointId = "wp-002",
-                    sequence = 2,
-                    location = GeoPointWire(
-                        lat = 25.03441,
-                        lng = 121.56501
-                    ),
-                    altitudeMeters = 35.0,
-                    speedMetersPerSecond = 4.0
-                )
-            ),
-            implicitReturnToLaunch = true,
-            routingMode = "road_network_following",
-            flightProfile = FlightProfileWire(
-                defaultAltitudeM = 35.0,
-                defaultSpeedMps = 4.0,
-                maxApproachSpeedMps = 2.0
-            ),
-            operatingProfile = "outdoor_gps_patrol",
-            demoMode = false
+    private fun djiWpmlKmzBytes(missionId: String): ByteArray {
+        return kmzBytes(
+            "wpmz/template.kml" to """
+                <kml>
+                  <Document>
+                    <name>$missionId</name>
+                  </Document>
+                </kml>
+            """.trimIndent(),
+            "wpmz/waylines.wpml" to """
+                <kml>
+                  <Document>
+                    <Placemark>
+                      <name>$missionId</name>
+                    </Placemark>
+                  </Document>
+                </kml>
+            """.trimIndent()
         )
+    }
+
+    private fun placeholderKmzBytes(): ByteArray {
+        return kmzBytes(
+            "mission_bundle.json" to "{}",
+            "README.txt" to "placeholder"
+        )
+    }
+
+    private fun kmzBytes(vararg entries: Pair<String, String>): ByteArray {
+        val buffer = ByteArrayOutputStream()
+        ZipOutputStream(buffer).use { zip ->
+            entries.forEach { (name, content) ->
+                zip.putNextEntry(ZipEntry(name))
+                zip.write(content.toByteArray())
+                zip.closeEntry()
+            }
+        }
+        return buffer.toByteArray()
     }
 
     private fun sha256(bytes: ByteArray): String {
