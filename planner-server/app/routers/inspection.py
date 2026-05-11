@@ -595,6 +595,10 @@ def create_route_flight_task(
         request_json={},
         response_json={},
     )
+    # Postgres enforces the dispatch -> mission FK immediately, so persist the mission first.
+    session.add(mission)
+    session.flush()
+
     dispatch = DispatchRecord(
         organization_id=route.organization_id,
         mission_id=mission.id,
