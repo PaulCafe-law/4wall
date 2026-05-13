@@ -1159,11 +1159,11 @@ export function ControlPlanePage() {
                       v{route.version}
                     </span>
                   </div>
-                  <div className="mt-4 grid gap-3 md:grid-cols-4">
-                    <Metric label="起降來源" value="DJI Home Point" />
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                    <Metric label="起降來源" value="Home Point" hint="DJI 起飛時記錄" />
                     <Metric label="巡邏點" value={route.pointCount} />
                     <Metric label="預估時間" value={formatDuration(route.estimatedDurationSec)} />
-                    <Metric label="返航策略" value="航點完成後返航" />
+                    <Metric label="返航策略" value="返航" hint="航點完成後" />
                     <Metric label="更新時間" value={formatDateTime(route.updatedAt)} />
                   </div>
                   {auth.isInternal && canWriteSelectedSite ? (

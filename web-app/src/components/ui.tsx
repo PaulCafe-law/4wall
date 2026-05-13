@@ -104,10 +104,12 @@ export function Metric({
   hint?: string
 }) {
   return (
-    <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 p-4">
+    <div className="min-w-0 rounded-2xl border border-chrome-200 bg-chrome-50/80 p-4">
       <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">{label}</p>
-      <p className="mt-3 font-display text-3xl font-semibold tracking-[-0.04em] text-chrome-950">{value}</p>
-      {hint ? <p className="mt-2 text-sm text-chrome-700">{hint}</p> : null}
+      <p className="mt-3 break-words font-display text-2xl font-semibold leading-tight tracking-[-0.035em] text-chrome-950 sm:text-3xl">
+        {value}
+      </p>
+      {hint ? <p className="mt-2 text-sm leading-relaxed text-chrome-700">{hint}</p> : null}
     </div>
   )
 }
