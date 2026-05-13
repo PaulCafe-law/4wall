@@ -18,7 +18,7 @@ The previous Sprint 4 model stored a route-owned `L` and generated executable KM
 
 That made the web route editor look like it knew the aircraft placement before a field operator arrived. For the Mini 4 Pro patrol flow, the safer and clearer v1 model is:
 
-`current aircraft placement / DJI Home Point -> waypoint[1..N] -> Android-triggered return home`
+`current aircraft placement / DJI Home Point -> waypoint[1..N] -> DJI finishAction goHome`
 
 The web and server remain planning / artifact surfaces only. They do not enter the flight-critical loop.
 
@@ -33,7 +33,8 @@ The web and server remain planning / artifact surfaces only. They do not enter t
 - KMZ height and speed fields must be fixed to `10m` and `1.5m/s`.
 - Android must accept mission bundles with `launchPoint = null`.
 - Android outdoor patrol preflight must treat DJI Home Point readiness as the launch / return gate.
+- KMZ must set `finishAction = goHome` so the DJI waypoint mission returns to the runtime Home Point after the last waypoint.
 
 ## Safety Boundary
 
-Waypoint execution remains under DJI MSDK waypoint mission authority. Return and landing are initiated and monitored by Android through DJI MSDK. The server and web app do not issue stick control, return-home control, or landing control.
+Waypoint execution and return-home remain under DJI MSDK authority. Android monitors the result and owns local landing / fallback actions through DJI MSDK. The server and web app do not issue stick control, return-home control, or landing control.

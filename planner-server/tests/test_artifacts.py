@@ -45,6 +45,11 @@ def test_local_artifact_storage_persists_generated_kmz_and_meta(tmp_path: Path) 
 
     ET.fromstring(template)
     waylines_root = ET.fromstring(waylines)
+    finish_actions = [
+        element.text
+        for element in waylines_root.findall(".//{http://www.dji.com/wpmz/1.0.2}finishAction")
+    ]
+    assert finish_actions == ["goHome"]
     coordinates = [
         element.text
         for element in waylines_root.findall(".//{http://www.opengis.net/kml/2.2}coordinates")

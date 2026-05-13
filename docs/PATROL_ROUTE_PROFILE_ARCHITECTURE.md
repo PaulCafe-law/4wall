@@ -89,8 +89,8 @@ Nominal runtime flow:
 5. stable hover
 6. start waypoint mission
 7. DJI executes Web-authored waypoint `1..N`
-8. Android triggers return-to-home from the DJI Home Point on mission completion
-9. Android starts auto landing after return / landing policy handoff
+8. DJI executes `finishAction = goHome` and returns to the runtime Home Point
+9. Android monitors return / landing policy handoff and preserves fallback actions
 
 Patrol state machine should prioritize:
 
@@ -155,7 +155,7 @@ Outdoor acceptance:
 
 - route payload does not require an explicit final waypoint back to launch
 - KMZ execution path contains only `1..N` waypoints
-- Android triggers return-to-home after waypoint completion using the DJI Home Point
+- KMZ `finishAction = goHome` returns to the DJI Home Point after waypoint completion
 - app can distinguish `upload`, `takeoff`, `mission running`, `mission complete`, and `landing fallback`
 
 Indoor acceptance:

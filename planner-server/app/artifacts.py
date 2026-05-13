@@ -182,7 +182,7 @@ def _document_xml(*, mission_bundle: MissionBundleDto, mission_meta: MissionMeta
     <wpml:updateTime>{generated_ms}</wpml:updateTime>
     <wpml:missionConfig>
       <wpml:flyToWaylineMode>safely</wpml:flyToWaylineMode>
-      <wpml:finishAction>noAction</wpml:finishAction>
+      <wpml:finishAction>{'goHome' if mission_bundle.returnHomeOnFinish else 'noAction'}</wpml:finishAction>
       <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
       <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
       <wpml:takeOffSecurityHeight>{_fmt(mission_bundle.defaultAltitudeMeters)}</wpml:takeOffSecurityHeight>
