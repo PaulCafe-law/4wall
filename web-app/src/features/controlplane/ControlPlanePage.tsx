@@ -232,6 +232,26 @@ function eyebrowLabel(label: string) {
   )
 }
 
+function RouteSummaryRow({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: string
+  hint?: string
+}) {
+  return (
+    <div className="grid gap-1 px-4 py-3 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-baseline sm:gap-4">
+      <p className="text-sm font-medium text-chrome-500">{label}</p>
+      <div className="min-w-0">
+        <p className="break-words text-base font-semibold leading-6 text-chrome-950">{value}</p>
+        {hint ? <p className="mt-1 text-sm leading-6 text-chrome-600">{hint}</p> : null}
+      </div>
+    </div>
+  )
+}
+
 function dispatchTransitionCopy(status: string) {
   switch (status) {
     case 'queued':
@@ -1159,12 +1179,12 @@ export function ControlPlanePage() {
                       v{route.version}
                     </span>
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    <Metric label="起降來源" value="Home Point" hint="DJI 起飛時記錄" />
-                    <Metric label="巡邏點" value={route.pointCount} />
-                    <Metric label="預估時間" value={formatDuration(route.estimatedDurationSec)} />
-                    <Metric label="返航策略" value="返航" hint="航點完成後" />
-                    <Metric label="更新時間" value={formatDateTime(route.updatedAt)} />
+                  <div className="mt-4 divide-y divide-chrome-200 rounded-2xl border border-chrome-200 bg-chrome-50/70">
+                    <RouteSummaryRow label="起降來源" value="DJI Home Point" hint="由 Android 在起飛時記錄" />
+                    <RouteSummaryRow label="巡邏航點" value={`${route.pointCount} 個航點`} />
+                    <RouteSummaryRow label="預估時間" value={formatDuration(route.estimatedDurationSec)} />
+                    <RouteSummaryRow label="返航策略" value="航點完成後自動返航" />
+                    <RouteSummaryRow label="更新時間" value={formatDateTime(route.updatedAt)} />
                   </div>
                   {auth.isInternal && canWriteSelectedSite ? (
                     <div className="mt-4 rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-4">
