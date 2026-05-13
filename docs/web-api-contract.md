@@ -217,25 +217,26 @@ This extends the existing planner API with tenant and requester context.
   "siteId": "site_123",
   "missionName": "tower-a-prod-beta",
   "requestedByUserId": "usr_123",
-  "origin": {
-    "lat": 25.03391,
-    "lng": 121.56452
-  },
-  "targetBuilding": {
-    "buildingId": "tower-a",
-    "label": "Tower A"
-  },
   "routingMode": "road_network_following",
-  "corridorPolicy": {
-    "defaultHalfWidthM": 8.0,
-    "maxHalfWidthM": 12.0,
-    "branchConfirmRadiusM": 18.0
-  },
+  "launchPoint": null,
+  "launchPointSource": "aircraft_home_point_at_takeoff",
+  "returnHomeOnFinish": true,
+  "operatingProfile": "outdoor_gps_patrol",
   "flightProfile": {
-    "defaultAltitudeM": 35.0,
-    "defaultSpeedMps": 4.0,
+    "defaultAltitudeM": 10.0,
+    "defaultSpeedMps": 1.5,
     "maxApproachSpeedMps": 1.0
   },
+  "orderedWaypoints": [
+    {
+      "waypointId": "wp-1",
+      "label": "North gate",
+      "lat": 25.03421,
+      "lng": 121.56501,
+      "altitudeM": 10.0,
+      "speedMps": 1.5
+    }
+  ],
   "demoMode": false
 }
 ```

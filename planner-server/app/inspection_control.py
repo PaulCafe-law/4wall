@@ -42,7 +42,11 @@ def _normalize_waypoint_kind(kind: str | None) -> str:
     return "transit"
 
 
-def _serialize_launch_point(route: InspectionRoute) -> dict[str, object]:
+def _serialize_legacy_launch_point(route: InspectionRoute) -> dict[str, object] | None:
+    # Route-owned launch points are legacy only. v1 patrol execution uses the
+    # DJI Home Point captured by Android at takeoff.
+    _ = route
+    return None
     launch_point = route.launch_point_json or {}
     if launch_point.get("lat") is not None and launch_point.get("lng") is not None:
         return {
@@ -81,18 +85,22 @@ def _serialize_launch_point(route: InspectionRoute) -> dict[str, object]:
     }
 
 
+def _serialize_launch_point(route: InspectionRoute) -> dict[str, object] | None:
+    # Route-owned launch points are legacy-only in v1. Android captures the
+    # DJI Home Point at takeoff and owns return-home execution.
+    _ = route
+    return None
+
+
 def _route_geometry(launch_point: dict[str, object], waypoints: list[dict]) -> list[dict[str, float]]:
     geometry: list[dict[str, float]] = []
-    if launch_point.get("lat") is not None and launch_point.get("lng") is not None:
-        geometry.append({"lat": float(launch_point["lat"]), "lng": float(launch_point["lng"])})
+    _ = launch_point
     for waypoint in waypoints:
         lat = waypoint.get("lat")
         lng = waypoint.get("lng")
         if lat is None or lng is None:
             continue
         geometry.append({"lat": float(lat), "lng": float(lng)})
-    if len(geometry) > 1:
-        geometry.append(geometry[0])
     return geometry
 
 
@@ -112,7 +120,7 @@ def _estimate_route_duration_seconds(
     speed_mps = (
         planning_parameters.get("defaultSpeedMps")
         or planning_parameters.get("defaultSpeedMetersPerSecond")
-        or 4
+        or 1.5
     )
     speed_mps = max(float(speed_mps), 0.5)
     earth_radius_m = 6_371_000

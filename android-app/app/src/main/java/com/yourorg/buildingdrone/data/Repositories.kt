@@ -104,6 +104,15 @@ sealed interface MissionSyncResult {
 }
 
 private fun buildMissionMetaJson(bundle: MissionBundle): String {
+    val launchPointJson = bundle.launchPoint?.let { launchPoint ->
+        """
+          {
+            "label": "${launchPoint.label}",
+            "lat": ${launchPoint.location.lat},
+            "lng": ${launchPoint.location.lng}
+          }
+        """.trimIndent()
+    } ?: "null"
     return """
         {
           "missionId": "${bundle.missionId}",
@@ -114,11 +123,9 @@ private fun buildMissionMetaJson(bundle: MissionBundle): String {
           "operatingProfile": "${bundle.operatingProfile.wireName}",
           "waypointCount": ${bundle.orderedWaypoints.size},
           "implicitReturnToLaunch": ${bundle.implicitReturnToLaunch.toString().lowercase()},
-          "launchPoint": {
-            "label": "${bundle.launchPoint.label}",
-            "lat": ${bundle.launchPoint.location.lat},
-            "lng": ${bundle.launchPoint.location.lng}
-          },
+          "returnHomeOnFinish": ${bundle.returnHomeOnFinish.toString().lowercase()},
+          "launchPointSource": "${bundle.launchPointSource}",
+          "launchPoint": $launchPointJson,
           "defaultAltitudeMeters": ${bundle.defaultAltitudeMeters},
           "defaultSpeedMetersPerSecond": ${bundle.defaultSpeedMetersPerSecond},
           "landingPolicy": "android_auto_landing_with_rc_fallback",
@@ -137,9 +144,10 @@ private fun writeKmzSeed(target: File, bundle: MissionBundle) {
         zip.write(
             """
             <waylines missionId="${bundle.missionId}">
-              <launchPoint lat="${bundle.launchPoint.location.lat}" lng="${bundle.launchPoint.location.lng}" />
+              <launchPoint source="${bundle.launchPointSource}" />
               <waypointCount>${bundle.orderedWaypoints.size}</waypointCount>
               <implicitReturnToLaunch>${bundle.implicitReturnToLaunch}</implicitReturnToLaunch>
+              <returnHomeOnFinish>${bundle.returnHomeOnFinish}</returnHomeOnFinish>
             </waylines>
             """.trimIndent().toByteArray(StandardCharsets.UTF_8)
         )

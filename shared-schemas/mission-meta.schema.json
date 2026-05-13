@@ -9,9 +9,10 @@
     "generatedAt",
     "routeMode",
     "operatingProfile",
-    "launchPoint",
+    "launchPointSource",
     "waypointCount",
     "implicitReturnToLaunch",
+    "returnHomeOnFinish",
     "defaultAltitudeMeters",
     "defaultSpeedMetersPerSecond",
     "landingPolicy",
@@ -28,23 +29,33 @@
       "enum": ["outdoor_gps_patrol", "indoor_no_gps"]
     },
     "launchPoint": {
-      "type": "object",
-      "required": ["launchPointId", "location"],
-      "properties": {
-        "launchPointId": { "type": "string", "minLength": 1 },
-        "location": {
+      "anyOf": [
+        {
           "type": "object",
-          "required": ["lat", "lng"],
+          "required": ["launchPointId", "location"],
           "properties": {
-            "lat": { "type": "number" },
-            "lng": { "type": "number" }
+            "launchPointId": { "type": "string", "minLength": 1 },
+            "location": {
+              "type": "object",
+              "required": ["lat", "lng"],
+              "properties": {
+                "lat": { "type": "number" },
+                "lng": { "type": "number" }
+              }
+            },
+            "label": { "type": "string" }
           }
         },
-        "label": { "type": "string" }
-      }
+        { "type": "null" }
+      ]
+    },
+    "launchPointSource": {
+      "type": "string",
+      "enum": ["route_launch_point", "aircraft_home_point_at_takeoff"]
     },
     "waypointCount": { "type": "integer", "minimum": 0 },
     "implicitReturnToLaunch": { "type": "boolean", "const": true },
+    "returnHomeOnFinish": { "type": "boolean", "const": true },
     "defaultAltitudeMeters": { "type": "number", "exclusiveMinimum": 0 },
     "defaultSpeedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 },
     "landingPolicy": { "type": "string", "minLength": 1 },

@@ -8,9 +8,10 @@
     "routeMode",
     "bundleVersion",
     "operatingProfile",
-    "launchPoint",
+    "launchPointSource",
     "orderedWaypoints",
     "implicitReturnToLaunch",
+    "returnHomeOnFinish",
     "defaultAltitudeMeters",
     "defaultSpeedMetersPerSecond",
     "artifacts",
@@ -25,13 +26,23 @@
       "type": "string",
       "enum": ["outdoor_gps_patrol", "indoor_no_gps"]
     },
-    "launchPoint": { "$ref": "#/$defs/launchPoint" },
+    "launchPoint": {
+      "anyOf": [
+        { "$ref": "#/$defs/launchPoint" },
+        { "type": "null" }
+      ]
+    },
+    "launchPointSource": {
+      "type": "string",
+      "enum": ["route_launch_point", "aircraft_home_point_at_takeoff"]
+    },
     "orderedWaypoints": {
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/waypoint" }
     },
     "implicitReturnToLaunch": { "type": "boolean", "const": true },
+    "returnHomeOnFinish": { "type": "boolean", "const": true },
     "defaultAltitudeMeters": { "type": "number", "exclusiveMinimum": 0 },
     "defaultSpeedMetersPerSecond": { "type": "number", "exclusiveMinimum": 0 },
     "artifacts": {

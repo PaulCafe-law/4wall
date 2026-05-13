@@ -196,14 +196,16 @@ export interface MissionPlanPayload {
   organizationId: string
   siteId: string
   missionName: string
-  launchPoint: {
+  launchPoint?: {
     launchPointId: string
     label: string
     location: {
       lat: number
       lng: number
     }
-  }
+  } | null
+  launchPointSource?: 'route_launch_point' | 'aircraft_home_point_at_takeoff'
+  returnHomeOnFinish?: boolean
   orderedWaypoints: Array<{
     waypointId: string
     sequence: number
@@ -267,7 +269,7 @@ export interface InspectionRoutePayload {
   siteId: string
   name: string
   description?: string
-  launchPoint: LaunchPointPayload
+  launchPoint?: LaunchPointPayload | null
   waypoints: InspectionWaypoint[]
   planningParameters?: Record<string, unknown>
 }

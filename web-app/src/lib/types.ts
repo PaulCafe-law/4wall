@@ -239,7 +239,7 @@ export interface InspectionRoute {
   name: string
   description: string
   version: number
-  launchPoint: LaunchPoint
+  launchPoint: LaunchPoint | null
   implicitReturnToLaunch: boolean
   pointCount: number
   previewPolyline: Array<{ lat: number; lng: number }>

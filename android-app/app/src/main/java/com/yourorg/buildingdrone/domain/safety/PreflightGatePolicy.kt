@@ -13,6 +13,7 @@ enum class PreflightGateId {
     DEVICE_HEALTH,
     FLY_ZONE,
     GPS,
+    HOME_POINT,
     MISSION_BUNDLE,
     INDOOR_PROFILE_CONFIRMATION
 }
@@ -30,6 +31,8 @@ data class PreflightSnapshot(
     val flyZoneMessage: String? = null,
     val gpsReady: Boolean,
     val gpsDetail: String? = null,
+    val homePointReady: Boolean = gpsReady,
+    val homePointDetail: String? = null,
     val missionBundlePresent: Boolean,
     val missionBundleVerified: Boolean,
     val consoleMode: OperatorConsoleMode = OperatorConsoleMode.OUTDOOR_PATROL,
@@ -61,6 +64,7 @@ interface PreflightGatePolicy {
 class DefaultPreflightGatePolicy : PreflightGatePolicy {
     override fun evaluate(snapshot: PreflightSnapshot): PreflightEvaluation {
         val gpsBlocking = snapshot.consoleMode.requiresGpsGate
+        val homePointBlocking = snapshot.consoleMode == OperatorConsoleMode.OUTDOOR_PATROL
         val bundleBlocking = snapshot.consoleMode.requiresMissionBundle
         val indoorProfile = snapshot.consoleMode == OperatorConsoleMode.INDOOR_MANUAL
 
@@ -148,6 +152,18 @@ class DefaultPreflightGatePolicy : PreflightGatePolicy {
                         snapshot.consoleMode == OperatorConsoleMode.OUTDOOR_MANUAL_PILOT ->
                             snapshot.gpsDetail ?: "GPS unavailable. Outdoor Manual Pilot treats GPS as diagnostic only"
                         else -> snapshot.gpsDetail ?: "GPS unavailable is expected in indoor manual mode"
+                    },
+                ),
+            )
+            add(
+                PreflightGateResult(
+                    gateId = PreflightGateId.HOME_POINT,
+                    passed = snapshot.homePointReady || !homePointBlocking,
+                    blocking = homePointBlocking,
+                    detail = when {
+                        snapshot.homePointReady -> snapshot.homePointDetail ?: "DJI Home Point ready"
+                        homePointBlocking -> snapshot.homePointDetail ?: "DJI Home Point not ready"
+                        else -> snapshot.homePointDetail ?: "Home Point is diagnostic outside Outdoor Patrol"
                     },
                 ),
             )

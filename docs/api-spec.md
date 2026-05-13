@@ -2,7 +2,7 @@
 
 ## Design Rules
 
-- Server plans routes, generates corridor artifacts, persists records, and serves authenticated downloads.
+- Server plans routes, generates DJI waypoint mission artifacts, persists records, and serves authenticated downloads.
 - Android remains outside the server control loop once the bundle is downloaded and verified.
 - Artifact downloads use authenticated endpoints in beta. No signed URLs in this release.
 - `mission.kmz` and `mission_meta.json` are versioned artifacts with checksum headers.
@@ -63,37 +63,38 @@ Creates a mission, persists mission and artifact records, writes artifacts to st
 ```json
 {
   "missionName": "tower-a-prod-beta",
-  "origin": {
-    "lat": 25.03391,
-    "lng": 121.56452
-  },
-  "targetBuilding": {
-    "buildingId": "tower-a",
-    "label": "Tower A"
-  },
   "routingMode": "road_network_following",
-  "corridorPolicy": {
-    "defaultHalfWidthM": 8.0,
-    "maxHalfWidthM": 12.0,
-    "branchConfirmRadiusM": 18.0
-  },
+  "launchPoint": null,
+  "launchPointSource": "aircraft_home_point_at_takeoff",
+  "returnHomeOnFinish": true,
+  "operatingProfile": "outdoor_gps_patrol",
   "flightProfile": {
-    "defaultAltitudeM": 35.0,
-    "defaultSpeedMps": 4.0,
+    "defaultAltitudeM": 10.0,
+    "defaultSpeedMps": 1.5,
     "maxApproachSpeedMps": 1.0
   },
-  "inspectionIntent": {
-    "viewpoints": [
-      {
-        "viewpointId": "vp-01",
-        "label": "north-east-facade",
-        "lat": 25.03441,
-        "lng": 121.56501,
-        "yawDeg": 225.0,
-        "distanceToFacadeM": 12.0
-      }
-    ]
-  },
+  "orderedWaypoints": [
+    {
+      "waypointId": "wp-1",
+      "label": "North gate",
+      "lat": 25.03421,
+      "lng": 121.56501,
+      "altitudeM": 10.0,
+      "speedMps": 1.5,
+      "headingDeg": 0.0,
+      "dwellSeconds": 0
+    },
+    {
+      "waypointId": "wp-2",
+      "label": "East fence",
+      "lat": 25.03441,
+      "lng": 121.56531,
+      "altitudeM": 10.0,
+      "speedMps": 1.5,
+      "headingDeg": 90.0,
+      "dwellSeconds": 0
+    }
+  ],
   "demoMode": false
 }
 ```
@@ -103,41 +104,37 @@ Creates a mission, persists mission and artifact records, writes artifacts to st
 ```json
 {
   "missionId": "msn_20260402_001",
-  "bundleVersion": "1.1.0",
+  "bundleVersion": "2.1.0",
   "missionBundle": {
     "missionId": "msn_20260402_001",
     "routeMode": "road_network_following",
-    "defaultAltitudeMeters": 35.0,
-    "defaultSpeedMetersPerSecond": 4.0,
-    "corridorSegments": [
+    "operatingProfile": "outdoor_gps_patrol",
+    "launchPoint": null,
+    "launchPointSource": "aircraft_home_point_at_takeoff",
+    "orderedWaypoints": [
       {
-        "segmentId": "seg-001",
-        "polyline": [
-          { "lat": 25.03391, "lng": 121.56452 },
-          { "lat": 25.03441, "lng": 121.56501 }
-        ],
-        "halfWidthMeters": 8.0,
-        "suggestedAltitudeMeters": 35.0,
-        "suggestedSpeedMetersPerSecond": 4.0
+        "waypointId": "wp-1",
+        "label": "North gate",
+        "location": { "lat": 25.03421, "lng": 121.56501 },
+        "altitudeMeters": 10.0,
+        "speedMetersPerSecond": 1.5,
+        "headingDegrees": 0.0,
+        "dwellSeconds": 0
+      },
+      {
+        "waypointId": "wp-2",
+        "label": "East fence",
+        "location": { "lat": 25.03441, "lng": 121.56531 },
+        "altitudeMeters": 10.0,
+        "speedMetersPerSecond": 1.5,
+        "headingDegrees": 90.0,
+        "dwellSeconds": 0
       }
     ],
-    "verificationPoints": [
-      {
-        "verificationPointId": "vp-branch-001",
-        "location": { "lat": 25.03412, "lng": 121.56472 },
-        "expectedOptions": ["STRAIGHT"],
-        "timeoutMillis": 2500
-      }
-    ],
-    "inspectionViewpoints": [
-      {
-        "inspectionViewpointId": "vp-01",
-        "location": { "lat": 25.03441, "lng": 121.56501 },
-        "yawDegrees": 225.0,
-        "captureMode": "photo_burst",
-        "label": "north-east-facade"
-      }
-    ],
+    "implicitReturnToLaunch": true,
+    "returnHomeOnFinish": true,
+    "defaultAltitudeMeters": 10.0,
+    "defaultSpeedMetersPerSecond": 1.5,
     "failsafe": {
       "onSemanticTimeout": "HOLD",
       "onBatteryCritical": "RTH",
@@ -179,21 +176,23 @@ Returns the authenticated KMZ artifact.
 
 ## GET /v1/missions/{missionId}/artifacts/mission_meta.json
 
-Returns mission metadata JSON. The response body carries route/corridor metadata and artifact references; the response headers carry the authoritative checksum for the metadata file itself.
+Returns mission metadata JSON. The response body carries waypoint route metadata and artifact references; the response headers carry the authoritative checksum for the metadata file itself.
 
 ### Response body
 
 ```json
 {
   "missionId": "msn_20260402_001",
-  "bundleVersion": "1.1.0",
+  "bundleVersion": "2.1.0",
   "generatedAt": "2026-04-02T07:20:00Z",
-  "segments": 1,
-  "verificationPoints": 2,
-  "inspectionViewpoints": 1,
-  "corridorHalfWidthM": 8.0,
-  "suggestedAltitudeM": 35.0,
-  "suggestedSpeedMps": 4.0,
+  "waypointCount": 2,
+  "launchPoint": null,
+  "launchPointSource": "aircraft_home_point_at_takeoff",
+  "implicitReturnToLaunch": true,
+  "returnHomeOnFinish": true,
+  "operatingProfile": "outdoor_gps_patrol",
+  "suggestedAltitudeM": 10.0,
+  "suggestedSpeedMps": 1.5,
   "safetyDefaults": {
     "onSemanticTimeout": "HOLD",
     "onBatteryCritical": "RTH",

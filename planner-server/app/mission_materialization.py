@@ -7,13 +7,15 @@ from app.corridor import CorridorGenerator
 from app.dto import (
     FlightProfileDto,
     GeoPointDto,
-    LaunchPointDto,
     MissionPlanRequestDto,
     MissionPlanResponseDto,
     OrderedWaypointDto,
 )
 from app.models import DispatchRecord, InspectionRoute, Mission, MissionArtifact
 from app.providers import RouteProvider, RouteProviderError
+
+PATROL_ALTITUDE_METERS = 10.0
+PATROL_SPEED_METERS_PER_SECOND = 1.5
 
 
 class DispatchMaterializationError(RuntimeError):
@@ -107,13 +109,8 @@ def build_plan_request_from_route(
     mission: Mission,
     route: InspectionRoute,
 ) -> MissionPlanRequestDto:
-    if not route.launch_point_json:
-        raise DispatchMaterializationError("route_launch_point_required")
     if not route.waypoints_json:
         raise DispatchMaterializationError("route_waypoints_required")
-
-    default_altitude = _default_altitude(route)
-    default_speed = _number(route.planning_parameters_json.get("defaultSpeedMetersPerSecond"), fallback=4.0)
 
     return MissionPlanRequestDto(
         organizationId=mission.organization_id,
@@ -122,13 +119,15 @@ def build_plan_request_from_route(
         missionName=mission.mission_name,
         routingMode="road_network_following",
         flightProfile=FlightProfileDto(
-            defaultAltitudeM=default_altitude,
-            defaultSpeedMps=default_speed,
+            defaultAltitudeM=PATROL_ALTITUDE_METERS,
+            defaultSpeedMps=PATROL_SPEED_METERS_PER_SECOND,
             maxApproachSpeedMps=_number(route.planning_parameters_json.get("maxApproachSpeedMetersPerSecond"), fallback=2.0),
         ),
-        launchPoint=_launch_point(route),
+        launchPoint=None,
+        launchPointSource="aircraft_home_point_at_takeoff",
         orderedWaypoints=_ordered_waypoints(route),
         implicitReturnToLaunch=True,
+        returnHomeOnFinish=True,
         operatingProfile="outdoor_gps_patrol",
         demoMode=False,
     )
@@ -167,42 +166,20 @@ def _replace_mission_artifacts(session: Session, mission_id: str) -> None:
     session.flush()
 
 
-def _launch_point(route: InspectionRoute) -> LaunchPointDto:
-    source = route.launch_point_json
-    return LaunchPointDto(
-        launchPointId=str(source.get("launchPointId") or f"route-launch-{route.id[:8]}"),
-        label=str(source.get("label") or "L"),
-        location=GeoPointDto(lat=_coordinate(source, "lat"), lng=_coordinate(source, "lng")),
-    )
-
-
 def _ordered_waypoints(route: InspectionRoute) -> list[OrderedWaypointDto]:
     waypoints: list[OrderedWaypointDto] = []
     for index, source in enumerate(route.waypoints_json, start=1):
-        altitude = _number(source.get("altitudeM"), fallback=_default_altitude(route))
         waypoints.append(
             OrderedWaypointDto(
                 waypointId=str(source.get("waypointId") or source.get("id") or f"wp-{index:03d}"),
                 sequence=index,
                 location=GeoPointDto(lat=_coordinate(source, "lat"), lng=_coordinate(source, "lng")),
                 holdSeconds=int(_number(source.get("dwellSeconds"), fallback=0.0)),
-                speedMetersPerSecond=_optional_number(source.get("speedMetersPerSecond")),
-                altitudeMeters=altitude,
+                speedMetersPerSecond=PATROL_SPEED_METERS_PER_SECOND,
+                altitudeMeters=PATROL_ALTITUDE_METERS,
             )
         )
     return waypoints
-
-
-def _default_altitude(route: InspectionRoute) -> float:
-    planning = route.planning_parameters_json
-    if "defaultAltitudeMeters" in planning:
-        return _number(planning.get("defaultAltitudeMeters"), fallback=35.0)
-    if "defaultAltitudeM" in planning:
-        return _number(planning.get("defaultAltitudeM"), fallback=35.0)
-    for waypoint in route.waypoints_json:
-        if waypoint.get("altitudeM") is not None:
-            return _number(waypoint.get("altitudeM"), fallback=35.0)
-    return 35.0
 
 
 def _coordinate(source: dict, key: str) -> float:
@@ -218,7 +195,3 @@ def _number(value, *, fallback: float) -> float:
     if value is None:
         return fallback
     return float(value)
-
-
-def _optional_number(value) -> float | None:
-    return None if value is None else float(value)

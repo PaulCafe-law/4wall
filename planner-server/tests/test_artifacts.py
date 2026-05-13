@@ -49,5 +49,16 @@ def test_local_artifact_storage_persists_generated_kmz_and_meta(tmp_path: Path) 
         element.text
         for element in waylines_root.findall(".//{http://www.opengis.net/kml/2.2}coordinates")
     ]
-    assert len(coordinates) == 4
-    assert coordinates[0] == coordinates[-1]
+    assert len(coordinates) == 2
+    assert coordinates == ["121.56472,25.03412", "121.56501,25.03441"]
+
+    heights = [
+        element.text
+        for element in waylines_root.findall(".//{http://www.dji.com/wpmz/1.0.2}executeHeight")
+    ]
+    speeds = [
+        element.text
+        for element in waylines_root.findall(".//{http://www.dji.com/wpmz/1.0.2}waypointSpeed")
+    ]
+    assert heights == ["35", "35"]
+    assert speeds == ["4", "4"]

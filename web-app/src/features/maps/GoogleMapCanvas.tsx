@@ -325,8 +325,8 @@ export function GoogleMapCanvas({
       ) : (
         <p className="text-sm text-chrome-700">
           {internalEditable
-            ? '內部人員可在地圖上拖拉起降點與巡邏航點，並把航線幾何儲存回控制平面。'
-            : '目前顯示場域中心、已發布航線與起降點。'}
+            ? '內部人員可在地圖上拖拉可編輯標記，並把航線幾何儲存回控制平面。'
+            : '目前顯示場域中心與已發布航線。'}
         </p>
       )}
     </div>

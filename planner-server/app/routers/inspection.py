@@ -64,6 +64,7 @@ def _normalize_route_waypoints(waypoints: list[dict]) -> list[dict]:
             {
                 **waypoint,
                 "kind": "hold" if waypoint.get("kind") == "hold" else "transit",
+                "altitudeM": 10.0,
             }
         )
     return normalized
@@ -114,7 +115,7 @@ def create_route(
         site_id=site.id,
         name=request.name,
         description=request.description,
-        launch_point_json=request.launchPoint.model_dump(mode="json"),
+        launch_point_json=request.launchPoint.model_dump(mode="json") if request.launchPoint is not None else {},
         waypoints_json=_normalize_route_waypoints([waypoint.model_dump(mode="json") for waypoint in request.waypoints]),
         planning_parameters_json=request.planningParameters,
         created_by_user_id=current_user.user.id,
@@ -150,8 +151,8 @@ def patch_route(
         route.name = request.name
     if request.description is not None:
         route.description = request.description
-    if request.launchPoint is not None:
-        route.launch_point_json = request.launchPoint.model_dump(mode="json")
+    if "launchPoint" in request.model_fields_set:
+        route.launch_point_json = request.launchPoint.model_dump(mode="json") if request.launchPoint is not None else {}
     if request.waypoints is not None:
         route.waypoints_json = _normalize_route_waypoints([waypoint.model_dump(mode="json") for waypoint in request.waypoints])
     if request.planningParameters is not None:
@@ -634,7 +635,6 @@ def create_route_flight_task(
             status.HTTP_422_UNPROCESSABLE_ENTITY
             if exc.detail
             in {
-                "route_launch_point_required",
                 "route_waypoints_required",
                 "route_lat_required",
                 "route_lng_required",

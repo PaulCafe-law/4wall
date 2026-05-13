@@ -185,7 +185,7 @@ def _document_xml(*, mission_bundle: MissionBundleDto, mission_meta: MissionMeta
       <wpml:finishAction>noAction</wpml:finishAction>
       <wpml:exitOnRCLost>executeLostAction</wpml:exitOnRCLost>
       <wpml:executeRCLostAction>goBack</wpml:executeRCLostAction>
-      <wpml:takeOffSecurityHeight>{_fmt(max(20.0, mission_bundle.defaultAltitudeMeters / 2))}</wpml:takeOffSecurityHeight>
+      <wpml:takeOffSecurityHeight>{_fmt(mission_bundle.defaultAltitudeMeters)}</wpml:takeOffSecurityHeight>
       <wpml:globalTransitionalSpeed>{_fmt(mission_bundle.defaultSpeedMetersPerSecond)}</wpml:globalTransitionalSpeed>
     </wpml:missionConfig>
     <Folder>
@@ -240,17 +240,7 @@ def _waypoint_placemark(
 
 
 def _closed_path(mission_bundle: MissionBundleDto) -> list[tuple[str, float, float, float | None, float | None, int | None]]:
-    launch = mission_bundle.launchPoint
-    points: list[tuple[str, float, float, float | None, float | None, int | None]] = [
-        (
-            launch.label or "L",
-            launch.location.lat,
-            launch.location.lng,
-            mission_bundle.defaultAltitudeMeters,
-            mission_bundle.defaultSpeedMetersPerSecond,
-            0,
-        )
-    ]
+    points: list[tuple[str, float, float, float | None, float | None, int | None]] = []
     for waypoint in sorted(mission_bundle.orderedWaypoints, key=lambda item: item.sequence):
         points.append(
             (
@@ -262,16 +252,6 @@ def _closed_path(mission_bundle: MissionBundleDto) -> list[tuple[str, float, flo
                 waypoint.holdSeconds,
             )
         )
-    points.append(
-        (
-            "L",
-            launch.location.lat,
-            launch.location.lng,
-            mission_bundle.defaultAltitudeMeters,
-            mission_bundle.defaultSpeedMetersPerSecond,
-            0,
-        )
-    )
     return points
 
 

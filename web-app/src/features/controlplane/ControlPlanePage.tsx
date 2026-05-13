@@ -27,7 +27,7 @@ import {
   formatSupportCategory,
   formatSupportSeverity,
 } from '../../lib/presentation'
-import type { InspectionWaypoint, LaunchPoint, Site } from '../../lib/types'
+import type { InspectionWaypoint, Site } from '../../lib/types'
 import { InternalRouteEditorPanel } from './InternalRouteEditorPanel'
 
 type WorkspaceKey = 'dashboard' | 'routes' | 'templates' | 'schedules' | 'dispatch'
@@ -102,7 +102,7 @@ const WORKSPACE_GUIDES: Record<WorkspaceKey, WorkspacePresentationGuide> = {
     eyebrow: '展示重點',
     title: '航線工作區先完成真機短航線主線',
     summary:
-      'v1 重點是把 L、巡邏航點與閉合返航路徑產生成 Android 可同步的任務包。模板、排程與完整派工仍保留，但不再阻擋短航線驗證。',
+      'v1 重點是把 1..N 巡邏航點產生成 Android 可同步的任務包。起降與返航參考由 DJI Home Point 決定，模板、排程與完整派工不阻擋短航線驗證。',
     evidenceTargets: ['Google Maps 航點編輯', '航線庫', '一鍵產生任務包'],
     screenshotHint: '建議同框截到航點編輯器與航線庫，並展示「送到飛行 App」成功訊息。',
     nextStep: '建立或選定一條航線後，直接產生任務包，再到 Android 使用 fieldpilot 同步任務。',
@@ -137,6 +137,8 @@ const WORKSPACE_GUIDES: Record<WorkspaceKey, WorkspacePresentationGuide> = {
 }
 
 const DEFAULT_ROUTE_OFFSET = 0.00018
+const PATROL_ALTITUDE_M = 10
+const PATROL_SPEED_MPS = 1.5
 
 function workspaceFromPath(pathname: string): WorkspaceKey {
   if (pathname === '/control-plane/routes') return 'routes'
@@ -155,16 +157,13 @@ function tabClass(active: boolean) {
   )
 }
 
-function buildDemoWaypoints(
-  site: Site,
-  transitAltitudeM: number,
-) {
+function buildDemoWaypoints(site: Site) {
   return [
     {
       kind: 'transit' as const,
       lat: site.location.lat - DEFAULT_ROUTE_OFFSET,
       lng: site.location.lng - DEFAULT_ROUTE_OFFSET,
-      altitudeM: transitAltitudeM,
+      altitudeM: PATROL_ALTITUDE_M,
       label: `${site.name} 進場點`,
       headingDeg: 45,
       dwellSeconds: 0,
@@ -173,7 +172,7 @@ function buildDemoWaypoints(
       kind: 'transit' as const,
       lat: site.location.lat,
       lng: site.location.lng,
-      altitudeM: transitAltitudeM,
+      altitudeM: PATROL_ALTITUDE_M,
       label: `${site.name} 中段巡邏點`,
       headingDeg: 180,
       dwellSeconds: 0,
@@ -182,7 +181,7 @@ function buildDemoWaypoints(
       kind: 'hold' as const,
       lat: site.location.lat + DEFAULT_ROUTE_OFFSET,
       lng: site.location.lng + DEFAULT_ROUTE_OFFSET,
-      altitudeM: transitAltitudeM,
+      altitudeM: PATROL_ALTITUDE_M,
       label: `${site.name} 回航保持點`,
       headingDeg: 0,
       dwellSeconds: 8,
@@ -194,21 +193,8 @@ function cloneWaypoints(waypoints: InspectionWaypoint[]) {
   return waypoints.map((waypoint) => ({ ...waypoint }))
 }
 
-function cloneLaunchPoint(launchPoint: LaunchPoint | null) {
-  return launchPoint ? { ...launchPoint } : null
-}
-
-function buildDefaultLaunchPoint(site: Site): LaunchPoint {
-  return {
-    launchPointId: 'launch-draft',
-    label: `${site.name} 起降點`,
-    kind: 'primary',
-    lat: site.location.lat,
-    lng: site.location.lng,
-    headingDeg: 180,
-    altitudeM: 0,
-    isActive: true,
-  }
+function normalizeRouteWaypoints(waypoints: InspectionWaypoint[]) {
+  return waypoints.map((waypoint) => ({ ...waypoint, altitudeM: PATROL_ALTITUDE_M }))
 }
 
 function defaultAlertRules() {
@@ -280,7 +266,6 @@ export function ControlPlanePage() {
   const [routeName, setRouteName] = useState('')
   const [routeDescription, setRouteDescription] = useState('')
   const [routeDraftWaypoints, setRouteDraftWaypoints] = useState<InspectionWaypoint[]>([])
-  const [routeDraftLaunchPoint, setRouteDraftLaunchPoint] = useState<LaunchPoint | null>(null)
   const [templateName, setTemplateName] = useState('')
   const [plannedAt, setPlannedAt] = useState('')
   const [schedulePauseReason, setSchedulePauseReason] = useState('天候不佳，暫停起飛窗口。')
@@ -404,7 +389,6 @@ export function ControlPlanePage() {
         setSelectedRouteId('new')
         setRouteName('')
         setRouteDescription('')
-        setRouteDraftLaunchPoint(null)
         setRouteDraftWaypoints([])
         return
       }
@@ -417,15 +401,13 @@ export function ControlPlanePage() {
       if (selectedRouteId === 'new') {
         setRouteName(`${selectedSite.name} 巡檢航線`)
         setRouteDescription('由內部規劃團隊在 Google Maps 上編輯並發布的巡檢航線。')
-        setRouteDraftLaunchPoint(buildDefaultLaunchPoint(selectedSite))
-        setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 36)))
+        setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite)))
         return
       }
 
       if (editingRoute) {
         setRouteName(editingRoute.name)
         setRouteDescription(editingRoute.description)
-        setRouteDraftLaunchPoint(cloneLaunchPoint(editingRoute.launchPoint))
         setRouteDraftWaypoints(cloneWaypoints(editingRoute.waypoints))
       }
     }, 0)
@@ -625,8 +607,7 @@ export function ControlPlanePage() {
       return
     }
 
-    setRouteDraftLaunchPoint(buildDefaultLaunchPoint(selectedSite))
-    setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite, 36)))
+    setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite)))
     setRouteError(null)
   }
 
@@ -643,11 +624,7 @@ export function ControlPlanePage() {
       setRouteError('至少需要一個巡邏航點才能建立或更新航線。')
       return
     }
-    if (!routeDraftLaunchPoint) {
-      setRouteError('請先設定起降點。')
-      return
-    }
-
+    const normalizedWaypoints = normalizeRouteWaypoints(routeDraftWaypoints)
     try {
       if (selectedRouteId !== 'new' && editingRoute) {
         await updateRoute.mutateAsync({
@@ -655,13 +632,16 @@ export function ControlPlanePage() {
           body: {
             name: routeName.trim(),
             description: routeDescription.trim() || undefined,
-            launchPoint: routeDraftLaunchPoint,
-            waypoints: routeDraftWaypoints,
+            launchPoint: null,
+            waypoints: normalizedWaypoints,
             planningParameters: {
               ...(editingRoute.planningParameters ?? {}),
               routeMode: 'google-maps-editor',
+              defaultAltitudeMeters: PATROL_ALTITUDE_M,
+              defaultSpeedMetersPerSecond: PATROL_SPEED_MPS,
+              defaultSpeedMps: PATROL_SPEED_MPS,
               editor: 'internal_google_maps',
-              patrolModel: 'route_owned_launch_waypoints_v1',
+              patrolModel: 'waypoints_only_home_point_v1',
             },
           },
         })
@@ -673,14 +653,16 @@ export function ControlPlanePage() {
         siteId: selectedSite.siteId,
         name: routeName.trim(),
         description: routeDescription.trim() || '由內部規劃團隊在 Google Maps 上編輯並發布的巡檢航線。',
-        launchPoint: routeDraftLaunchPoint,
-        waypoints: routeDraftWaypoints,
+        launchPoint: null,
+        waypoints: normalizedWaypoints,
         planningParameters: {
           routeVersion: 1,
           routeMode: 'google-maps-editor',
-          defaultSpeedMps: 4,
+          defaultAltitudeMeters: PATROL_ALTITUDE_M,
+          defaultSpeedMetersPerSecond: PATROL_SPEED_MPS,
+          defaultSpeedMps: PATROL_SPEED_MPS,
           editor: 'internal_google_maps',
-          patrolModel: 'route_owned_launch_waypoints_v1',
+          patrolModel: 'waypoints_only_home_point_v1',
         },
       })
       setSelectedRouteId(createdRoute.routeId)
@@ -792,7 +774,7 @@ export function ControlPlanePage() {
       await createFlightTask.mutateAsync({ routeId })
     } catch (error) {
       setFlightTaskError(
-        formatApiError(error instanceof ApiError ? error.detail : undefined, '產生任務包失敗。請確認航線已有起降點與至少一個巡邏航點。'),
+        formatApiError(error instanceof ApiError ? error.detail : undefined, '產生任務包失敗。請確認航線至少有一個巡邏航點。'),
       )
     }
   }
@@ -1112,14 +1094,12 @@ export function ControlPlanePage() {
               selectedRouteId={selectedRouteId}
               routeName={routeName}
               routeDescription={routeDescription}
-              launchPoint={routeDraftLaunchPoint}
               waypoints={routeDraftWaypoints}
               routeError={routeError}
               isSavingRoute={createRoute.isPending || updateRoute.isPending}
               onSelectedRouteIdChange={setSelectedRouteId}
               onRouteNameChange={setRouteName}
               onRouteDescriptionChange={setRouteDescription}
-              onLaunchPointChange={setRouteDraftLaunchPoint}
               onWaypointsChange={setRouteDraftWaypoints}
               onSeedDemoDraft={seedRouteDraftFromSite}
               onSaveRoute={() => void handleSaveRouteDraft()}
@@ -1137,10 +1117,10 @@ export function ControlPlanePage() {
                 rows={[
                   { label: '場域', value: selectedSite?.name ?? '尚未選定' },
                   { label: '航線數量', value: siteRoutes.length },
-                  { label: '起降點', value: siteRoutes[0]?.launchPoint?.label ?? '由內部定義' },
+                  { label: '起降來源', value: '起飛當下 DJI Home Point' },
                   {
                     label: '展示重點',
-                    value: '客戶面只看航線摘要、起降點、閉合巡邏路徑與預估時間，不直接承擔航線幾何規劃責任。',
+                    value: '客戶面只看航線摘要、巡邏航點、返航策略與預估時間，不直接承擔航線幾何規劃責任。',
                   },
                 ]}
               />
@@ -1180,10 +1160,10 @@ export function ControlPlanePage() {
                     </span>
                   </div>
                   <div className="mt-4 grid gap-3 md:grid-cols-4">
-                    <Metric label="起降點" value={route.launchPoint.label} />
+                    <Metric label="起降來源" value="DJI Home Point" />
                     <Metric label="巡邏點" value={route.pointCount} />
                     <Metric label="預估時間" value={formatDuration(route.estimatedDurationSec)} />
-                    <Metric label="閉合路徑" value={route.implicitReturnToLaunch ? '回到 L' : '未閉合'} />
+                    <Metric label="返航策略" value="航點完成後返航" />
                     <Metric label="更新時間" value={formatDateTime(route.updatedAt)} />
                   </div>
                   {auth.isInternal && canWriteSelectedSite ? (

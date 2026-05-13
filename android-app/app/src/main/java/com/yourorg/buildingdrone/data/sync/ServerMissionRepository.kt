@@ -306,13 +306,16 @@ class ServerMissionRepository(
             missionId = record.missionId,
             routeMode = record.missionBundle.routeMode,
             operatingProfile = OperationProfile.fromWireName(record.missionBundle.operatingProfile),
-            launchPoint = RouteLaunchPoint(
-                label = record.missionBundle.launchPoint.label,
-                location = GeoPoint(
-                    record.missionBundle.launchPoint.location.lat,
-                    record.missionBundle.launchPoint.location.lng
+            launchPoint = record.missionBundle.launchPoint?.let { launchPoint ->
+                RouteLaunchPoint(
+                    label = launchPoint.label,
+                    location = GeoPoint(
+                        launchPoint.location.lat,
+                        launchPoint.location.lng
+                    )
                 )
-            ),
+            },
+            launchPointSource = record.missionBundle.launchPointSource,
             orderedWaypoints = record.missionBundle.orderedWaypoints.map { waypoint ->
                 OrderedWaypoint(
                     waypointId = waypoint.waypointId,
@@ -324,6 +327,7 @@ class ServerMissionRepository(
                 )
             }.sortedBy { it.sequence },
             implicitReturnToLaunch = record.missionBundle.implicitReturnToLaunch,
+            returnHomeOnFinish = record.missionBundle.returnHomeOnFinish,
             defaultAltitudeMeters = record.missionBundle.defaultAltitudeMeters,
             defaultSpeedMetersPerSecond = record.missionBundle.defaultSpeedMetersPerSecond,
             bundleVersion = record.missionBundle.bundleVersion.ifBlank { record.bundleVersion },

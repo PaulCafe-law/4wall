@@ -5,7 +5,6 @@ import com.yourorg.buildingdrone.data.auth.plannerJson
 import com.yourorg.buildingdrone.data.network.DownloadedArtifact
 import com.yourorg.buildingdrone.data.network.FakePlannerGateway
 import com.yourorg.buildingdrone.data.network.GeoPointWire
-import com.yourorg.buildingdrone.data.network.LaunchPointWire
 import com.yourorg.buildingdrone.data.network.MissionArtifactDescriptorWire
 import com.yourorg.buildingdrone.data.network.MissionArtifactsWire
 import com.yourorg.buildingdrone.data.network.MissionBundleWire
@@ -178,14 +177,6 @@ class ServerMissionRepositoryTest {
         kmzBytes: ByteArray = djiWpmlKmzBytes(missionId)
     ): MissionFixture {
         val kmzChecksum = sha256(kmzBytes)
-        val launchPoint = LaunchPointWire(
-            launchPointId = "launch-01",
-            label = "L",
-            location = GeoPointWire(
-                lat = 25.03391,
-                lng = 121.56452
-            )
-        )
         val orderedWaypoints = listOf(
             OrderedWaypointWire(
                 waypointId = "wp-001",
@@ -194,8 +185,8 @@ class ServerMissionRepositoryTest {
                     lat = 25.03412,
                     lng = 121.56472
                 ),
-                altitudeMeters = 35.0,
-                speedMetersPerSecond = 4.0
+                altitudeMeters = 10.0,
+                speedMetersPerSecond = 1.5
             ),
             OrderedWaypointWire(
                 waypointId = "wp-002",
@@ -204,19 +195,21 @@ class ServerMissionRepositoryTest {
                     lat = 25.03441,
                     lng = 121.56501
                 ),
-                altitudeMeters = 35.0,
-                speedMetersPerSecond = 4.0
+                altitudeMeters = 10.0,
+                speedMetersPerSecond = 1.5
             )
         )
         val missionBundle = MissionBundleWire(
             missionId = missionId,
             routeMode = "road_network_following",
             operatingProfile = "outdoor_gps_patrol",
-            launchPoint = launchPoint,
+            launchPoint = null,
+            launchPointSource = "aircraft_home_point_at_takeoff",
             orderedWaypoints = orderedWaypoints,
             implicitReturnToLaunch = true,
-            defaultAltitudeMeters = 35.0,
-            defaultSpeedMetersPerSecond = 4.0,
+            returnHomeOnFinish = true,
+            defaultAltitudeMeters = 10.0,
+            defaultSpeedMetersPerSecond = 1.5,
             failsafe = MissionFailsafeWire()
         )
         val missionMetaTemplate = MissionMetaWire(
@@ -225,11 +218,13 @@ class ServerMissionRepositoryTest {
             generatedAt = "2026-04-02T10:00:00Z",
             routeMode = "road_network_following",
             operatingProfile = "outdoor_gps_patrol",
-            launchPoint = launchPoint,
+            launchPoint = null,
+            launchPointSource = "aircraft_home_point_at_takeoff",
             waypointCount = orderedWaypoints.size,
             implicitReturnToLaunch = true,
-            defaultAltitudeMeters = 35.0,
-            defaultSpeedMetersPerSecond = 4.0,
+            returnHomeOnFinish = true,
+            defaultAltitudeMeters = 10.0,
+            defaultSpeedMetersPerSecond = 1.5,
             landingPolicy = "android_auto_landing_with_rc_fallback",
             safetyDefaults = MissionFailsafeWire(),
             artifacts = MissionArtifactsWire(

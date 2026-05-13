@@ -167,7 +167,11 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     assert materialize_response.status_code == 200, materialize_response.text
     materialized = materialize_response.json()
     assert materialized["missionId"] == mission_id
-    assert materialized["missionBundle"]["launchPoint"]["label"] == "Tower A launch"
+    assert materialized["missionBundle"]["launchPoint"] is None
+    assert materialized["missionBundle"]["launchPointSource"] == "aircraft_home_point_at_takeoff"
+    assert materialized["missionBundle"]["returnHomeOnFinish"] is True
+    assert materialized["missionBundle"]["defaultAltitudeMeters"] == 10.0
+    assert materialized["missionBundle"]["defaultSpeedMetersPerSecond"] == 1.5
     assert materialized["missionBundle"]["orderedWaypoints"][0]["sequence"] == 1
 
     kmz_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission.kmz", headers=headers)
@@ -302,7 +306,11 @@ def test_route_flight_task_shortcut_creates_assigned_bundle_for_fieldpilot(clien
     shortcut = shortcut_response.json()
     mission_id = shortcut["missionId"]
     dispatch_id = shortcut["dispatchId"]
-    assert shortcut["missionBundle"]["launchPoint"]["label"] == "Shortcut launch"
+    assert shortcut["missionBundle"]["launchPoint"] is None
+    assert shortcut["missionBundle"]["launchPointSource"] == "aircraft_home_point_at_takeoff"
+    assert shortcut["missionBundle"]["returnHomeOnFinish"] is True
+    assert shortcut["missionBundle"]["defaultAltitudeMeters"] == 10.0
+    assert shortcut["missionBundle"]["defaultSpeedMetersPerSecond"] == 1.5
     assert shortcut["missionBundle"]["orderedWaypoints"][0]["sequence"] == 1
     assert shortcut["missionBundle"]["implicitReturnToLaunch"] is True
     assert shortcut["artifacts"]["missionKmz"]["downloadUrl"].endswith("/mission.kmz")
