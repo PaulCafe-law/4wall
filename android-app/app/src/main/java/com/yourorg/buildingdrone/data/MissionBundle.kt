@@ -119,9 +119,11 @@ data class MissionBundle(
     val missionId: String,
     val routeMode: String,
     val operatingProfile: OperationProfile = OperationProfile.OUTDOOR_GPS_REQUIRED,
-    val launchPoint: RouteLaunchPoint,
+    val launchPoint: RouteLaunchPoint? = null,
+    val launchPointSource: String = "aircraft_home_point_at_takeoff",
     val orderedWaypoints: List<OrderedWaypoint>,
     val implicitReturnToLaunch: Boolean = true,
+    val returnHomeOnFinish: Boolean = true,
     val defaultAltitudeMeters: Double,
     val defaultSpeedMetersPerSecond: Double,
     val bundleVersion: String = "2.0.0",
@@ -136,8 +138,10 @@ data class MissionBundle(
     init {
         require(missionId.isNotBlank()) { "missionId must not be blank" }
         require(routeMode.isNotBlank()) { "routeMode must not be blank" }
+        require(launchPointSource.isNotBlank()) { "launchPointSource must not be blank" }
         require(orderedWaypoints.isNotEmpty()) { "orderedWaypoints must not be empty" }
         require(implicitReturnToLaunch) { "patrol route must return to launch" }
+        require(returnHomeOnFinish) { "patrol route must return home on finish" }
         require(defaultAltitudeMeters > 0.0) { "defaultAltitudeMeters must be positive" }
         require(defaultSpeedMetersPerSecond > 0.0) { "defaultSpeedMetersPerSecond must be positive" }
         require(bundleVersion.isNotBlank()) { "bundleVersion must not be blank" }
@@ -150,10 +154,13 @@ data class MissionBundle(
 
     fun isVerified(): Boolean = isArtifactComplete() && verification.isVerified
 
+    fun patrolPath(): List<GeoPoint> =
+        orderedWaypoints.sortedBy { it.sequence }.map { it.location }
+
     fun closedLoopPath(): List<GeoPoint> = buildList {
-        add(launchPoint.location)
+        launchPoint?.let { add(it.location) }
         addAll(orderedWaypoints.sortedBy { it.sequence }.map { it.location })
-        add(launchPoint.location)
+        launchPoint?.let { add(it.location) }
     }
 }
 
@@ -176,26 +183,26 @@ fun demoMissionBundle(): MissionBundle = MissionBundle(
     missionId = "demo-mission-001",
     routeMode = "road_network_following",
     operatingProfile = OperationProfile.OUTDOOR_GPS_REQUIRED,
-    launchPoint = RouteLaunchPoint(
-        location = GeoPoint(25.03391, 121.56452)
-    ),
+    launchPoint = null,
+    launchPointSource = "aircraft_home_point_at_takeoff",
     orderedWaypoints = listOf(
         OrderedWaypoint(
             waypointId = "wp-001",
             sequence = 1,
             location = GeoPoint(25.03402, 121.56464),
-            altitudeMeters = 35.0,
-            speedMetersPerSecond = 4.0
+            altitudeMeters = 10.0,
+            speedMetersPerSecond = 1.5
         ),
         OrderedWaypoint(
             waypointId = "wp-002",
             sequence = 2,
             location = GeoPoint(25.03426, 121.56491),
-            altitudeMeters = 35.0,
-            speedMetersPerSecond = 4.0
+            altitudeMeters = 10.0,
+            speedMetersPerSecond = 1.5
         )
     ),
     implicitReturnToLaunch = true,
-    defaultAltitudeMeters = 35.0,
-    defaultSpeedMetersPerSecond = 4.0
+    returnHomeOnFinish = true,
+    defaultAltitudeMeters = 10.0,
+    defaultSpeedMetersPerSecond = 1.5
 )

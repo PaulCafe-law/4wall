@@ -51,7 +51,7 @@ function normalizeLaunchLabel(label: string | null | undefined): string | null {
 
 function formatLaunchPoint(launchPoint: LaunchPointSummary | null): string {
   if (!launchPoint) {
-    return '尚未設定起降點'
+    return '起飛當下 DJI Home Point'
   }
 
   const location = launchPoint.location ?? launchPoint
@@ -60,7 +60,7 @@ function formatLaunchPoint(launchPoint: LaunchPointSummary | null): string {
   const label = normalizeLaunchLabel(launchPoint.label)
 
   if (lat === null || lng === null) {
-    return label ?? '尚未設定起降點'
+    return label ?? '起飛當下 DJI Home Point'
   }
 
   return `${label ? `${label} / ` : ''}${lat.toFixed(5)}, ${lng.toFixed(5)}`
@@ -360,9 +360,9 @@ export function MissionDetailPage() {
                   { label: '航線模式', value: mission.routeMode },
                   { label: '執行模式', value: formatOperatingProfile(mission.operatingProfile) },
                   { label: '任務包版本', value: mission.bundleVersion },
-                  { label: '起降點', value: formatLaunchPoint(mission.launchPoint) },
+                  { label: '起降來源', value: formatLaunchPoint(mission.launchPoint) },
                   { label: '航點數', value: mission.waypointCount },
-                  { label: '隱式返航', value: mission.implicitReturnToLaunch ? '是' : '否' },
+                  { label: '返航策略', value: mission.implicitReturnToLaunch ? '航點完成後返航' : '未設定返航' },
                   { label: '建立時間', value: formatDate(mission.createdAt) },
                 ]}
               />
@@ -412,7 +412,7 @@ export function MissionDetailPage() {
               <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
                 <h3 className="font-medium text-chrome-950">戶外巡邏</h3>
                 <p className="mt-2 text-sm leading-6 text-chrome-700">
-                  航線權限在任務包內：起降點、巡邏航點與隱式返航都由 Android 執行。
+                  任務包只包含巡邏航點。起降與返航參考由 Android 在起飛當下讀取 DJI Home Point。
                 </p>
               </div>
               <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">

@@ -12,19 +12,21 @@ class MissionBundleTest {
 
         assertEquals("demo-mission-001", bundle.missionId)
         assertEquals("outdoor_gps_patrol", bundle.operatingProfile.wireName)
-        assertEquals("L", bundle.launchPoint.label)
+        assertEquals(null, bundle.launchPoint)
+        assertEquals("aircraft_home_point_at_takeoff", bundle.launchPointSource)
         assertEquals(2, bundle.orderedWaypoints.size)
         assertTrue(bundle.implicitReturnToLaunch)
+        assertTrue(bundle.returnHomeOnFinish)
+        assertEquals(10.0, bundle.defaultAltitudeMeters, 0.0)
+        assertEquals(1.5, bundle.defaultSpeedMetersPerSecond, 0.0)
         assertEquals(
             listOf(1, 2),
             bundle.orderedWaypoints.map { it.sequence }
         )
         assertEquals(
             listOf(
-                bundle.launchPoint.location,
                 bundle.orderedWaypoints[0].location,
-                bundle.orderedWaypoints[1].location,
-                bundle.launchPoint.location
+                bundle.orderedWaypoints[1].location
             ),
             bundle.closedLoopPath()
         )

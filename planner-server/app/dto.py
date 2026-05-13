@@ -83,8 +83,10 @@ class MissionPlanRequestDto(BaseModel):
     flightProfile: FlightProfileDto
     inspectionIntent: InspectionIntentDto | None = None
     launchPoint: LaunchPointDto | None = None
+    launchPointSource: Literal["route_launch_point", "aircraft_home_point_at_takeoff"] = "aircraft_home_point_at_takeoff"
     orderedWaypoints: list[OrderedWaypointDto] = Field(default_factory=list)
     implicitReturnToLaunch: bool = True
+    returnHomeOnFinish: bool = True
     operatingProfile: Literal["outdoor_gps_patrol", "indoor_no_gps"] = "outdoor_gps_patrol"
     demoMode: bool = True
 
@@ -108,12 +110,14 @@ class MissionPlanRequestDto(BaseModel):
                 for index, viewpoint in enumerate(self.inspectionIntent.viewpoints)
             ]
 
-        if self.launchPoint is None:
-            raise ValueError("launchPoint must not be empty")
+        if self.launchPoint is not None and self.launchPointSource == "aircraft_home_point_at_takeoff":
+            self.launchPointSource = "route_launch_point"
         if not self.orderedWaypoints:
             raise ValueError("orderedWaypoints must not be empty")
         if not self.implicitReturnToLaunch:
             raise ValueError("implicitReturnToLaunch must remain true for patrol-route v1")
+        if not self.returnHomeOnFinish:
+            raise ValueError("returnHomeOnFinish must remain true for patrol-route v1")
 
         ordered_sequences = [waypoint.sequence for waypoint in self.orderedWaypoints]
         if ordered_sequences != list(range(1, len(self.orderedWaypoints) + 1)):
@@ -140,9 +144,11 @@ class MissionBundleDto(BaseModel):
     missionId: str
     routeMode: Literal["road_network_following"]
     operatingProfile: Literal["outdoor_gps_patrol", "indoor_no_gps"]
-    launchPoint: LaunchPointDto
+    launchPoint: LaunchPointDto | None = None
+    launchPointSource: Literal["route_launch_point", "aircraft_home_point_at_takeoff"] = "aircraft_home_point_at_takeoff"
     orderedWaypoints: list[OrderedWaypointDto]
     implicitReturnToLaunch: bool = True
+    returnHomeOnFinish: bool = True
     defaultAltitudeMeters: float
     defaultSpeedMetersPerSecond: float
     failsafe: MissionFailsafeDto = Field(default_factory=MissionFailsafeDto)
@@ -183,9 +189,11 @@ class MissionMetaDto(BaseModel):
     generatedAt: datetime
     routeMode: Literal["road_network_following"]
     operatingProfile: Literal["outdoor_gps_patrol", "indoor_no_gps"]
-    launchPoint: LaunchPointDto
+    launchPoint: LaunchPointDto | None = None
+    launchPointSource: Literal["route_launch_point", "aircraft_home_point_at_takeoff"] = "aircraft_home_point_at_takeoff"
     waypointCount: int = Field(ge=0)
     implicitReturnToLaunch: bool = True
+    returnHomeOnFinish: bool = True
     defaultAltitudeMeters: float = Field(gt=0)
     defaultSpeedMetersPerSecond: float = Field(gt=0)
     landingPolicy: Literal["android_auto_landing_with_rc_fallback"] = "android_auto_landing_with_rc_fallback"

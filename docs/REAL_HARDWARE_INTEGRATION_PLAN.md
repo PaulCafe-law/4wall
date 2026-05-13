@@ -44,7 +44,7 @@ Move from demo-only Android behavior to production-mode DJI MSDK integration for
 2. Validate SDK registration and lifecycle callbacks on device.
 3. Validate aircraft / RC connection state and product metadata.
 4. Validate simulator enable and basic outdoor patrol transit / hold / RTH flows.
-5. Validate patrol-route bundle parsing (`launchPoint + orderedWaypoints + implicitReturnToLaunch + operatingProfile`).
+5. Validate patrol-route bundle parsing (`orderedWaypoints + launchPointSource + returnHomeOnFinish + operatingProfile`).
 6. Validate KMZ mission metadata parsing and upload for `outdoor_gps_patrol`.
 7. Validate indoor profile downgrade behavior (`manual indoor only`) when upload or start is rejected.
 8. Validate limited virtual stick only in approved local-correction windows.
@@ -59,9 +59,11 @@ Move from demo-only Android behavior to production-mode DJI MSDK integration for
 
 - primary v1 path
 - route model:
-  - `launchPoint`
+  - optional legacy `launchPoint`
+  - `launchPointSource = aircraft_home_point_at_takeoff`
   - `orderedWaypoints[]`
   - `implicitReturnToLaunch: true`
+  - `returnHomeOnFinish: true`
 - Android performs:
   - bundle verification
   - preflight gating
@@ -103,7 +105,7 @@ Move from demo-only Android behavior to production-mode DJI MSDK integration for
 
 ## Virtual Stick Guardrails
 
-- Never used for main corridor following
+- Never used for main route following
 - Only used in local avoid, approach, align recovery, or explicit operator-approved micro-adjust windows
 - Low-speed and short-duration only
 - Disabled immediately on uncertainty, blocker, or mode mismatch
@@ -121,5 +123,5 @@ The product may describe full auto takeoff -> patrol -> return -> landing, but t
 
 ```text
 compile -> register -> connect -> simulator -> tethered bench -> prop-off bench
--> prop-on controlled field -> supervised corridor rehearsal -> inspection beta
+-> prop-on controlled field -> supervised short patrol loop -> patrol beta
 ```

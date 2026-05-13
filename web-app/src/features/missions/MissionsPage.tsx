@@ -4,28 +4,11 @@ import { EmptyState, Metric, Panel, ShellSection, StatusBadge, formatDate } from
 import { api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
 import { formatOperatingProfile } from '../../lib/presentation'
-import type { LaunchPointSummary, MissionSummary } from '../../lib/types'
-
-function formatLaunchPoint(launchPoint: LaunchPointSummary | null): string {
-  if (!launchPoint) {
-    return '未設定起降點'
-  }
-
-  const location = launchPoint.location ?? launchPoint
-  const lat = typeof location.lat === 'number' ? location.lat : null
-  const lng = typeof location.lng === 'number' ? location.lng : null
-  const label = launchPoint.label && /^L\d+$/i.test(launchPoint.label.trim()) ? 'L' : launchPoint.label
-
-  if (lat === null || lng === null) {
-    return label ?? '未設定起降點'
-  }
-
-  return `${label ? `${label} / ` : ''}${lat.toFixed(5)}, ${lng.toFixed(5)}`
-}
+import type { MissionSummary } from '../../lib/types'
 
 function routeSummary(mission: MissionSummary): string {
-  return `起降點 ${formatLaunchPoint(mission.launchPoint)} / ${mission.waypointCount} 個航點 / ${
-    mission.implicitReturnToLaunch ? '含隱式返航' : '未設定返航'
+  return `起降來源：起飛當下 DJI Home Point / ${mission.waypointCount} 個航點 / ${
+    mission.implicitReturnToLaunch ? '航點完成後返航' : '未設定返航'
   }`
 }
 
@@ -70,7 +53,7 @@ export function MissionsPage() {
       {!missionsQuery.isLoading && missions.length === 0 ? (
         <EmptyState
           title="目前沒有任務"
-          body="建立第一筆巡邏任務後，這裡會顯示起降點、航點數量與執行 profile。"
+          body="建立第一筆巡邏任務後，這裡會顯示 DJI Home Point 起降來源、航點數量與執行 profile。"
           action={
             <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
               建立任務

@@ -376,7 +376,7 @@ class CreateInspectionRouteRequestDto(BaseModel):
     siteId: str
     name: str = Field(min_length=1)
     description: str = ""
-    launchPoint: LaunchPointInputDto
+    launchPoint: LaunchPointInputDto | None = None
     waypoints: list[InspectionWaypointInputDto] = Field(min_length=1)
     planningParameters: dict[str, Any] = Field(default_factory=dict)
 

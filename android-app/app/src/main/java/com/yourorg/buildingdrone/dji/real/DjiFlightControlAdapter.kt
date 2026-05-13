@@ -18,6 +18,7 @@ class DjiFlightControlAdapter(
 ) : FlightControlAdapter {
     interface Gateway {
         fun takeoff(callback: CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>)
+        fun startGoHome(callback: CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>)
         fun startAutoLanding(callback: CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>)
         fun stopAutoLanding(callback: CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>)
         fun confirmLanding(callback: CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>)
@@ -33,6 +34,17 @@ class DjiFlightControlAdapter(
         if (!result.success) {
             lastCommandError = result.errorMessage ?: "DJI takeoff failed."
             logWarn("takeoff() failed: $lastCommandError")
+        }
+        return result.success
+    }
+
+    override suspend fun startGoHome(): Boolean {
+        lastCommandError = null
+        logInfo("startGoHome() requested")
+        val result = suspendCompletion { gateway.startGoHome(it) }
+        if (!result.success) {
+            lastCommandError = result.errorMessage ?: "DJI return-to-home failed."
+            logWarn("startGoHome() failed: $lastCommandError")
         }
         return result.success
     }
@@ -159,6 +171,13 @@ class DjiFlightControlAdapter(
         override fun takeoff(callback: CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>) {
             KeyManager.getInstance().performAction(
                 KeyTools.createKey(FlightControllerKey.KeyStartTakeoff),
+                callback
+            )
+        }
+
+        override fun startGoHome(callback: CommonCallbacks.CompletionCallbackWithParam<EmptyMsg>) {
+            KeyManager.getInstance().performAction(
+                KeyTools.createKey(FlightControllerKey.KeyStartGoHome),
                 callback
             )
         }

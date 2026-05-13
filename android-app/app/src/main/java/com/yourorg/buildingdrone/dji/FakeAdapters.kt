@@ -152,6 +152,16 @@ class FakeFlightControlAdapter : FlightControlAdapter {
         }
     }
 
+    override suspend fun startGoHome(): Boolean {
+        return if (!airborne) {
+            lastError = "Aircraft is not airborne."
+            false
+        } else {
+            lastError = null
+            true
+        }
+    }
+
     override suspend fun startAutoLanding(): Boolean {
         return if (!airborne) {
             lastError = "Aircraft is not airborne."

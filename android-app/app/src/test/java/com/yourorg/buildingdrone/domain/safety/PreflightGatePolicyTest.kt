@@ -52,7 +52,7 @@ class PreflightGatePolicyTest {
         )
 
         assertFalse(evaluation.canTakeoff)
-        assertEquals(8, evaluation.blockers.size)
+        assertEquals(9, evaluation.blockers.size)
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.AIRCRAFT_CONNECTED })
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.REMOTE_CONTROLLER_CONNECTED })
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.CAMERA_STREAM })
@@ -60,6 +60,7 @@ class PreflightGatePolicyTest {
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.DEVICE_HEALTH })
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.FLY_ZONE })
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.GPS })
+        assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.HOME_POINT })
         assertTrue(evaluation.blockers.any { it.gateId == PreflightGateId.MISSION_BUNDLE })
     }
 

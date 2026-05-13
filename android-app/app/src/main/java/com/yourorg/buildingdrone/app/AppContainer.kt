@@ -282,6 +282,12 @@ class AppContainer(
                 flyZoneMessage = hardware.flyZone.summary,
                 gpsReady = hardware.gpsReady,
                 gpsDetail = hardware.gpsSignalLevel?.let { "GPS signal $it with ${hardware.gpsSatelliteCount} satellites" },
+                homePointReady = hardware.homePointReady,
+                homePointDetail = if (hardware.homePointReady) {
+                    "DJI Home Point ready through GPS signal ${hardware.gpsSignalLevel} with ${hardware.gpsSatelliteCount} satellites"
+                } else {
+                    "DJI Home Point not ready; wait for GPS lock before Outdoor Patrol takeoff"
+                },
                 missionBundlePresent = missionBundle?.isArtifactComplete() == true,
                 missionBundleVerified = bundleVerified,
                 consoleMode = effectiveConsoleMode,

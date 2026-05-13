@@ -56,6 +56,9 @@ data class HardwareSnapshot(
 ) {
     val gpsReady: Boolean
         get() = gpsSatelliteCount >= 8 && gpsSignalLevel !in setOf(null, "LEVEL_0", "LEVEL_1")
+
+    val homePointReady: Boolean
+        get() = gpsReady
 }
 
 interface HardwareStatusProvider {
@@ -151,6 +154,7 @@ interface WaypointMissionAdapter {
 
 interface FlightControlAdapter {
     suspend fun takeoff(): Boolean
+    suspend fun startGoHome(): Boolean
     suspend fun startAutoLanding(): Boolean
     suspend fun stopAutoLanding(): Boolean
     suspend fun confirmLanding(): Boolean

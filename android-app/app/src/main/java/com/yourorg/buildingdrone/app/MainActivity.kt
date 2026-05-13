@@ -259,6 +259,12 @@ class MainActivity : ComponentActivity() {
                             message = container.flightControlAdapter.lastCommandError()
                         )
                     },
+                    startReturnHomeExecutor = {
+                        CommandActionResult(
+                            success = container.flightControlAdapter.startGoHome(),
+                            message = container.flightControlAdapter.lastCommandError()
+                        )
+                    },
                     startAutoLandingExecutor = {
                         CommandActionResult(
                             success = container.flightControlAdapter.startAutoLanding(),

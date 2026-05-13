@@ -28,8 +28,10 @@ class RouteProvider:
 
 class MockRouteProvider(RouteProvider):
     def plan_route(self, request: MissionPlanRequestDto) -> RoutePath:
-        launch = request.launchPoint.location
         ordered = [waypoint.location for waypoint in sorted(request.orderedWaypoints, key=lambda item: item.sequence)]
+        if request.launchPoint is None:
+            return RoutePath(points=ordered)
+        launch = request.launchPoint.location
         return RoutePath(points=[launch, *ordered, launch])
 
 
@@ -47,8 +49,12 @@ class OsmOsrmRouteProvider(RouteProvider):
 
     def plan_route(self, request: MissionPlanRequestDto) -> RoutePath:
         ordered = [waypoint.location for waypoint in sorted(request.orderedWaypoints, key=lambda item: item.sequence)]
-        route_points = [request.launchPoint.location, *ordered, request.launchPoint.location]
+        route_points = ordered
+        if request.launchPoint is not None:
+            route_points = [request.launchPoint.location, *ordered, request.launchPoint.location]
         if request.operatingProfile == "indoor_no_gps":
+            return RoutePath(points=route_points)
+        if len(route_points) < 2:
             return RoutePath(points=route_points)
 
         stitched: list[GeoPointDto] = []

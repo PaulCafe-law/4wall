@@ -12,7 +12,7 @@ The product now has two operating profiles:
 
 - `outdoor_gps_patrol`
   - primary v1 product path
-  - uses `launchPoint + orderedWaypoints + implicitReturnToLaunch`
+  - uses `orderedWaypoints + runtime DJI Home Point + returnHomeOnFinish`
   - main transit authority is DJI waypoint mission / KMZ
   - product narrative may describe full auto takeoff -> patrol -> return -> landing
   - implementation must still preserve DJI landing confirmation and RC-only fallback
@@ -37,15 +37,17 @@ See `docs/ANDROID_CONSOLE_SPLIT_AND_MANUAL_PILOT.md`.
 
 The patrol route model is now:
 
-- `launchPoint`
 - `orderedWaypoints[]`
 - `implicitReturnToLaunch: true`
+- `launchPointSource: aircraft_home_point_at_takeoff`
+- `returnHomeOnFinish: true`
 - `operatingProfile`
-- `defaultAltitudeMeters`
-- `defaultSpeedMetersPerSecond`
+- `defaultAltitudeMeters: 10`
+- `defaultSpeedMetersPerSecond: 1.5`
 - `failsafe`
 
 `viewpoint` is no longer a required part of the outdoor patrol route schema.
+Route-owned launch points are legacy-only in v1. Android uses the DJI Home Point captured at takeoff as the launch and return authority.
 
 Legacy inspection-specific geometry may remain optional for compatibility, but it is not the authority for v1 patrol execution.
 
@@ -86,8 +88,9 @@ Nominal runtime flow:
 4. takeoff
 5. stable hover
 6. start waypoint mission
-7. DJI executes `L -> waypoint[1..N] -> L`
-8. Android starts auto landing on mission completion
+7. DJI executes Web-authored waypoint `1..N`
+8. DJI executes `finishAction = goHome` and returns to the runtime Home Point
+9. Android monitors return / landing policy handoff and preserves fallback actions
 
 Patrol state machine should prioritize:
 
@@ -126,19 +129,23 @@ The product may present an automatic landing story, but the runtime must preserv
 
 The shared mission contract must expose:
 
-- `launchPoint`
+- `launchPoint` as optional / legacy
+- `launchPointSource`
 - `orderedWaypoints[]`
 - `implicitReturnToLaunch`
+- `returnHomeOnFinish`
 - `operatingProfile`
-- `defaultAltitudeMeters`
-- `defaultSpeedMetersPerSecond`
+- `defaultAltitudeMeters: 10`
+- `defaultSpeedMetersPerSecond: 1.5`
 - `failsafe`
 
 `mission_meta.json` must expose:
 
 - `waypointCount`
-- `launchPoint`
+- `launchPoint` as optional / legacy
+- `launchPointSource`
 - `implicitReturnToLaunch`
+- `returnHomeOnFinish`
 - `operatingProfile`
 - `landingPolicy`
 
@@ -147,7 +154,8 @@ The shared mission contract must expose:
 Outdoor acceptance:
 
 - route payload does not require an explicit final waypoint back to launch
-- KMZ execution path closes the loop back to launch
+- KMZ execution path contains only `1..N` waypoints
+- KMZ `finishAction = goHome` returns to the DJI Home Point after waypoint completion
 - app can distinguish `upload`, `takeoff`, `mission running`, `mission complete`, and `landing fallback`
 
 Indoor acceptance:

@@ -19,6 +19,7 @@ class DemoMissionCoordinatorTest {
         missionUpload: (() -> CommandActionResult)? = null,
         missionStart: (() -> CommandActionResult)? = null,
         appTakeoff: (() -> CommandActionResult)? = null,
+        startReturnHome: (() -> CommandActionResult)? = null,
         startAutoLanding: (() -> CommandActionResult)? = null,
         stopAutoLanding: (() -> CommandActionResult)? = null,
         confirmLanding: (() -> CommandActionResult)? = null,
@@ -33,6 +34,7 @@ class DemoMissionCoordinatorTest {
             missionUploadExecutor = missionUpload?.let { block -> { _ -> block() } },
             missionStartExecutor = missionStart?.let { block -> { block() } },
             appTakeoffExecutor = appTakeoff?.let { block -> { block() } },
+            startReturnHomeExecutor = startReturnHome?.let { block -> { block() } },
             startAutoLandingExecutor = startAutoLanding?.let { block -> { block() } },
             stopAutoLandingExecutor = stopAutoLanding?.let { block -> { block() } },
             confirmLandingExecutor = confirmLanding?.let { block -> { block() } },
@@ -323,6 +325,42 @@ class DemoMissionCoordinatorTest {
         assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
         assertFalse(coordinator.emergency.primaryActionEnabled)
         assertFalse(coordinator.emergency.secondaryActionEnabled)
+        assertEquals(ConsoleScreen.EMERGENCY, coordinator.activeScreen)
+    }
+
+    @Test
+    fun requestRth_inOutdoorModeInvokesDjiReturnHomeCommand() {
+        var returnHomeRequested = false
+        val coordinator = demoCoordinator(
+            preflightEvaluation = outdoorReadyEvaluation(),
+            startReturnHome = {
+                returnHomeRequested = true
+                CommandActionResult(success = true)
+            }
+        )
+        coordinator.openPreflightChecklist()
+        coordinator.approvePreflight()
+
+        coordinator.requestRth()
+
+        assertTrue(returnHomeRequested)
+        assertEquals(FlightStage.RTH, coordinator.flightState.stage)
+        assertEquals(ConsoleScreen.EMERGENCY, coordinator.activeScreen)
+    }
+
+    @Test
+    fun requestRth_staysOutOfRthWhenDjiCommandFails() {
+        val coordinator = demoCoordinator(
+            preflightEvaluation = outdoorReadyEvaluation(),
+            startReturnHome = { CommandActionResult(success = false, message = "RTH unavailable") }
+        )
+        coordinator.openPreflightChecklist()
+        coordinator.approvePreflight()
+
+        coordinator.requestRth()
+
+        assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
+        assertEquals("RTH unavailable", coordinator.emergency.reason)
         assertEquals(ConsoleScreen.EMERGENCY, coordinator.activeScreen)
     }
 

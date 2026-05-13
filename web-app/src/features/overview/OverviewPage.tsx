@@ -11,7 +11,7 @@ import {
 } from '../../lib/presentation'
 
 function recentMissionHint(waypointCount: number, implicitReturnToLaunch: boolean) {
-  return `${waypointCount} 個航點 / ${implicitReturnToLaunch ? '隱式返航' : '開放路徑'}`
+  return `${waypointCount} 個航點 / ${implicitReturnToLaunch ? '航點完成後返航' : '開放路徑'}`
 }
 
 export function OverviewPage() {
@@ -121,7 +121,7 @@ export function OverviewPage() {
               <Metric
                 label="戶外巡邏"
                 value={missions.length - indoorCount}
-                hint="起降點、排序航點與隱式返航"
+                hint="排序航點，起降參考由 DJI Home Point 決定"
               />
               <Metric
                 label="室內手動"

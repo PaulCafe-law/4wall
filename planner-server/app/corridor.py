@@ -7,7 +7,6 @@ from math import ceil, cos, radians, sqrt
 from app.dto import (
     GeoPointDto,
     InspectionViewpointDto,
-    LaunchPointDto,
     MissionArtifactDescriptorDto,
     MissionArtifactsDto,
     MissionBundleDto,
@@ -43,12 +42,13 @@ class CorridorGenerator:
             for viewpoint in (request.inspectionIntent.viewpoints if request.inspectionIntent is not None else [])
         ]
         failsafe = MissionFailsafeDto()
-        bundle_version = "2.0.0"
+        bundle_version = "2.1.0"
         mission_bundle = MissionBundleDto(
             missionId=mission_id,
             routeMode="road_network_following",
             operatingProfile=request.operatingProfile,
             launchPoint=request.launchPoint,
+            launchPointSource=request.launchPointSource,
             orderedWaypoints=[
                 OrderedWaypointDto(
                     waypointId=waypoint.waypointId,
@@ -61,6 +61,7 @@ class CorridorGenerator:
                 for waypoint in sorted(request.orderedWaypoints, key=lambda item: item.sequence)
             ],
             implicitReturnToLaunch=True,
+            returnHomeOnFinish=request.returnHomeOnFinish,
             defaultAltitudeMeters=request.flightProfile.defaultAltitudeM,
             defaultSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
             failsafe=failsafe,
@@ -80,13 +81,11 @@ class CorridorGenerator:
             generatedAt=datetime.now(timezone.utc),
             routeMode="road_network_following",
             operatingProfile=request.operatingProfile,
-            launchPoint=LaunchPointDto(
-                launchPointId=request.launchPoint.launchPointId,
-                location=request.launchPoint.location,
-                label=request.launchPoint.label,
-            ),
+            launchPoint=request.launchPoint,
+            launchPointSource=request.launchPointSource,
             waypointCount=len(request.orderedWaypoints),
             implicitReturnToLaunch=True,
+            returnHomeOnFinish=request.returnHomeOnFinish,
             defaultAltitudeMeters=request.flightProfile.defaultAltitudeM,
             defaultSpeedMetersPerSecond=request.flightProfile.defaultSpeedMps,
             landingPolicy="android_auto_landing_with_rc_fallback",

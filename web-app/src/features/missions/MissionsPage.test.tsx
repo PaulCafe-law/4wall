@@ -55,7 +55,7 @@ describe('MissionsPage', () => {
     expect(await screen.findByText('Tower A Patrol')).toBeInTheDocument()
     expect(screen.getByText('戶外 GPS 巡邏')).toBeInTheDocument()
     expect(
-      screen.getByText('起降點 L / 25.03391, 121.56452 / 3 個航點 / 含隱式返航'),
+      screen.getByText('起降來源：起飛當下 DJI Home Point / 3 個航點 / 航點完成後返航'),
     ).toBeInTheDocument()
   })
 })

@@ -104,6 +104,7 @@ class DemoMissionCoordinator(
     private val missionUploadExecutor: (suspend (MissionBundle) -> CommandActionResult)? = null,
     private val missionStartExecutor: (suspend () -> CommandActionResult)? = null,
     private val appTakeoffExecutor: (suspend () -> CommandActionResult)? = null,
+    private val startReturnHomeExecutor: (suspend () -> CommandActionResult)? = null,
     private val startAutoLandingExecutor: (suspend () -> CommandActionResult)? = null,
     private val stopAutoLandingExecutor: (suspend () -> CommandActionResult)? = null,
     private val confirmLandingExecutor: (suspend () -> CommandActionResult)? = null,
@@ -281,9 +282,14 @@ class DemoMissionCoordinator(
             },
             summary = bundle?.let {
                 listOf(
-                    "Launch point: ${it.launchPoint.label} / ${it.launchPoint.location.lat}, ${it.launchPoint.location.lng}",
+                    if (it.launchPoint == null) {
+                        "Launch source: DJI Home Point captured at takeoff"
+                    } else {
+                        "Launch point: ${it.launchPoint.label} / ${it.launchPoint.location.lat}, ${it.launchPoint.location.lng}"
+                    },
                     "Waypoint count: ${it.orderedWaypoints.size}",
-                    "Implicit RTL: ${it.implicitReturnToLaunch}",
+                    "Return home on finish: ${it.returnHomeOnFinish}",
+                    "Altitude / speed: ${it.defaultAltitudeMeters} m / ${it.defaultSpeedMetersPerSecond} m/s",
                     "Planned profile: ${it.operatingProfile.displayLabel}",
                     "Mission source: ${it.missionSource}",
                 )
@@ -701,6 +707,19 @@ class DemoMissionCoordinator(
                 nextStep = "Use HOLD, LAND, or manual takeover instead.",
                 primaryActionEnabled = false,
                 secondaryActionEnabled = false,
+            )
+            activeScreen = ConsoleScreen.EMERGENCY
+            return
+        }
+        val result = runCommand(startReturnHomeExecutor, fallbackMessage = "Return-to-home failed.")
+        if (!result.success) {
+            emergency = EmergencyUiState(
+                reason = result.message ?: "Return-to-home failed.",
+                status = ScreenDataState.ERROR,
+                mode = EmergencyMode.INFO,
+                nextStep = "Enter HOLD or TAKEOVER, then recover with the controller.",
+                primaryActionEnabled = false,
+                secondaryActionEnabled = true,
             )
             activeScreen = ConsoleScreen.EMERGENCY
             return
@@ -1332,6 +1351,7 @@ class DemoMissionCoordinator(
             PreflightGateId.DEVICE_HEALTH -> "Device health"
             PreflightGateId.FLY_ZONE -> "Fly zone"
             PreflightGateId.GPS -> "GPS"
+            PreflightGateId.HOME_POINT -> "DJI Home Point"
             PreflightGateId.MISSION_BUNDLE -> "Mission bundle"
             PreflightGateId.INDOOR_PROFILE_CONFIRMATION -> "Indoor confirmation"
         }
