@@ -400,8 +400,8 @@ export function ControlPlanePage() {
 
       if (selectedRouteId === 'new') {
         setRouteName(`${selectedSite.name} 巡檢航線`)
-        setRouteDescription('由內部規劃團隊在 Google Maps 上編輯並發布的巡檢航線。')
-        setRouteDraftWaypoints(cloneWaypoints(buildDemoWaypoints(selectedSite)))
+        setRouteDescription('點擊地圖新增巡邏航點，完成後產生 Android 可同步的任務包。')
+        setRouteDraftWaypoints([])
         return
       }
 

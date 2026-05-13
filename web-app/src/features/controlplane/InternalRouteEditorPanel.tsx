@@ -79,6 +79,10 @@ export function InternalRouteEditorPanel({
     )
   }
 
+  function removeWaypoint(index: number) {
+    onWaypointsChange(normalizedWaypoints.filter((_, itemIndex) => itemIndex !== index))
+  }
+
   return (
     <div className="grid gap-6 xl:grid-cols-[0.78fr_1.22fr]">
       <Panel>
@@ -159,6 +163,45 @@ export function InternalRouteEditorPanel({
             完成航點後，Android 會以 DJI Home Point 作為返航參考。
           </div>
 
+          <div className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-chrome-950">航點清單</p>
+                <p className="mt-1 text-xs leading-5 text-chrome-600">
+                  點擊地圖新增航點；拖曳地圖上的數字調整位置；可在這裡直接刪除任一航點。
+                </p>
+              </div>
+              <ActionButton
+                variant="secondary"
+                className="px-3 py-2"
+                onClick={() => onWaypointsChange(normalizedWaypoints.slice(0, -1))}
+                disabled={normalizedWaypoints.length === 0}
+              >
+                刪除最後一點
+              </ActionButton>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {normalizedWaypoints.length === 0 ? (
+                <span className="rounded-full border border-dashed border-chrome-300 px-3 py-2 text-xs text-chrome-600">
+                  尚未設定航點
+                </span>
+              ) : (
+                normalizedWaypoints.map((waypoint, index) => (
+                  <button
+                    key={`quick-delete-${selectedRouteId}-${index}-${waypoint.lat}-${waypoint.lng}`}
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-full border border-chrome-300 bg-white px-3 py-2 text-sm text-chrome-950 transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                    onClick={() => removeWaypoint(index)}
+                    aria-label={`刪除航點 ${index + 1}`}
+                  >
+                    <span className="font-mono text-xs">#{index + 1}</span>
+                    <span>刪除</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
           {routeError ? (
             <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {routeError}
@@ -181,7 +224,7 @@ export function InternalRouteEditorPanel({
                     <ActionButton
                       variant="ghost"
                       className="px-2 py-1 text-red-700"
-                      onClick={() => onWaypointsChange(normalizedWaypoints.filter((_, itemIndex) => itemIndex !== index))}
+                      onClick={() => removeWaypoint(index)}
                     >
                       刪除
                     </ActionButton>
@@ -259,6 +302,7 @@ export function InternalRouteEditorPanel({
           <div className="mt-4 space-y-4">
             <GoogleMapCanvas
               siteMap={site.siteMap}
+              viewportKey={`${site.siteId}:${selectedRouteId}`}
               routeOverlays={[
                 {
                   routeId: selectedRouteId || 'draft',
