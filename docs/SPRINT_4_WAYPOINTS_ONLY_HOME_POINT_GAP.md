@@ -28,6 +28,7 @@ The web and server remain planning / artifact surfaces only. They do not enter t
 - New route drafts must only contain ordered waypoints.
 - Legacy route launch-point data may remain in storage, but v1 materialization ignores it.
 - Backend materialization must accept routes without `launchPoint`.
+- Backend flight-task materialization must build the executable patrol directly from ordered waypoints, not from OSRM / road-network routing. Road providers are not a validity gate for aerial patrol waypoints.
 - Mission bundle / meta must mark launch as runtime-derived through `launchPointSource = aircraft_home_point_at_takeoff`.
 - KMZ must include only the ordered waypoint placemarks.
 - KMZ height and speed fields must be fixed to `10m` and `1.5m/s`.
