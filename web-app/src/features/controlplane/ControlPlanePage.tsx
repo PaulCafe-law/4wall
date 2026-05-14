@@ -1159,13 +1159,32 @@ export function ControlPlanePage() {
                       v{route.version}
                     </span>
                   </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    <Metric label="起降來源" value="Home Point" hint="DJI 起飛時記錄" />
-                    <Metric label="巡邏點" value={route.pointCount} />
-                    <Metric label="預估時間" value={formatDuration(route.estimatedDurationSec)} />
-                    <Metric label="返航策略" value="返航" hint="航點完成後" />
-                    <Metric label="更新時間" value={formatDateTime(route.updatedAt)} />
-                  </div>
+                  <dl className="mt-4 divide-y divide-chrome-200 rounded-2xl border border-chrome-200 bg-chrome-50/70">
+                    {[
+                      { label: '起降來源', value: 'DJI Home Point', hint: '起飛時由 Android 記錄' },
+                      { label: '巡邏點', value: `${route.pointCount} 個航點` },
+                      { label: '預估時間', value: formatDuration(route.estimatedDurationSec) },
+                      { label: '返航策略', value: '航點完成後返航' },
+                      { label: '更新時間', value: formatDateTime(route.updatedAt) },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="grid gap-1 px-4 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-center sm:gap-4"
+                      >
+                        <dt className="text-xs font-medium tracking-[0.08em] text-chrome-500">
+                          {item.label}
+                        </dt>
+                        <dd className="min-w-0 text-sm font-semibold text-chrome-950 sm:text-right">
+                          <span className="break-words">{item.value}</span>
+                          {'hint' in item && item.hint ? (
+                            <span className="mt-0.5 block text-xs font-normal text-chrome-600">
+                              {item.hint}
+                            </span>
+                          ) : null}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
                   {auth.isInternal && canWriteSelectedSite ? (
                     <div className="mt-4 rounded-2xl border border-chrome-200 bg-chrome-50/70 px-4 py-4">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
