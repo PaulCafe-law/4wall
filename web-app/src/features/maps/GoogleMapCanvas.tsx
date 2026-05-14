@@ -80,6 +80,7 @@ export function GoogleMapCanvas({
   onLaunchPointMove,
   onViewpointMove,
   onMapClick,
+  viewportKey,
   className,
 }: {
   siteMap: SiteMap
@@ -93,12 +94,14 @@ export function GoogleMapCanvas({
   onLaunchPointMove?: (index: number, point: LatLngPoint) => void
   onViewpointMove?: (index: number, point: LatLngPoint) => void
   onMapClick?: (point: LatLngPoint) => void
+  viewportKey?: string
   className?: string
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<GoogleMapsMap | null>(null)
   const overlaysRef = useRef<GoogleMapsOverlay[]>([])
   const clickListenerRef = useRef<GoogleMapsListener | null>(null)
+  const lastViewportKeyRef = useRef<string | null>(null)
   const onWaypointMoveRef = useRef(onWaypointMove)
   const onLaunchPointMoveRef = useRef(onLaunchPointMove)
   const onViewpointMoveRef = useRef(onViewpointMove)
@@ -192,8 +195,14 @@ export function GoogleMapCanvas({
       showViewpoints: shouldShowViewpoints,
     } = renderModel
 
-    map.setCenter(visibleSiteMap.center)
-    map.setZoom(visibleSiteMap.zoom)
+    const nextViewportKey =
+      viewportKey ??
+      `${visibleSiteMap.version}:${visibleSiteMap.baseMapType}:${visibleSiteMap.center.lat}:${visibleSiteMap.center.lng}`
+    if (lastViewportKeyRef.current !== nextViewportKey) {
+      map.setCenter(visibleSiteMap.center)
+      map.setZoom(visibleSiteMap.zoom)
+      lastViewportKeyRef.current = nextViewportKey
+    }
     map.setMapTypeId(visibleSiteMap.baseMapType)
 
     overlaysRef.current.forEach((overlay) => overlay.setMap(null))
@@ -300,7 +309,7 @@ export function GoogleMapCanvas({
         clickListenerRef.current = null
       }
     }
-  }, [internalEditable, renderModel, status])
+  }, [internalEditable, renderModel, status, viewportKey])
 
   if (status === 'error') {
     return (
