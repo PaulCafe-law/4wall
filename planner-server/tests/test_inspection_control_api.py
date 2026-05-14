@@ -11,6 +11,11 @@ from tests.helpers import login_web, seed_organization, seed_user, valid_request
 PASSWORD = "Password123!"
 
 
+class FailingRouteProvider:
+    def plan_route(self, request):
+        raise RuntimeError("route provider should not be used for waypoint-only patrol materialization")
+
+
 def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(client, session_factory) -> None:
     with session_factory() as session:
         org = seed_organization(session, name="Control Plane Org")
@@ -232,7 +237,8 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     assert body["dispatch"]["closedAt"] is not None
 
 
-def test_route_flight_task_shortcut_creates_assigned_bundle_for_fieldpilot(client, session_factory) -> None:
+def test_route_flight_task_shortcut_creates_assigned_bundle_for_fieldpilot(client, session_factory, app) -> None:
+    app.state.route_provider = FailingRouteProvider()
     with session_factory() as session:
         org = seed_organization(session, name="Flight Task Shortcut Org")
         org_id = org.id
