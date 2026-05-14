@@ -64,6 +64,9 @@ const apiErrorLabels: Record<string, string> = {
   origin_not_allowed: '此來源網域未被允許。',
   rate_limit_exceeded: '請求過於頻繁，請稍後再試。',
   flight_not_found: '找不到 flight。',
+  route_waypoints_required: '航線沒有可產生任務包的巡邏航點。請先新增航點並儲存航線。',
+  route_unavailable: '航線路徑產生失敗。請確認航點位置後再試一次。',
+  mission_generation_failed: '任務包產生失敗。請稍後再試，或通知工程人員檢查 KMZ 產生流程。',
 }
 
 const auditActionLabels: Record<string, string> = {

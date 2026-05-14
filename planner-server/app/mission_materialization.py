@@ -12,7 +12,7 @@ from app.dto import (
     OrderedWaypointDto,
 )
 from app.models import DispatchRecord, InspectionRoute, Mission, MissionArtifact
-from app.providers import RouteProvider, RouteProviderError
+from app.providers import RoutePath, RouteProvider
 
 PATROL_ALTITUDE_METERS = 10.0
 PATROL_SPEED_METERS_PER_SECOND = 1.5
@@ -35,11 +35,10 @@ def materialize_dispatch_mission(
     artifact_service: MissionArtifactService,
 ) -> MissionPlanResponseDto:
     request = build_plan_request_from_route(dispatch=dispatch, mission=mission, route=route)
+    _ = provider
     try:
-        route_path = provider.plan_route(request)
+        route_path = _direct_waypoint_route_path(request)
         corridor_plan = generator.generate(request=request, route_path=route_path, mission_id=mission.id)
-    except RouteProviderError as exc:
-        raise DispatchMaterializationError("route_unavailable") from exc
     except Exception as exc:
         raise DispatchMaterializationError("mission_generation_failed") from exc
 
@@ -152,6 +151,15 @@ def _artifact_descriptors(*, mission_id: str, artifacts) -> dict:
             "cacheControl": artifacts.mission_meta_json.cache_control,
         },
     }
+
+
+def _direct_waypoint_route_path(request: MissionPlanRequestDto) -> RoutePath:
+    return RoutePath(
+        points=[
+            waypoint.location
+            for waypoint in sorted(request.orderedWaypoints, key=lambda item: item.sequence)
+        ]
+    )
 
 
 def _replace_mission_artifacts(session: Session, mission_id: str) -> None:
