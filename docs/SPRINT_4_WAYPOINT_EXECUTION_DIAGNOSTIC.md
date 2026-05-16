@@ -95,6 +95,8 @@ The cache filename is checksum-scoped, for example `mission-<shortSha>.kmz`, so 
 
 The 2026-05-16 ground-start run still failed with `start=single-arg-all-waylines` and the same `Check whether the wayline file is correct` DJI error. Comparing the active `mission-6044580023f0.kmz` with a DJI Fly-generated Mini 4 Pro KMZ showed the WPML shape is effectively identical except for waypoint coordinates and `executeHeight` (`10m` in the generated package versus `50m` in the DJI Fly sample). The next diagnostic therefore tests the remaining documented start overload before changing the mission geometry again.
 
+PR #66 merged the adapter diagnostics but missed the Android Outdoor Patrol state-machine change that keeps the aircraft on the ground before starting the DJI waypoint mission. PR #67 restores that missing behavior: uploading a patrol mission leaves the console in `MISSION_READY`, hides `App 起飛` / `RC 起飛後確認 hover`, and changes the primary action to `啟動航點任務`.
+
 ## Server Artifact Gate
 
 The planner server validates every generated KMZ before storage. The diagnostic gate unzips `mission.kmz` and checks:
