@@ -215,7 +215,7 @@ class RealAdapterSmokeTest {
     }
 
     @Test
-    fun djiWaypointMissionAdapter_usesExplicitWaylineZeroWhenSdkReturnsNoAvailableIds() = runTest {
+    fun djiWaypointMissionAdapter_usesEmptyWaylineListWhenSdkReturnsNoAvailableIds() = runTest {
         val seedRoot = createTempDirectory(prefix = "real-adapter-all-waylines").toFile()
         val bundle = seedMissionBundle(seedRoot)
         var startAllCalled = false
@@ -256,9 +256,9 @@ class RealAdapterSmokeTest {
         val started = adapter.startMission()
         assertTrue(adapter.lastCommandError(), started)
         assertFalse(startAllCalled)
-        assertEquals(listOf(0), selectedWaylineIds)
+        assertEquals(emptyList<Int>(), selectedWaylineIds)
         assertEquals(emptyList<Int>(), adapter.diagnosticSnapshot().availableWaylineIds)
-        assertEquals("list-fallback-[0]", adapter.diagnosticSnapshot().startOverload)
+        assertEquals("list-empty-all-waylines", adapter.diagnosticSnapshot().startOverload)
 
         seedRoot.deleteRecursively()
     }
