@@ -8,6 +8,7 @@ import com.yourorg.buildingdrone.domain.safety.PreflightEvaluation
 import com.yourorg.buildingdrone.domain.safety.PreflightGateId
 import com.yourorg.buildingdrone.domain.safety.PreflightGateResult
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
+import com.yourorg.buildingdrone.ui.ScreenDataState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -202,7 +203,7 @@ class DemoMissionCoordinatorTest {
     }
 
     @Test
-    fun outdoorPatrol_runs_upload_takeoff_hover_start_flow() {
+    fun outdoorPatrol_uploadsThenStartsDjiWaypointMissionFromGround() {
         val coordinator = demoCoordinator(
             preflightEvaluation = outdoorReadyEvaluation(),
             missionUpload = { CommandActionResult(success = true) },
@@ -214,24 +215,24 @@ class DemoMissionCoordinatorTest {
         coordinator.approvePreflight()
         assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
         assertTrue(coordinator.preflight.readyToUpload)
-        assertTrue(coordinator.preflight.uploadActionLabel.contains("上傳"))
+        assertEquals("上傳任務", coordinator.preflight.uploadActionLabel)
+        assertFalse(coordinator.preflight.appTakeoffAction.visible)
+        assertFalse(coordinator.preflight.rcHoverAction.visible)
 
         coordinator.uploadAndStartMission()
-        assertEquals(FlightStage.TAKEOFF, coordinator.flightState.stage)
-        assertTrue(coordinator.preflight.appTakeoffAction.enabled)
-        assertTrue(coordinator.preflight.rcHoverAction.enabled)
-
-        coordinator.requestAppTakeoff()
-        assertEquals(FlightStage.HOVER_READY, coordinator.flightState.stage)
+        assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
+        assertTrue(coordinator.flightState.missionUploaded)
         assertTrue(coordinator.preflight.readyToUpload)
-        assertTrue(coordinator.preflight.uploadActionLabel.contains("開始"))
+        assertEquals("啟動航點任務", coordinator.preflight.uploadActionLabel)
+        assertFalse(coordinator.preflight.appTakeoffAction.visible)
+        assertFalse(coordinator.preflight.rcHoverAction.visible)
 
         coordinator.uploadAndStartMission()
         assertEquals(FlightStage.TRANSIT, coordinator.flightState.stage)
     }
 
     @Test
-    fun outdoorRcTakeoff_confirmationMovesToHoverReady() {
+    fun outdoorPatrol_blocksRcHoverConfirmationAfterMissionUpload() {
         val coordinator = demoCoordinator(
             preflightEvaluation = outdoorReadyEvaluation(),
             missionUpload = { CommandActionResult(success = true) }
@@ -242,8 +243,9 @@ class DemoMissionCoordinatorTest {
         coordinator.uploadAndStartMission()
         coordinator.confirmRcHoverReady()
 
-        assertEquals(FlightStage.HOVER_READY, coordinator.flightState.stage)
-        assertTrue(coordinator.preflight.readyToUpload)
+        assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
+        assertEquals(ScreenDataState.ERROR, coordinator.preflight.status)
+        assertTrue(coordinator.preflight.warning?.contains("waypoint mission") == true)
     }
 
     @Test

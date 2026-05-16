@@ -167,14 +167,14 @@ class DjiWaypointMissionAdapter(
         ensureExecutionListenersAttached()
         val waylineIds = gateway.availableWaylineIds(missionFileName)
         lastAvailableWaylineIds = waylineIds
-        val effectiveWaylineIds = waylineIds.ifEmpty { listOf(DEFAULT_WAYLINE_ID) }
+        val effectiveWaylineIds = waylineIds.ifEmpty { emptyList() }
         lastStartOverload = if (waylineIds.isEmpty()) {
-            "list-fallback-[0]"
+            "list-empty-all-waylines"
         } else {
             "list-$effectiveWaylineIds"
         }
         if (waylineIds.isEmpty()) {
-            logWarn("getAvailableWaylineIDs returned empty; trying explicit waylineId=0 diagnostic path. ${diagnosticSnapshot().compactSummary()}")
+            logWarn("getAvailableWaylineIDs returned empty; using empty wayline-id list to request all waylines. ${diagnosticSnapshot().compactSummary()}")
         }
         logInfo("startMission requested ${diagnosticSnapshot().compactSummary()}")
         startStateAwaiter = CompletableDeferred()
