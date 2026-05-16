@@ -17,6 +17,7 @@ import com.yourorg.buildingdrone.dji.real.DjiPerceptionAdapter
 import com.yourorg.buildingdrone.dji.real.DjiSdkSession
 import com.yourorg.buildingdrone.dji.real.DjiVirtualStickAdapter
 import com.yourorg.buildingdrone.dji.real.DjiWaypointMissionAdapter
+import com.yourorg.buildingdrone.dji.real.AndroidWpmzMissionKmzPreparer
 import java.io.File
 import okhttp3.OkHttpClient
 
@@ -57,7 +58,9 @@ fun createAppContainer(application: Application): AppContainer {
         storageRepository = FileDeviceStorageRepository(application.filesDir),
         mobileSdkSession = DjiSdkSession(),
         hardwareStatusProvider = DjiConnectionRepository(),
-        waypointMissionAdapter = DjiWaypointMissionAdapter(),
+        waypointMissionAdapter = DjiWaypointMissionAdapter(
+            missionKmzPreparer = AndroidWpmzMissionKmzPreparer(application)
+        ),
         flightControlAdapter = DjiFlightControlAdapter(),
         virtualStickAdapter = DjiVirtualStickAdapter(),
         cameraStreamAdapter = DjiCameraStreamAdapter(),

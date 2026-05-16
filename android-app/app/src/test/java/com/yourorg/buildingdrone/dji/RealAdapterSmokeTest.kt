@@ -95,6 +95,7 @@ class RealAdapterSmokeTest {
         val bundle = seedMissionBundle(seedRoot)
         var uploadedPath: String? = null
         var startedMissionId: String? = null
+        var availableWaylinesInput: String? = null
         var executeStateObserver: ((String) -> Unit)? = null
 
         val adapter = DjiWaypointMissionAdapter(
@@ -121,7 +122,10 @@ class RealAdapterSmokeTest {
                 override fun pauseMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
                 override fun resumeMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
                 override fun stopMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
-                override fun availableWaylineIds(missionFileName: String): List<Int> = listOf(0)
+                override fun availableWaylineIds(missionFileName: String): List<Int> {
+                    availableWaylinesInput = missionFileName
+                    return listOf(0)
+                }
                 override fun setExecutionStateObserver(observer: ((String) -> Unit)?) {
                     executeStateObserver = observer
                 }
@@ -137,11 +141,57 @@ class RealAdapterSmokeTest {
         val started = adapter.startMission()
         assertTrue(adapter.lastCommandError(), started)
         assertEquals(bundle.artifacts.missionKmz.localPath, uploadedPath)
+        assertEquals(bundle.artifacts.missionKmz.localPath, availableWaylinesInput)
         assertEquals("mission.kmz", startedMissionId)
         assertEquals(MissionExecutionState.RUNNING, adapter.executionState())
         assertEquals(100, adapter.uploadProgressPercent())
         assertEquals(listOf(0), adapter.diagnosticSnapshot().availableWaylineIds)
         assertEquals("list-[0]", adapter.diagnosticSnapshot().startOverload)
+
+        seedRoot.deleteRecursively()
+    }
+
+    @Test
+    fun djiWaypointMissionAdapter_uploadsPreparedAndroidWpmzCandidate() = runTest {
+        val seedRoot = createTempDirectory(prefix = "real-adapter-prepared-kmz").toFile()
+        val bundle = seedMissionBundle(seedRoot)
+        val candidate = seedRoot.resolve("android-wpmz-candidate.kmz")
+        java.io.File(bundle.artifacts.missionKmz.localPath).copyTo(candidate, overwrite = true)
+        var uploadedPath: String? = null
+
+        val adapter = DjiWaypointMissionAdapter(
+            attachWaylineInfoListener = false,
+            missionKmzPreparer = object : MissionKmzPreparer {
+                override fun prepare(missionBundle: com.yourorg.buildingdrone.data.MissionBundle): PreparedMissionKmz {
+                    return PreparedMissionKmz(
+                        source = KmzGenerationSource.ANDROID_WPMZ,
+                        localPath = candidate.absolutePath,
+                        displayName = candidate.name
+                    )
+                }
+            },
+            gateway = object : DjiWaypointMissionAdapter.Gateway {
+                override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) {
+                    uploadedPath = path
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun startMission(missionFileName: String, waylineIds: List<Int>, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun pauseMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun resumeMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun stopMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun availableWaylineIds(missionFileName: String): List<Int> = listOf(0)
+                override fun setExecutionStateObserver(observer: ((String) -> Unit)?) = Unit
+                override fun setWaylineInfoObserver(observer: ((String, Int, Int) -> Unit)?) = Unit
+                override fun setWaylineInterruptObserver(observer: ((String) -> Unit)?) = Unit
+            }
+        )
+
+        assertTrue(adapter.uploadMission(bundle))
+        assertEquals(candidate.absolutePath, uploadedPath)
+        assertEquals(KmzGenerationSource.ANDROID_WPMZ, adapter.diagnosticSnapshot().kmzGenerationSource)
+        assertEquals(candidate.name, adapter.diagnosticSnapshot().missionFileName)
 
         seedRoot.deleteRecursively()
     }

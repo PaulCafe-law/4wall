@@ -133,6 +133,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     override fun lastCommandError(): String? = lastError
 
     override fun diagnosticSnapshot(): WaypointMissionDiagnostic = WaypointMissionDiagnostic(
+        kmzGenerationSource = KmzGenerationSource.SERVER,
         missionId = loadedMission?.missionId ?: lastUploadedMissionId,
         missionFileName = lastUploadedMission?.artifacts?.missionKmz?.name ?: "mission.kmz",
         kmzPath = lastUploadedMission?.artifacts?.missionKmz?.localPath,
