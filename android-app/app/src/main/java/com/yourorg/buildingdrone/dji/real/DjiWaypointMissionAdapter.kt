@@ -12,6 +12,8 @@ import dji.v5.common.error.IDJIError
 import dji.v5.manager.aircraft.waypoint3.WaylineExecutingInfoListener
 import dji.v5.manager.aircraft.waypoint3.WaypointMissionExecuteStateListener
 import dji.v5.manager.aircraft.waypoint3.WaypointMissionManager
+import dji.sdk.wpmz.jni.JNIWPMZManager
+import dji.sdk.wpmz.value.mission.WPMLParseError
 import java.io.File
 import java.security.MessageDigest
 import java.util.zip.ZipFile
@@ -52,6 +54,8 @@ class DjiWaypointMissionAdapter(
     private var lastDjiExecuteState: String? = null
     private var lastWaylineExecutingInfo: String? = null
     private var lastInterruptReason: String? = null
+    private var nativeWaylineIds: List<Int> = emptyList()
+    private var nativeValidation: String? = null
     private var executionListenersAttached = false
     private var startStateAwaiter: CompletableDeferred<String>? = null
 
@@ -63,14 +67,24 @@ class DjiWaypointMissionAdapter(
             ZipFile(file).use { zip ->
                 val entries = zip.entries().asSequence().toList()
                 val names = entries.map { it.name }.toSet()
-                val valid = "wpmz/template.kml" in names && "wpmz/waylines.wpml" in names
+                val hasWpmlEntries = "wpmz/template.kml" in names && "wpmz/waylines.wpml" in names
+                val nativeDiagnostics = validateWithDjiNativeParser(file)
+                nativeWaylineIds = nativeDiagnostics.waylineIds
+                nativeValidation = nativeDiagnostics.validationSummary
+                val valid = hasWpmlEntries && nativeDiagnostics.blocksUpload.not()
                 MissionLoadStatus(
                     valid = valid,
                     missionId = request.expectedMissionId,
                     waylineCount = entries.count { it.name.endsWith(".wpml") },
                     entryCount = entries.size,
                     sizeBytes = file.length(),
-                    error = if (valid) null else "KMZ missing DJI WPML entries."
+                    nativeWaylineIds = nativeDiagnostics.waylineIds,
+                    nativeValidation = nativeDiagnostics.validationSummary,
+                    error = when {
+                        !hasWpmlEntries -> "KMZ missing DJI WPML entries."
+                        nativeDiagnostics.blocksUpload -> nativeDiagnostics.validationSummary
+                        else -> null
+                    }
                 )
             }
         }
@@ -167,19 +181,22 @@ class DjiWaypointMissionAdapter(
         ensureExecutionListenersAttached()
         val waylineIds = gateway.availableWaylineIds(missionFileName)
         lastAvailableWaylineIds = waylineIds
-        val effectiveWaylineIds = waylineIds.ifEmpty { listOf(DEFAULT_WAYLINE_ID) }
         lastStartOverload = if (waylineIds.isEmpty()) {
-            "list-fallback-[0]"
+            "single-arg-all-waylines"
         } else {
-            "list-$effectiveWaylineIds"
+            "list-$waylineIds"
         }
         if (waylineIds.isEmpty()) {
-            logWarn("getAvailableWaylineIDs returned empty; trying explicit waylineId=0 diagnostic path. ${diagnosticSnapshot().compactSummary()}")
+            logWarn("getAvailableWaylineIDs returned empty; using DJI single-argument startMission to execute all waylines. ${diagnosticSnapshot().compactSummary()}")
         }
         logInfo("startMission requested ${diagnosticSnapshot().compactSummary()}")
         startStateAwaiter = CompletableDeferred()
         val commandAccepted = suspendCompletion("startMission") { callback ->
-            gateway.startMission(missionFileName, effectiveWaylineIds, callback)
+            if (waylineIds.isEmpty()) {
+                gateway.startMission(missionFileName, callback)
+            } else {
+                gateway.startMission(missionFileName, waylineIds, callback)
+            }
         }
         if (!commandAccepted) {
             startStateAwaiter = null
@@ -242,8 +259,47 @@ class DjiWaypointMissionAdapter(
         djiExecuteState = lastDjiExecuteState,
         waylineExecutingInfo = lastWaylineExecutingInfo,
         interruptReason = lastInterruptReason,
+        nativeWaylineIds = nativeWaylineIds,
+        nativeValidation = nativeValidation,
         lastError = lastCommandError
     )
+
+    private data class NativeKmzDiagnostics(
+        val waylineIds: List<Int> = emptyList(),
+        val validationSummary: String? = null,
+        val blocksUpload: Boolean = false
+    )
+
+    private fun validateWithDjiNativeParser(file: File): NativeKmzDiagnostics {
+        return runCatching {
+            val check = JNIWPMZManager.checkWPMZValid(WPMZ_VERSION, file.absolutePath)
+            val errors = check.value.orEmpty().map { it.name }.filterNot { it == NATIVE_NO_ERROR }
+            val parseInfo = JNIWPMZManager.getWaylines(WPMZ_VERSION, file.absolutePath)
+            val parseValue = parseInfo.error?.value
+            val parseError = parseValue
+                ?.takeUnless { it == WPMLParseError.NO_ERROR }
+                ?.name
+            val waylineIds = parseInfo.waylines.orEmpty().mapNotNull { it.waylineId }
+            val summary = buildList {
+                if (errors.isEmpty()) {
+                    add("check=NoError")
+                } else {
+                    add("check=${errors.joinToString(",")}")
+                }
+                parseError?.let { add("parse=$it") }
+                add("parsedWaylines=$waylineIds")
+            }.joinToString("; ")
+            NativeKmzDiagnostics(
+                waylineIds = waylineIds,
+                validationSummary = summary,
+                blocksUpload = errors.isNotEmpty() || parseError != null || waylineIds.isEmpty()
+            )
+        }.getOrElse { error ->
+            // Unit tests and some non-prod environments do not load DJI's native WPMZ library.
+            // Treat that as diagnostic-only so JVM tests and demo mode do not block.
+            NativeKmzDiagnostics(validationSummary = "nativeUnavailable=${error::class.java.simpleName}:${error.message}")
+        }
+    }
 
     private fun ensureExecutionListenersAttached() {
         if (executionListenersAttached) {
@@ -351,7 +407,8 @@ class DjiWaypointMissionAdapter(
 
     companion object {
         private const val TAG = "DjiWaypointMission"
-        private const val DEFAULT_WAYLINE_ID = 0
+        private const val WPMZ_VERSION = "1.0.0"
+        private const val NATIVE_NO_ERROR = "NoError"
     }
 
     private fun sha256(bytes: ByteArray): String {

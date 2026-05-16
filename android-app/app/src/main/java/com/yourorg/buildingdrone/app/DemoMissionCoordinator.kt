@@ -547,6 +547,13 @@ class DemoMissionCoordinator(
 
     fun requestAppTakeoff() {
         val evaluation = evaluatePreflight()
+        if (selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE) {
+            preflight = buildPreflightState(evaluation).copy(
+                status = ScreenDataState.ERROR,
+                warning = "Outdoor Patrol uses the DJI waypoint mission for takeoff and climb. Upload the mission, then start the waypoint mission from the ground.",
+            )
+            return
+        }
         if (!evaluation.canTakeoff || flightState.stage !in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF)) {
             preflight = buildPreflightState(evaluation).copy(
                 status = ScreenDataState.ERROR,
@@ -581,6 +588,13 @@ class DemoMissionCoordinator(
 
     fun confirmRcHoverReady() {
         val evaluation = evaluatePreflight()
+        if (selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE) {
+            preflight = buildPreflightState(evaluation).copy(
+                status = ScreenDataState.ERROR,
+                warning = "Outdoor Patrol must start through the DJI waypoint mission from the ground. Do not confirm RC hover before patrol start.",
+            )
+            return
+        }
         if (!evaluation.canTakeoff || flightState.stage !in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF)) {
             preflight = buildPreflightState(evaluation).copy(
                 status = ScreenDataState.ERROR,
@@ -836,7 +850,14 @@ class DemoMissionCoordinator(
         bundle: MissionBundle,
         evaluation: PreflightEvaluation,
     ) {
-        if (flightState.stage == FlightStage.HOVER_READY && flightState.missionUploaded) {
+        if (flightState.missionUploaded) {
+            if (flightState.stage != FlightStage.MISSION_READY) {
+                preflight = buildPreflightState(evaluation).copy(
+                    status = ScreenDataState.ERROR,
+                    warning = "Patrol mission is already uploaded. Land and return to Mission Ready, then start the DJI waypoint mission from the ground.",
+                )
+                return
+            }
             val startResult = executeCommand(missionStartExecutor, fallbackMessage = "Mission start failed.")
             if (!startResult.success) {
                 preflight = buildPreflightState(evaluation).copy(
@@ -876,7 +897,7 @@ class DemoMissionCoordinator(
             return
         }
         flightState = flightState.copy(
-            stage = FlightStage.TAKEOFF,
+            stage = FlightStage.MISSION_READY,
             missionUploaded = true,
             lastEvent = FlightEventType.MISSION_UPLOADED,
             missionContextMode = MissionContextMode.PLANNED_BUNDLE,
@@ -979,11 +1000,12 @@ class DemoMissionCoordinator(
     private fun buildPreflightState(evaluation: PreflightEvaluation): PreflightUiState {
         val blockers = evaluation.blockers.map { it.detail }
         val readyForPatrolStart = selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE &&
-            flightState.stage == FlightStage.HOVER_READY &&
+            flightState.stage == FlightStage.MISSION_READY &&
             flightState.missionUploaded
         val readyForManualPilot = selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT &&
             hoverReadyForMissionStart &&
             flightState.stage == FlightStage.HOVER_READY
+        val patrolMode = selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE
 
         return PreflightUiState(
             status = when {
@@ -993,9 +1015,10 @@ class DemoMissionCoordinator(
             },
             blockers = blockers,
             readyToUpload = !commandInProgress && (readyForPatrolStart || readyForManualPilot || (
-                selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE &&
+                patrolMode &&
                     evaluation.canTakeoff &&
-                    flightState.stage == FlightStage.MISSION_READY
+                    flightState.stage == FlightStage.MISSION_READY &&
+                    !flightState.missionUploaded
                 )),
             checklist = evaluation.gates.map(::toChecklistItem),
             warning = when {
@@ -1003,8 +1026,8 @@ class DemoMissionCoordinator(
                 blockers.isNotEmpty() -> null
                 selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT && flightState.stage == FlightStage.MISSION_READY ->
                     "先用 App takeoff 或 RC 起飛，進入 stable hover 後才能切到 Manual Pilot。"
-                selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE && flightState.stage == FlightStage.HOVER_READY && !flightState.missionUploaded ->
-                    "先完成 mission upload，再決定是 App takeoff 或 RC hover path。"
+                patrolMode && flightState.missionUploaded ->
+                    "任務已上傳。請在地面直接啟動 DJI 航點任務，不要先用 App 或 RC 起飛到 hover。"
                 else -> null
             },
             modeLabel = selectedConsoleMode.displayLabel,
@@ -1015,10 +1038,10 @@ class DemoMissionCoordinator(
                     "可直接進入 Manual Pilot。"
                 selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT ->
                     "先完成起飛並確認 stable hover。"
-                flightState.stage == FlightStage.MISSION_READY ->
-                    "可先上傳 patrol mission，再完成起飛。"
                 readyForPatrolStart ->
-                    "可開始 waypoint patrol。"
+                    "啟動 DJI 航點任務，讓 waypoint mission 自行起飛、爬升並前往第 1 航點。"
+                flightState.stage == FlightStage.MISSION_READY ->
+                    "先上傳 patrol mission，通過後再啟動 DJI 航點任務。"
                 else -> "完成 preflight 後再繼續。"
             },
             decisionHint = if (selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT) {
@@ -1030,7 +1053,7 @@ class DemoMissionCoordinator(
             propOnBlockReason = null,
             uploadActionLabel = when {
                 selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT -> "進入手動飛行"
-                flightState.stage == FlightStage.HOVER_READY && flightState.missionUploaded -> "開始巡邏"
+                patrolMode && flightState.missionUploaded -> "啟動航點任務"
                 else -> "上傳任務"
             },
             indoorConfirmations = if (selectedConsoleMode == OperatorConsoleMode.INDOOR_MANUAL) {
@@ -1044,13 +1067,13 @@ class DemoMissionCoordinator(
             },
             appTakeoffAction = PreflightActionState(
                 label = "App 起飛",
-                enabled = !commandInProgress && evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
-                visible = true,
+                enabled = !commandInProgress && !patrolMode && evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
+                visible = !patrolMode,
             ),
             rcHoverAction = PreflightActionState(
                 label = "RC 起飛後確認 hover",
-                enabled = !commandInProgress && evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
-                visible = true,
+                enabled = !commandInProgress && !patrolMode && evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
+                visible = !patrolMode,
             ),
             landAction = PreflightActionState(
                 label = "降落",

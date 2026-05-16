@@ -76,6 +76,8 @@ data class MissionLoadStatus(
     val waylineCount: Int = 0,
     val entryCount: Int = 0,
     val sizeBytes: Long = 0L,
+    val nativeWaylineIds: List<Int> = emptyList(),
+    val nativeValidation: String? = null,
     val error: String? = null
 )
 
@@ -90,6 +92,8 @@ data class WaypointMissionDiagnostic(
     val djiExecuteState: String? = null,
     val waylineExecutingInfo: String? = null,
     val interruptReason: String? = null,
+    val nativeWaylineIds: List<Int> = emptyList(),
+    val nativeValidation: String? = null,
     val lastError: String? = null
 ) {
     fun compactSummary(): String = listOfNotNull(
@@ -102,6 +106,8 @@ data class WaypointMissionDiagnostic(
         djiExecuteState?.let { "state=$it" },
         waylineExecutingInfo?.let { "info=$it" },
         interruptReason?.let { "interrupt=$it" },
+        nativeWaylineIds.takeIf { it.isNotEmpty() }?.let { "nativeWaylines=$it" },
+        nativeValidation?.let { "nativeValidation=$it" },
         lastError?.let { "error=$it" }
     ).joinToString(" | ").replace("waylines=[-1]", "waylines=[]")
 }

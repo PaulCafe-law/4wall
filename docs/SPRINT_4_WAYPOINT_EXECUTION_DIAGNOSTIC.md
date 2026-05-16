@@ -42,6 +42,35 @@ The current generated field package still fails because it is not DJI Fly-shaped
 
 This points to the KMZ/WPML artifact, not the Home Point transition. If the aircraft accepts the wayline, DJI is responsible for climbing from the current hover/Home Point context and flying to the first waypoint.
 
+## 2026-05-16 Finding
+
+The field run with the DJI Fly-shaped Mini 4 Pro package narrowed the failure one layer further:
+
+- Android loaded the active KMZ from the private mission cache.
+- DJI's native WPMZ parser accepted the file: `check=NoError`, `parsedWaylines=[0]`.
+- `pushKMZFileToAircraft` reached `100` and returned success.
+- `getAvailableWaylineIDs(mission-<sha>.kmz)` returned an empty list.
+- Android then used the diagnostic fallback `startMission(missionFileName, [0])`.
+- DJI rejected start with `Failed to start task. Check whether the wayline file is correct`.
+
+This means the current package is not being rejected at Android-side XML parsing or upload. The failure is now at the MSDK aircraft start boundary.
+
+The next fix removes the non-official fallback that guessed `[0]` when `getAvailableWaylineIDs` returned empty. In DJI MSDK, the one-argument `startMission(missionFileName)` path delegates to the operator with an empty wayline list, which means execute all waylines in the uploaded mission. That is safer than inventing an explicit wayline list after the SDK returned no available ids.
+
+The diagnostic now records this as:
+
+- `start=single-arg-all-waylines` when available ids are empty.
+- `start=list-[...]` only when DJI returns explicit available ids.
+
+The follow-up field run showed the one-argument start path still rejected at the aircraft boundary:
+
+- `nativeValidation=check=NoError; parsedWaylines=[0]`
+- `pushKMZFileToAircraft` completed successfully.
+- `start=single-arg-all-waylines`
+- DJI still returned `Failed to start task. Check whether the wayline file is correct`.
+
+That run also confirmed the Android prod flow was steering the operator through an unsafe diagnostic shape for Mini 4 Pro waypoint missions: upload, separate App/RC takeoff to hover, then `startMission`. The next Android fix changes Outdoor Patrol to a DJI Fly-like sequence: upload from the ground, keep the state at `MISSION_READY`, then start the DJI waypoint mission directly from the ground. The DJI mission owns takeoff, climb, and transit to waypoint 1. App/RC takeoff remains for Manual Pilot, not Outdoor Patrol.
+
 ## Root Cause Gap
 
 The Android waypoint adapter previously treated the DJI `startMission` command callback as proof that the mission was running. That callback only proves the start command returned. It does not prove the aircraft entered the DJI waypoint execution state.
@@ -91,7 +120,7 @@ The Android app logs and returns a compact diagnostic string for waypoint upload
 
 The cache filename is checksum-scoped, for example `mission-<shortSha>.kmz`, so a previous aircraft/app cache named `mission.kmz` cannot be mistaken for the current staging package.
 
-`getAvailableWaylineIDs(...)` returning an empty list is treated as a diagnostic anomaly. Because generated WPML has `waylineId=0`, the Android adapter now tries the explicit list overload with `[0]` and records `start=list-fallback-[0]`. This is not a new control strategy; it only removes ambiguity between the one-argument `startMission(file)` path and the explicit wayline-id path.
+`getAvailableWaylineIDs(...)` returning an empty list is treated as a diagnostic anomaly. The Android adapter now uses DJI's one-argument `startMission(file)` path and records `start=single-arg-all-waylines`. It does not guess or synthesize a wayline id list.
 
 ## Server Artifact Gate
 
@@ -118,8 +147,8 @@ Before another prop-on waypoint test:
 2. Sync the mission on Android and confirm the displayed/downloaded mission checksum changed.
 3. Run props-off or safe bench upload.
 4. Confirm the log contains `pushKMZFileToAircraft success`.
-5. Confirm the log contains non-empty `waylines=[0]` or explicit `start=list-fallback-[0]`.
-6. Only proceed to outdoor hover/start if the app can report the exact KMZ checksum and start overload.
+5. Confirm the log contains either non-empty `waylines=[0]` or `start=single-arg-all-waylines`.
+6. Only proceed to outdoor ground-start if the app can report the exact KMZ checksum and start overload. Do not run a separate App/RC hover before starting Outdoor Patrol.
 
 If the aircraft still hovers, capture:
 
