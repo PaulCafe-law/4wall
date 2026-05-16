@@ -56,6 +56,7 @@ class FakeHardwareStatusProvider(
 class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     private var loadedMission: MissionLoadStatus? = null
     private var lastUploadedMissionId: String? = null
+    private var lastUploadedMission: MissionBundle? = null
     private var executionState: MissionExecutionState = MissionExecutionState.IDLE
     private var lastError: String? = null
     private var uploadProgressPercent: Int? = null
@@ -85,6 +86,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
 
     override suspend fun uploadMission(missionBundle: MissionBundle): Boolean {
         lastUploadedMissionId = missionBundle.missionId
+        lastUploadedMission = missionBundle
         executionState = MissionExecutionState.UPLOADED
         uploadProgressPercent = 100
         lastError = null
@@ -129,6 +131,18 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     override fun uploadProgressPercent(): Int? = uploadProgressPercent
 
     override fun lastCommandError(): String? = lastError
+
+    override fun diagnosticSnapshot(): WaypointMissionDiagnostic = WaypointMissionDiagnostic(
+        missionId = loadedMission?.missionId ?: lastUploadedMissionId,
+        missionFileName = lastUploadedMission?.artifacts?.missionKmz?.name ?: "mission.kmz",
+        kmzPath = lastUploadedMission?.artifacts?.missionKmz?.localPath,
+        kmzSha256 = lastUploadedMission?.artifacts?.missionKmz?.checksum,
+        kmzSizeBytes = loadedMission?.sizeBytes ?: lastUploadedMission?.artifacts?.missionKmz?.sizeBytes ?: 0L,
+        availableWaylineIds = if (executionState == MissionExecutionState.RUNNING) listOf(0) else emptyList(),
+        startOverload = if (executionState == MissionExecutionState.RUNNING) "fake-list-[0]" else null,
+        djiExecuteState = if (executionState == MissionExecutionState.RUNNING) "EXECUTING" else null,
+        lastError = lastError
+    )
 
     fun lastUploadedMissionId(): String? = lastUploadedMissionId
 }

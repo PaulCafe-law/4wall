@@ -27,8 +27,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal fun mapDjiDeviceHealth(statusName: String, summary: String?): DeviceHealthState {
-    if (statusName in GPS_ONLY_DEVICE_STATUSES) {
+    if (statusName in SILENT_NON_BLOCKING_DEVICE_STATUSES) {
         return DeviceHealthState(blocking = false, summary = null)
+    }
+    if (statusName in DIAGNOSTIC_NON_BLOCKING_DEVICE_STATUSES) {
+        return DeviceHealthState(blocking = false, summary = summary ?: statusName)
     }
     return DeviceHealthState(
         blocking = statusName != DJIDeviceStatus.NORMAL.name,
@@ -36,9 +39,13 @@ internal fun mapDjiDeviceHealth(statusName: String, summary: String?): DeviceHea
     )
 }
 
-private val GPS_ONLY_DEVICE_STATUSES = setOf(
+private val SILENT_NON_BLOCKING_DEVICE_STATUSES = setOf(
     "NON_GPS_NONVISION",
     "NON_GPS"
+)
+
+private val DIAGNOSTIC_NON_BLOCKING_DEVICE_STATUSES = setOf(
+    "IN_NFZ_MAX_HEIGHT"
 )
 
 class DjiConnectionRepository(

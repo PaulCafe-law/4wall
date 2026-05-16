@@ -94,9 +94,6 @@ class ServerMissionRepository(
                     deleteRecursively()
                     mkdirs()
                 }
-                val kmzFile = File(staging, "mission.kmz")
-                val metaFile = File(staging, "mission_meta.json")
-
                 val kmz = retryWithBackoff("mission.kmz download") {
                     plannerApi.downloadArtifact(response.artifacts.missionKmz.downloadUrl)
                 }
@@ -120,6 +117,9 @@ class ServerMissionRepository(
                     artifactName = "mission_meta.json"
                 )
 
+                val kmzFileName = checksumNamedKmzFile(response.artifacts.missionKmz.checksumSha256)
+                val kmzFile = File(staging, kmzFileName)
+                val metaFile = File(staging, "mission_meta.json")
                 kmzFile.writeBytes(kmz.bytes)
                 metaFile.writeBytes(meta.bytes)
 
@@ -146,7 +146,7 @@ class ServerMissionRepository(
 
                 promoteToActive(staging)
                 val activeRecord = record.copy(
-                    missionKmzPath = File(activeDirectory, "mission.kmz").absolutePath,
+                    missionKmzPath = File(activeDirectory, kmzFileName).absolutePath,
                     missionMetaPath = File(activeDirectory, "mission_meta.json").absolutePath
                 )
                 File(activeDirectory, MANIFEST_NAME).writeText(
@@ -334,7 +334,7 @@ class ServerMissionRepository(
             missionSource = "assigned_dispatch",
             artifacts = MissionArtifacts(
                 missionKmz = MissionArtifact(
-                    name = "mission.kmz",
+                    name = missionKmz.name,
                     localPath = missionKmz.absolutePath,
                     checksum = record.missionKmz.checksumSha256,
                     version = record.missionKmz.version,
@@ -366,6 +366,11 @@ class ServerMissionRepository(
     private fun sha256(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
         return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
+    }
+
+    private fun checksumNamedKmzFile(checksumSha256: String): String {
+        val shortSha = checksumSha256.take(12).ifBlank { "unknown" }
+        return "mission-$shortSha.kmz"
     }
 
     private companion object {

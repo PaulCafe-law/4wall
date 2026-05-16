@@ -74,13 +74,31 @@ class RealAdapterSmokeTest {
     }
 
     @Test
+    fun mapDjiDeviceHealth_downgradesNfzMaxHeightToDiagnostic() {
+        val state = mapDjiDeviceHealth("IN_NFZ_MAX_HEIGHT", "IN_NFZ_MAX_HEIGHT")
+
+        assertFalse(state.blocking)
+        assertEquals("IN_NFZ_MAX_HEIGHT", state.summary)
+    }
+
+    @Test
+    fun mapDjiDeviceHealth_keepsUnknownWarningsBlocking() {
+        val state = mapDjiDeviceHealth("IMU_ERROR", "IMU_ERROR")
+
+        assertTrue(state.blocking)
+        assertEquals("IMU_ERROR", state.summary)
+    }
+
+    @Test
     fun djiWaypointMissionAdapter_loadsUploadsAndStartsMission() = runTest {
         val seedRoot = createTempDirectory(prefix = "real-adapter-kmz").toFile()
         val bundle = seedMissionBundle(seedRoot)
         var uploadedPath: String? = null
         var startedMissionId: String? = null
+        var executeStateObserver: ((String) -> Unit)? = null
 
         val adapter = DjiWaypointMissionAdapter(
+            attachWaylineInfoListener = false,
             gateway = object : DjiWaypointMissionAdapter.Gateway {
                 override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) {
                     uploadedPath = path
@@ -88,15 +106,27 @@ class RealAdapterSmokeTest {
                     callback.onSuccess()
                 }
 
-                override fun startMission(missionId: String, waylineIds: List<Int>, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
-                    startedMissionId = missionId
+                override fun startMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    startedMissionId = missionFileName
+                    executeStateObserver?.invoke("EXECUTING")
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, waylineIds: List<Int>, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    startedMissionId = missionFileName
+                    executeStateObserver?.invoke("EXECUTING")
                     callback.onSuccess()
                 }
 
                 override fun pauseMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
                 override fun resumeMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
-                override fun stopMission(missionId: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
-                override fun availableWaylineIds(kmzPath: String): List<Int> = listOf(0)
+                override fun stopMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun availableWaylineIds(missionFileName: String): List<Int> = listOf(0)
+                override fun setExecutionStateObserver(observer: ((String) -> Unit)?) {
+                    executeStateObserver = observer
+                }
+                override fun setWaylineInfoObserver(observer: ((String, Int, Int) -> Unit)?) = Unit
+                override fun setWaylineInterruptObserver(observer: ((String) -> Unit)?) = Unit
             }
         )
 
@@ -104,11 +134,131 @@ class RealAdapterSmokeTest {
 
         assertTrue(loadStatus.valid)
         assertTrue(adapter.uploadMission(bundle))
-        assertTrue(adapter.startMission())
+        val started = adapter.startMission()
+        assertTrue(adapter.lastCommandError(), started)
         assertEquals(bundle.artifacts.missionKmz.localPath, uploadedPath)
-        assertEquals(bundle.missionId, startedMissionId)
+        assertEquals("mission.kmz", startedMissionId)
         assertEquals(MissionExecutionState.RUNNING, adapter.executionState())
         assertEquals(100, adapter.uploadProgressPercent())
+        assertEquals(listOf(0), adapter.diagnosticSnapshot().availableWaylineIds)
+        assertEquals("list-[0]", adapter.diagnosticSnapshot().startOverload)
+
+        seedRoot.deleteRecursively()
+    }
+
+    @Test
+    fun djiWaypointMissionAdapter_timesOutWhenUploadCallbackNeverReturns() = runTest {
+        val seedRoot = createTempDirectory(prefix = "real-adapter-timeout").toFile()
+        val bundle = seedMissionBundle(seedRoot)
+        val adapter = DjiWaypointMissionAdapter(
+            commandTimeoutMillis = 10L,
+            executionStartTimeoutMillis = 10L,
+            attachWaylineInfoListener = false,
+            gateway = object : DjiWaypointMissionAdapter.Gateway {
+                override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) = Unit
+                override fun startMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun startMission(missionFileName: String, waylineIds: List<Int>, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun pauseMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun resumeMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun stopMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = Unit
+                override fun availableWaylineIds(missionFileName: String): List<Int> = listOf(0)
+                override fun setExecutionStateObserver(observer: ((String) -> Unit)?) = Unit
+                override fun setWaylineInfoObserver(observer: ((String, Int, Int) -> Unit)?) = Unit
+                override fun setWaylineInterruptObserver(observer: ((String) -> Unit)?) = Unit
+            }
+        )
+
+        assertFalse(adapter.uploadMission(bundle))
+        assertEquals(MissionExecutionState.FAILED, adapter.executionState())
+        assertTrue(adapter.lastCommandError()?.contains("timed out") == true)
+
+        seedRoot.deleteRecursively()
+    }
+
+    @Test
+    fun djiWaypointMissionAdapter_requiresDjiExecutionStateBeforeRunning() = runTest {
+        val seedRoot = createTempDirectory(prefix = "real-adapter-no-execution").toFile()
+        val bundle = seedMissionBundle(seedRoot)
+        val adapter = DjiWaypointMissionAdapter(
+            commandTimeoutMillis = 100L,
+            executionStartTimeoutMillis = 10L,
+            attachWaylineInfoListener = false,
+            gateway = object : DjiWaypointMissionAdapter.Gateway {
+                override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) {
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, waylineIds: List<Int>, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    callback.onSuccess()
+                }
+
+                override fun pauseMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun resumeMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun stopMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun availableWaylineIds(missionFileName: String): List<Int> = listOf(0)
+                override fun setExecutionStateObserver(observer: ((String) -> Unit)?) = Unit
+                override fun setWaylineInfoObserver(observer: ((String, Int, Int) -> Unit)?) = Unit
+                override fun setWaylineInterruptObserver(observer: ((String) -> Unit)?) = Unit
+            }
+        )
+
+        assertTrue(adapter.uploadMission(bundle))
+        assertFalse(adapter.startMission())
+        assertEquals(MissionExecutionState.FAILED, adapter.executionState())
+        assertTrue(adapter.lastCommandError()?.contains("did not enter waypoint execution") == true)
+
+        seedRoot.deleteRecursively()
+    }
+
+    @Test
+    fun djiWaypointMissionAdapter_usesExplicitWaylineZeroWhenSdkReturnsNoAvailableIds() = runTest {
+        val seedRoot = createTempDirectory(prefix = "real-adapter-all-waylines").toFile()
+        val bundle = seedMissionBundle(seedRoot)
+        var startAllCalled = false
+        var selectedWaylineIds: List<Int>? = null
+        var executeStateObserver: ((String) -> Unit)? = null
+        val adapter = DjiWaypointMissionAdapter(
+            attachWaylineInfoListener = false,
+            gateway = object : DjiWaypointMissionAdapter.Gateway {
+                override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) {
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    startAllCalled = true
+                    executeStateObserver?.invoke("ENTER_WAYLINE")
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, waylineIds: List<Int>, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    selectedWaylineIds = waylineIds
+                    executeStateObserver?.invoke("ENTER_WAYLINE")
+                    callback.onSuccess()
+                }
+
+                override fun pauseMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun resumeMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun stopMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun availableWaylineIds(missionFileName: String): List<Int> = emptyList()
+                override fun setExecutionStateObserver(observer: ((String) -> Unit)?) {
+                    executeStateObserver = observer
+                }
+                override fun setWaylineInfoObserver(observer: ((String, Int, Int) -> Unit)?) = Unit
+                override fun setWaylineInterruptObserver(observer: ((String) -> Unit)?) = Unit
+            }
+        )
+
+        assertTrue(adapter.uploadMission(bundle))
+        val started = adapter.startMission()
+        assertTrue(adapter.lastCommandError(), started)
+        assertFalse(startAllCalled)
+        assertEquals(listOf(0), selectedWaylineIds)
+        assertEquals(emptyList<Int>(), adapter.diagnosticSnapshot().availableWaylineIds)
+        assertEquals("list-fallback-[0]", adapter.diagnosticSnapshot().startOverload)
 
         seedRoot.deleteRecursively()
     }

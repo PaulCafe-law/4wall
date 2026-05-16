@@ -79,6 +79,33 @@ data class MissionLoadStatus(
     val error: String? = null
 )
 
+data class WaypointMissionDiagnostic(
+    val missionId: String? = null,
+    val missionFileName: String? = null,
+    val kmzPath: String? = null,
+    val kmzSha256: String? = null,
+    val kmzSizeBytes: Long = 0L,
+    val availableWaylineIds: List<Int> = emptyList(),
+    val startOverload: String? = null,
+    val djiExecuteState: String? = null,
+    val waylineExecutingInfo: String? = null,
+    val interruptReason: String? = null,
+    val lastError: String? = null
+) {
+    fun compactSummary(): String = listOfNotNull(
+        missionId?.let { "mission=$it" },
+        missionFileName?.let { "file=$it" },
+        kmzSha256?.take(12)?.let { "sha=$it" },
+        if (kmzSizeBytes > 0) "size=${kmzSizeBytes}B" else null,
+        "waylines=${availableWaylineIds.ifEmpty { listOf(-1) }}",
+        startOverload?.let { "start=$it" },
+        djiExecuteState?.let { "state=$it" },
+        waylineExecutingInfo?.let { "info=$it" },
+        interruptReason?.let { "interrupt=$it" },
+        lastError?.let { "error=$it" }
+    ).joinToString(" | ").replace("waylines=[-1]", "waylines=[]")
+}
+
 enum class MissionExecutionState {
     IDLE,
     LOADED,
@@ -150,6 +177,7 @@ interface WaypointMissionAdapter {
     fun lastLoadedMission(): MissionLoadStatus?
     fun uploadProgressPercent(): Int? = null
     fun lastCommandError(): String? = null
+    fun diagnosticSnapshot(): WaypointMissionDiagnostic = WaypointMissionDiagnostic(lastError = lastCommandError())
 }
 
 interface FlightControlAdapter {

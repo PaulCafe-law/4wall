@@ -227,6 +227,7 @@ class DemoMissionCoordinator(
     private var landingRcOnlyFallbackReason by mutableStateOf<String?>(null)
     private var cameraStreamState by mutableStateOf("unavailable")
     private var recordingState by mutableStateOf("idle")
+    private var commandInProgress by mutableStateOf(false)
 
     init {
         refreshMissionSetupProfile()
@@ -536,7 +537,9 @@ class DemoMissionCoordinator(
                     )
                     return
                 }
-                handlePatrolRouteStart(bundle, evaluation)
+                runFlightCommand("正在處理巡邏任務指令，請等待 DJI 回應。") {
+                    handlePatrolRouteStart(bundle, evaluation)
+                }
             }
             ExecutionMode.MANUAL_PILOT -> handleManualPilotEntry(evaluation)
         }
@@ -551,7 +554,13 @@ class DemoMissionCoordinator(
             )
             return
         }
-        val result = runCommand(appTakeoffExecutor, fallbackMessage = "App takeoff failed.")
+        runFlightCommand("正在送出 App 起飛指令，請等待 DJI 回應。") {
+            handleAppTakeoff(evaluation)
+        }
+    }
+
+    private suspend fun handleAppTakeoff(evaluation: PreflightEvaluation) {
+        val result = executeCommand(appTakeoffExecutor, fallbackMessage = "App takeoff failed.")
         if (!result.success) {
             preflight = buildPreflightState(evaluation).copy(
                 status = ScreenDataState.ERROR,
@@ -823,12 +832,12 @@ class DemoMissionCoordinator(
         refreshFlightPanels()
     }
 
-    private fun handlePatrolRouteStart(
+    private suspend fun handlePatrolRouteStart(
         bundle: MissionBundle,
         evaluation: PreflightEvaluation,
     ) {
         if (flightState.stage == FlightStage.HOVER_READY && flightState.missionUploaded) {
-            val startResult = runCommand(missionStartExecutor, fallbackMessage = "Mission start failed.")
+            val startResult = executeCommand(missionStartExecutor, fallbackMessage = "Mission start failed.")
             if (!startResult.success) {
                 preflight = buildPreflightState(evaluation).copy(
                     status = ScreenDataState.ERROR,
@@ -853,7 +862,7 @@ class DemoMissionCoordinator(
             )
             return
         }
-        val uploadResult = runCommand(
+        val uploadResult = executeCommand(
             executor = missionUploadExecutor?.let { uploader ->
                 suspend { uploader.invoke(bundle) }
             },
@@ -978,17 +987,19 @@ class DemoMissionCoordinator(
 
         return PreflightUiState(
             status = when {
+                commandInProgress -> ScreenDataState.PARTIAL
                 blockers.isNotEmpty() -> ScreenDataState.ERROR
                 else -> ScreenDataState.SUCCESS
             },
             blockers = blockers,
-            readyToUpload = readyForPatrolStart || readyForManualPilot || (
+            readyToUpload = !commandInProgress && (readyForPatrolStart || readyForManualPilot || (
                 selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE &&
                     evaluation.canTakeoff &&
                     flightState.stage == FlightStage.MISSION_READY
-                ),
+                )),
             checklist = evaluation.gates.map(::toChecklistItem),
             warning = when {
+                commandInProgress -> "DJI 指令執行中，請等待結果，不要重複點擊。"
                 blockers.isNotEmpty() -> null
                 selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT && flightState.stage == FlightStage.MISSION_READY ->
                     "先用 App takeoff 或 RC 起飛，進入 stable hover 後才能切到 Manual Pilot。"
@@ -1033,17 +1044,17 @@ class DemoMissionCoordinator(
             },
             appTakeoffAction = PreflightActionState(
                 label = "App 起飛",
-                enabled = evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
+                enabled = !commandInProgress && evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
                 visible = true,
             ),
             rcHoverAction = PreflightActionState(
                 label = "RC 起飛後確認 hover",
-                enabled = evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
+                enabled = !commandInProgress && evaluation.canTakeoff && flightState.stage in setOf(FlightStage.MISSION_READY, FlightStage.TAKEOFF),
                 visible = true,
             ),
             landAction = PreflightActionState(
                 label = "降落",
-                enabled = flightState.stage !in setOf(FlightStage.IDLE, FlightStage.PRECHECK, FlightStage.MISSION_READY, FlightStage.COMPLETED, FlightStage.ABORTED),
+                enabled = !commandInProgress && flightState.stage !in setOf(FlightStage.IDLE, FlightStage.PRECHECK, FlightStage.MISSION_READY, FlightStage.COMPLETED, FlightStage.ABORTED),
                 visible = selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT,
             ),
         )
@@ -1268,18 +1279,80 @@ class DemoMissionCoordinator(
         executor: (suspend () -> CommandActionResult)?,
         fallbackMessage: String,
     ): CommandActionResult {
-        val block = executor ?: return if (runtimeMode == RuntimeMode.DEMO) {
-            CommandActionResult(success = true)
-        } else {
-            CommandActionResult(success = false, message = fallbackMessage)
-        }
-        return runCatching { runBlocking { block.invoke() } }
+        return runCatching { runBlocking { executeCommand(executor, fallbackMessage) } }
             .getOrElse { error ->
                 CommandActionResult(
                     success = false,
                     message = error.message ?: fallbackMessage,
                 )
             }
+    }
+
+    private suspend fun executeCommand(
+        executor: (suspend () -> CommandActionResult)?,
+        fallbackMessage: String,
+    ): CommandActionResult {
+        val block = executor ?: return if (runtimeMode == RuntimeMode.DEMO) {
+            CommandActionResult(success = true)
+        } else {
+            CommandActionResult(success = false, message = fallbackMessage)
+        }
+        return runCatching { block.invoke() }
+            .getOrElse { error ->
+                CommandActionResult(
+                    success = false,
+                    message = error.message ?: fallbackMessage,
+                )
+            }
+    }
+
+    private fun runFlightCommand(
+        pendingMessage: String,
+        block: suspend () -> Unit,
+    ) {
+        if (commandInProgress) {
+            preflight = preflight.copy(
+                status = ScreenDataState.PARTIAL,
+                warning = "上一個 DJI 指令尚未完成，請等待結果。",
+            )
+            return
+        }
+        val coordinatorScope = scope
+        if (coordinatorScope == null || runtimeMode == RuntimeMode.DEMO) {
+            runCatching { runBlocking { block.invoke() } }
+                .onFailure { error ->
+                    preflight = preflight.copy(
+                        status = ScreenDataState.ERROR,
+                        warning = error.message ?: "DJI command failed.",
+                    )
+                }
+            return
+        }
+
+        commandInProgress = true
+        preflight = preflight.copy(
+            status = ScreenDataState.PARTIAL,
+            warning = pendingMessage,
+            readyToUpload = false,
+            appTakeoffAction = preflight.appTakeoffAction.copy(enabled = false),
+            rcHoverAction = preflight.rcHoverAction.copy(enabled = false),
+            landAction = preflight.landAction.copy(enabled = false),
+        )
+        coordinatorScope.launch {
+            runCatching { block.invoke() }
+                .onFailure { error ->
+                    preflight = preflight.copy(
+                        status = ScreenDataState.ERROR,
+                        warning = error.message ?: "DJI command failed.",
+                    )
+                }
+            val preserveError = preflight.status == ScreenDataState.ERROR && !preflight.warning.isNullOrBlank()
+            commandInProgress = false
+            if (!preserveError) {
+                refreshPreflightPresentation()
+            }
+            refreshFlightPanels()
+        }
     }
 
     private fun bundleVerified(): Boolean = missionBundle?.isVerified() == true
