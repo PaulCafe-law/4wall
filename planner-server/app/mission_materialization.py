@@ -15,7 +15,7 @@ from app.models import DispatchRecord, InspectionRoute, Mission, MissionArtifact
 from app.providers import RoutePath, RouteProvider
 
 PATROL_ALTITUDE_METERS = 10.0
-PATROL_SPEED_METERS_PER_SECOND = 1.5
+PATROL_SPEED_METERS_PER_SECOND = 2.5
 
 
 class DispatchMaterializationError(RuntimeError):

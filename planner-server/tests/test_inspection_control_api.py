@@ -176,7 +176,7 @@ def test_customer_admin_can_create_control_plane_records_and_dispatch_mission(cl
     assert materialized["missionBundle"]["launchPointSource"] == "aircraft_home_point_at_takeoff"
     assert materialized["missionBundle"]["returnHomeOnFinish"] is True
     assert materialized["missionBundle"]["defaultAltitudeMeters"] == 10.0
-    assert materialized["missionBundle"]["defaultSpeedMetersPerSecond"] == 1.5
+    assert materialized["missionBundle"]["defaultSpeedMetersPerSecond"] == 2.5
     assert materialized["missionBundle"]["orderedWaypoints"][0]["sequence"] == 1
 
     kmz_response = client.get(f"/v1/missions/{mission_id}/artifacts/mission.kmz", headers=headers)
@@ -316,7 +316,7 @@ def test_route_flight_task_shortcut_creates_assigned_bundle_for_fieldpilot(clien
     assert shortcut["missionBundle"]["launchPointSource"] == "aircraft_home_point_at_takeoff"
     assert shortcut["missionBundle"]["returnHomeOnFinish"] is True
     assert shortcut["missionBundle"]["defaultAltitudeMeters"] == 10.0
-    assert shortcut["missionBundle"]["defaultSpeedMetersPerSecond"] == 1.5
+    assert shortcut["missionBundle"]["defaultSpeedMetersPerSecond"] == 2.5
     assert shortcut["missionBundle"]["orderedWaypoints"][0]["sequence"] == 1
     assert shortcut["missionBundle"]["implicitReturnToLaunch"] is True
     assert shortcut["artifacts"]["missionKmz"]["downloadUrl"].endswith("/mission.kmz")

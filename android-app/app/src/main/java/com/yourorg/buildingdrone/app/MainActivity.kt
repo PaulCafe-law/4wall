@@ -231,10 +231,11 @@ class MainActivity : ComponentActivity() {
                     },
                     missionUploadExecutor = missionUploadExecutor@{ bundle ->
                         val uploaded = container.waypointMissionAdapter.uploadMission(bundle)
+                        val diagnostic = container.waypointMissionAdapter.diagnosticSnapshot().compactSummary()
                         CommandActionResult(
                             success = uploaded,
                             message = if (uploaded) {
-                                "Mission uploaded."
+                                "Mission uploaded. $diagnostic"
                             } else {
                                 container.waypointMissionAdapter.lastCommandError()
                                     ?: "Mission upload failed."
@@ -243,10 +244,11 @@ class MainActivity : ComponentActivity() {
                     },
                     missionStartExecutor = missionStartExecutor@{
                         val started = container.waypointMissionAdapter.startMission()
+                        val diagnostic = container.waypointMissionAdapter.diagnosticSnapshot().compactSummary()
                         CommandActionResult(
                             success = started,
                             message = if (started) {
-                                "Mission started."
+                                "Mission started. $diagnostic"
                             } else {
                                 container.waypointMissionAdapter.lastCommandError()
                                     ?: "Mission start failed."

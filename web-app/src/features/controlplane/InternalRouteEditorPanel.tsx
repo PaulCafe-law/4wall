@@ -159,7 +159,7 @@ export function InternalRouteEditorPanel({
           </div>
 
           <div className="rounded-2xl border border-chrome-200 bg-chrome-50/80 px-4 py-4 text-sm leading-6 text-chrome-700">
-            地圖只顯示 `1..N` 巡邏航點。航點高度固定 10 公尺，巡航速度固定 1.5 m/s。
+            地圖只顯示 `1..N` 巡邏航點。航點高度固定 10 公尺，巡航速度固定 2.5 m/s。
             完成航點後，Android 會以 DJI Home Point 作為返航參考。
           </div>
 

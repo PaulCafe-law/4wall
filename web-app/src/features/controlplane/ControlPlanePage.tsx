@@ -138,7 +138,7 @@ const WORKSPACE_GUIDES: Record<WorkspaceKey, WorkspacePresentationGuide> = {
 
 const DEFAULT_ROUTE_OFFSET = 0.00018
 const PATROL_ALTITUDE_M = 10
-const PATROL_SPEED_MPS = 1.5
+const PATROL_SPEED_MPS = 2.5
 
 function workspaceFromPath(pathname: string): WorkspaceKey {
   if (pathname === '/control-plane/routes') return 'routes'
