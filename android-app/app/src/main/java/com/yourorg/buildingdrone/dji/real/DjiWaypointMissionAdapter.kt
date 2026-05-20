@@ -2,9 +2,12 @@ package com.yourorg.buildingdrone.dji.real
 
 import android.util.Log
 import com.yourorg.buildingdrone.data.MissionBundle
+import com.yourorg.buildingdrone.dji.KmzGenerationSource
+import com.yourorg.buildingdrone.dji.MissionKmzPreparer
 import com.yourorg.buildingdrone.dji.MissionExecutionState
 import com.yourorg.buildingdrone.dji.MissionLoadRequest
 import com.yourorg.buildingdrone.dji.MissionLoadStatus
+import com.yourorg.buildingdrone.dji.ServerMissionKmzPreparer
 import com.yourorg.buildingdrone.dji.WaypointMissionAdapter
 import com.yourorg.buildingdrone.dji.WaypointMissionDiagnostic
 import dji.v5.common.callback.CommonCallbacks
@@ -22,6 +25,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 class DjiWaypointMissionAdapter(
     private val gateway: Gateway = RealGateway(),
+    private val missionKmzPreparer: MissionKmzPreparer = ServerMissionKmzPreparer,
     private val commandTimeoutMillis: Long = 45_000L,
     private val executionStartTimeoutMillis: Long = 15_000L,
     private val attachWaylineInfoListener: Boolean = true,
@@ -43,6 +47,7 @@ class DjiWaypointMissionAdapter(
     private var loadedMissionPath: String? = null
     private var loadedMissionId: String? = null
     private var loadedMissionFileName: String? = null
+    private var loadedKmzGenerationSource: KmzGenerationSource? = null
     private var loadedMissionSha256: String? = null
     private var executionState = MissionExecutionState.IDLE
     private var lastCommandError: String? = null
@@ -90,7 +95,16 @@ class DjiWaypointMissionAdapter(
     }
 
     override suspend fun uploadMission(missionBundle: MissionBundle): Boolean {
-        val kmzPath = missionBundle.artifacts.missionKmz.localPath
+        val preparedKmz = runCatching { missionKmzPreparer.prepare(missionBundle) }
+            .getOrElse { error ->
+                executionState = MissionExecutionState.FAILED
+                loadedKmzGenerationSource = null
+                lastCommandError = "Unable to prepare waypoint KMZ: ${error.message ?: error::class.java.simpleName}"
+                logError(lastCommandError!!, error)
+                return false
+            }
+        val kmzPath = preparedKmz.localPath
+        loadedKmzGenerationSource = preparedKmz.source
         if (kmzPath.isBlank() || kmzPath.startsWith("embedded://")) {
             executionState = MissionExecutionState.FAILED
             lastCommandError = "Mission KMZ path is missing."
@@ -164,8 +178,12 @@ class DjiWaypointMissionAdapter(
             lastCommandError = "No loaded mission file name."
             return false
         }
+        val missionPath = loadedMissionPath ?: run {
+            lastCommandError = "No loaded mission path."
+            return false
+        }
         ensureExecutionListenersAttached()
-        val waylineIds = gateway.availableWaylineIds(missionFileName)
+        val waylineIds = gateway.availableWaylineIds(missionPath)
         lastAvailableWaylineIds = waylineIds
         val effectiveWaylineIds = waylineIds.ifEmpty { emptyList() }
         lastStartOverload = if (waylineIds.isEmpty()) {
@@ -232,6 +250,7 @@ class DjiWaypointMissionAdapter(
     override fun lastCommandError(): String? = lastCommandError
 
     override fun diagnosticSnapshot(): WaypointMissionDiagnostic = WaypointMissionDiagnostic(
+        kmzGenerationSource = loadedKmzGenerationSource,
         missionId = loadedMissionId,
         missionFileName = loadedMissionFileName,
         kmzPath = loadedMissionPath,

@@ -97,6 +97,16 @@ The 2026-05-16 ground-start run still failed with `start=single-arg-all-waylines
 
 PR #66 merged the adapter diagnostics but missed the Android Outdoor Patrol state-machine change that keeps the aircraft on the ground before starting the DJI waypoint mission. PR #67 restores that missing behavior: uploading a patrol mission leaves the console in `MISSION_READY`, hides `App 起飛` / `RC 起飛後確認 hover`, and changes the primary action to `啟動航點任務`.
 
+The next diagnostic step is Android-side WPMZ generation. The app now records
+`source=android_wpmz` when it uploads a KMZ generated through DJI
+`WPMZManager.generateKMZFile(...)` from the assigned mission bundle. This
+separates "server hand-written WPML is invalid" from "Mini 4 Pro + RC-N2 +
+MSDK waypoint executor cannot start this class of mission".
+
+The adapter also follows the DJI sample's argument split: it calls
+`getAvailableWaylineIDs(kmzPath)` with the full generated KMZ path, then calls
+`startMission(fileName, waylineIds)` with the uploaded KMZ filename.
+
 ## Server Artifact Gate
 
 The planner server validates every generated KMZ before storage. The diagnostic gate unzips `mission.kmz` and checks:

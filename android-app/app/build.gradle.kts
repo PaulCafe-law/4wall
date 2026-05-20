@@ -144,9 +144,12 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
 
     compileOnly("com.dji:dji-sdk-v5-aircraft-provided:$djiSdkVersion")
+    compileOnly("com.dji:wpmzsdk:1.0.4.0")
     add("prodImplementation", "com.dji:dji-sdk-v5-aircraft:$djiSdkVersion")
+    add("prodImplementation", "com.dji:wpmzsdk:1.0.4.0")
     add("prodRuntimeOnly", "com.dji:dji-sdk-v5-networkImp:$djiSdkVersion")
     testImplementation("com.dji:dji-sdk-v5-aircraft-provided:$djiSdkVersion")
+    testImplementation("com.dji:wpmzsdk:1.0.4.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")

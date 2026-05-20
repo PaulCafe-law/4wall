@@ -80,6 +80,7 @@ data class MissionLoadStatus(
 )
 
 data class WaypointMissionDiagnostic(
+    val kmzGenerationSource: KmzGenerationSource? = null,
     val missionId: String? = null,
     val missionFileName: String? = null,
     val kmzPath: String? = null,
@@ -93,6 +94,7 @@ data class WaypointMissionDiagnostic(
     val lastError: String? = null
 ) {
     fun compactSummary(): String = listOfNotNull(
+        kmzGenerationSource?.let { "source=${it.label}" },
         missionId?.let { "mission=$it" },
         missionFileName?.let { "file=$it" },
         kmzSha256?.take(12)?.let { "sha=$it" },

@@ -1,0 +1,82 @@
+# Sprint 4 Android WPMZ Executor Lab
+
+## Purpose
+
+The field blocker is now narrowed to DJI waypoint execution acceptance. The
+server-generated `mission.kmz` uploads, but `startMission` is rejected by DJI
+with:
+
+```text
+Failed to start task. Check whether the wayline file is correct
+```
+
+This lab changes the Android execution candidate, not the product boundary.
+Web and planner-server still only provide waypoint geometry and mission context.
+Android remains the only flight-critical runtime.
+
+## Decision
+
+Outdoor Patrol now tests an Android-generated KMZ candidate first:
+
+1. Android reads the assigned mission bundle.
+2. Android converts bundle waypoints into a DJI WPMZ SDK model.
+3. Android calls `WPMZManager.generateKMZFile(...)`.
+4. Android uploads the generated KMZ with `pushKMZFileToAircraft(...)`.
+5. Android reads `getAvailableWaylineIDs(kmzPath)`, matching the DJI sample.
+6. Android starts with `startMission(fileName, waylineIds)`, also matching the
+   DJI sample.
+
+The planner-server KMZ remains available as `server_kmz_candidate`, but it is no
+longer the first artifact used for field waypoint execution in this diagnostic
+path.
+
+## Golden Baseline
+
+The first WPMZ candidate intentionally uses conservative DJI-sample-like values:
+
+- `finishAction = GO_HOME`
+- `exitOnRCLostAction = GO_BACK`
+- `flyToWaylineMode = SAFELY`
+- `coordinateMode = WGS84`
+- `altitudeMode = RELATIVE_TO_START_POINT`
+- waypoint height = `50m`
+- waypoint speed = `2.5 m/s`
+- drone type = `WM260` (`68`)
+- drone subtype = `0`
+
+If this starts successfully on Mini 4 Pro, lower the product values later one at
+a time. Do not change altitude, speed, route geometry, and start overload in the
+same field run.
+
+## Diagnostic Fields
+
+The app must show and log:
+
+- `kmzGenerationSource`
+- `missionId`
+- generated KMZ filename
+- generated KMZ sha256
+- generated KMZ size
+- available wayline IDs
+- start overload
+- DJI execute state
+- wayline progress
+- interrupt reason
+
+This is required so every hover/no-move result can be tied to one exact KMZ and
+one exact MSDK start path.
+
+## Interpretation
+
+- If `android_wpmz` starts and enters `ENTER_WAYLINE` or `EXECUTING`, root cause
+  is the planner-server hand-written WPML generator.
+- If `android_wpmz` is rejected, test a DJI Fly golden KMZ through the same
+  Android adapter.
+- If DJI Fly golden KMZ is also rejected, escalate the risk to the Mini 4 Pro +
+  RC-N2 + MSDK executor support path instead of continuing to tune WPML fields.
+
+## Safety Boundary
+
+This lab does not add browser flight control and does not use virtual stick to
+fake waypoint following. If DJI does not accept the waypoint mission, the app
+fails closed and remains in HOLD / operator takeover.
