@@ -7,6 +7,7 @@ import com.yourorg.buildingdrone.dji.real.DjiPerceptionAdapter
 import com.yourorg.buildingdrone.dji.real.DjiSdkSession
 import com.yourorg.buildingdrone.dji.real.DjiVirtualStickAdapter
 import com.yourorg.buildingdrone.dji.real.DjiWaypointMissionAdapter
+import com.yourorg.buildingdrone.dji.real.BaselineFirstMissionKmzPreparer
 import com.yourorg.buildingdrone.dji.real.DjiFlyShapeMissionKmzPreparer
 import com.yourorg.buildingdrone.dji.real.mapDjiDeviceHealth
 import java.util.zip.ZipFile
@@ -227,6 +228,37 @@ class RealAdapterSmokeTest {
             assertTrue(waylines.contains("gimbalRotate"))
             assertTrue(waylines.contains("gimbalEvenlyRotate"))
         }
+
+        seedRoot.deleteRecursively()
+    }
+
+    @Test
+    fun baselineFirstMissionKmzPreparer_prefersDjiFlyGoldenKmzWhenPresent() {
+        val seedRoot = createTempDirectory(prefix = "dji-fly-baseline-kmz").toFile()
+        val bundle = seedMissionBundle(seedRoot)
+        val baseline = seedRoot.resolve("dji-fly-baseline.kmz")
+        java.io.File(bundle.artifacts.missionKmz.localPath).copyTo(baseline, overwrite = true)
+        var fallbackCalled = false
+        val preparer = BaselineFirstMissionKmzPreparer(
+            baselineKmzFile = baseline,
+            fallback = object : MissionKmzPreparer {
+                override fun prepare(missionBundle: com.yourorg.buildingdrone.data.MissionBundle): PreparedMissionKmz {
+                    fallbackCalled = true
+                    return PreparedMissionKmz(
+                        source = KmzGenerationSource.ANDROID_DJI_FLY_SHAPE,
+                        localPath = missionBundle.artifacts.missionKmz.localPath,
+                        displayName = "fallback.kmz"
+                    )
+                }
+            }
+        )
+
+        val prepared = preparer.prepare(bundle)
+
+        assertEquals(KmzGenerationSource.DJI_FLY_BASELINE, prepared.source)
+        assertEquals(baseline.absolutePath, prepared.localPath)
+        assertEquals("dji-fly-baseline.kmz", prepared.displayName)
+        assertFalse(fallbackCalled)
 
         seedRoot.deleteRecursively()
     }

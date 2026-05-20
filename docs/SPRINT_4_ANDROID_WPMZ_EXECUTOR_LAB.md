@@ -104,6 +104,28 @@ Baseline values remain fixed until field acceptance:
 - Mini 4 Pro subtype: `0`
 - finish action: `goHome`
 
+## 2026-05-20 Golden KMZ Replay
+
+The DJI Fly-shaped candidate was still rejected by MSDK even though
+`getAvailableWaylineIDs(...)` returned `[0]`. Pulling the active app KMZ showed
+that it contains a valid `wpmz/waylines.wpml` with two `Placemark` waypoints, so
+the failure is not an empty-wayline problem.
+
+The next diagnostic split is to replay a native DJI Fly KMZ through the same
+Android MSDK executor:
+
+1. Put the DJI Fly exported KMZ at
+   `files/wpmz-executor-lab/dji-fly-baseline.kmz` in app-private storage.
+2. Outdoor Patrol upload/start prefers that file and records
+   `source=dji_fly_baseline`.
+3. If the DJI Fly KMZ starts, the remaining gap is in our generated KMZ content
+   or route geometry.
+4. If the DJI Fly KMZ is also rejected by MSDK, the blocker moves to Mini 4 Pro
+   + RC-N2 + MSDK waypoint executor support or start invocation semantics.
+
+This replay path is diagnostic-only. It does not let web/server enter the flight
+control loop and does not use virtual stick to fake waypoint execution.
+
 ## Safety Boundary
 
 This lab does not add browser flight control and does not use virtual stick to
