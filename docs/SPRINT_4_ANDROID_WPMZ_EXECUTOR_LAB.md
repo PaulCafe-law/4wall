@@ -80,6 +80,30 @@ one exact MSDK start path.
   risk to the Mini 4 Pro + RC-N2 + MSDK executor support path instead of
   continuing to tune WPML fields.
 
+## 2026-05-20 Field Result
+
+The native DJI Fly baseline succeeded on the same Mini 4 Pro / RC-N2 field path.
+That rules out the aircraft, controller, account, GPS/Home Point, fly zone, and
+site conditions as the primary blocker.
+
+The rejected Android-generated WPMZ candidate used the DJI WPMZ SDK namespace
+`http://www.dji.com/wpmz/1.0.6`, wrote template placemarks, and emitted a
+suspicious `efficiencyFlightModeEnable` value. DJI Fly's working package shape
+uses `http://www.uav.com/wpmz/1.0.2`, keeps template waypoints out of
+`template.kml`, and executes from `waylines.wpml`.
+
+The next Android candidate therefore stops using the WPMZ SDK generated file as
+the first field artifact. It writes a DJI Fly-shaped KMZ locally from the
+assigned mission bundle and records `source=android_dji_fly_shape`.
+
+Baseline values remain fixed until field acceptance:
+
+- waypoint height: `50m`
+- waypoint speed: `2.5 m/s`
+- Mini 4 Pro drone enum: `68`
+- Mini 4 Pro subtype: `0`
+- finish action: `goHome`
+
 ## Safety Boundary
 
 This lab does not add browser flight control and does not use virtual stick to

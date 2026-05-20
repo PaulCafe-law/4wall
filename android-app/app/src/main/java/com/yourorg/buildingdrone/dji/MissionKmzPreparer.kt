@@ -5,6 +5,7 @@ import com.yourorg.buildingdrone.data.MissionBundle
 enum class KmzGenerationSource(val label: String) {
     SERVER("server"),
     ANDROID_WPMZ("android_wpmz"),
+    ANDROID_DJI_FLY_SHAPE("android_dji_fly_shape"),
     DJI_FLY_BASELINE("dji_fly_baseline")
 }
 

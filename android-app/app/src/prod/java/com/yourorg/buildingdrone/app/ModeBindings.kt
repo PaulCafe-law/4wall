@@ -16,8 +16,8 @@ import com.yourorg.buildingdrone.dji.real.DjiFlightControlAdapter
 import com.yourorg.buildingdrone.dji.real.DjiPerceptionAdapter
 import com.yourorg.buildingdrone.dji.real.DjiSdkSession
 import com.yourorg.buildingdrone.dji.real.DjiVirtualStickAdapter
+import com.yourorg.buildingdrone.dji.real.DjiFlyShapeMissionKmzPreparer
 import com.yourorg.buildingdrone.dji.real.DjiWaypointMissionAdapter
-import com.yourorg.buildingdrone.dji.real.AndroidWpmzMissionKmzPreparer
 import java.io.File
 import okhttp3.OkHttpClient
 
@@ -59,7 +59,9 @@ fun createAppContainer(application: Application): AppContainer {
         mobileSdkSession = DjiSdkSession(),
         hardwareStatusProvider = DjiConnectionRepository(),
         waypointMissionAdapter = DjiWaypointMissionAdapter(
-            missionKmzPreparer = AndroidWpmzMissionKmzPreparer(application)
+            missionKmzPreparer = DjiFlyShapeMissionKmzPreparer(
+                outputDirectory = File(application.filesDir, "wpmz-executor-lab")
+            )
         ),
         flightControlAdapter = DjiFlightControlAdapter(),
         virtualStickAdapter = DjiVirtualStickAdapter(),
