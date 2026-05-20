@@ -5,6 +5,8 @@
 - Charged aircraft, RC, and mobile device.
 - DJI SDK / app key prerequisites confirmed; use `DJI Fly` only for one-time activation or firmware bootstrap when needed.
 - Latest `Outdoor Patrol` mission bundle is downloaded and checksum-verified.
+- If waypoint start is currently rejected by DJI, bring the DJI Fly baseline
+  protocol: `docs/DJI_FLY_BASELINE_TEST_PROTOCOL.md`.
 - Weather and local airspace reviewed.
 - Android V1 operator flow is patrol-only; simulator, indoor manual, and outdoor manual-pilot product modes are not release gates.
 

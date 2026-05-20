@@ -70,10 +70,15 @@ one exact MSDK start path.
 
 - If `android_wpmz` starts and enters `ENTER_WAYLINE` or `EXECUTING`, root cause
   is the planner-server hand-written WPML generator.
-- If `android_wpmz` is rejected, test a DJI Fly golden KMZ through the same
-  Android adapter.
-- If DJI Fly golden KMZ is also rejected, escalate the risk to the Mini 4 Pro +
-  RC-N2 + MSDK executor support path instead of continuing to tune WPML fields.
+- If `android_wpmz` is rejected, run the native DJI Fly baseline in
+  `docs/DJI_FLY_BASELINE_TEST_PROTOCOL.md` before changing more WPML fields.
+- If DJI Fly itself cannot fly a simple 2-point route, stop tuning 4Wall code and
+  resolve the aircraft / account / firmware / fly-zone / Home Point condition.
+- If DJI Fly flies successfully and can export a KMZ, replay that DJI Fly golden
+  KMZ through the same Android adapter.
+- If DJI Fly golden KMZ is also rejected through MSDK upload/start, escalate the
+  risk to the Mini 4 Pro + RC-N2 + MSDK executor support path instead of
+  continuing to tune WPML fields.
 
 ## Safety Boundary
 

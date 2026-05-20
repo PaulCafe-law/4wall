@@ -147,10 +147,30 @@ If the aircraft still hovers, capture:
 
 ## DJI Fly Baseline
 
-If the checksum-scoped package still fails with `Check whether the wayline file is correct`, run a baseline with a DJI Fly-generated Mini 4 Pro waypoint KMZ on the same phone, RC-N2, and aircraft:
+If the checksum-scoped package still fails with `Check whether the wayline file is correct`, run the native DJI Fly baseline before changing more WPML fields.
 
-- If the DJI Fly KMZ also fails through MSDK upload/start, escalate as a Mini 4 Pro + RC-N2 + MSDK waypoint support path risk.
-- If the DJI Fly KMZ starts, the root cause remains in the planner-server WPML generator.
+Authority:
+
+- `docs/DJI_FLY_BASELINE_TEST_PROTOCOL.md`
+
+The first baseline is DJI Fly itself, not our Android app replaying a DJI Fly KMZ.
+The operator manually creates and starts the DJI Fly waypoint route:
+
+- same Mini 4 Pro
+- same RC-N2
+- same phone
+- same account, firmware, fly zone, GPS, and Home Point conditions
+- 2 waypoints
+- `50m`
+- `2.5 m/s`
+- no photo / video / gimbal actions
+- finish action: RTH
+
+Interpretation:
+
+- If DJI Fly itself cannot fly this route, stop tuning 4Wall KMZ generation. The blocker is likely aircraft, firmware, fly zone, account, Home Point, or site condition.
+- If DJI Fly flies successfully, the hardware and site path are good enough. Continue debugging the 4Wall Android WPMZ / server WPML / MSDK executor path.
+- If DJI Fly can export a KMZ, replay that golden KMZ through the same Android MSDK executor lab. If the DJI Fly KMZ also fails through MSDK upload/start, escalate as a Mini 4 Pro + RC-N2 + MSDK waypoint executor support risk. If it starts, align our generated WPMZ/WPML to the DJI Fly mission shape.
 
 ## Safety Boundary
 
