@@ -13,6 +13,7 @@ import android.view.TextureView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
@@ -54,11 +55,14 @@ import com.yourorg.buildingdrone.ui.BuildingDroneTheme
 import com.yourorg.buildingdrone.ui.ConsoleHomeScreen
 import com.yourorg.buildingdrone.ui.ScreenDataState
 import androidx.core.content.ContextCompat
+import dji.v5.common.callback.CommonCallbacks
+import dji.v5.common.error.IDJIError
+import dji.v5.manager.account.UserAccountManager
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.Instant
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val runtimePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             (application as? BuildingDroneApplication)?.container?.mobileSdkSession?.retryRegistration()
@@ -83,6 +87,8 @@ class MainActivity : ComponentActivity() {
             var loginLoading by remember { mutableStateOf(false) }
             var loginError by remember { mutableStateOf<String?>(null) }
             var logoutLoading by remember { mutableStateOf(false) }
+            var djiLoginLoading by remember { mutableStateOf(false) }
+            var djiLoginMessage by remember { mutableStateOf<String?>(null) }
             var showLogoutConfirmation by remember { mutableStateOf(false) }
             var activeFlightContext by remember { mutableStateOf<ActiveFlightContext?>(null) }
             var lastUploadedEventKey by remember { mutableStateOf<String?>(null) }
@@ -604,6 +610,21 @@ class MainActivity : ComponentActivity() {
                 container.runtimeMode == RuntimeMode.PROD &&
                     coordinator.flightState.stage.allowsOperatorLogout() &&
                     !logoutLoading
+            val hardwareForDjiAccount = remember(
+                coordinator.activeScreen,
+                coordinator.connectionGuideRefreshToken,
+                djiLoginLoading,
+            ) {
+                safeHardwareSnapshot(container)
+            }
+            val showDjiLoginAction =
+                container.runtimeMode == RuntimeMode.PROD &&
+                    signedIn &&
+                    !hardwareForDjiAccount.userAccount.loggedIn
+            val djiLoginEnabled =
+                showDjiLoginAction &&
+                    !djiLoginLoading &&
+                    coordinator.flightState.stage.allowsOperatorLogout()
 
             val cameraStreamStatus = remember(
                 coordinator.activeScreen,
@@ -813,7 +834,39 @@ class MainActivity : ComponentActivity() {
                         showLogoutAction = container.runtimeMode == RuntimeMode.PROD,
                         logoutEnabled = logoutEnabled,
                         logoutInProgress = logoutLoading,
-                        onLogoutClick = { showLogoutConfirmation = true }
+                        onLogoutClick = { showLogoutConfirmation = true },
+                        showDjiLoginAction = showDjiLoginAction,
+                        djiLoginEnabled = djiLoginEnabled,
+                        djiLoginInProgress = djiLoginLoading,
+                        onDjiLoginClick = {
+                            if (djiLoginLoading) {
+                                return@ConsoleHomeScreen
+                            }
+                            djiLoginLoading = true
+                            djiLoginMessage = null
+                            UserAccountManager.getInstance().logInDJIUserAccount(
+                                this@MainActivity,
+                                false,
+                                object : CommonCallbacks.CompletionCallback {
+                                    override fun onSuccess() {
+                                        runOnUiThread {
+                                            djiLoginLoading = false
+                                            djiLoginMessage = "DJI account logged in."
+                                            coordinator.refreshPreflightChecklist()
+                                            coordinator.retryConnectionGuide()
+                                        }
+                                    }
+
+                                    override fun onFailure(error: IDJIError) {
+                                        runOnUiThread {
+                                            djiLoginLoading = false
+                                            djiLoginMessage = "DJI login failed: ${error.description() ?: error.toString()}"
+                                            coordinator.updateAuthStatus(djiLoginMessage)
+                                        }
+                                    }
+                                }
+                            )
+                        }
                     )
                 }
 

@@ -55,6 +55,10 @@ fun ConsoleHomeScreen(
     logoutEnabled: Boolean = false,
     logoutInProgress: Boolean = false,
     onLogoutClick: (() -> Unit)? = null,
+    showDjiLoginAction: Boolean = false,
+    djiLoginEnabled: Boolean = false,
+    djiLoginInProgress: Boolean = false,
+    onDjiLoginClick: (() -> Unit)? = null,
 ) {
     val scrollState = rememberScrollState()
 
@@ -105,6 +109,10 @@ fun ConsoleHomeScreen(
                     logoutEnabled = logoutEnabled,
                     logoutInProgress = logoutInProgress,
                     onLogoutClick = onLogoutClick,
+                    showDjiLoginAction = showDjiLoginAction,
+                    djiLoginEnabled = djiLoginEnabled,
+                    djiLoginInProgress = djiLoginInProgress,
+                    onDjiLoginClick = onDjiLoginClick,
                 )
                 ScreenSelector(
                     screens = demoCoordinator.visibleScreens,
@@ -182,6 +190,10 @@ private fun ConsoleHeader(
     logoutEnabled: Boolean,
     logoutInProgress: Boolean,
     onLogoutClick: (() -> Unit)?,
+    showDjiLoginAction: Boolean,
+    djiLoginEnabled: Boolean,
+    djiLoginInProgress: Boolean,
+    onDjiLoginClick: (() -> Unit)?,
 ) {
     ConsoleHeroPanel(
         eyebrow = "patrol console",
@@ -189,6 +201,14 @@ private fun ConsoleHeader(
         statusLabel = stage,
         statusTone = MaterialTheme.colorScheme.secondary,
         actions = {
+            if (showDjiLoginAction && onDjiLoginClick != null) {
+                OutlinedButton(
+                    onClick = onDjiLoginClick,
+                    enabled = djiLoginEnabled,
+                ) {
+                    Text(if (djiLoginInProgress) "DJI 登入中" else "登入 DJI")
+                }
+            }
             if (showLogoutAction && onLogoutClick != null) {
                 OutlinedButton(
                     onClick = onLogoutClick,

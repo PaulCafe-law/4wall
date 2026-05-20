@@ -91,6 +91,31 @@ class PreflightGatePolicyTest {
     }
 
     @Test
+    fun outdoorPatrol_requiresDjiAccountLogin() {
+        val evaluation = policy.evaluate(
+            PreflightSnapshot(
+                aircraftConnected = true,
+                remoteControllerConnected = true,
+                cameraStreamAvailable = true,
+                availableStorageBytes = 1_000_000_000L,
+                minimumStorageBytes = 100_000_000L,
+                deviceHealthBlocking = false,
+                flyZoneBlocking = false,
+                gpsReady = true,
+                djiAccountLoggedIn = false,
+                djiAccountDetail = "DJI account not logged in",
+                missionBundlePresent = true,
+                missionBundleVerified = true,
+                consoleMode = OperatorConsoleMode.OUTDOOR_PATROL,
+            ),
+        )
+
+        assertFalse(evaluation.canTakeoff)
+        assertEquals(1, evaluation.blockers.size)
+        assertEquals(PreflightGateId.DJI_ACCOUNT, evaluation.blockers.single().gateId)
+    }
+
+    @Test
     fun outdoorManual_flyZoneStillBlocksTakeoff() {
         val evaluation = policy.evaluate(
             PreflightSnapshot(

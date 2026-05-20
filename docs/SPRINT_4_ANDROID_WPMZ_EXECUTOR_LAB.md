@@ -126,6 +126,23 @@ Android MSDK executor:
 This replay path is diagnostic-only. It does not let web/server enter the flight
 control loop and does not use virtual stick to fake waypoint execution.
 
+## 2026-05-20 DJI Account Gate
+
+The native DJI Fly KMZ replay also reached `waylines=[0]` and then failed at
+`startMission(...)` with the same "wayline file is correct" rejection. At that
+point the package itself was no longer the leading suspect: DJI's parser could
+see wayline `0`, but the executor still rejected the start command.
+
+Logcat also showed the 4Wall app-side DJI `UserAccountManager` state as not
+logged in. DJI Fly can fly the same hardware path because DJI Fly owns its own
+logged-in account and flysafe context; that does not automatically transfer to
+the 4Wall app package. Outdoor Patrol therefore treats DJI SDK account login as
+a required preflight gate before waypoint mission upload/start.
+
+The app now exposes a local Android-only `登入 DJI` action using
+`UserAccountManager.logInDJIUserAccount(...)`. This is still inside the Android
+flight runtime. It does not create any web/server flight authority.
+
 ## Safety Boundary
 
 This lab does not add browser flight control and does not use virtual stick to

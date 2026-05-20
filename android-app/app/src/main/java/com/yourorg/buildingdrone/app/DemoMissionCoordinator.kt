@@ -1448,6 +1448,7 @@ class DemoMissionCoordinator(
             PreflightGateId.FLY_ZONE -> "Fly zone"
             PreflightGateId.GPS -> "GPS"
             PreflightGateId.HOME_POINT -> "DJI Home Point"
+            PreflightGateId.DJI_ACCOUNT -> "DJI account"
             PreflightGateId.MISSION_BUNDLE -> "Mission bundle"
             PreflightGateId.INDOOR_PROFILE_CONFIRMATION -> "Indoor confirmation"
         }

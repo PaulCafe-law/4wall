@@ -14,6 +14,7 @@ enum class PreflightGateId {
     FLY_ZONE,
     GPS,
     HOME_POINT,
+    DJI_ACCOUNT,
     MISSION_BUNDLE,
     INDOOR_PROFILE_CONFIRMATION
 }
@@ -33,6 +34,8 @@ data class PreflightSnapshot(
     val gpsDetail: String? = null,
     val homePointReady: Boolean = gpsReady,
     val homePointDetail: String? = null,
+    val djiAccountLoggedIn: Boolean = true,
+    val djiAccountDetail: String? = null,
     val missionBundlePresent: Boolean,
     val missionBundleVerified: Boolean,
     val consoleMode: OperatorConsoleMode = OperatorConsoleMode.OUTDOOR_PATROL,
@@ -65,6 +68,7 @@ class DefaultPreflightGatePolicy : PreflightGatePolicy {
     override fun evaluate(snapshot: PreflightSnapshot): PreflightEvaluation {
         val gpsBlocking = snapshot.consoleMode.requiresGpsGate
         val homePointBlocking = snapshot.consoleMode == OperatorConsoleMode.OUTDOOR_PATROL
+        val djiAccountBlocking = snapshot.consoleMode == OperatorConsoleMode.OUTDOOR_PATROL
         val bundleBlocking = snapshot.consoleMode.requiresMissionBundle
         val indoorProfile = snapshot.consoleMode == OperatorConsoleMode.INDOOR_MANUAL
 
@@ -164,6 +168,19 @@ class DefaultPreflightGatePolicy : PreflightGatePolicy {
                         snapshot.homePointReady -> snapshot.homePointDetail ?: "DJI Home Point ready"
                         homePointBlocking -> snapshot.homePointDetail ?: "DJI Home Point not ready"
                         else -> snapshot.homePointDetail ?: "Home Point is diagnostic outside Outdoor Patrol"
+                    },
+                ),
+            )
+            add(
+                PreflightGateResult(
+                    gateId = PreflightGateId.DJI_ACCOUNT,
+                    passed = snapshot.djiAccountLoggedIn || !djiAccountBlocking,
+                    blocking = djiAccountBlocking,
+                    detail = when {
+                        snapshot.djiAccountLoggedIn -> snapshot.djiAccountDetail ?: "DJI account logged in"
+                        djiAccountBlocking -> snapshot.djiAccountDetail
+                            ?: "DJI account not logged in. Outdoor Patrol waypoint execution requires DJI SDK account login"
+                        else -> snapshot.djiAccountDetail ?: "DJI account is diagnostic outside Outdoor Patrol"
                     },
                 ),
             )

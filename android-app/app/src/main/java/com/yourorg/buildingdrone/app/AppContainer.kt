@@ -288,6 +288,12 @@ class AppContainer(
                 } else {
                     "DJI Home Point not ready; wait for GPS lock before Outdoor Patrol takeoff"
                 },
+                djiAccountLoggedIn = hardware.userAccount.loggedIn,
+                djiAccountDetail = if (hardware.userAccount.loggedIn) {
+                    "DJI account logged in: ${hardware.userAccount.accountId ?: "unknown"}"
+                } else {
+                    "DJI account not logged in. Use the DJI login action before uploading or starting Outdoor Patrol."
+                },
                 missionBundlePresent = missionBundle?.isArtifactComplete() == true,
                 missionBundleVerified = bundleVerified,
                 consoleMode = effectiveConsoleMode,
