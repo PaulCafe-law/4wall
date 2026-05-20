@@ -12,12 +12,13 @@ import com.yourorg.buildingdrone.data.upload.FileFlightUploadRepository
 import com.yourorg.buildingdrone.dji.real.DjiCameraStreamAdapter
 import com.yourorg.buildingdrone.dji.real.DjiCameraControlAdapter
 import com.yourorg.buildingdrone.dji.real.DjiConnectionRepository
+import com.yourorg.buildingdrone.dji.real.BaselineFirstMissionKmzPreparer
 import com.yourorg.buildingdrone.dji.real.DjiFlightControlAdapter
 import com.yourorg.buildingdrone.dji.real.DjiPerceptionAdapter
 import com.yourorg.buildingdrone.dji.real.DjiSdkSession
 import com.yourorg.buildingdrone.dji.real.DjiVirtualStickAdapter
+import com.yourorg.buildingdrone.dji.real.DjiFlyShapeMissionKmzPreparer
 import com.yourorg.buildingdrone.dji.real.DjiWaypointMissionAdapter
-import com.yourorg.buildingdrone.dji.real.AndroidWpmzMissionKmzPreparer
 import java.io.File
 import okhttp3.OkHttpClient
 
@@ -50,6 +51,7 @@ fun createAppContainer(application: Application): AppContainer {
         plannerApi = plannerApi,
         rootDirectory = File(application.filesDir, "upload-backlog")
     )
+    val wpmzLabDirectory = File(application.filesDir, "wpmz-executor-lab")
 
     return AppContainer(
         runtimeMode = RuntimeMode.PROD,
@@ -59,7 +61,12 @@ fun createAppContainer(application: Application): AppContainer {
         mobileSdkSession = DjiSdkSession(),
         hardwareStatusProvider = DjiConnectionRepository(),
         waypointMissionAdapter = DjiWaypointMissionAdapter(
-            missionKmzPreparer = AndroidWpmzMissionKmzPreparer(application)
+            missionKmzPreparer = BaselineFirstMissionKmzPreparer(
+                baselineKmzFile = File(wpmzLabDirectory, "dji-fly-baseline.kmz"),
+                fallback = DjiFlyShapeMissionKmzPreparer(
+                    outputDirectory = wpmzLabDirectory
+                )
+            )
         ),
         flightControlAdapter = DjiFlightControlAdapter(),
         virtualStickAdapter = DjiVirtualStickAdapter(),

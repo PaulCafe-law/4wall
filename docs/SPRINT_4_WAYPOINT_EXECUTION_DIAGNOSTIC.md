@@ -172,6 +172,11 @@ Interpretation:
 - If DJI Fly flies successfully, the hardware and site path are good enough. Continue debugging the 4Wall Android WPMZ / server WPML / MSDK executor path.
 - If DJI Fly can export a KMZ, replay that golden KMZ through the same Android MSDK executor lab. If the DJI Fly KMZ also fails through MSDK upload/start, escalate as a Mini 4 Pro + RC-N2 + MSDK waypoint executor support risk. If it starts, align our generated WPMZ/WPML to the DJI Fly mission shape.
 
+2026-05-20 result: DJI Fly successfully flew a simple waypoint mission. The
+Android field path is therefore updated to use a local DJI Fly-shaped KMZ
+candidate (`source=android_dji_fly_shape`) instead of the DJI WPMZ SDK generated
+`source=android_wpmz` candidate as the first executable artifact.
+
 ## Safety Boundary
 
 This does not add web or server flight authority. It only tightens Android's local validation around the DJI waypoint mission lifecycle and corrects the server-generated mission artifact.

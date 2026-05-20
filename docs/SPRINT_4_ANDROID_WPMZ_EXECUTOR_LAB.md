@@ -80,6 +80,52 @@ one exact MSDK start path.
   risk to the Mini 4 Pro + RC-N2 + MSDK executor support path instead of
   continuing to tune WPML fields.
 
+## 2026-05-20 Field Result
+
+The native DJI Fly baseline succeeded on the same Mini 4 Pro / RC-N2 field path.
+That rules out the aircraft, controller, account, GPS/Home Point, fly zone, and
+site conditions as the primary blocker.
+
+The rejected Android-generated WPMZ candidate used the DJI WPMZ SDK namespace
+`http://www.dji.com/wpmz/1.0.6`, wrote template placemarks, and emitted a
+suspicious `efficiencyFlightModeEnable` value. DJI Fly's working package shape
+uses `http://www.uav.com/wpmz/1.0.2`, keeps template waypoints out of
+`template.kml`, and executes from `waylines.wpml`.
+
+The next Android candidate therefore stops using the WPMZ SDK generated file as
+the first field artifact. It writes a DJI Fly-shaped KMZ locally from the
+assigned mission bundle and records `source=android_dji_fly_shape`.
+
+Baseline values remain fixed until field acceptance:
+
+- waypoint height: `50m`
+- waypoint speed: `2.5 m/s`
+- Mini 4 Pro drone enum: `68`
+- Mini 4 Pro subtype: `0`
+- finish action: `goHome`
+
+## 2026-05-20 Golden KMZ Replay
+
+The DJI Fly-shaped candidate was still rejected by MSDK even though
+`getAvailableWaylineIDs(...)` returned `[0]`. Pulling the active app KMZ showed
+that it contains a valid `wpmz/waylines.wpml` with two `Placemark` waypoints, so
+the failure is not an empty-wayline problem.
+
+The next diagnostic split is to replay a native DJI Fly KMZ through the same
+Android MSDK executor:
+
+1. Put the DJI Fly exported KMZ at
+   `files/wpmz-executor-lab/dji-fly-baseline.kmz` in app-private storage.
+2. Outdoor Patrol upload/start prefers that file and records
+   `source=dji_fly_baseline`.
+3. If the DJI Fly KMZ starts, the remaining gap is in our generated KMZ content
+   or route geometry.
+4. If the DJI Fly KMZ is also rejected by MSDK, the blocker moves to Mini 4 Pro
+   + RC-N2 + MSDK waypoint executor support or start invocation semantics.
+
+This replay path is diagnostic-only. It does not let web/server enter the flight
+control loop and does not use virtual stick to fake waypoint execution.
+
 ## Safety Boundary
 
 This lab does not add browser flight control and does not use virtual stick to
