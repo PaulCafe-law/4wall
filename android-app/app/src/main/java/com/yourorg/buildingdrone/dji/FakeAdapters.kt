@@ -60,6 +60,7 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
     private var executionState: MissionExecutionState = MissionExecutionState.IDLE
     private var lastError: String? = null
     private var uploadProgressPercent: Int? = null
+    private var lastStartMode: WaypointStartMode? = null
 
     override suspend fun loadKmzMission(request: MissionLoadRequest): MissionLoadStatus {
         val file = File(request.kmzPath)
@@ -93,9 +94,10 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
         return true
     }
 
-    override suspend fun startMission(): Boolean {
+    override suspend fun startMission(startMode: WaypointStartMode): Boolean {
         val canStart = executionState == MissionExecutionState.UPLOADED || executionState == MissionExecutionState.PAUSED
         if (canStart) {
+            lastStartMode = startMode
             executionState = MissionExecutionState.RUNNING
             lastError = null
         } else {
@@ -136,10 +138,12 @@ class FakeWaypointMissionAdapter : WaypointMissionAdapter {
         kmzGenerationSource = KmzGenerationSource.SERVER,
         missionId = loadedMission?.missionId ?: lastUploadedMissionId,
         missionFileName = lastUploadedMission?.artifacts?.missionKmz?.name ?: "mission.kmz",
+        missionStartName = (lastUploadedMission?.artifacts?.missionKmz?.name ?: "mission.kmz").removeSuffix(".kmz"),
         kmzPath = lastUploadedMission?.artifacts?.missionKmz?.localPath,
         kmzSha256 = lastUploadedMission?.artifacts?.missionKmz?.checksum,
         kmzSizeBytes = loadedMission?.sizeBytes ?: lastUploadedMission?.artifacts?.missionKmz?.sizeBytes ?: 0L,
         availableWaylineIds = if (executionState == MissionExecutionState.RUNNING) listOf(0) else emptyList(),
+        startMode = lastStartMode,
         startOverload = if (executionState == MissionExecutionState.RUNNING) "fake-list-[0]" else null,
         djiExecuteState = if (executionState == MissionExecutionState.RUNNING) "EXECUTING" else null,
         lastError = lastError

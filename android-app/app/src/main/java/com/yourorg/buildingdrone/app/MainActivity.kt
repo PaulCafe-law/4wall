@@ -242,8 +242,8 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     },
-                    missionStartExecutor = missionStartExecutor@{
-                        val started = container.waypointMissionAdapter.startMission()
+                    missionStartExecutor = missionStartExecutor@{ startMode ->
+                        val started = container.waypointMissionAdapter.startMission(startMode)
                         val diagnostic = container.waypointMissionAdapter.diagnosticSnapshot().compactSummary()
                         CommandActionResult(
                             success = started,

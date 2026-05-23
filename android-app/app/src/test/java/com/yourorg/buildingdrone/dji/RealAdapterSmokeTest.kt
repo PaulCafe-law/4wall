@@ -144,10 +144,11 @@ class RealAdapterSmokeTest {
         val started = adapter.startMission()
         assertTrue(adapter.lastCommandError(), started)
         assertEquals(bundle.artifacts.missionKmz.localPath, uploadedPath)
-        assertEquals(bundle.artifacts.missionKmz.localPath, availableWaylinesInput)
-        assertEquals("mission.kmz", startedMissionId)
+        assertEquals("mission", availableWaylinesInput)
+        assertEquals("mission", startedMissionId)
         assertEquals(MissionExecutionState.RUNNING, adapter.executionState())
         assertEquals(100, adapter.uploadProgressPercent())
+        assertEquals("mission", adapter.diagnosticSnapshot().missionStartName)
         assertEquals(listOf(0), adapter.diagnosticSnapshot().availableWaylineIds)
         assertEquals("list-[0]", adapter.diagnosticSnapshot().startOverload)
 
@@ -332,8 +333,8 @@ class RealAdapterSmokeTest {
     }
 
     @Test
-    fun djiWaypointMissionAdapter_usesEmptyWaylineListWhenSdkReturnsNoAvailableIds() = runTest {
-        val seedRoot = createTempDirectory(prefix = "real-adapter-all-waylines").toFile()
+    fun djiWaypointMissionAdapter_usesWaylineZeroEvenWhenSdkReturnsNoAvailableIds() = runTest {
+        val seedRoot = createTempDirectory(prefix = "real-adapter-wayline-zero").toFile()
         val bundle = seedMissionBundle(seedRoot)
         var startAllCalled = false
         var selectedWaylineIds: List<Int>? = null
@@ -373,9 +374,63 @@ class RealAdapterSmokeTest {
         val started = adapter.startMission()
         assertTrue(adapter.lastCommandError(), started)
         assertFalse(startAllCalled)
-        assertEquals(emptyList<Int>(), selectedWaylineIds)
+        assertEquals(listOf(0), selectedWaylineIds)
         assertEquals(emptyList<Int>(), adapter.diagnosticSnapshot().availableWaylineIds)
-        assertEquals("list-empty-all-waylines", adapter.diagnosticSnapshot().startOverload)
+        assertEquals("list-[0]", adapter.diagnosticSnapshot().startOverload)
+
+        seedRoot.deleteRecursively()
+    }
+
+    @Test
+    fun djiWaypointMissionAdapter_startsSuffixlessWaylineZero() = runTest {
+        val seedRoot = createTempDirectory(prefix = "real-adapter-start-overloads").toFile()
+        val bundle = seedMissionBundle(seedRoot)
+        var fileOnlyStarts = 0
+        var availableWaylinesInput: String? = null
+        var startedMissionId: String? = null
+        var selectedWaylineIds: List<Int>? = null
+        var executeStateObserver: ((String) -> Unit)? = null
+        val adapter = DjiWaypointMissionAdapter(
+            attachWaylineInfoListener = false,
+            gateway = object : DjiWaypointMissionAdapter.Gateway {
+                override fun uploadKmz(path: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithProgress<Double>) {
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    fileOnlyStarts += 1
+                    callback.onSuccess()
+                }
+
+                override fun startMission(missionFileName: String, waylineIds: List<Int>, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) {
+                    startedMissionId = missionFileName
+                    selectedWaylineIds = waylineIds
+                    executeStateObserver?.invoke("ENTER_WAYLINE")
+                    callback.onSuccess()
+                }
+
+                override fun pauseMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun resumeMission(callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun stopMission(missionFileName: String, callback: dji.v5.common.callback.CommonCallbacks.CompletionCallback) = callback.onSuccess()
+                override fun availableWaylineIds(missionFileName: String): List<Int> {
+                    availableWaylinesInput = missionFileName
+                    return listOf(0)
+                }
+                override fun setExecutionStateObserver(observer: ((String) -> Unit)?) {
+                    executeStateObserver = observer
+                }
+                override fun setWaylineInfoObserver(observer: ((String, Int, Int) -> Unit)?) = Unit
+                override fun setWaylineInterruptObserver(observer: ((String) -> Unit)?) = Unit
+            }
+        )
+
+        assertTrue(adapter.uploadMission(bundle))
+        assertTrue(adapter.lastCommandError(), adapter.startMission())
+        assertEquals(WaypointStartMode.WAYLINE_ZERO, adapter.diagnosticSnapshot().startMode)
+        assertEquals("mission", availableWaylinesInput)
+        assertEquals("mission", startedMissionId)
+        assertEquals(listOf(0), selectedWaylineIds)
+        assertEquals(0, fileOnlyStarts)
 
         seedRoot.deleteRecursively()
     }

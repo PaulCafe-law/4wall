@@ -8,6 +8,7 @@ import com.yourorg.buildingdrone.dji.MissionExecutionState
 import com.yourorg.buildingdrone.dji.MissionLoadRequest
 import com.yourorg.buildingdrone.dji.MissionLoadStatus
 import com.yourorg.buildingdrone.dji.ServerMissionKmzPreparer
+import com.yourorg.buildingdrone.dji.WaypointStartMode
 import com.yourorg.buildingdrone.dji.WaypointMissionAdapter
 import com.yourorg.buildingdrone.dji.WaypointMissionDiagnostic
 import dji.v5.common.callback.CommonCallbacks
@@ -47,12 +48,14 @@ class DjiWaypointMissionAdapter(
     private var loadedMissionPath: String? = null
     private var loadedMissionId: String? = null
     private var loadedMissionFileName: String? = null
+    private var loadedMissionStartName: String? = null
     private var loadedKmzGenerationSource: KmzGenerationSource? = null
     private var loadedMissionSha256: String? = null
     private var executionState = MissionExecutionState.IDLE
     private var lastCommandError: String? = null
     private var uploadProgressPercent: Int? = null
     private var lastAvailableWaylineIds: List<Int> = emptyList()
+    private var lastStartMode: WaypointStartMode? = null
     private var lastStartOverload: String? = null
     private var lastDjiExecuteState: String? = null
     private var lastWaylineExecutingInfo: String? = null
@@ -82,8 +85,10 @@ class DjiWaypointMissionAdapter(
         loadedMissionPath = request.kmzPath
         loadedMissionId = request.expectedMissionId
         loadedMissionFileName = file.name
+        loadedMissionStartName = file.name.withoutKmzSuffix()
         loadedMissionSha256 = if (file.exists()) sha256(file.readBytes()) else null
         lastAvailableWaylineIds = emptyList()
+        lastStartMode = null
         lastStartOverload = null
         lastDjiExecuteState = null
         lastWaylineExecutingInfo = null
@@ -169,7 +174,7 @@ class DjiWaypointMissionAdapter(
         return uploaded
     }
 
-    override suspend fun startMission(): Boolean {
+    override suspend fun startMission(startMode: WaypointStartMode): Boolean {
         if (executionState !in setOf(MissionExecutionState.UPLOADED, MissionExecutionState.PAUSED)) {
             lastCommandError = "Mission is not uploaded."
             return false
@@ -178,26 +183,23 @@ class DjiWaypointMissionAdapter(
             lastCommandError = "No loaded mission file name."
             return false
         }
+        val missionStartName = loadedMissionStartName ?: missionFileName.withoutKmzSuffix()
         val missionPath = loadedMissionPath ?: run {
             lastCommandError = "No loaded mission path."
             return false
         }
         ensureExecutionListenersAttached()
-        val waylineIds = gateway.availableWaylineIds(missionPath)
+        val waylineIds = gateway.availableWaylineIds(missionStartName)
         lastAvailableWaylineIds = waylineIds
-        val effectiveWaylineIds = waylineIds.ifEmpty { emptyList() }
-        lastStartOverload = if (waylineIds.isEmpty()) {
-            "list-empty-all-waylines"
-        } else {
-            "list-$effectiveWaylineIds"
-        }
-        if (waylineIds.isEmpty()) {
-            logWarn("getAvailableWaylineIDs returned empty; using empty wayline-id list to request all waylines. ${diagnosticSnapshot().compactSummary()}")
-        }
+        lastStartMode = startMode
+        lastStartOverload = selectedStartOverload(startMode, waylineIds)
         logInfo("startMission requested ${diagnosticSnapshot().compactSummary()}")
         startStateAwaiter = CompletableDeferred()
         val commandAccepted = suspendCompletion("startMission") { callback ->
-            gateway.startMission(missionFileName, effectiveWaylineIds, callback)
+            when (startMode) {
+                WaypointStartMode.WAYLINE_ZERO ->
+                    gateway.startMission(missionStartName, listOf(0), callback)
+            }
         }
         if (!commandAccepted) {
             startStateAwaiter = null
@@ -236,7 +238,8 @@ class DjiWaypointMissionAdapter(
             lastCommandError = "No loaded mission file name."
             return false
         }
-        val stopped = suspendCompletion("stopMission") { gateway.stopMission(missionFileName, it) }
+        val missionStartName = loadedMissionStartName ?: missionFileName.withoutKmzSuffix()
+        val stopped = suspendCompletion("stopMission") { gateway.stopMission(missionStartName, it) }
         executionState = if (stopped) MissionExecutionState.STOPPED else executionState
         return stopped
     }
@@ -253,10 +256,12 @@ class DjiWaypointMissionAdapter(
         kmzGenerationSource = loadedKmzGenerationSource,
         missionId = loadedMissionId,
         missionFileName = loadedMissionFileName,
+        missionStartName = loadedMissionStartName,
         kmzPath = loadedMissionPath,
         kmzSha256 = loadedMissionSha256,
         kmzSizeBytes = loadedMission?.sizeBytes ?: 0L,
         availableWaylineIds = lastAvailableWaylineIds,
+        startMode = lastStartMode,
         startOverload = lastStartOverload,
         djiExecuteState = lastDjiExecuteState,
         waylineExecutingInfo = lastWaylineExecutingInfo,
@@ -313,6 +318,12 @@ class DjiWaypointMissionAdapter(
         val info = lastWaylineExecutingInfo ?: "none"
         val interrupt = lastInterruptReason ?: "none"
         return "Last DJI state=$state; wayline info=$info; interrupt=$interrupt; ${diagnosticSnapshot().compactSummary()}."
+    }
+
+    private fun selectedStartOverload(startMode: WaypointStartMode, waylineIds: List<Int>): String {
+        return when (startMode) {
+            WaypointStartMode.WAYLINE_ZERO -> "list-[0]"
+        }
     }
 
     private fun Double.asPercent(): Int {
@@ -493,4 +504,12 @@ private fun String.isStartFailureStateName(): Boolean {
         "INTERRUPTED",
         "DISCONNECTED",
     )
+}
+
+private fun String.withoutKmzSuffix(): String {
+    return if (endsWith(".kmz", ignoreCase = true)) {
+        substring(0, length - ".kmz".length)
+    } else {
+        this
+    }
 }
