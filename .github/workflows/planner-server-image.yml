@@ -1,0 +1,36 @@
+name: Planner Server Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: GHCR image tag to publish
+        required: true
+        type: string
+  push:
+    branches:
+      - codex/render-api-container
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Login to GHCR
+        run: echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build image
+        run: |
+          IMAGE_TAG="${{ inputs.image_tag }}"
+          if [ -z "$IMAGE_TAG" ]; then
+            IMAGE_TAG="${GITHUB_SHA::7}"
+          fi
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/4wall-api:${IMAGE_TAG}"
+          docker build -t "$IMAGE" planner-server
+          docker push "$IMAGE"
+          echo "image=$IMAGE" >> "$GITHUB_STEP_SUMMARY"
