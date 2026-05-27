@@ -83,10 +83,12 @@ data class WaypointMissionDiagnostic(
     val kmzGenerationSource: KmzGenerationSource? = null,
     val missionId: String? = null,
     val missionFileName: String? = null,
+    val missionStartName: String? = null,
     val kmzPath: String? = null,
     val kmzSha256: String? = null,
     val kmzSizeBytes: Long = 0L,
     val availableWaylineIds: List<Int> = emptyList(),
+    val startMode: WaypointStartMode? = null,
     val startOverload: String? = null,
     val djiExecuteState: String? = null,
     val waylineExecutingInfo: String? = null,
@@ -97,15 +99,24 @@ data class WaypointMissionDiagnostic(
         kmzGenerationSource?.let { "source=${it.label}" },
         missionId?.let { "mission=$it" },
         missionFileName?.let { "file=$it" },
+        missionStartName?.let { "startFile=$it" },
         kmzSha256?.take(12)?.let { "sha=$it" },
         if (kmzSizeBytes > 0) "size=${kmzSizeBytes}B" else null,
         "waylines=${availableWaylineIds.ifEmpty { listOf(-1) }}",
+        startMode?.let { "mode=${it.diagnosticLabel}" },
         startOverload?.let { "start=$it" },
         djiExecuteState?.let { "state=$it" },
         waylineExecutingInfo?.let { "info=$it" },
         interruptReason?.let { "interrupt=$it" },
         lastError?.let { "error=$it" }
     ).joinToString(" | ").replace("waylines=[-1]", "waylines=[]")
+}
+
+enum class WaypointStartMode(
+    val diagnosticLabel: String,
+    val displayLabel: String,
+) {
+    WAYLINE_ZERO("list-[0]", "list-[0]")
 }
 
 enum class MissionExecutionState {
@@ -171,7 +182,7 @@ data class PerceptionSnapshot(
 interface WaypointMissionAdapter {
     suspend fun loadKmzMission(request: MissionLoadRequest): MissionLoadStatus
     suspend fun uploadMission(missionBundle: MissionBundle): Boolean
-    suspend fun startMission(): Boolean
+    suspend fun startMission(startMode: WaypointStartMode = WaypointStartMode.WAYLINE_ZERO): Boolean
     suspend fun pauseMission(): Boolean
     suspend fun resumeMission(): Boolean
     suspend fun stopMission(): Boolean

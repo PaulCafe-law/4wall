@@ -22,9 +22,9 @@ Outdoor Patrol now tests an Android-generated KMZ candidate first:
 2. Android converts bundle waypoints into a DJI WPMZ SDK model.
 3. Android calls `WPMZManager.generateKMZFile(...)`.
 4. Android uploads the generated KMZ with `pushKMZFileToAircraft(...)`.
-5. Android reads `getAvailableWaylineIDs(kmzPath)`, matching the DJI sample.
-6. Android starts with `startMission(fileName, waylineIds)`, also matching the
-   DJI sample.
+5. Android strips the uploaded `.kmz` suffix and reads
+   `getAvailableWaylineIDs(startFile)`.
+6. Android starts with `startMission(startFile, waylineIds)`.
 
 The planner-server KMZ remains available as `server_kmz_candidate`, but it is no
 longer the first artifact used for field waypoint execution in this diagnostic

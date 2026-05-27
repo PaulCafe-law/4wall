@@ -1,12 +1,14 @@
 package com.yourorg.buildingdrone.app
 
 import com.yourorg.buildingdrone.dji.HardwareSnapshot
+import com.yourorg.buildingdrone.dji.WaypointStartMode
 import com.yourorg.buildingdrone.domain.operations.MissionContextMode
 import com.yourorg.buildingdrone.domain.operations.OperationProfile
 import com.yourorg.buildingdrone.domain.operations.OperatorConsoleMode
 import com.yourorg.buildingdrone.domain.safety.PreflightEvaluation
 import com.yourorg.buildingdrone.domain.safety.PreflightGateId
 import com.yourorg.buildingdrone.domain.safety.PreflightGateResult
+import com.yourorg.buildingdrone.domain.statemachine.FlightEventType
 import com.yourorg.buildingdrone.domain.statemachine.FlightStage
 import com.yourorg.buildingdrone.ui.ScreenDataState
 import org.junit.Assert.assertEquals
@@ -17,8 +19,10 @@ import org.junit.Test
 class DemoMissionCoordinatorTest {
     private fun demoCoordinator(
         preflightEvaluation: PreflightEvaluation? = null,
+        preflightEvaluationProvider: (() -> PreflightEvaluation)? = null,
         missionUpload: (() -> CommandActionResult)? = null,
         missionStart: (() -> CommandActionResult)? = null,
+        missionStartWithMode: ((WaypointStartMode) -> CommandActionResult)? = null,
         appTakeoff: (() -> CommandActionResult)? = null,
         startReturnHome: (() -> CommandActionResult)? = null,
         startAutoLanding: (() -> CommandActionResult)? = null,
@@ -29,11 +33,14 @@ class DemoMissionCoordinatorTest {
         landingSuitabilityWarning: (() -> String?)? = null
     ): DemoMissionCoordinator {
         val container = AppContainer()
+        val startExecutor: (suspend (WaypointStartMode) -> CommandActionResult)? =
+            missionStartWithMode?.let { block -> { mode -> block(mode) } }
+                ?: missionStart?.let { block -> { _ -> block() } }
         return DemoMissionCoordinator(
             reducer = container.flightReducer,
-            preflightEvaluator = preflightEvaluation?.let { { it } },
+            preflightEvaluator = preflightEvaluationProvider ?: preflightEvaluation?.let { { it } },
             missionUploadExecutor = missionUpload?.let { block -> { _ -> block() } },
-            missionStartExecutor = missionStart?.let { block -> { block() } },
+            missionStartExecutor = startExecutor,
             appTakeoffExecutor = appTakeoff?.let { block -> { block() } },
             startReturnHomeExecutor = startReturnHome?.let { block -> { block() } },
             startAutoLandingExecutor = startAutoLanding?.let { block -> { block() } },
@@ -69,6 +76,20 @@ class DemoMissionCoordinatorTest {
                     passed = true,
                     blocking = true,
                     detail = "Mission bundle verified"
+                )
+            )
+        )
+    }
+
+    private fun outdoorBlockedEvaluation(): PreflightEvaluation {
+        return PreflightEvaluation(
+            canTakeoff = false,
+            gates = listOf(
+                PreflightGateResult(
+                    gateId = PreflightGateId.REMOTE_CONTROLLER_CONNECTED,
+                    passed = false,
+                    blocking = true,
+                    detail = "Remote controller not connected"
                 )
             )
         )
@@ -229,6 +250,78 @@ class DemoMissionCoordinatorTest {
 
         coordinator.uploadAndStartMission()
         assertEquals(FlightStage.TRANSIT, coordinator.flightState.stage)
+        assertEquals(FlightEventType.MISSION_STARTED, coordinator.flightState.lastEvent)
+    }
+
+    @Test
+    fun outdoorPatrol_usesWaylineZeroStartMode() {
+        var requestedMode: WaypointStartMode? = null
+        val coordinator = demoCoordinator(
+            preflightEvaluation = outdoorReadyEvaluation(),
+            missionUpload = { CommandActionResult(success = true) },
+            missionStartWithMode = { mode ->
+                requestedMode = mode
+                CommandActionResult(success = true)
+            }
+        )
+
+        coordinator.openPreflightChecklist()
+        coordinator.approvePreflight()
+        coordinator.uploadAndStartMission()
+
+        coordinator.uploadAndStartMission()
+
+        assertEquals(WaypointStartMode.WAYLINE_ZERO, requestedMode)
+        assertEquals(FlightStage.TRANSIT, coordinator.flightState.stage)
+    }
+
+    @Test
+    fun outdoorPatrol_disablesStartWhenPreflightGateDropsAfterUpload() {
+        var evaluation = outdoorReadyEvaluation()
+        var startRequested = false
+        val coordinator = demoCoordinator(
+            preflightEvaluationProvider = { evaluation },
+            missionUpload = { CommandActionResult(success = true) },
+            missionStart = {
+                startRequested = true
+                CommandActionResult(success = true)
+            }
+        )
+
+        coordinator.openPreflightChecklist()
+        coordinator.approvePreflight()
+        coordinator.uploadAndStartMission()
+        assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
+        assertTrue(coordinator.flightState.missionUploaded)
+
+        evaluation = outdoorBlockedEvaluation()
+        coordinator.refreshPreflightChecklist()
+
+        assertFalse(coordinator.preflight.readyToUpload)
+        coordinator.uploadAndStartMission()
+        assertFalse(startRequested)
+        assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
+        assertEquals(FlightEventType.MISSION_START_BLOCKED, coordinator.flightState.lastEvent)
+        assertEquals("Preflight is still blocking mission execution.", coordinator.flightState.statusNote)
+    }
+
+    @Test
+    fun outdoorPatrol_recordsWaypointStartFailure() {
+        val coordinator = demoCoordinator(
+            preflightEvaluation = outdoorReadyEvaluation(),
+            missionUpload = { CommandActionResult(success = true) },
+            missionStart = { CommandActionResult(success = false, message = "DJI rejected startMission") }
+        )
+
+        coordinator.openPreflightChecklist()
+        coordinator.approvePreflight()
+        coordinator.uploadAndStartMission()
+        coordinator.uploadAndStartMission()
+
+        assertEquals(FlightStage.MISSION_READY, coordinator.flightState.stage)
+        assertEquals(FlightEventType.MISSION_START_FAILED, coordinator.flightState.lastEvent)
+        assertEquals("DJI rejected startMission", coordinator.flightState.statusNote)
+        assertEquals(ScreenDataState.ERROR, coordinator.preflight.status)
     }
 
     @Test

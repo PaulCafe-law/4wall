@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import com.yourorg.buildingdrone.data.MissionBundle
 import com.yourorg.buildingdrone.data.demoMissionBundle
 import com.yourorg.buildingdrone.dji.HardwareSnapshot
+import com.yourorg.buildingdrone.dji.WaypointStartMode
 import com.yourorg.buildingdrone.domain.operations.AutonomyCapability
 import com.yourorg.buildingdrone.domain.operations.ExecutionMode
 import com.yourorg.buildingdrone.domain.operations.IndoorNoGpsConfirmationState
@@ -102,7 +103,7 @@ class DemoMissionCoordinator(
     private val syncReporter: (suspend (FlightState) -> NetworkSyncStatus)? = null,
     private val telemetryReporter: (suspend (TransitUiState) -> NetworkSyncStatus)? = null,
     private val missionUploadExecutor: (suspend (MissionBundle) -> CommandActionResult)? = null,
-    private val missionStartExecutor: (suspend () -> CommandActionResult)? = null,
+    private val missionStartExecutor: (suspend (WaypointStartMode) -> CommandActionResult)? = null,
     private val appTakeoffExecutor: (suspend () -> CommandActionResult)? = null,
     private val startReturnHomeExecutor: (suspend () -> CommandActionResult)? = null,
     private val startAutoLandingExecutor: (suspend () -> CommandActionResult)? = null,
@@ -522,10 +523,16 @@ class DemoMissionCoordinator(
     fun uploadAndStartMission() {
         val evaluation = evaluatePreflight()
         if (!evaluation.canTakeoff) {
+            val reason = evaluation.profileBlockingReason ?: "Preflight is still blocking mission execution."
+            flightState = flightState.copy(
+                lastEvent = FlightEventType.MISSION_START_BLOCKED,
+                statusNote = reason,
+            )
             preflight = buildPreflightState(evaluation).copy(
                 status = ScreenDataState.ERROR,
-                warning = "Preflight is still blocking mission execution.",
+                warning = reason,
             )
+            refreshFlightPanels()
             return
         }
         when (selectedConsoleMode.executionMode) {
@@ -858,18 +865,28 @@ class DemoMissionCoordinator(
                 )
                 return
             }
-            val startResult = executeCommand(missionStartExecutor, fallbackMessage = "Mission start failed.")
+            val startResult = executeCommand(
+                missionStartExecutor?.let { starter -> { starter(WaypointStartMode.WAYLINE_ZERO) } },
+                fallbackMessage = "Mission start failed.",
+            )
             if (!startResult.success) {
+                val reason = startResult.message ?: "Mission start failed."
+                flightState = flightState.copy(
+                    lastEvent = FlightEventType.MISSION_START_FAILED,
+                    statusNote = reason,
+                )
                 preflight = buildPreflightState(evaluation).copy(
                     status = ScreenDataState.ERROR,
-                    warning = startResult.message ?: "Mission start failed.",
+                    warning = reason,
                 )
+                refreshFlightPanels()
                 return
             }
             flightState = flightState.copy(
                 stage = FlightStage.TRANSIT,
-                lastEvent = FlightEventType.MISSION_UPLOADED,
+                lastEvent = FlightEventType.MISSION_STARTED,
                 missionContextMode = MissionContextMode.PLANNED_BUNDLE,
+                statusNote = "DJI waypoint mission entered execution.",
             )
             activeScreen = ConsoleScreen.IN_FLIGHT
             refreshFlightPanels()
@@ -1001,7 +1018,8 @@ class DemoMissionCoordinator(
         val blockers = evaluation.blockers.map { it.detail }
         val readyForPatrolStart = selectedConsoleMode.executionMode == ExecutionMode.PATROL_ROUTE &&
             flightState.stage == FlightStage.MISSION_READY &&
-            flightState.missionUploaded
+            flightState.missionUploaded &&
+            evaluation.canTakeoff
         val readyForManualPilot = selectedConsoleMode.executionMode == ExecutionMode.MANUAL_PILOT &&
             hoverReadyForMissionStart &&
             flightState.stage == FlightStage.HOVER_READY
@@ -1019,7 +1037,7 @@ class DemoMissionCoordinator(
                     evaluation.canTakeoff &&
                     flightState.stage == FlightStage.MISSION_READY &&
                     !flightState.missionUploaded
-                )),
+            )),
             checklist = evaluation.gates.map(::toChecklistItem),
             warning = when {
                 commandInProgress -> "DJI 指令執行中，請等待結果，不要重複點擊。"

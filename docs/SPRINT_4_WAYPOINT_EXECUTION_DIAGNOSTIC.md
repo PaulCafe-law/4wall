@@ -103,9 +103,23 @@ The next diagnostic step is Android-side WPMZ generation. The app now records
 separates "server hand-written WPML is invalid" from "Mini 4 Pro + RC-N2 +
 MSDK waypoint executor cannot start this class of mission".
 
-The adapter also follows the DJI sample's argument split: it calls
-`getAvailableWaylineIDs(kmzPath)` with the full generated KMZ path, then calls
-`startMission(fileName, waylineIds)` with the uploaded KMZ filename.
+The adapter now follows the Mini 4 Pro filename split observed in DJI MSDK V5
+field reports: it uploads with the full KMZ path, then strips the `.kmz` suffix
+before `getAvailableWaylineIDs(startFile)` and `startMission(startFile,
+waylineIds)`. The compact diagnostic keeps both values visible as
+`file=<uploaded>.kmz` and `startFile=<uploaded>`.
+
+2026-05-22 field result: Mini 4 Pro waypoint start succeeded after the app
+switched to suffixless `startFile` and `startMission(startFile, listOf(0))`.
+This is now the fixed Android waypoint start architecture. The temporary
+`file-only` and `empty-list` diagnostic choices were removed. The app records
+`file=<uploaded>.kmz`, `startFile=<uploaded>`, `mode=list-[0]`, and
+`start=list-[0]` in the compact waypoint diagnostic, then still requires an
+observed DJI execution state before entering `TRANSIT`.
+
+The DJI Fly baseline package used for the successful field run has
+`executeHeightMode=relativeToStartPoint`, `waylineId=0`, and
+`executeHeight=50` on both waypoints.
 
 ## Server Artifact Gate
 
