@@ -10,6 +10,8 @@ Ship a launch-ready beta with one deploy platform, predictable domains, and expl
 - API health check path is `/healthz`, and it now includes DB dependency status.
 - GitHub Actions cover backend CI, web CI, and beta smoke in separate workflows.
 - Web release smoke reuses `planner-server/scripts/smoke_test.py` in `web-beta` mode.
+- If Render cannot access the Git provider, image-backed recovery is documented in
+  `docs/render-image-deploy-recovery.md`.
 
 ## Target Topology
 
@@ -37,6 +39,11 @@ planner-server        -> S3-compatible private artifact bucket
   - `api.<domain>`
 
 Using Render for both surfaces keeps beta operations on one platform and avoids split deploy logic.
+
+When the Git provider is unavailable, the recovery topology keeps Render as the
+runtime platform but switches the source to Docker Hub images. API services can
+use Existing Image directly. Web services must run as image-backed Render Web
+Services because Static Sites cannot deploy Docker images.
 
 ## Environment Contract
 

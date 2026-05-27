@@ -57,6 +57,10 @@ Reference these docs before shipping any `live-ops` or `support` change:
 6. Deploy `four-wall-web-staging`.
 7. Run `.github/workflows/smoke-beta.yml` against staging.
 
+If Render cannot access GitHub, stop using Git-backed deploys for recovery and
+follow `docs/render-image-deploy-recovery.md`. Do not repeatedly retry failed
+Git deploys after Render reports repository access failure.
+
 ## Promotion to Production
 
 1. Confirm staging smoke passed.
@@ -90,6 +94,9 @@ Rollback immediately if any of these occur:
 3. Select the last healthy deploy.
 4. Redeploy that version.
 5. Re-run API health and beta smoke before declaring recovery complete.
+
+For image-backed recovery services, rollback by retagging the last known-good
+Docker Hub image and triggering a new Render image deploy.
 
 ## Evidence to Keep
 
