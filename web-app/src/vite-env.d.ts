@@ -9,3 +9,9 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }
+
+interface Window {
+  __FOUR_WALL_RUNTIME_CONFIG__?: {
+    googleMapsApiKey?: string
+  }
+}
