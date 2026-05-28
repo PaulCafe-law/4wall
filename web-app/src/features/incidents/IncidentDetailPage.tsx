@@ -20,6 +20,11 @@ import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import type { IncidentSeverity, IncidentStatus } from '../../lib/types'
 import {
   INCIDENT_SEVERITY_OPTIONS,
+  formatIncidentEvidenceType,
+  formatIncidentHistoryAction,
+  formatIncidentHistoryValue,
+  formatIncidentLineNotificationAction,
+  formatIncidentLineNotificationStatus,
   formatIncidentSeverity,
   formatIncidentSource,
   formatIncidentStatus,
@@ -273,7 +278,7 @@ export function IncidentDetailPage() {
               {incident.evidence.length === 0 ? <p className="text-sm text-chrome-600">尚未新增證據。</p> : null}
               {incident.evidence.map((item) => (
                 <div key={item.evidenceId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3 text-sm text-chrome-700">
-                  <p className="font-medium text-chrome-950">{item.type}</p>
+                  <p className="font-medium text-chrome-950">{formatIncidentEvidenceType(item.type)}</p>
                   {item.url ? <a className="break-all text-ember-600" href={item.url} target="_blank" rel="noreferrer">{item.url}</a> : null}
                   {item.text ? <p className="mt-2 whitespace-pre-wrap">{item.text}</p> : null}
                   <p className="mt-2 text-xs text-chrome-500">{formatDateTime(item.createdAt)}</p>
@@ -304,9 +309,9 @@ export function IncidentDetailPage() {
           <div className="mt-4 space-y-3">
             {incident.history.map((item) => (
               <div key={item.historyId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3">
-                <p className="text-sm font-medium text-chrome-950">{item.action}</p>
+                <p className="text-sm font-medium text-chrome-950">{formatIncidentHistoryAction(item.action)}</p>
                 <p className="mt-1 text-sm text-chrome-700">
-                  {item.fromValue || '無'} → {item.toValue || '無'}
+                  {formatIncidentHistoryValue(item.fromValue)} → {formatIncidentHistoryValue(item.toValue)}
                 </p>
                 <p className="mt-1 text-xs text-chrome-500">{item.actorName} / {formatDateTime(item.createdAt)}</p>
               </div>
@@ -321,9 +326,9 @@ export function IncidentDetailPage() {
             {incident.lineNotifications.map((item) => (
               <div key={item.notificationId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-chrome-950">{item.action}</p>
+                  <p className="text-sm font-medium text-chrome-950">{formatIncidentLineNotificationAction(item.action)}</p>
                   <span className="rounded-full bg-chrome-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700">
-                    {item.status}
+                    {formatIncidentLineNotificationStatus(item.status)}
                   </span>
                 </div>
                 <p className="mt-2 whitespace-pre-wrap text-sm text-chrome-700">{item.message}</p>
