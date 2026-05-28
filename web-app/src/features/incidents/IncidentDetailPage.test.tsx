@@ -50,7 +50,15 @@ const baseIncident = {
     cameraId: null,
     modelObjectId: null,
   },
-  evidence: [],
+  evidence: [
+    {
+      evidenceId: 'evidence-1',
+      type: 'text',
+      url: null,
+      text: '監視器畫面顯示通道剩餘寬度不足。',
+      createdAt: '2026-05-28T06:01:00Z',
+    },
+  ],
   comments: [],
   history: [
     {
@@ -62,7 +70,19 @@ const baseIncident = {
       createdAt: '2026-05-28T06:00:00Z',
     },
   ],
-  lineNotifications: [],
+  lineNotifications: [
+    {
+      notificationId: 'line-1',
+      incidentId: 'incident-1',
+      action: 'incident_created',
+      targetId: 'line-group-1',
+      message: '【第四面牆｜高風險異常】\n位置：工地 B / 2F 東側\n問題：材料堆放阻塞通道',
+      status: 'sent',
+      errorMessage: null,
+      createdAt: '2026-05-28T06:02:00Z',
+      sentAt: '2026-05-28T06:02:01Z',
+    },
+  ],
   assigneeName: null,
   reporterName: '現場人員',
   aiSummary: null,
@@ -114,6 +134,11 @@ describe('IncidentDetailPage', () => {
       'href',
       '/site-map?incidentId=incident-1',
     )
+    expect(screen.getByText('文字紀錄')).toBeInTheDocument()
+    expect(screen.getByText('建立事件')).toBeInTheDocument()
+    expect(screen.getByText('無 → 待確認')).toBeInTheDocument()
+    expect(screen.getByText('LINE：建立事件推播')).toBeInTheDocument()
+    expect(screen.getByText('已送達')).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: '確認異常' }))
     await waitFor(() => expect(apiMock.updateIncidentStatus).toHaveBeenCalledWith('test-token', 'incident-1', 'confirmed'))
