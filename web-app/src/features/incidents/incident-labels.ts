@@ -96,6 +96,7 @@ export function formatIncidentLineNotificationStatus(value: string) {
 
 export function formatIncidentHistoryValue(value?: string | null) {
   if (!value) return '無'
+  if (hasBrokenIncidentText(value)) return '資料已更新'
   const status = INCIDENT_STATUS_OPTIONS.find((item) => item.value === value)
   if (status) return status.label
   const severity = INCIDENT_SEVERITY_OPTIONS.find((item) => item.value === value)
@@ -103,6 +104,33 @@ export function formatIncidentHistoryValue(value?: string | null) {
   const evidenceType = INCIDENT_EVIDENCE_LABELS[value as IncidentEvidenceType]
   if (evidenceType) return evidenceType
   return value
+}
+
+export function hasBrokenIncidentText(value?: string | null) {
+  return Boolean(value && (/\?{3,}/.test(value) || value.includes('�')))
+}
+
+export function formatIncidentDisplayText(value: string | null | undefined, fallback: string) {
+  const trimmed = value?.trim()
+  if (!trimmed || hasBrokenIncidentText(trimmed)) return fallback
+  return trimmed
+}
+
+export function formatIncidentLineNotificationMessage(message: string, incident: Incident) {
+  if (!hasBrokenIncidentText(message)) return message
+  const title = formatIncidentDisplayText(incident.title, '現場異常事件')
+  const location = formatIncidentDisplayText(incidentLocationLabel(incident), '未指定位置')
+  const assignee = formatIncidentDisplayText(incident.assigneeName, '尚未指派')
+  return [
+    `【第四面牆｜${formatIncidentSeverity(incident.severity)}異常】`,
+    `位置：${location}`,
+    `問題：${title}`,
+    `狀態：${formatIncidentStatus(incident.status)}`,
+    `嚴重程度：${formatIncidentSeverity(incident.severity)}`,
+    `負責人：${assignee}`,
+    '',
+    '請依事件詳情中的處理紀錄追蹤現場回報。',
+  ].join('\n')
 }
 
 export function incidentLocationLabel(incident: Incident) {
