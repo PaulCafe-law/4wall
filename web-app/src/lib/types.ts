@@ -13,6 +13,10 @@ export type SupportCategory =
   | 'dispatch_blocked'
 export type SupportWorkflowState = 'open' | 'claimed' | 'acknowledged' | 'resolved'
 export type SupportQueueAction = 'claim' | 'acknowledge' | 'resolve' | 'release'
+export type IncidentStatus = 'pending_review' | 'confirmed' | 'in_progress' | 'resolved' | 'false_positive'
+export type IncidentSeverity = 'low' | 'medium' | 'high' | 'critical'
+export type IncidentSource = 'ai_detection' | 'manual' | 'pocket_lens' | 'camera' | 'drone' | 'vehicle'
+export type IncidentEvidenceType = 'image' | 'video' | 'text' | 'link'
 export type TelemetryFreshness = 'fresh' | 'stale' | 'missing'
 export type VideoAvailability = 'live' | 'stale' | 'unavailable'
 export type InspectionReportStatus = 'not_started' | 'queued' | 'generating' | 'ready' | 'failed'
@@ -669,4 +673,89 @@ export interface SupportQueueItem {
 export interface InviteCreateResponse {
   invite: Invite
   inviteToken: string
+}
+
+export interface IncidentLocation {
+  siteId: string | null
+  siteName: string | null
+  areaName: string | null
+  floor: string | null
+  equipmentId: string | null
+  equipmentName: string | null
+  description: string | null
+  worldX: number | null
+  worldY: number | null
+  worldZ: number | null
+  cameraId: string | null
+  modelObjectId: string | null
+}
+
+export interface IncidentEvidence {
+  evidenceId: string
+  type: IncidentEvidenceType
+  url: string | null
+  text: string | null
+  createdAt: string
+}
+
+export interface IncidentComment {
+  commentId: string
+  authorName: string
+  content: string
+  createdAt: string
+}
+
+export interface IncidentHistory {
+  historyId: string
+  action: string
+  fromValue: string | null
+  toValue: string | null
+  actorName: string
+  createdAt: string
+}
+
+export interface IncidentLineNotification {
+  notificationId: string
+  incidentId: string | null
+  action: string
+  targetId: string | null
+  message: string
+  status: string
+  errorMessage: string | null
+  createdAt: string
+  sentAt: string | null
+}
+
+export interface Incident {
+  incidentId: string
+  organizationId: string
+  siteId: string | null
+  title: string
+  description: string
+  status: IncidentStatus
+  severity: IncidentSeverity
+  source: IncidentSource
+  location: IncidentLocation
+  evidence: IncidentEvidence[]
+  comments: IncidentComment[]
+  history: IncidentHistory[]
+  lineNotifications: IncidentLineNotification[]
+  assigneeName: string | null
+  reporterName: string | null
+  aiSummary: string | null
+  aiConfidence: number | null
+  createdAt: string
+  updatedAt: string
+  resolvedAt: string | null
+}
+
+export interface IncidentDailySummary {
+  date: string
+  newIncidentCount: number
+  statusCounts: Record<string, number>
+  severityCounts: Record<string, number>
+  criticalHighIncidents: Incident[]
+  resolvedIncidents: Incident[]
+  unhandledIncidents: Incident[]
+  lineSummaryMessage: string
 }

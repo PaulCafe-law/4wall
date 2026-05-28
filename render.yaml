@@ -35,6 +35,16 @@ services:
         sync: false
       - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
         value: "false"
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_WEBHOOK_ENABLED
+        value: "false"
+      - key: LINE_DEFAULT_GROUP_ID
+        sync: false
+      - key: LINE_INCIDENT_NOTIFY_ENABLED
+        value: "false"
 
   - type: web
     name: four-wall-api
@@ -66,6 +76,16 @@ services:
       - key: BUILDING_ROUTE_S3_SECRET_ACCESS_KEY
         sync: false
       - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+      - key: LINE_CHANNEL_ACCESS_TOKEN
+        sync: false
+      - key: LINE_CHANNEL_SECRET
+        sync: false
+      - key: LINE_WEBHOOK_ENABLED
+        value: "false"
+      - key: LINE_DEFAULT_GROUP_ID
+        sync: false
+      - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
 
   - type: web

@@ -12,6 +12,11 @@ from app.models import (  # noqa: F401
     Flight,
     FlightEvent,
     Invite,
+    IncidentCommentRecord,
+    IncidentEvidenceRecord,
+    IncidentHistoryRecord,
+    IncidentLineNotificationRecord,
+    IncidentRecord,
     Mission,
     MissionArtifact,
     OperatorAccount,
@@ -22,6 +27,7 @@ from app.models import (  # noqa: F401
     TelemetryBatch,
     UserAccount,
     WebRefreshToken,
+    LineWebhookEventRecord,
 )
 
 
