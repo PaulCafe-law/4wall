@@ -2,10 +2,12 @@
 
 import {
   createContext,
+  useCallback,
   startTransition,
   useContext,
   useEffect,
   useEffectEvent,
+  useRef,
   useState,
   type PropsWithChildren,
 } from 'react'
@@ -24,6 +26,7 @@ export interface AuthContextValue {
   login: (payload: LoginPayload) => Promise<void>
   signup: (payload: SignupPayload) => Promise<void>
   acceptInvite: (payload: InviteAcceptPayload) => Promise<void>
+  refreshSession: () => Promise<WebSession>
   logout: () => Promise<void>
   markExpired: () => void
   canReadOrganization: (organizationId: string) => boolean
@@ -39,19 +42,43 @@ function isInternalRole(role: Role): boolean {
 export function AuthProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<AuthStatus>('restoring')
   const [session, setSession] = useState<WebSession | null>(null)
+  const refreshInFlight = useRef<Promise<WebSession> | null>(null)
+
+  const applySession = useCallback((nextSession: WebSession) => {
+    startTransition(() => {
+      setSession(nextSession)
+      setStatus('authenticated')
+    })
+  }, [])
+
+  const clearSession = useCallback((nextStatus: AuthStatus) => {
+    startTransition(() => {
+      setSession(null)
+      setStatus(nextStatus)
+    })
+  }, [])
+
+  const refreshSession = useCallback(async () => {
+    if (refreshInFlight.current) {
+      return refreshInFlight.current
+    }
+    refreshInFlight.current = api
+      .refreshSession()
+      .then((restored) => {
+        applySession(restored)
+        return restored
+      })
+      .finally(() => {
+        refreshInFlight.current = null
+      })
+    return refreshInFlight.current
+  }, [applySession])
 
   const restoreSession = useEffectEvent(async () => {
     try {
-      const restored = await api.refreshSession()
-      startTransition(() => {
-        setSession(restored)
-        setStatus('authenticated')
-      })
+      await refreshSession()
     } catch {
-      startTransition(() => {
-        setSession(null)
-        setStatus('anonymous')
-      })
+      clearSession('anonymous')
     }
   })
 
@@ -59,19 +86,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     void restoreSession()
   }, [])
 
-  const applySession = (nextSession: WebSession) => {
-    startTransition(() => {
-      setSession(nextSession)
-      setStatus('authenticated')
-    })
-  }
-
-  const clearSession = (nextStatus: AuthStatus) => {
-    startTransition(() => {
-      setSession(null)
-      setStatus(nextStatus)
-    })
-  }
+  useEffect(() => {
+    if (status !== 'authenticated' || !session) {
+      return
+    }
+    const refreshDelayMs = Math.max(30_000, Math.floor(session.expiresInSeconds * 0.8 * 1000))
+    const timer = window.setTimeout(() => {
+      void refreshSession().catch(() => {
+        // Keep the current access token until an authenticated request proves the session is unusable.
+      })
+    }, refreshDelayMs)
+    return () => window.clearTimeout(timer)
+  }, [refreshSession, session, status])
 
   const login = async (payload: LoginPayload) => {
     const nextSession = await api.login(payload)
@@ -113,6 +139,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     login,
     signup,
     acceptInvite,
+    refreshSession,
     logout,
     markExpired,
     canReadOrganization: (organizationId) => {

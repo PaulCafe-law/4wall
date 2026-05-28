@@ -8,9 +8,39 @@ import {
 } from '@tanstack/react-query'
 
 import { ApiError } from './api'
-import { useAuth } from './auth'
+import { type AuthContextValue, useAuth } from './auth'
 
 type TokenQueryFn<TData> = (token: string) => Promise<TData>
+
+async function withSessionRefresh<TData>(
+  auth: AuthContextValue,
+  operation: (token: string) => Promise<TData>,
+): Promise<TData> {
+  if (!auth.session?.accessToken) {
+    try {
+      const refreshed = await auth.refreshSession()
+      return await operation(refreshed.accessToken)
+    } catch (error) {
+      auth.markExpired()
+      throw error instanceof ApiError ? error : new ApiError(401, 'missing_session')
+    }
+  }
+
+  try {
+    return await operation(auth.session.accessToken)
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401) {
+      throw error
+    }
+    try {
+      const refreshed = await auth.refreshSession()
+      return await operation(refreshed.accessToken)
+    } catch (retryError) {
+      auth.markExpired()
+      throw retryError
+    }
+  }
+}
 
 export function useAuthedQuery<TData>({
   queryKey,
@@ -27,14 +57,7 @@ export function useAuthedQuery<TData>({
     queryKey,
     enabled: enabled && auth.status === 'authenticated' && Boolean(auth.session?.accessToken),
     queryFn: async () => {
-      try {
-        return await queryFn(auth.session!.accessToken)
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          auth.markExpired()
-        }
-        throw error
-      }
+      return withSessionRefresh(auth, queryFn)
     },
     ...options,
   })
@@ -61,18 +84,7 @@ export function useAuthedMutation<TData, TVariables>({
   return useMutation<TData, ApiError, TVariables>({
     mutationKey,
     mutationFn: async (payload) => {
-      if (!auth.session?.accessToken) {
-        auth.markExpired()
-        throw new ApiError(401, 'missing_session')
-      }
-      try {
-        return await mutationFn({ token: auth.session.accessToken, payload })
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          auth.markExpired()
-        }
-        throw error
-      }
+      return withSessionRefresh(auth, (token) => mutationFn({ token, payload }))
     },
     ...options,
   })
