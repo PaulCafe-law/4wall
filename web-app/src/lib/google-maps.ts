@@ -59,6 +59,11 @@ declare global {
 let loaderPromise: Promise<GoogleMapsApi> | null = null
 
 export function getGoogleMapsApiKey() {
+  const runtimeApiKey = window.__FOUR_WALL_RUNTIME_CONFIG__?.googleMapsApiKey?.trim() ?? ''
+  if (runtimeApiKey) {
+    return runtimeApiKey
+  }
+
   return import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? ''
 }
 

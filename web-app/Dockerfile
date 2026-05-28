@@ -19,6 +19,10 @@ FROM nginx:stable-alpine
 ENV PORT=8080
 
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+COPY docker-runtime-config.sh /docker-entrypoint.d/40-runtime-config.sh
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY runtime-config.js.template /usr/share/nginx/html/runtime-config.js.template
+
+RUN chmod +x /docker-entrypoint.d/40-runtime-config.sh
 
 EXPOSE 8080

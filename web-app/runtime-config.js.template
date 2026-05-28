@@ -1,0 +1,3 @@
+window.__FOUR_WALL_RUNTIME_CONFIG__ = {
+  googleMapsApiKey: "${VITE_GOOGLE_MAPS_API_KEY}"
+}

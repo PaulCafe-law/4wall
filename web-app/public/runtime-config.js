@@ -1,0 +1,1 @@
+window.__FOUR_WALL_RUNTIME_CONFIG__ = window.__FOUR_WALL_RUNTIME_CONFIG__ || {}

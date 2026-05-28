@@ -49,7 +49,9 @@ browser routes.
 ## Image Contract
 
 Build separate web images for staging and production because Vite reads
-`VITE_API_BASE_URL` at build time.
+`VITE_API_BASE_URL` at build time. The browser Google Maps key is injected at
+container startup from the Render runtime env var `VITE_GOOGLE_MAPS_API_KEY`
+into `/runtime-config.js`.
 
 Example image names:
 
@@ -113,9 +115,11 @@ docker push docker.io/<dockerhub-namespace>/4wall-web:prod
 3. Use the same API origins already configured for CORS:
    - staging web origin: `https://four-wall-web-staging.onrender.com`
    - production web origin: `https://four-wall-web.onrender.com`
-4. If preserving the exact Render subdomains is required, only delete or rename
+4. Set `VITE_GOOGLE_MAPS_API_KEY` on both image-backed web services if Google
+   Maps editing is enabled.
+5. If preserving the exact Render subdomains is required, only delete or rename
    the old Static Site after the replacement service is verified.
-5. Re-run web login and authenticated mission-list smoke checks after cutover.
+6. Re-run web login and authenticated mission-list smoke checks after cutover.
 
 ## Rollback
 
