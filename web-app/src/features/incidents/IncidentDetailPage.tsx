@@ -21,10 +21,12 @@ import type { IncidentSeverity, IncidentStatus } from '../../lib/types'
 import { incidentSiteMapLink } from '../site-map/site-map-config'
 import {
   INCIDENT_SEVERITY_OPTIONS,
+  formatIncidentDisplayText,
   formatIncidentEvidenceType,
   formatIncidentHistoryAction,
   formatIncidentHistoryValue,
   formatIncidentLineNotificationAction,
+  formatIncidentLineNotificationMessage,
   formatIncidentLineNotificationStatus,
   formatIncidentSeverity,
   formatIncidentSource,
@@ -145,13 +147,20 @@ export function IncidentDetailPage() {
   }
 
   const siteMapLink = incidentSiteMapLink(incident)
+  const displayTitle = formatIncidentDisplayText(incident.title, '現場異常事件')
+  const displayDescription = formatIncidentDisplayText(
+    incident.description || incident.aiSummary,
+    '此事件已建立，等待現場人員補齊說明。',
+  )
+  const displayAssignee = formatIncidentDisplayText(incident.assigneeName, '尚未指派')
+  const displayReporter = formatIncidentDisplayText(incident.reporterName, '未記錄')
 
   return (
     <div className="space-y-6">
       <ShellSection
         eyebrow="Incident Detail"
-        title={incident.title}
-        subtitle={incident.description || incident.aiSummary || '事件已建立，等待現場閉環處理。'}
+        title={displayTitle}
+        subtitle={displayDescription}
         action={<Link className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm text-chrome-950" to="/incidents">返回事件中心</Link>}
       />
 
@@ -177,8 +186,8 @@ export function IncidentDetailPage() {
             </div>
 
             <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <Metric label="負責人" value={incident.assigneeName || '尚未指派'} />
-              <Metric label="回報人" value={incident.reporterName || '未記錄'} />
+              <Metric label="負責人" value={displayAssignee} />
+              <Metric label="回報人" value={displayReporter} />
               <Metric label="建立時間" value={formatDateTime(incident.createdAt)} />
               <Metric label="更新時間" value={formatDateTime(incident.updatedAt)} />
             </div>
@@ -188,16 +197,19 @@ export function IncidentDetailPage() {
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">位置資訊</p>
             <DataList
               rows={[
-                { label: '位置', value: incidentLocationLabel(incident) },
-                { label: '場域', value: incident.location.siteName || incident.siteId || '未指定' },
-                { label: '區域', value: incident.location.areaName || '未指定' },
-                { label: '樓層', value: incident.location.floor || '未指定' },
-                { label: '設備', value: incident.location.equipmentName || '未指定' },
+                { label: '位置', value: formatIncidentDisplayText(incidentLocationLabel(incident), '未指定位置') },
+                { label: '場域', value: formatIncidentDisplayText(incident.location.siteName || incident.siteId, '未指定') },
+                { label: '區域', value: formatIncidentDisplayText(incident.location.areaName, '未指定') },
+                { label: '樓層', value: formatIncidentDisplayText(incident.location.floor, '未指定') },
+                { label: '設備', value: formatIncidentDisplayText(incident.location.equipmentName, '未指定') },
                 {
                   label: '場域錨點',
-                  value: incident.location.anchorId || incident.location.revitElementId || incident.location.ifcGuid || '尚未綁定',
+                  value: formatIncidentDisplayText(
+                    incident.location.anchorId || incident.location.revitElementId || incident.location.ifcGuid,
+                    '尚未綁定',
+                  ),
                 },
-                { label: '3D 物件', value: incident.location.modelObjectId || '尚未綁定' },
+                { label: '3D 物件', value: formatIncidentDisplayText(incident.location.modelObjectId, '尚未綁定') },
               ]}
             />
             <Link
@@ -210,7 +222,9 @@ export function IncidentDetailPage() {
 
           <Panel>
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">AI 摘要</p>
-            <p className="mt-3 text-sm leading-6 text-chrome-700">{incident.aiSummary || '尚未提供 AI 摘要。'}</p>
+            <p className="mt-3 text-sm leading-6 text-chrome-700">
+              {formatIncidentDisplayText(incident.aiSummary, '尚未提供 AI 摘要。')}
+            </p>
             <p className="mt-2 text-xs text-chrome-500">
               信心分數：{incident.aiConfidence === null ? '未提供' : `${Math.round(incident.aiConfidence * 100)}%`}
             </p>
@@ -290,7 +304,11 @@ export function IncidentDetailPage() {
                 <div key={item.evidenceId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3 text-sm text-chrome-700">
                   <p className="font-medium text-chrome-950">{formatIncidentEvidenceType(item.type)}</p>
                   {item.url ? <a className="break-all text-ember-600" href={item.url} target="_blank" rel="noreferrer">{item.url}</a> : null}
-                  {item.text ? <p className="mt-2 whitespace-pre-wrap">{item.text}</p> : null}
+                  {item.text ? (
+                    <p className="mt-2 whitespace-pre-wrap">
+                      {formatIncidentDisplayText(item.text, '現場證據文字待補。')}
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-xs text-chrome-500">{formatDateTime(item.createdAt)}</p>
                 </div>
               ))}
@@ -341,7 +359,9 @@ export function IncidentDetailPage() {
                     {formatIncidentLineNotificationStatus(item.status)}
                   </span>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-chrome-700">{item.message}</p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-chrome-700">
+                  {formatIncidentLineNotificationMessage(item.message, incident)}
+                </p>
                 {item.errorMessage ? <p className="mt-2 text-xs text-red-700">{item.errorMessage}</p> : null}
                 <p className="mt-2 text-xs text-chrome-500">{formatDateTime(item.createdAt)}</p>
               </div>
@@ -356,7 +376,9 @@ export function IncidentDetailPage() {
           {incident.comments.length === 0 ? <p className="text-sm text-chrome-600">尚未新增備註。</p> : null}
           {incident.comments.map((item) => (
             <div key={item.commentId} className="rounded-2xl border border-chrome-200 bg-white/70 px-4 py-3">
-              <p className="whitespace-pre-wrap text-sm text-chrome-800">{item.content}</p>
+              <p className="whitespace-pre-wrap text-sm text-chrome-800">
+                {formatIncidentDisplayText(item.content, '處理備註文字待補。')}
+              </p>
               <p className="mt-2 text-xs text-chrome-500">{item.authorName} / {formatDateTime(item.createdAt)}</p>
             </div>
           ))}
