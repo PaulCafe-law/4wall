@@ -15,6 +15,11 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     monkeypatch.setenv("BUILDING_ROUTE_S3_ACCESS_KEY_ID", " access-key ")
     monkeypatch.setenv("BUILDING_ROUTE_S3_SECRET_ACCESS_KEY", " secret-key ")
     monkeypatch.setenv("BUILDING_ROUTE_AUTH_SECRET_KEY", " test-secret ")
+    monkeypatch.setenv("LINE_CHANNEL_ACCESS_TOKEN", " token ")
+    monkeypatch.setenv("LINE_CHANNEL_SECRET", " secret ")
+    monkeypatch.setenv("LINE_WEBHOOK_ENABLED", " true ")
+    monkeypatch.setenv("LINE_DEFAULT_GROUP_ID", " group-1 ")
+    monkeypatch.setenv("LINE_INCIDENT_NOTIFY_ENABLED", " true ")
 
     settings = Settings.from_env()
 
@@ -28,3 +33,8 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.s3_access_key_id == "access-key"
     assert settings.s3_secret_access_key == "secret-key"
     assert settings.auth_secret_key == "test-secret"
+    assert settings.line_channel_access_token == "token"
+    assert settings.line_channel_secret == "secret"
+    assert settings.line_webhook_enabled is True
+    assert settings.line_default_group_id == "group-1"
+    assert settings.line_incident_notify_enabled is True

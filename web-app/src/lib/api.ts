@@ -15,6 +15,12 @@ import type {
   InspectionWaypoint,
   Invite,
   InviteCreateResponse,
+  Incident,
+  IncidentDailySummary,
+  IncidentEvidenceType,
+  IncidentSeverity,
+  IncidentSource,
+  IncidentStatus,
   LiveFlightDetail,
   LiveFlightSummary,
   MissionDetail,
@@ -264,6 +270,51 @@ export interface SupportQueueActionPayload {
   note?: string
 }
 
+export interface IncidentFilters {
+  organizationId?: string
+  siteId?: string
+  status?: IncidentStatus
+  severity?: IncidentSeverity
+  source?: IncidentSource
+  areaName?: string
+}
+
+export interface IncidentLocationPayload {
+  siteId?: string
+  siteName?: string
+  areaName?: string
+  floor?: string
+  equipmentId?: string
+  equipmentName?: string
+  description?: string
+  worldX?: number
+  worldY?: number
+  worldZ?: number
+  cameraId?: string
+  modelObjectId?: string
+}
+
+export interface IncidentEvidencePayload {
+  type: IncidentEvidenceType
+  url?: string
+  text?: string
+}
+
+export interface IncidentPayload {
+  organizationId: string
+  siteId?: string
+  title: string
+  description?: string
+  severity: IncidentSeverity
+  source: IncidentSource
+  location: IncidentLocationPayload
+  evidence?: IncidentEvidencePayload[]
+  assigneeName?: string
+  reporterName?: string
+  aiSummary?: string
+  aiConfidence?: number
+}
+
 export interface InspectionRoutePayload {
   organizationId: string
   siteId: string
@@ -465,6 +516,66 @@ export const api = {
       token,
       body: JSON.stringify(payload),
     }),
+  listIncidents: (token: string, filters?: IncidentFilters) =>
+    apiFetch<Incident[]>(
+      `/v1/incidents${buildQuery({
+        organizationId: filters?.organizationId,
+        siteId: filters?.siteId,
+        status: filters?.status,
+        severity: filters?.severity,
+        source: filters?.source,
+        areaName: filters?.areaName,
+      })}`,
+      { token },
+    ),
+  getIncident: (token: string, incidentId: string) =>
+    apiFetch<Incident>(`/v1/incidents/${incidentId}`, { token }),
+  createIncident: (token: string, payload: IncidentPayload) =>
+    apiFetch<Incident>('/v1/incidents', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  updateIncidentStatus: (token: string, incidentId: string, status: IncidentStatus) =>
+    apiFetch<Incident>(`/v1/incidents/${incidentId}/status`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ status }),
+    }),
+  updateIncidentSeverity: (token: string, incidentId: string, severity: IncidentSeverity) =>
+    apiFetch<Incident>(`/v1/incidents/${incidentId}/severity`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ severity }),
+    }),
+  assignIncident: (token: string, incidentId: string, assigneeName: string | null) =>
+    apiFetch<Incident>(`/v1/incidents/${incidentId}/assignee`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ assigneeName }),
+    }),
+  addIncidentComment: (token: string, incidentId: string, content: string) =>
+    apiFetch<Incident>(`/v1/incidents/${incidentId}/comments`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ content }),
+    }),
+  addIncidentEvidence: (token: string, incidentId: string, payload: IncidentEvidencePayload) =>
+    apiFetch<Incident>(`/v1/incidents/${incidentId}/evidence`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  reopenIncident: (token: string, incidentId: string) =>
+    apiFetch<Incident>(`/v1/incidents/${incidentId}/reopen`, {
+      method: 'POST',
+      token,
+    }),
+  getIncidentSummary: (token: string, date: string, organizationId?: string) =>
+    apiFetch<IncidentDailySummary>(
+      `/v1/incidents/summary${buildQuery({ date, organizationId })}`,
+      { token },
+    ),
   listInspectionRoutes: (token: string, filters?: { organizationId?: string; siteId?: string }) =>
     apiFetch<InspectionRoute[]>(`/v1/inspection/routes${buildQuery(filters ?? {})}`, { token }),
   createInspectionRoute: (token: string, payload: InspectionRoutePayload) =>

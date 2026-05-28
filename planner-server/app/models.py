@@ -267,6 +267,93 @@ class InspectionEventRecord(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class IncidentRecord(SQLModel, table=True):
+    __tablename__ = "incidents"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    title: str = Field(index=True)
+    description: str = ""
+    status: str = Field(default="pending_review", index=True)
+    severity: str = Field(default="medium", index=True)
+    source: str = Field(default="manual", index=True)
+    location_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    assignee_name: str | None = None
+    reporter_name: str | None = None
+    ai_summary: str | None = None
+    ai_confidence: float | None = None
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    updated_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+    resolved_at: datetime | None = None
+
+
+class IncidentEvidenceRecord(SQLModel, table=True):
+    __tablename__ = "incident_evidence"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    incident_id: str = Field(foreign_key="incidents.id", index=True)
+    evidence_type: str = Field(index=True)
+    url: str | None = None
+    text: str | None = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class IncidentCommentRecord(SQLModel, table=True):
+    __tablename__ = "incident_comments"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    incident_id: str = Field(foreign_key="incidents.id", index=True)
+    author_name: str
+    content: str
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class IncidentHistoryRecord(SQLModel, table=True):
+    __tablename__ = "incident_history"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    incident_id: str = Field(foreign_key="incidents.id", index=True)
+    action: str = Field(index=True)
+    from_value: str | None = None
+    to_value: str | None = None
+    actor_name: str
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class IncidentLineNotificationRecord(SQLModel, table=True):
+    __tablename__ = "incident_line_notifications"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    incident_id: str | None = Field(default=None, foreign_key="incidents.id", index=True)
+    action: str = Field(index=True)
+    target_id: str | None = Field(default=None, index=True)
+    message: str
+    status: str = Field(default="queued", index=True)
+    request_payload_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    response_payload_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    sent_at: datetime | None = None
+
+
+class LineWebhookEventRecord(SQLModel, table=True):
+    __tablename__ = "line_webhook_events"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    event_key: str = Field(index=True, unique=True)
+    source_type: str | None = None
+    source_id: str | None = Field(default=None, index=True)
+    event_type: str | None = Field(default=None, index=True)
+    payload_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    processed_status: str = Field(default="received", index=True)
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    processed_at: datetime | None = None
+
+
 class InspectionReport(SQLModel, table=True):
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     organization_id: str = Field(foreign_key="organization.id", index=True)

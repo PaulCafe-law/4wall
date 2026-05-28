@@ -31,6 +31,11 @@ def test_postgres_driver_is_available_for_engine_creation():
         route_provider="mock",
         osrm_base_url="https://example-osrm.local",
         osrm_profile="driving",
+        line_channel_access_token=None,
+        line_channel_secret=None,
+        line_webhook_enabled=False,
+        line_default_group_id=None,
+        line_incident_notify_enabled=False,
     )
 
     engine = create_engine_for_settings(settings)

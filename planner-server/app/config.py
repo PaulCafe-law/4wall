@@ -51,6 +51,11 @@ class Settings:
     route_provider: str
     osrm_base_url: str
     osrm_profile: str
+    line_channel_access_token: str | None
+    line_channel_secret: str | None
+    line_webhook_enabled: bool
+    line_default_group_id: str | None
+    line_incident_notify_enabled: bool
     web_signup_rate_limit_attempts: int = 5
     web_signup_rate_limit_window_seconds: int = 300
 
@@ -84,6 +89,11 @@ class Settings:
             route_provider=_env_str("BUILDING_ROUTE_ROUTE_PROVIDER", "mock") or "mock",
             osrm_base_url=_env_str("BUILDING_ROUTE_OSRM_BASE_URL", "https://router.project-osrm.org") or "https://router.project-osrm.org",
             osrm_profile=_env_str("BUILDING_ROUTE_OSRM_PROFILE", "driving") or "driving",
+            line_channel_access_token=_env_str("LINE_CHANNEL_ACCESS_TOKEN"),
+            line_channel_secret=_env_str("LINE_CHANNEL_SECRET"),
+            line_webhook_enabled=_env_bool("LINE_WEBHOOK_ENABLED", False),
+            line_default_group_id=_env_str("LINE_DEFAULT_GROUP_ID"),
+            line_incident_notify_enabled=_env_bool("LINE_INCIDENT_NOTIFY_ENABLED", False),
         )
 
     @property

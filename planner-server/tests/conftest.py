@@ -36,6 +36,11 @@ def test_settings(tmp_path: Path) -> Settings:
         route_provider="mock",
         osrm_base_url="https://example-osrm.local",
         osrm_profile="driving",
+        line_channel_access_token=None,
+        line_channel_secret=None,
+        line_webhook_enabled=False,
+        line_default_group_id=None,
+        line_incident_notify_enabled=False,
     )
 
 

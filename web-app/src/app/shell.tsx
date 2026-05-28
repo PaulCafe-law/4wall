@@ -8,6 +8,7 @@ const customerLinks = [
   { to: '/overview', label: '總覽' },
   { to: '/sites', label: '場域' },
   { to: '/missions', label: '任務' },
+  { to: '/incidents', label: '異常事件' },
   { to: '/billing', label: '帳務' },
 ]
 
