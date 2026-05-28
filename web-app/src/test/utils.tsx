@@ -37,6 +37,7 @@ export function createAuthValue(overrides: Partial<AuthContextValue> = {}): Auth
     login: vi.fn(async () => {}),
     signup: vi.fn(async () => {}),
     acceptInvite: vi.fn(async () => {}),
+    refreshSession: vi.fn(async () => session),
     logout: vi.fn(async () => {}),
     markExpired: vi.fn(),
     canReadOrganization: vi.fn(() => true),
