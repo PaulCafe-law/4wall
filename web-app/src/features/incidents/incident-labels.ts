@@ -1,4 +1,10 @@
-import type { Incident, IncidentSeverity, IncidentSource, IncidentStatus } from '../../lib/types'
+import type {
+  Incident,
+  IncidentEvidenceType,
+  IncidentSeverity,
+  IncidentSource,
+  IncidentStatus,
+} from '../../lib/types'
 
 export const INCIDENT_STATUS_OPTIONS: Array<{ value: IncidentStatus; label: string }> = [
   { value: 'pending_review', label: '待確認' },
@@ -34,6 +40,97 @@ export function formatIncidentSeverity(value: string) {
 
 export function formatIncidentSource(value: string) {
   return INCIDENT_SOURCE_OPTIONS.find((item) => item.value === value)?.label ?? value
+}
+
+const INCIDENT_EVIDENCE_LABELS: Record<IncidentEvidenceType, string> = {
+  image: '現場照片',
+  video: '影像片段',
+  text: '文字紀錄',
+  link: '外部連結',
+}
+
+const INCIDENT_HISTORY_ACTION_LABELS: Record<string, string> = {
+  'incident.created': '建立事件',
+  'incident.status_changed': '更新狀態',
+  'incident.reopened': '重新開啟',
+  'incident.severity_changed': '調整嚴重程度',
+  'incident.assigned': '指派負責人',
+  'incident.comment_added': '新增處理備註',
+  'incident.evidence_added': '新增證據',
+}
+
+const LINE_NOTIFICATION_ACTION_LABELS: Record<string, string> = {
+  incident_created: 'LINE：建立事件推播',
+  incident_confirmed: 'LINE：確認異常推播',
+  incident_assigned: 'LINE：指派負責人推播',
+  incident_in_progress: 'LINE：開始處理推播',
+  incident_resolved: 'LINE：結案推播',
+  incident_reopened: 'LINE：重新開啟推播',
+  incident_false_positive: 'LINE：誤判推播',
+  daily_summary: 'LINE：每日摘要',
+}
+
+const LINE_NOTIFICATION_STATUS_LABELS: Record<string, string> = {
+  sent: '已送達',
+  mock_sent: '模擬送出',
+  queued: '等待發送',
+  failed: '發送失敗',
+  skipped: '未發送',
+}
+
+export function formatIncidentEvidenceType(value: IncidentEvidenceType | string) {
+  return INCIDENT_EVIDENCE_LABELS[value as IncidentEvidenceType] ?? value
+}
+
+export function formatIncidentHistoryAction(value: string) {
+  return INCIDENT_HISTORY_ACTION_LABELS[value] ?? value
+}
+
+export function formatIncidentLineNotificationAction(value: string) {
+  return LINE_NOTIFICATION_ACTION_LABELS[value] ?? value
+}
+
+export function formatIncidentLineNotificationStatus(value: string) {
+  return LINE_NOTIFICATION_STATUS_LABELS[value] ?? value
+}
+
+export function formatIncidentHistoryValue(value?: string | null) {
+  if (!value) return '無'
+  if (hasBrokenIncidentText(value)) return '資料已更新'
+  const status = INCIDENT_STATUS_OPTIONS.find((item) => item.value === value)
+  if (status) return status.label
+  const severity = INCIDENT_SEVERITY_OPTIONS.find((item) => item.value === value)
+  if (severity) return severity.label
+  const evidenceType = INCIDENT_EVIDENCE_LABELS[value as IncidentEvidenceType]
+  if (evidenceType) return evidenceType
+  return value
+}
+
+export function hasBrokenIncidentText(value?: string | null) {
+  return Boolean(value && (/\?{3,}/.test(value) || value.includes('�')))
+}
+
+export function formatIncidentDisplayText(value: string | null | undefined, fallback: string) {
+  const trimmed = value?.trim()
+  if (!trimmed || hasBrokenIncidentText(trimmed)) return fallback
+  return trimmed
+}
+
+export function formatIncidentLineNotificationMessage(message: string, incident: Incident) {
+  if (!hasBrokenIncidentText(message)) return message
+  const title = formatIncidentDisplayText(incident.title, '現場異常事件')
+  const location = formatIncidentDisplayText(incidentLocationLabel(incident), '未指定位置')
+  const assignee = formatIncidentDisplayText(incident.assigneeName, '尚未指派')
+  return [
+    `【第四面牆｜${formatIncidentSeverity(incident.severity)}異常】`,
+    `位置：${location}`,
+    `問題：${title}`,
+    `狀態：${formatIncidentStatus(incident.status)}`,
+    `嚴重程度：${formatIncidentSeverity(incident.severity)}`,
+    `負責人：${assignee}`,
+    '',
+    '請依事件詳情中的處理紀錄追蹤現場回報。',
+  ].join('\n')
 }
 
 export function incidentLocationLabel(incident: Incident) {
