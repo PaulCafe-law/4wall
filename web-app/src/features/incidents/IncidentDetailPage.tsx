@@ -18,6 +18,7 @@ import { ApiError, api } from '../../lib/api'
 import { useAuth } from '../../lib/auth'
 import { useAuthedMutation, useAuthedQuery } from '../../lib/auth-query'
 import type { IncidentSeverity, IncidentStatus } from '../../lib/types'
+import { incidentSiteMapLink } from '../site-map/site-map-config'
 import {
   INCIDENT_SEVERITY_OPTIONS,
   formatIncidentSeverity,
@@ -138,6 +139,8 @@ export function IncidentDetailPage() {
     )
   }
 
+  const siteMapLink = incidentSiteMapLink(incident)
+
   return (
     <div className="space-y-6">
       <ShellSection
@@ -185,12 +188,19 @@ export function IncidentDetailPage() {
                 { label: '區域', value: incident.location.areaName || '未指定' },
                 { label: '樓層', value: incident.location.floor || '未指定' },
                 { label: '設備', value: incident.location.equipmentName || '未指定' },
+                {
+                  label: '場域錨點',
+                  value: incident.location.anchorId || incident.location.revitElementId || incident.location.ifcGuid || '尚未綁定',
+                },
                 { label: '3D 物件', value: incident.location.modelObjectId || '尚未綁定' },
               ]}
             />
-            <ActionButton className="mt-4" variant="secondary" disabled>
+            <Link
+              className="mt-4 inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm font-medium text-chrome-950 transition hover:border-chrome-500"
+              to={siteMapLink}
+            >
               在 3D 場域中查看
-            </ActionButton>
+            </Link>
           </Panel>
 
           <Panel>

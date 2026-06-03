@@ -683,6 +683,11 @@ export interface IncidentLocation {
   equipmentId: string | null
   equipmentName: string | null
   description: string | null
+  anchorId?: string | null
+  floorplanX?: number | null
+  floorplanY?: number | null
+  ifcGuid?: string | null
+  revitElementId?: string | null
   worldX: number | null
   worldY: number | null
   worldZ: number | null
