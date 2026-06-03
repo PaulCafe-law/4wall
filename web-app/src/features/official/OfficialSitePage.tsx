@@ -190,7 +190,7 @@ export function OfficialSitePage() {
             <ImageCard
               title="日常營運的虛擬工廠 Digital Twin"
               body="用固定攝影機與 3D 場域模型追蹤設備、儀表板與工作區域狀態，讓主管遠端掌握工廠現況，並由 LINE 群組 AI 助手主動提醒。"
-              image="/official-assets/dashboard-bim.jpg"
+              image="/official-assets/dashboard-bim.png"
               alt="管理平台中實景與 BIM 模型對照的操作畫面"
               tone="dark"
             />
