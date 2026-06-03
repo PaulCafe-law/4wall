@@ -24,8 +24,8 @@ describe('OfficialSitePage', () => {
         '透過無人機、固定攝影機與 AI Agent 的無縫整合，為工廠與工地打造專屬的 Digital Twin，實現即時通報、精準追蹤與歷史回放的智慧大腦。',
       ),
     ).toBeInTheDocument()
-    expect(screen.getByText('智慧工地巡檢與風險管理')).toBeInTheDocument()
-    expect(screen.getByText('日常營運的虛擬工廠 Digital Twin')).toBeInTheDocument()
+    expect(document.querySelector('img[src="/official-assets/construction-plan.png"]')).toBeInTheDocument()
+    expect(document.querySelector('img[src="/official-assets/dashboard-bim.png"]')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '合作機構' })).toBeInTheDocument()
     expect(screen.getByText('4wall AI 在建立下一代工廠及工地 AI native 系統。')).toBeInTheDocument()
     expect(screen.getByText('成大建築系')).toBeInTheDocument()
@@ -39,7 +39,7 @@ describe('OfficialSitePage', () => {
     ).toHaveAttribute('src', '/official-assets/hero-field-ai.jpg')
     expect(screen.getByRole('img', { name: '工地分期規劃與動線管理示意圖' })).toHaveAttribute(
       'src',
-      '/official-assets/construction-plan.jpg',
+      '/official-assets/construction-plan.png',
     )
     expect(screen.getByRole('link', { name: '4wallaitech@gmail.com' })).toHaveAttribute(
       'href',

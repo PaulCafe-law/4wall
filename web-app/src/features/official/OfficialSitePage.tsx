@@ -83,12 +83,14 @@ function ImageCard({
   image,
   alt,
   tone = 'light',
+  imageOnly = false,
 }: {
   title: string
   body: string
   image: string
   alt: string
   tone?: 'light' | 'dark'
+  imageOnly?: boolean
 }) {
   const dark = tone === 'dark'
 
@@ -96,14 +98,21 @@ function ImageCard({
     <article
       className={`overflow-hidden rounded-[2rem] ${dark ? 'bg-chrome-950 text-white' : 'bg-white text-chrome-950'} shadow-[0_18px_70px_rgba(18,24,33,0.12)]`}
     >
-      <div className="px-6 pt-7 text-center md:px-10 md:pt-10">
-        <h3 className="font-display text-3xl font-semibold tracking-[-0.05em] md:text-4xl">{title}</h3>
-        <p className={`mx-auto mt-3 max-w-2xl text-sm leading-6 md:text-base ${dark ? 'text-chrome-200' : 'text-chrome-700'}`}>
-          {body}
-        </p>
-      </div>
-      <div className="mt-6 overflow-hidden">
-        <img className="h-[22rem] w-full object-cover md:h-[30rem]" src={image} alt={alt} loading="lazy" />
+      {!imageOnly ? (
+        <div className="px-6 pt-7 text-center md:px-10 md:pt-10">
+          <h3 className="font-display text-3xl font-semibold tracking-[-0.05em] md:text-4xl">{title}</h3>
+          <p className={`mx-auto mt-3 max-w-2xl text-sm leading-6 md:text-base ${dark ? 'text-chrome-200' : 'text-chrome-700'}`}>
+            {body}
+          </p>
+        </div>
+      ) : null}
+      <div className={`${imageOnly ? '' : 'mt-6'} overflow-hidden`}>
+        <img
+          className={imageOnly ? 'w-full object-contain' : 'h-[22rem] w-full object-cover md:h-[30rem]'}
+          src={image}
+          alt={alt}
+          loading="lazy"
+        />
       </div>
     </article>
   )
@@ -184,15 +193,17 @@ export function OfficialSitePage() {
             <ImageCard
               title="智慧工地巡檢與風險管理"
               body="整合工地影像、無人機或手機巡檢資料，辨識安全帽、危險區域、洞口、材料堆置與施工異常，並把事件標記在 3D / 平面圖上。"
-              image="/official-assets/construction-plan.jpg"
+              image="/official-assets/construction-plan.png"
               alt="工地分期規劃與動線管理示意圖"
+              imageOnly
             />
             <ImageCard
               title="日常營運的虛擬工廠 Digital Twin"
               body="用固定攝影機與 3D 場域模型追蹤設備、儀表板與工作區域狀態，讓主管遠端掌握工廠現況，並由 LINE 群組 AI 助手主動提醒。"
-              image="/official-assets/dashboard-bim.jpg"
+              image="/official-assets/dashboard-bim.png"
               alt="管理平台中實景與 BIM 模型對照的操作畫面"
               tone="dark"
+              imageOnly
             />
           </div>
 
