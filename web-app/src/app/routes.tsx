@@ -15,6 +15,7 @@ import { MissionDetailPage } from '../features/missions/MissionDetailPage'
 import { MissionsPage } from '../features/missions/MissionsPage'
 import { PlannerPage } from '../features/missions/PlannerPage'
 import { OrganizationsPage } from '../features/orgs/OrganizationsPage'
+import { OfficialSitePage } from '../features/official/OfficialSitePage'
 import { OverviewPage } from '../features/overview/OverviewPage'
 import { SitesPage } from '../features/sites/SitesPage'
 import { SupportPage } from '../features/support/SupportPage'
@@ -30,6 +31,7 @@ export function AppRoutes() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/invite" element={<InvitePage />} />
+            <Route path="/official" element={<OfficialSitePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>
                 <Route index element={<Navigate to="/overview" replace />} />
