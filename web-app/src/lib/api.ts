@@ -287,6 +287,11 @@ export interface IncidentLocationPayload {
   equipmentId?: string
   equipmentName?: string
   description?: string
+  anchorId?: string
+  floorplanX?: number
+  floorplanY?: number
+  ifcGuid?: string
+  revitElementId?: string
   worldX?: number
   worldY?: number
   worldZ?: number

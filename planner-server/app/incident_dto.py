@@ -20,6 +20,11 @@ class IncidentLocationDto(BaseModel):
     equipmentId: str | None = None
     equipmentName: str | None = None
     description: str | None = None
+    anchorId: str | None = None
+    floorplanX: float | None = None
+    floorplanY: float | None = None
+    ifcGuid: str | None = None
+    revitElementId: str | None = None
     worldX: float | None = None
     worldY: float | None = None
     worldZ: float | None = None

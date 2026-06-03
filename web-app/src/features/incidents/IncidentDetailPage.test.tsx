@@ -110,6 +110,10 @@ describe('IncidentDetailPage', () => {
     })
 
     expect(await screen.findByText('工地 2F 東側材料堆放阻塞通道')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '在 3D 場域中查看' })).toHaveAttribute(
+      'href',
+      '/site-map?incidentId=incident-1',
+    )
 
     await userEvent.click(screen.getByRole('button', { name: '確認異常' }))
     await waitFor(() => expect(apiMock.updateIncidentStatus).toHaveBeenCalledWith('test-token', 'incident-1', 'confirmed'))
@@ -121,5 +125,34 @@ describe('IncidentDetailPage', () => {
     await userEvent.type(screen.getByLabelText('新增備註'), '已派人確認。')
     await userEvent.click(screen.getByRole('button', { name: '新增備註' }))
     await waitFor(() => expect(apiMock.addIncidentComment).toHaveBeenCalledWith('test-token', 'incident-1', '已派人確認。'))
+  })
+
+  it('links 建研所 incidents to the 建研所 site map', async () => {
+    apiMock.getIncident.mockResolvedValue({
+      ...baseIncident,
+      location: {
+        ...baseIncident.location,
+        siteName: '建研所工地',
+      },
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/incidents/:incidentId" element={<IncidentDetailPage />} />
+      </Routes>,
+      {
+        route: '/incidents/incident-1',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [{ membershipId: 'm-1', organizationId: 'org-1', role: 'customer_admin', isActive: true }],
+          }),
+        }),
+      },
+    )
+
+    expect(await screen.findByRole('link', { name: '在 3D 場域中查看' })).toHaveAttribute(
+      'href',
+      '/site-map?map=bri&incidentId=incident-1',
+    )
   })
 })

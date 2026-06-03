@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.dto import FlightEventsRequestDto, MissionPlanRequestDto, TelemetryBatchRequestDto
+from app.incident_dto import IncidentLocationDto
 from tests.helpers import valid_request_payload
 
 
@@ -51,3 +52,29 @@ def test_flight_events_request_accepts_json_payload() -> None:
 def test_telemetry_batch_requires_samples() -> None:
     with pytest.raises(ValidationError):
         TelemetryBatchRequestDto(missionId="msn-001", samples=[])
+
+
+def test_incident_location_accepts_site_map_anchor_fields() -> None:
+    location = IncidentLocationDto(
+        siteId="site-001",
+        siteName="建研所工地",
+        areaName="A 區",
+        floor="2F",
+        equipmentName="空壓機",
+        anchorId="anchor-compressor-a",
+        floorplanX=0.42,
+        floorplanY=0.58,
+        worldX=-12.5,
+        worldY=3.0,
+        worldZ=8.25,
+        ifcGuid="ifc-guid-001",
+        revitElementId="revit-12345",
+        modelObjectId="model-compressor-a",
+    )
+
+    payload = location.model_dump()
+
+    assert payload["anchorId"] == "anchor-compressor-a"
+    assert payload["floorplanX"] == 0.42
+    assert payload["revitElementId"] == "revit-12345"
+    assert payload["modelObjectId"] == "model-compressor-a"

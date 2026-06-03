@@ -17,6 +17,7 @@ import { PlannerPage } from '../features/missions/PlannerPage'
 import { OrganizationsPage } from '../features/orgs/OrganizationsPage'
 import { OfficialSitePage } from '../features/official/OfficialSitePage'
 import { OverviewPage } from '../features/overview/OverviewPage'
+import { SiteMapPage } from '../features/site-map/SiteMapPage'
 import { SitesPage } from '../features/sites/SitesPage'
 import { SupportPage } from '../features/support/SupportPage'
 import { AuthProvider, useAuth } from '../lib/auth'
@@ -38,6 +39,7 @@ export function AppRoutes() {
                 <Route path="/overview" element={<OverviewPage />} />
                 <Route path="/sites" element={<SitesPage />} />
                 <Route path="/sites/:siteId" element={<SitesPage />} />
+                <Route path="/site-map" element={<SiteMapPage />} />
                 <Route path="/missions" element={<MissionsPage />} />
                 <Route path="/missions/new" element={<PlannerPage />} />
                 <Route path="/missions/:missionId" element={<MissionDetailPage />} />
