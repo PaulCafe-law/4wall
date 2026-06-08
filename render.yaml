@@ -45,6 +45,38 @@ services:
         sync: false
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_TEXT_MODEL
+        value: gemini-2.5-pro
+      - key: WORLDLABS_API_KEY
+        sync: false
+      - key: WORLDLABS_MODEL
+        value: marble-1.1-plus
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_QWEN_VLM_MODEL
+        value: qwen2.5vl:7b
+      - key: OLLAMA_REQUEST_TIMEOUT_SECONDS
+        value: "120"
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: BOXER_REPO_PATH
+        sync: false
+      - key: BOXER_CHECKPOINT_PATH
+        sync: false
+      - key: BOXER_ANNOTATION_COMMAND
+        sync: false
+      - key: GSPLAT_PYTHON_ENV
+        sync: false
+      - key: GSPLAT_RENDER_COMMAND
+        sync: false
+      - key: ENABLE_EGO_PLANNER
+        value: "false"
+      - key: EGO_PLANNER_ROS_WORKSPACE
+        sync: false
+      - key: EGO_PLANNER_COMMAND
+        sync: false
 
   - type: web
     name: four-wall-api
@@ -87,6 +119,166 @@ services:
         sync: false
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_TEXT_MODEL
+        value: gemini-2.5-pro
+      - key: WORLDLABS_API_KEY
+        sync: false
+      - key: WORLDLABS_MODEL
+        value: marble-1.1-plus
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_QWEN_VLM_MODEL
+        value: qwen2.5vl:7b
+      - key: OLLAMA_REQUEST_TIMEOUT_SECONDS
+        value: "120"
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: BOXER_REPO_PATH
+        sync: false
+      - key: BOXER_CHECKPOINT_PATH
+        sync: false
+      - key: BOXER_ANNOTATION_COMMAND
+        sync: false
+      - key: GSPLAT_PYTHON_ENV
+        sync: false
+      - key: GSPLAT_RENDER_COMMAND
+        sync: false
+      - key: ENABLE_EGO_PLANNER
+        value: "false"
+      - key: EGO_PLANNER_ROS_WORKSPACE
+        sync: false
+      - key: EGO_PLANNER_COMMAND
+        sync: false
+
+  - type: worker
+    name: four-wall-industrial-engine-worker-staging
+    runtime: docker
+    rootDir: planner-server
+    startCommand: python -m app.industrial_data_engine.worker
+    autoDeployTrigger: commit
+    envVars:
+      - key: BUILDING_ROUTE_ENVIRONMENT
+        value: staging
+      - key: BUILDING_ROUTE_APP_ORIGIN
+        sync: false
+      - key: BUILDING_ROUTE_DATABASE_URL
+        sync: false
+      - key: BUILDING_ROUTE_AUTH_SECRET_KEY
+        sync: false
+      - key: BUILDING_ROUTE_ROUTE_PROVIDER
+        value: osrm
+      - key: BUILDING_ROUTE_ARTIFACT_BACKEND
+        value: s3
+      - key: BUILDING_ROUTE_S3_BUCKET
+        sync: false
+      - key: BUILDING_ROUTE_S3_ENDPOINT_URL
+        sync: false
+      - key: BUILDING_ROUTE_S3_REGION
+        sync: false
+      - key: BUILDING_ROUTE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BUILDING_ROUTE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_TEXT_MODEL
+        value: gemini-2.5-pro
+      - key: WORLDLABS_API_KEY
+        sync: false
+      - key: WORLDLABS_MODEL
+        value: marble-1.1-plus
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_QWEN_VLM_MODEL
+        value: qwen2.5vl:7b
+      - key: OLLAMA_REQUEST_TIMEOUT_SECONDS
+        value: "120"
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: BOXER_REPO_PATH
+        sync: false
+      - key: BOXER_CHECKPOINT_PATH
+        sync: false
+      - key: BOXER_ANNOTATION_COMMAND
+        sync: false
+      - key: GSPLAT_PYTHON_ENV
+        sync: false
+      - key: GSPLAT_RENDER_COMMAND
+        sync: false
+      - key: ENABLE_EGO_PLANNER
+        value: "false"
+      - key: EGO_PLANNER_ROS_WORKSPACE
+        sync: false
+      - key: EGO_PLANNER_COMMAND
+        sync: false
+
+  - type: worker
+    name: four-wall-industrial-engine-worker
+    runtime: docker
+    rootDir: planner-server
+    startCommand: python -m app.industrial_data_engine.worker
+    autoDeployTrigger: "off"
+    envVars:
+      - key: BUILDING_ROUTE_ENVIRONMENT
+        value: production
+      - key: BUILDING_ROUTE_APP_ORIGIN
+        sync: false
+      - key: BUILDING_ROUTE_DATABASE_URL
+        sync: false
+      - key: BUILDING_ROUTE_AUTH_SECRET_KEY
+        sync: false
+      - key: BUILDING_ROUTE_ROUTE_PROVIDER
+        value: osrm
+      - key: BUILDING_ROUTE_ARTIFACT_BACKEND
+        value: s3
+      - key: BUILDING_ROUTE_S3_BUCKET
+        sync: false
+      - key: BUILDING_ROUTE_S3_ENDPOINT_URL
+        sync: false
+      - key: BUILDING_ROUTE_S3_REGION
+        sync: false
+      - key: BUILDING_ROUTE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BUILDING_ROUTE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_TEXT_MODEL
+        value: gemini-2.5-pro
+      - key: WORLDLABS_API_KEY
+        sync: false
+      - key: WORLDLABS_MODEL
+        value: marble-1.1-plus
+      - key: OLLAMA_BASE_URL
+        sync: false
+      - key: OLLAMA_QWEN_VLM_MODEL
+        value: qwen2.5vl:7b
+      - key: OLLAMA_REQUEST_TIMEOUT_SECONDS
+        value: "120"
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: BOXER_REPO_PATH
+        sync: false
+      - key: BOXER_CHECKPOINT_PATH
+        sync: false
+      - key: BOXER_ANNOTATION_COMMAND
+        sync: false
+      - key: GSPLAT_PYTHON_ENV
+        sync: false
+      - key: GSPLAT_RENDER_COMMAND
+        sync: false
+      - key: ENABLE_EGO_PLANNER
+        value: "false"
+      - key: EGO_PLANNER_ROS_WORKSPACE
+        sync: false
+      - key: EGO_PLANNER_COMMAND
+        sync: false
 
   - type: web
     name: four-wall-web-staging

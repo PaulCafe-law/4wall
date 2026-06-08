@@ -22,6 +22,8 @@ __pycache__/
 *.pyc
 planner-server/data/
 planner-server/.pytest_cache/
+storage/
+planner-server/storage/
 
 # Logs and temp
 *.log

@@ -13,6 +13,8 @@ const customerLinks = [
   { to: '/billing', label: '帳務' },
 ]
 
+customerLinks.splice(customerLinks.length - 1, 0, { to: '/industrial-data-engine', label: 'Data Engine' })
+
 const internalLinks = [
   { to: '/control-plane', label: '控制平面' },
   { to: '/live-ops', label: '即時營運' },

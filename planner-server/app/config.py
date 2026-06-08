@@ -58,6 +58,23 @@ class Settings:
     line_incident_notify_enabled: bool
     web_signup_rate_limit_attempts: int = 5
     web_signup_rate_limit_window_seconds: int = 300
+    gemini_api_key: str | None = None
+    gemini_text_model: str = "gemini-2.5-pro"
+    worldlabs_api_key: str | None = None
+    worldlabs_model: str = "marble-1.1-plus"
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_qwen_vlm_model: str = "qwen2.5vl:7b"
+    ollama_request_timeout_seconds: int = 120
+    industrial_storage_provider: str = "local"
+    industrial_storage_base_path: str = "./storage/industrial-data-engine"
+    boxer_repo_path: str | None = None
+    boxer_checkpoint_path: str | None = None
+    gsplat_python_env: str | None = None
+    enable_ego_planner: bool = False
+    ego_planner_ros_workspace: str | None = None
+    industrial_engine_max_scenes_per_run: int = 1
+    industrial_engine_max_incidents_per_scene: int = 5
+    industrial_engine_max_camera_poses: int = 48
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -65,7 +82,11 @@ class Settings:
             app_name=_env_str("BUILDING_ROUTE_APP_NAME", "Building Route Planner") or "Building Route Planner",
             environment=_env_str("BUILDING_ROUTE_ENVIRONMENT", "development") or "development",
             app_origin=_env_str("BUILDING_ROUTE_APP_ORIGIN"),
-            database_url=_env_str("BUILDING_ROUTE_DATABASE_URL", "sqlite:///./data/planner.db") or "sqlite:///./data/planner.db",
+            database_url=(
+                _env_str("BUILDING_ROUTE_DATABASE_URL")
+                or _env_str("DATABASE_URL", "sqlite:///./data/planner.db")
+                or "sqlite:///./data/planner.db"
+            ),
             artifact_backend=_env_str("BUILDING_ROUTE_ARTIFACT_BACKEND", "local") or "local",
             artifact_root=_env_str("BUILDING_ROUTE_ARTIFACT_ROOT", "./data/artifacts") or "./data/artifacts",
             s3_bucket=_env_str("BUILDING_ROUTE_S3_BUCKET"),
@@ -94,6 +115,26 @@ class Settings:
             line_webhook_enabled=_env_bool("LINE_WEBHOOK_ENABLED", False),
             line_default_group_id=_env_str("LINE_DEFAULT_GROUP_ID"),
             line_incident_notify_enabled=_env_bool("LINE_INCIDENT_NOTIFY_ENABLED", False),
+            gemini_api_key=_env_str("GEMINI_API_KEY"),
+            gemini_text_model=_env_str("GEMINI_TEXT_MODEL", "gemini-2.5-pro") or "gemini-2.5-pro",
+            worldlabs_api_key=_env_str("WORLDLABS_API_KEY"),
+            worldlabs_model=_env_str("WORLDLABS_MODEL", "marble-1.1-plus") or "marble-1.1-plus",
+            ollama_base_url=(_env_str("OLLAMA_BASE_URL", "http://localhost:11434") or "http://localhost:11434").rstrip("/"),
+            ollama_qwen_vlm_model=_env_str("OLLAMA_QWEN_VLM_MODEL", "qwen2.5vl:7b") or "qwen2.5vl:7b",
+            ollama_request_timeout_seconds=_env_int("OLLAMA_REQUEST_TIMEOUT_SECONDS", 120),
+            industrial_storage_provider=_env_str("STORAGE_PROVIDER", "local") or "local",
+            industrial_storage_base_path=(
+                _env_str("STORAGE_BASE_PATH", "./storage/industrial-data-engine")
+                or "./storage/industrial-data-engine"
+            ),
+            boxer_repo_path=_env_str("BOXER_REPO_PATH"),
+            boxer_checkpoint_path=_env_str("BOXER_CHECKPOINT_PATH"),
+            gsplat_python_env=_env_str("GSPLAT_PYTHON_ENV"),
+            enable_ego_planner=_env_bool("ENABLE_EGO_PLANNER", False),
+            ego_planner_ros_workspace=_env_str("EGO_PLANNER_ROS_WORKSPACE"),
+            industrial_engine_max_scenes_per_run=_env_int("INDUSTRIAL_ENGINE_MAX_SCENES_PER_RUN", 1),
+            industrial_engine_max_incidents_per_scene=_env_int("INDUSTRIAL_ENGINE_MAX_INCIDENTS_PER_SCENE", 5),
+            industrial_engine_max_camera_poses=_env_int("INDUSTRIAL_ENGINE_MAX_CAMERA_POSES", 48),
         )
 
     @property
