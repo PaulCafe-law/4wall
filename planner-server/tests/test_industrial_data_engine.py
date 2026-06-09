@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from dataclasses import replace
 import json
 from pathlib import Path
 
@@ -11,6 +12,9 @@ from app.config import Settings
 from app.industrial_data_engine.constants import STAGES
 from app.industrial_data_engine.pipeline import run_industrial_engine_job
 from app.industrial_data_engine.providers import (
+    BoxerAnnotationWorker,
+    EGOPlannerWorker,
+    GSplatRendererWorker,
     IndustrialProviderError,
     OllamaQwenVLMQualityJudgeProvider,
     ProviderBundle,
@@ -202,6 +206,45 @@ def test_ollama_model_missing_fails_fast(monkeypatch, test_settings: Settings) -
     provider = OllamaQwenVLMQualityJudgeProvider(test_settings)
     with pytest.raises(IndustrialProviderError, match="ollama_qwen_vlm_model_missing"):
         provider.validate_model_available()
+
+
+def test_gsplat_render_command_missing_fails_fast(tmp_path: Path, test_settings: Settings) -> None:
+    python_path = tmp_path / "python"
+    python_path.write_text("")
+    settings = replace(test_settings, gsplat_python_env=str(python_path), gsplat_render_command=None)
+
+    with pytest.raises(IndustrialProviderError, match="missing_gsplat_render_command"):
+        GSplatRendererWorker(settings)
+
+
+def test_boxer_annotation_command_missing_fails_fast(tmp_path: Path, test_settings: Settings) -> None:
+    repo_path = tmp_path / "boxer"
+    checkpoint_path = tmp_path / "checkpoint.pt"
+    repo_path.mkdir()
+    checkpoint_path.write_bytes(b"checkpoint")
+    settings = replace(
+        test_settings,
+        boxer_repo_path=str(repo_path),
+        boxer_checkpoint_path=str(checkpoint_path),
+        boxer_annotation_command=None,
+    )
+
+    with pytest.raises(IndustrialProviderError, match="missing_boxer_annotation_command"):
+        BoxerAnnotationWorker(settings)
+
+
+def test_ego_planner_command_missing_fails_fast(tmp_path: Path, test_settings: Settings) -> None:
+    workspace_path = tmp_path / "ego"
+    workspace_path.mkdir()
+    settings = replace(
+        test_settings,
+        enable_ego_planner=True,
+        ego_planner_ros_workspace=str(workspace_path),
+        ego_planner_command=None,
+    )
+
+    with pytest.raises(IndustrialProviderError, match="ego_planner_command_not_configured"):
+        EGOPlannerWorker(settings)
 
 
 def test_openai_key_is_not_a_runtime_setting(monkeypatch) -> None:

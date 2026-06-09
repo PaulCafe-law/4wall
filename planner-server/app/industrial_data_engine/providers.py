@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import base64
 import json
-import os
 from pathlib import Path
 import shlex
 import subprocess
@@ -299,6 +298,8 @@ class GSplatRendererWorker:
     def __init__(self, settings: Settings) -> None:
         if not settings.gsplat_python_env:
             raise IndustrialProviderError("missing_gsplat_python_env")
+        if not settings.gsplat_render_command:
+            raise IndustrialProviderError("missing_gsplat_render_command")
         self.python = _resolve_python(settings.gsplat_python_env)
 
     def render(self, *, world_spz: Path, metric_metadata: Path, camera_poses: Path, output_dir: Path) -> None:
@@ -323,6 +324,8 @@ class BoxerAnnotationWorker:
     def __init__(self, settings: Settings) -> None:
         if not settings.boxer_repo_path or not settings.boxer_checkpoint_path:
             raise IndustrialProviderError("missing_boxer_repo_or_checkpoint")
+        if not settings.boxer_annotation_command:
+            raise IndustrialProviderError("missing_boxer_annotation_command")
         self.repo_path = Path(settings.boxer_repo_path)
         self.checkpoint_path = Path(settings.boxer_checkpoint_path)
         if not self.repo_path.exists() or not self.checkpoint_path.exists():
@@ -364,18 +367,18 @@ class EGOPlannerWorker:
     def __init__(self, settings: Settings) -> None:
         if not settings.ego_planner_ros_workspace:
             raise IndustrialProviderError("missing_ego_planner_ros_workspace")
+        if not settings.ego_planner_command:
+            raise IndustrialProviderError("ego_planner_command_not_configured")
         self.workspace = Path(settings.ego_planner_ros_workspace)
         if not self.workspace.exists():
             raise IndustrialProviderError("ego_planner_ros_workspace_not_found")
+        self.command_template = settings.ego_planner_command
 
     def plan(self, *, camera_poses: Path, output_dir: Path) -> dict[str, Any]:
-        command_template = os.getenv("EGO_PLANNER_COMMAND", "").strip()
-        if not command_template:
-            raise IndustrialProviderError("ego_planner_command_not_configured")
         output_dir.mkdir(parents=True, exist_ok=True)
         command = [
             part.format(camera_poses=str(camera_poses), output_dir=str(output_dir), workspace=str(self.workspace))
-            for part in shlex.split(command_template)
+            for part in shlex.split(self.command_template)
         ]
         _run_command(command, "ego_planner_failed")
         plan_path = output_dir / "drone_path.json"

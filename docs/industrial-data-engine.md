@@ -66,7 +66,9 @@ Required provider failures are fail-fast:
 - `ollama_qwen_vlm_unavailable`
 - `ollama_qwen_vlm_model_missing:{model}`
 - `missing_boxer_repo_or_checkpoint`
+- `missing_boxer_annotation_command`
 - `missing_gsplat_python_env`
+- `missing_gsplat_render_command`
 - `ego_planner_command_not_configured` when EGO-Planner is enabled
 
 If `OPENAI_API_KEY` exists in the environment, the worker only logs:

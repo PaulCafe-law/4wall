@@ -31,9 +31,12 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     monkeypatch.setenv("STORAGE_BASE_PATH", " ./storage/test ")
     monkeypatch.setenv("BOXER_REPO_PATH", " C:/boxer ")
     monkeypatch.setenv("BOXER_CHECKPOINT_PATH", " C:/boxer/checkpoint.pt ")
+    monkeypatch.setenv("BOXER_ANNOTATION_COMMAND", " python annotate.py --output-dir {output_dir} ")
     monkeypatch.setenv("GSPLAT_PYTHON_ENV", " C:/venv/Scripts/python.exe ")
+    monkeypatch.setenv("GSPLAT_RENDER_COMMAND", " python render.py --output-dir {output_dir} ")
     monkeypatch.setenv("ENABLE_EGO_PLANNER", " true ")
     monkeypatch.setenv("EGO_PLANNER_ROS_WORKSPACE", " C:/ego ")
+    monkeypatch.setenv("EGO_PLANNER_COMMAND", " ros2 launch ego planner.launch.py ")
     monkeypatch.setenv("INDUSTRIAL_ENGINE_MAX_SCENES_PER_RUN", " 2 ")
     monkeypatch.setenv("INDUSTRIAL_ENGINE_MAX_INCIDENTS_PER_SCENE", " 7 ")
     monkeypatch.setenv("INDUSTRIAL_ENGINE_MAX_CAMERA_POSES", " 64 ")
@@ -66,9 +69,12 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.industrial_storage_base_path == "./storage/test"
     assert settings.boxer_repo_path == "C:/boxer"
     assert settings.boxer_checkpoint_path == "C:/boxer/checkpoint.pt"
+    assert settings.boxer_annotation_command == "python annotate.py --output-dir {output_dir}"
     assert settings.gsplat_python_env == "C:/venv/Scripts/python.exe"
+    assert settings.gsplat_render_command == "python render.py --output-dir {output_dir}"
     assert settings.enable_ego_planner is True
     assert settings.ego_planner_ros_workspace == "C:/ego"
+    assert settings.ego_planner_command == "ros2 launch ego planner.launch.py"
     assert settings.industrial_engine_max_scenes_per_run == 2
     assert settings.industrial_engine_max_incidents_per_scene == 7
     assert settings.industrial_engine_max_camera_poses == 64

@@ -69,9 +69,12 @@ class Settings:
     industrial_storage_base_path: str = "./storage/industrial-data-engine"
     boxer_repo_path: str | None = None
     boxer_checkpoint_path: str | None = None
+    boxer_annotation_command: str | None = None
     gsplat_python_env: str | None = None
+    gsplat_render_command: str | None = None
     enable_ego_planner: bool = False
     ego_planner_ros_workspace: str | None = None
+    ego_planner_command: str | None = None
     industrial_engine_max_scenes_per_run: int = 1
     industrial_engine_max_incidents_per_scene: int = 5
     industrial_engine_max_camera_poses: int = 48
@@ -129,9 +132,12 @@ class Settings:
             ),
             boxer_repo_path=_env_str("BOXER_REPO_PATH"),
             boxer_checkpoint_path=_env_str("BOXER_CHECKPOINT_PATH"),
+            boxer_annotation_command=_env_str("BOXER_ANNOTATION_COMMAND"),
             gsplat_python_env=_env_str("GSPLAT_PYTHON_ENV"),
+            gsplat_render_command=_env_str("GSPLAT_RENDER_COMMAND"),
             enable_ego_planner=_env_bool("ENABLE_EGO_PLANNER", False),
             ego_planner_ros_workspace=_env_str("EGO_PLANNER_ROS_WORKSPACE"),
+            ego_planner_command=_env_str("EGO_PLANNER_COMMAND"),
             industrial_engine_max_scenes_per_run=_env_int("INDUSTRIAL_ENGINE_MAX_SCENES_PER_RUN", 1),
             industrial_engine_max_incidents_per_scene=_env_int("INDUSTRIAL_ENGINE_MAX_INCIDENTS_PER_SCENE", 5),
             industrial_engine_max_camera_poses=_env_int("INDUSTRIAL_ENGINE_MAX_CAMERA_POSES", 48),
