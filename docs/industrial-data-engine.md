@@ -33,6 +33,24 @@ EGO_PLANNER_COMMAND=
 
 If these are missing when the corresponding stage is enabled, the worker fails fast.
 
+## Production Runtime Adapters
+
+The API and web service can run on Render, but the long-running data engine worker should run on an external GPU host when Render does not provide a paid worker/GPU service. That external worker must use the same production database and artifact storage as the API.
+
+As of the first production worker setup, the external worker requirements are:
+
+- Render Postgres external connection string, not the Render internal host.
+- Shared S3 artifact storage credentials.
+- Local Ollama with `OLLAMA_QWEN_VLM_MODEL=qwen2.5vl:7b`.
+- A real gsplat command that converts World Labs `.spz` plus camera poses into `rgb/` and `depth/` directories.
+- A real Boxer-compatible command that converts rendered `rgb/`, `depth/`, camera poses, and vocabulary into `object_annotations_raw.json` and `object_annotations_3d.json`.
+
+The adapter commands are production gates. They may not create placeholder frames, placeholder annotations, or synthetic quality scores just to let a job finish.
+
+Boxer has an additional release gate: the public `facebookresearch/boxer` code and the `facebook/boxer` Hugging Face weights are published under `cc-by-nc-4.0`. Any customer-facing or commercial production use needs a compatible license or an approved replacement annotation provider before the stage can be treated as production-ready.
+
+World Labs `.spz` assets are rendered from the panorama origin. Camera poses must therefore cover the panorama yaw range instead of orbiting point-cloud bounds. A production smoke run should use at least `INDUSTRIAL_ENGINE_MAX_CAMERA_POSES=8` so initial views cover 360 degrees in 45-degree increments; lower values are only wiring checks and may legitimately fail at Boxer because visible industrial objects were not sampled.
+
 ## Pipeline
 
 Each job records durable stage state so the API can return progress while the worker handles long-running work.

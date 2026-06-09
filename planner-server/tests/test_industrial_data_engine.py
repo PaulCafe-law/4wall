@@ -4,16 +4,20 @@ import base64
 from dataclasses import replace
 import json
 from pathlib import Path
+import subprocess
+import sys
 
+import httpx
 import pytest
 from sqlmodel import select
 
 from app.config import Settings
 from app.industrial_data_engine.constants import STAGES
-from app.industrial_data_engine.pipeline import run_industrial_engine_job
+from app.industrial_data_engine.pipeline import _camera_poses, _scene_schema, run_industrial_engine_job
 from app.industrial_data_engine.providers import (
     BoxerAnnotationWorker,
     EGOPlannerWorker,
+    GeminiTextProvider,
     GSplatRendererWorker,
     IndustrialProviderError,
     OllamaQwenVLMQualityJudgeProvider,
@@ -26,6 +30,25 @@ from tests.helpers import login_web, seed_organization, seed_site, seed_user
 
 
 PASSWORD = "Password123!"
+
+
+def test_camera_poses_cover_panorama_sweep_for_smoke_limit() -> None:
+    poses = _camera_poses("initial", {"fixed_camera", "phone_camera"}, limit=8)
+
+    assert [round(pose["rotation"]["yawDeg"]) for pose in poses] == [0, 45, 90, 135, 180, 225, 270, 315]
+    assert {pose["cameraMode"] for pose in poses} == {"fixed_camera", "phone_camera"}
+
+
+def test_camera_poses_two_pose_limit_uses_opposite_directions() -> None:
+    poses = _camera_poses("initial", {"fixed_camera"}, limit=2)
+
+    assert [round(pose["rotation"]["yawDeg"]) for pose in poses] == [0, 180]
+
+
+def test_extra_camera_poses_interleave_initial_panorama_sweep() -> None:
+    poses = _camera_poses("extra", {"fixed_camera"}, limit=8)
+
+    assert [round(pose["rotation"]["yawDeg"], 1) for pose in poses[:2]] == [22.5, 67.5]
 
 
 def test_customer_admin_can_create_list_and_read_industrial_engine_job(client, session_factory) -> None:
@@ -67,6 +90,152 @@ def test_customer_admin_can_create_list_and_read_industrial_engine_job(client, s
     assert [item["jobId"] for item in list_response.json()] == [body["jobId"]]
     assert detail_response.status_code == 200, detail_response.text
     assert detail_response.json()["jobId"] == body["jobId"]
+
+
+def test_gemini_text_provider_uses_current_structured_output_payload(monkeypatch, test_settings: Settings) -> None:
+    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"candidates": [{"content": {"parts": [{"text": "{\"name\":\"ok\"}"}]}}]}
+
+    def fake_post(url: str, **kwargs):
+        captured["url"] = url
+        captured["json"] = kwargs["json"]
+        return FakeResponse()
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
+
+    payload = GeminiTextProvider(settings).generate_json(
+        purpose="scene_description",
+        prompt="Return JSON.",
+        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    )
+
+    assert payload == {"name": "ok"}
+    request_json = captured["json"]
+    assert request_json["generationConfig"]["responseMimeType"] == "application/json"
+    assert request_json["generationConfig"]["temperature"] == 0.2
+    assert request_json["generationConfig"]["maxOutputTokens"] == 4096
+    assert "responseSchema" in request_json["generationConfig"]
+    assert "responseFormat" not in request_json["generationConfig"]
+
+
+def test_gemini_text_provider_honors_retry_delay_on_quota_429(monkeypatch, test_settings: Settings) -> None:
+    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
+    request = httpx.Request("POST", "https://generativelanguage.googleapis.com/test")
+    responses = [
+        httpx.Response(
+            429,
+            request=request,
+            json={
+                "error": {
+                    "message": "Quota exceeded. Please retry in 51.2s.",
+                    "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "51s"}],
+                }
+            },
+        ),
+        httpx.Response(
+            200,
+            request=request,
+            json={"candidates": [{"content": {"parts": [{"text": "{\"name\":\"ok\"}"}]}}]},
+        ),
+    ]
+    sleeps: list[float] = []
+
+    def fake_post(*_args, **_kwargs):
+        return responses.pop(0)
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
+    monkeypatch.setattr("app.industrial_data_engine.providers.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    payload = GeminiTextProvider(settings).generate_json(
+        purpose="scene_description",
+        prompt="Return JSON.",
+        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    )
+
+    assert payload == {"name": "ok"}
+    assert sleeps == [52.0]
+
+
+def test_gemini_text_provider_retries_transient_read_timeout(monkeypatch, test_settings: Settings) -> None:
+    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
+    request = httpx.Request("POST", "https://generativelanguage.googleapis.com/test")
+    calls = {"count": 0}
+    sleeps: list[float] = []
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"candidates": [{"content": {"parts": [{"text": "{\"name\":\"ok\"}"}]}}]}
+
+    def fake_post(*_args, **_kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise httpx.ReadTimeout("read timed out", request=request)
+        return FakeResponse()
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
+    monkeypatch.setattr("app.industrial_data_engine.providers.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    payload = GeminiTextProvider(settings).generate_json(
+        purpose="scene_description",
+        prompt="Return JSON.",
+        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    )
+
+    assert payload == {"name": "ok"}
+    assert calls["count"] == 2
+    assert sleeps == [2.0]
+
+
+def test_gemini_text_provider_retries_malformed_json_response(monkeypatch, test_settings: Settings) -> None:
+    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
+    calls = {"count": 0}
+    sleeps: list[float] = []
+
+    class FakeResponse:
+        def __init__(self, text: str) -> None:
+            self._text = text
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {"candidates": [{"content": {"parts": [{"text": self._text}]}}]}
+
+    def fake_post(*_args, **_kwargs):
+        calls["count"] += 1
+        return FakeResponse('{"name": ') if calls["count"] == 1 else FakeResponse('{"name":"ok"}')
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
+    monkeypatch.setattr("app.industrial_data_engine.providers.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    payload = GeminiTextProvider(settings).generate_json(
+        purpose="scene_description",
+        prompt="Return JSON.",
+        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    )
+
+    assert payload == {"name": "ok"}
+    assert calls["count"] == 2
+    assert sleeps == [2.0]
+
+
+def test_scene_schema_bounds_generated_arrays() -> None:
+    schema = _scene_schema()
+
+    assert schema["properties"]["objects"]["maxItems"] == 8
+    assert schema["properties"]["hazardZones"]["maxItems"] == 3
+    assert schema["properties"]["cameraPlacementPlan"]["maxItems"] == 4
+    assert schema["properties"]["incidentDesignHints"]["maxItems"] == 5
 
 
 def test_photo_mode_requires_and_stores_uploaded_photos(client, session_factory) -> None:
@@ -191,6 +360,19 @@ def test_quality_judgement_schema_validation() -> None:
                 "reason": "not allowed",
             }
         )
+    with pytest.raises(IndustrialProviderError, match="quality_judgement_score_out_of_range"):
+        validate_quality_judgement(
+            {
+                "sampleId": "sample_0001",
+                "qualityScore": 4.5,
+                "visibilityScore": 0.9,
+                "annotationConsistencyScore": 0.88,
+                "incidentConsistencyScore": 0.87,
+                "artifactScore": 0.92,
+                "decision": "accept",
+                "reason": "wrong scale",
+            }
+        )
 
 
 def test_ollama_model_missing_fails_fast(monkeypatch, test_settings: Settings) -> None:
@@ -231,6 +413,94 @@ def test_boxer_annotation_command_missing_fails_fast(tmp_path: Path, test_settin
 
     with pytest.raises(IndustrialProviderError, match="missing_boxer_annotation_command"):
         BoxerAnnotationWorker(settings)
+
+
+def test_gsplat_renderer_uses_configured_command_template(
+    monkeypatch, tmp_path: Path, test_settings: Settings
+) -> None:
+    captured: dict[str, list[str]] = {}
+    output_dir = tmp_path / "rendered"
+
+    def fake_run(command: list[str], **_kwargs) -> subprocess.CompletedProcess:
+        captured["command"] = command
+        (output_dir / "rgb").mkdir(parents=True)
+        (output_dir / "depth").mkdir(parents=True)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
+    settings = replace(
+        test_settings,
+        gsplat_python_env=sys.executable,
+        gsplat_render_command=(
+            "python render_custom.py --world-spz {world_spz} --metric-metadata {metric_metadata} "
+            "--camera-poses {camera_poses} --output-dir {output_dir}"
+        ),
+    )
+    world_spz = tmp_path / "world.spz"
+    metric = tmp_path / "metric.json"
+    poses = tmp_path / "poses.json"
+    for path in (world_spz, metric, poses):
+        path.write_text("{}", encoding="utf-8")
+
+    GSplatRendererWorker(settings).render(
+        world_spz=world_spz,
+        metric_metadata=metric,
+        camera_poses=poses,
+        output_dir=output_dir,
+    )
+
+    assert captured["command"][1] == "render_custom.py"
+    assert str(world_spz) in captured["command"]
+    assert str(output_dir) in captured["command"]
+
+
+def test_boxer_annotator_uses_configured_command_template(
+    monkeypatch, tmp_path: Path, test_settings: Settings
+) -> None:
+    captured: dict[str, list[str]] = {}
+    output_dir = tmp_path / "annotations"
+
+    def fake_run(command: list[str], **_kwargs) -> subprocess.CompletedProcess:
+        captured["command"] = command
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "object_annotations_raw.json").write_text("{}", encoding="utf-8")
+        (output_dir / "object_annotations_3d.json").write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
+    repo_path = tmp_path / "boxer"
+    checkpoint_path = tmp_path / "checkpoint.pt"
+    rgb_dir = tmp_path / "rgb"
+    depth_dir = tmp_path / "depth"
+    camera_poses = tmp_path / "poses.json"
+    vocabulary = tmp_path / "vocabulary.txt"
+    for path in (repo_path, rgb_dir, depth_dir):
+        path.mkdir()
+    checkpoint_path.write_bytes(b"checkpoint")
+    camera_poses.write_text("{}", encoding="utf-8")
+    vocabulary.write_text("machine", encoding="utf-8")
+    settings = replace(
+        test_settings,
+        boxer_repo_path=str(repo_path),
+        boxer_checkpoint_path=str(checkpoint_path),
+        boxer_annotation_command=(
+            "python annotate_custom.py --boxer-repo {boxer_repo} --checkpoint {checkpoint} "
+            "--rgb-dir {rgb_dir} --depth-dir {depth_dir} --camera-poses {camera_poses} "
+            "--vocabulary {vocabulary} --output-dir {output_dir}"
+        ),
+    )
+
+    BoxerAnnotationWorker(settings).annotate(
+        rgb_dir=rgb_dir,
+        depth_dir=depth_dir,
+        camera_poses=camera_poses,
+        vocabulary_path=vocabulary,
+        output_dir=output_dir,
+    )
+
+    assert captured["command"][1] == "annotate_custom.py"
+    assert str(repo_path) in captured["command"]
+    assert str(output_dir) in captured["command"]
 
 
 def test_ego_planner_command_missing_fails_fast(tmp_path: Path, test_settings: Settings) -> None:
@@ -299,6 +569,84 @@ def test_full_industrial_engine_pipeline_stage_transitions(client, session_facto
     assert {stage.status for stage in stages} == {"succeeded"}
 
 
+def test_pipeline_fails_when_final_boxer_outputs_no_objects(
+    client, session_factory, test_settings: Settings
+) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Empty Annotation Org")
+        user = seed_user(session, email="empty-annotation@test.dev", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        job = IndustrialEngineJob(
+            organization_id=org.id,
+            created_by_user_id=user.id,
+            mode="text_to_world",
+            request_json={"mode": "text_to_world", "factoryAreaType": "assembly_line"},
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        bundle = ProviderBundle(
+            text=_FakeTextProvider(),
+            world=_FakeWorldProvider(),
+            quality_judge=_FakeQualityJudge(),
+            renderer=_FakeRenderer(),
+            annotator=_EmptyAnnotator(),
+        )
+
+        with pytest.raises(IndustrialProviderError, match="final_boxer_no_objects_detected"):
+            run_industrial_engine_job(
+                session=session,
+                settings=test_settings,
+                job_id=job_id,
+                provider_factory=lambda _settings: bundle,
+            )
+
+        failed = session.get(IndustrialEngineJob, job_id)
+
+    assert failed is not None
+    assert failed.status == "failed"
+    assert failed.failure_reason == "final_boxer_no_objects_detected"
+
+
+def test_pipeline_fails_when_gemini_incidents_are_empty_objects(
+    client, session_factory, test_settings: Settings
+) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Empty Incident Org")
+        user = seed_user(session, email="empty-incident@test.dev", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        job = IndustrialEngineJob(
+            organization_id=org.id,
+            created_by_user_id=user.id,
+            mode="text_to_world",
+            request_json={"mode": "text_to_world", "factoryAreaType": "assembly_line"},
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+
+        bundle = ProviderBundle(
+            text=_EmptyIncidentTextProvider(),
+            world=_FakeWorldProvider(),
+            quality_judge=_FakeQualityJudge(),
+            renderer=_FakeRenderer(),
+            annotator=_FakeAnnotator(),
+        )
+
+        with pytest.raises(IndustrialProviderError, match="industrial_incident_missing_fields"):
+            run_industrial_engine_job(
+                session=session,
+                settings=test_settings,
+                job_id=job_id,
+                provider_factory=lambda _settings: bundle,
+            )
+
+        failed = session.get(IndustrialEngineJob, job_id)
+
+    assert failed is not None
+    assert failed.status == "failed"
+    assert failed.current_stage == "generate_industrial_incidents_with_gemini"
+
+
 class _FakeTextProvider:
     def generate_json(self, *, purpose: str, prompt: str, schema: dict) -> dict:
         if purpose == "scene_description":
@@ -315,23 +663,65 @@ class _FakeTextProvider:
         if purpose == "reference_prompt":
             return {"referenceImagePrompt": "real factory", "negativePrompt": "cartoon", "style": "documentary"}
         if purpose == "incidents":
-            return {"incidents": [{"incidentId": "incident-1", "label": "blocked aisle"}]}
+            return {
+                "incidents": [
+                    {
+                        "incidentId": "incident-1",
+                        "label": "blocked aisle",
+                        "severity": "medium",
+                        "objectId": "obj-1",
+                        "objectLabel": "machine",
+                        "description": "A machine-side aisle is blocked.",
+                        "evidenceHint": "Use the visible machine and nearby floor area.",
+                    }
+                ]
+            }
         if purpose == "inspection_tasks":
             return {
                 "tasks": [
                     {
+                        "taskId": "task-1",
+                        "incidentId": "incident-1",
+                        "taskType": "object_centered",
                         "instruction": "Inspect the blocked aisle.",
                         "expectedAnswer": "blocked",
-                        "evidenceCardDraft": {},
-                        "siteStateDelta": {},
+                        "evidenceCardDraft": {"title": "Blocked aisle evidence"},
+                        "siteStateDelta": {"incidentId": "incident-1"},
                     }
                 ]
             }
         if purpose == "evidence_cards":
-            return {"evidenceCards": [{"evidenceCardId": "card-1"}]}
+            return {
+                "evidenceCards": [
+                    {
+                        "evidenceCardId": "card-1",
+                        "sampleId": "sample_0001",
+                        "title": "Blocked aisle",
+                        "summary": "The sample shows a blocked aisle near the machine.",
+                        "observation": "Aisle obstruction is visible.",
+                        "confidence": "medium",
+                        "supportingFrames": ["initial_001"],
+                    }
+                ]
+            }
         if purpose == "site_state":
-            return {"siteState": {"status": "ready"}}
+            return {
+                "siteState": {
+                    "status": "ready",
+                    "summary": "One medium-severity incident is open.",
+                    "openIncidentIds": ["incident-1"],
+                    "evidenceCardIds": ["card-1"],
+                    "updatedObjectLabels": ["machine"],
+                }
+            }
         raise AssertionError(f"unexpected purpose:{purpose}")
+
+
+class _EmptyIncidentTextProvider(_FakeTextProvider):
+    def generate_json(self, *, purpose: str, prompt: str, schema: dict) -> dict:
+        if purpose == "incidents":
+            return {"incidents": [{}]}
+        return super().generate_json(purpose=purpose, prompt=prompt, schema=schema)
 
 
 class _FakeWorldProvider:
@@ -383,5 +773,22 @@ class _FakeAnnotator:
         output_dir.mkdir(parents=True)
         annotations = {"objects": [{"label": "machine", "id": "obj-1"}]}
         (output_dir / "object_annotations_raw.json").write_text(json.dumps({"annotations": []}), encoding="utf-8")
+        (output_dir / "object_annotations_3d.json").write_text(json.dumps(annotations), encoding="utf-8")
+        (output_dir / "final_scene_graph.json").write_text(json.dumps(annotations), encoding="utf-8")
+
+
+class _EmptyAnnotator:
+    def annotate(
+        self,
+        *,
+        rgb_dir: Path,
+        depth_dir: Path,
+        camera_poses: Path,
+        vocabulary_path: Path,
+        output_dir: Path,
+    ) -> None:
+        output_dir.mkdir(parents=True)
+        annotations = {"objects": [], "annotations": []}
+        (output_dir / "object_annotations_raw.json").write_text(json.dumps({"frames": []}), encoding="utf-8")
         (output_dir / "object_annotations_3d.json").write_text(json.dumps(annotations), encoding="utf-8")
         (output_dir / "final_scene_graph.json").write_text(json.dumps(annotations), encoding="utf-8")

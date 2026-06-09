@@ -218,10 +218,12 @@ def _stage_scene(context: dict[str, Any]) -> dict[str, Any]:
         "Generate a structured JSON factory scene for 4WALL Industrial Data Engine. "
         "Use realistic Taiwan SME factory details, no sci-fi, no fantasy, not game-like, not overly clean. "
         "Include inspectable objects, industrial safety risks, equipment anomalies, and camera placement hints. "
-        f"Limit incidents to {settings.industrial_engine_max_incidents_per_scene}.\n\n"
+        "Keep the JSON concise: 4 to 8 objects, 1 to 3 hazard zones, 2 to 4 camera placement hints, "
+        f"and at most {settings.industrial_engine_max_incidents_per_scene} incident design hints.\n\n"
         f"Input:\n{json.dumps(request, ensure_ascii=False)}"
     )
     scene = providers.text.generate_json(purpose="scene_description", prompt=prompt, schema=_scene_schema())
+    _validate_scene(scene)
     _write_json(context, "scene/scene_description.json", scene)
     context["scene"] = scene
     return {"artifact": "scene/scene_description.json", "sceneName": scene.get("sceneName")}
@@ -339,6 +341,8 @@ def _stage_boxer(context: dict[str, Any], workdir: Path, pass_name: str) -> dict
     context[f"{pass_name}_annotation_dir"] = output
     if pass_name == "final":
         final_graph = _read_json(output / "final_scene_graph.json") or _read_json(output / "object_annotations_3d.json") or {}
+        if not _annotation_objects(final_graph):
+            raise IndustrialProviderError("final_boxer_no_objects_detected")
         context["final_scene_graph"] = final_graph
     else:
         context["initial_annotations"] = _read_json(output / "object_annotations_3d.json") or {}
@@ -407,6 +411,7 @@ def _stage_incidents(context: dict[str, Any]) -> dict[str, Any]:
         f"Scene graph:\n{json.dumps(context.get('final_scene_graph') or {}, ensure_ascii=False)}"
     )
     incidents = providers.text.generate_json(purpose="incidents", prompt=prompt, schema=_incidents_schema())
+    _validate_incidents(incidents)
     _write_json(context, "incidents/incidents.json", incidents)
     context["incidents"] = incidents
     return {"artifact": "incidents/incidents.json", "incidentCount": len(incidents.get("incidents", []))}
@@ -420,6 +425,7 @@ def _stage_tasks(context: dict[str, Any]) -> dict[str, Any]:
         f"Incidents:\n{json.dumps(context.get('incidents') or {}, ensure_ascii=False)}"
     )
     tasks = providers.text.generate_json(purpose="inspection_tasks", prompt=prompt, schema=_tasks_schema())
+    _validate_tasks(tasks)
     _write_json(context, "tasks/inspection_tasks.json", tasks)
     context["tasks"] = tasks
     return {"artifact": "tasks/inspection_tasks.json", "taskCount": len(tasks.get("tasks", []))}
@@ -428,6 +434,8 @@ def _stage_tasks(context: dict[str, Any]) -> dict[str, Any]:
 def _stage_samples(context: dict[str, Any]) -> dict[str, Any]:
     tasks = context.get("tasks", {}).get("tasks", [])
     incidents = context.get("incidents", {}).get("incidents", [])
+    if not tasks:
+        raise IndustrialProviderError("inspection_tasks_empty_for_dataset_samples")
     rgb_paths = sorted((context["initial_render_dir"] / "rgb").glob("*.png")) + sorted(
         (context["extra_render_dir"] / "rgb").glob("*.png")
     )
@@ -462,10 +470,13 @@ def _stage_samples(context: dict[str, Any]) -> dict[str, Any]:
 def _stage_quality(context: dict[str, Any]) -> dict[str, Any]:
     providers: ProviderBundle = context["providers"]
     threshold = float(context["job"].request_json.get("qualityThreshold") or 0.7)
+    samples = context.get("samples", [])
+    if not samples:
+        raise IndustrialProviderError("dataset_samples_empty_for_quality")
     judgements = []
     accepted = []
     rejected = []
-    for sample in context.get("samples", []):
+    for sample in samples:
         image_paths = [Path(path) for path in sample.get("rgb_frame_paths", [])[:3]]
         judgement = providers.quality_judge.judge_sample(sample=sample, image_paths=image_paths, schema=_quality_schema())
         judgements.append(judgement)
@@ -475,6 +486,8 @@ def _stage_quality(context: dict[str, Any]) -> dict[str, Any]:
     _write_json(context, "quality/quality_judgement.json", {"judgements": judgements, "qualityThreshold": threshold})
     _write_text(context, "quality/dataset_samples_accepted.jsonl", _jsonl(accepted), "application/x-ndjson")
     _write_text(context, "quality/dataset_samples_rejected.jsonl", _jsonl(rejected), "application/x-ndjson")
+    if not accepted:
+        raise IndustrialProviderError("quality_judge_rejected_all_samples")
     context["accepted_samples"] = accepted
     context["quality_judgements"] = judgements
     return {"acceptedCount": len(accepted), "rejectedCount": len(rejected), "artifact": "quality/quality_judgement.json"}
@@ -488,6 +501,7 @@ def _stage_evidence_cards(context: dict[str, Any]) -> dict[str, Any]:
         f"Quality:\n{json.dumps(context.get('quality_judgements') or [], ensure_ascii=False)}"
     )
     cards = providers.text.generate_json(purpose="evidence_cards", prompt=prompt, schema=_evidence_cards_schema())
+    _validate_evidence_cards(cards)
     _write_json(context, "evidence/evidence_cards.json", cards)
     context["evidence_cards"] = cards
     return {"artifact": "evidence/evidence_cards.json", "evidenceCardCount": len(cards.get("evidenceCards", []))}
@@ -502,6 +516,7 @@ def _stage_site_state(context: dict[str, Any]) -> dict[str, Any]:
         f"Evidence:\n{json.dumps(context.get('evidence_cards') or {}, ensure_ascii=False)}"
     )
     site_state = providers.text.generate_json(purpose="site_state", prompt=prompt, schema=_site_state_schema())
+    _validate_site_state(site_state)
     _write_json(context, "site_state/site_state.json", site_state)
     context["site_state"] = site_state
     return {"artifact": "site_state/site_state.json"}
@@ -621,38 +636,110 @@ def _zip_dir(workdir: Path, source_dir: Path, name: str) -> Path:
 
 
 def _camera_poses(pass_name: str, modes: set[str], limit: int) -> list[dict[str, Any]]:
+    if limit <= 0:
+        return []
     requested = modes or {"fixed_camera", "amr_camera", "drone_camera", "phone_camera"}
-    templates = [
-        ("central_orbit", "fixed_camera", 3.2),
-        ("high_corner_view", "fixed_camera", 3.6),
-        ("control_panel_close_inspection", "phone_camera", 1.5),
-        ("main_aisle_view", "amr_camera", 0.8),
-        ("amr_low_angle_path", "amr_camera", 0.6),
-        ("drone_overhead_indoor_safe", "drone_camera", 4.2),
-        ("phone_handheld_inspection", "phone_camera", 1.6),
-        ("robot_dog_low_height_path", "robot_dog_camera", 0.55),
+    mode_specs = [
+        ("fixed_camera", "fixed_panorama_inspection", 3.2, -10.0),
+        ("phone_camera", "phone_handheld_inspection", 1.6, -8.0),
+        ("amr_camera", "amr_aisle_inspection", 0.8, -6.0),
+        ("robot_dog_camera", "robot_dog_low_height_inspection", 0.55, -4.0),
+        ("drone_camera", "drone_overhead_indoor_safe", 4.2, -18.0),
     ]
+    selected_specs = [spec for spec in mode_specs if spec[0] in requested]
+    if not selected_specs:
+        return []
+
     poses = []
-    for index, (label, mode, height) in enumerate(templates):
-        if mode not in requested:
-            continue
+    yaw_step = 360.0 / float(limit)
+    yaw_offset = yaw_step / 2.0 if pass_name == "extra" else 0.0
+    for index in range(limit):
+        mode, label, height, pitch = selected_specs[index % len(selected_specs)]
+        yaw = (yaw_offset + (index * yaw_step)) % 360.0
         poses.append(
             {
                 "cameraPoseId": f"{pass_name}_{index + 1:03d}",
-                "label": label,
+                "label": f"{label}_yaw_{int(round(yaw)) % 360:03d}",
                 "cameraMode": mode,
-                "position": {"x": float(index), "y": height, "z": float(index % 3)},
-                "rotation": {"yawDeg": (index * 45) % 360, "pitchDeg": -12, "rollDeg": 0},
+                "position": {"x": 0.0, "y": height, "z": 0.0},
+                "rotation": {"yawDeg": yaw, "pitchDeg": pitch, "rollDeg": 0},
                 "heightMeters": height,
             }
         )
-    return poses[:limit]
+    return poses
 
 
 def _read_json(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _annotation_objects(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    objects = payload.get("objects") or payload.get("annotations") or []
+    return [item for item in objects if isinstance(item, dict)]
+
+
+def _require_items(payload: dict[str, Any], key: str, failure: str) -> list[dict[str, Any]]:
+    items = payload.get(key)
+    if not isinstance(items, list) or not items:
+        raise IndustrialProviderError(failure)
+    typed = [item for item in items if isinstance(item, dict)]
+    if len(typed) != len(items):
+        raise IndustrialProviderError(f"{failure}_invalid_item")
+    return typed
+
+
+def _require_nonempty_fields(item: dict[str, Any], fields: tuple[str, ...], failure: str) -> None:
+    missing = [field for field in fields if not str(item.get(field) or "").strip()]
+    if missing:
+        raise IndustrialProviderError(f"{failure}:{','.join(missing)}")
+
+
+def _validate_incidents(payload: dict[str, Any]) -> None:
+    incidents = _require_items(payload, "incidents", "industrial_incidents_empty")
+    required = ("incidentId", "label", "severity", "objectLabel", "description", "evidenceHint")
+    for index, incident in enumerate(incidents):
+        _require_nonempty_fields(incident, required, f"industrial_incident_missing_fields:{index}")
+
+
+def _validate_scene(payload: dict[str, Any]) -> None:
+    _require_nonempty_fields(
+        payload,
+        ("sceneName", "factoryAreaType", "realismStyle", "layoutDescription"),
+        "scene_description_missing_fields",
+    )
+    objects = _require_items(payload, "objects", "scene_description_objects_empty")
+    if len(objects) > 12:
+        raise IndustrialProviderError("scene_description_objects_excessive")
+
+
+def _validate_tasks(payload: dict[str, Any]) -> None:
+    tasks = _require_items(payload, "tasks", "inspection_tasks_empty")
+    required = ("taskId", "incidentId", "taskType", "instruction", "expectedAnswer")
+    for index, task in enumerate(tasks):
+        _require_nonempty_fields(task, required, f"inspection_task_missing_fields:{index}")
+        if not isinstance(task.get("evidenceCardDraft"), dict):
+            raise IndustrialProviderError(f"inspection_task_missing_evidence_card_draft:{index}")
+        if not isinstance(task.get("siteStateDelta"), dict):
+            raise IndustrialProviderError(f"inspection_task_missing_site_state_delta:{index}")
+
+
+def _validate_evidence_cards(payload: dict[str, Any]) -> None:
+    cards = _require_items(payload, "evidenceCards", "evidence_cards_empty")
+    required = ("evidenceCardId", "sampleId", "title", "summary", "observation", "confidence")
+    for index, card in enumerate(cards):
+        _require_nonempty_fields(card, required, f"evidence_card_missing_fields:{index}")
+        frames = card.get("supportingFrames")
+        if not isinstance(frames, list) or not frames:
+            raise IndustrialProviderError(f"evidence_card_supporting_frames_empty:{index}")
+
+
+def _validate_site_state(payload: dict[str, Any]) -> None:
+    site_state = payload.get("siteState")
+    if not isinstance(site_state, dict) or not site_state:
+        raise IndustrialProviderError("site_state_empty")
+    _require_nonempty_fields(site_state, ("status", "summary"), "site_state_missing_fields")
 
 
 def _jsonl(items: list[dict[str, Any]]) -> str:
@@ -688,6 +775,14 @@ def _now() -> datetime:
 
 
 def _scene_schema() -> dict[str, Any]:
+    named_item = {
+        "type": "object",
+        "properties": {
+            "label": {"type": "string"},
+            "description": {"type": "string"},
+        },
+        "required": ["label", "description"],
+    }
     return {
         "type": "object",
         "properties": {
@@ -695,10 +790,10 @@ def _scene_schema() -> dict[str, Any]:
             "factoryAreaType": {"type": "string"},
             "realismStyle": {"type": "string"},
             "layoutDescription": {"type": "string"},
-            "objects": {"type": "array", "items": {"type": "object"}},
-            "hazardZones": {"type": "array", "items": {"type": "object"}},
-            "cameraPlacementPlan": {"type": "array", "items": {"type": "object"}},
-            "incidentDesignHints": {"type": "array", "items": {"type": "object"}},
+            "objects": {"type": "array", "minItems": 4, "maxItems": 8, "items": named_item},
+            "hazardZones": {"type": "array", "minItems": 1, "maxItems": 3, "items": named_item},
+            "cameraPlacementPlan": {"type": "array", "minItems": 2, "maxItems": 4, "items": named_item},
+            "incidentDesignHints": {"type": "array", "minItems": 1, "maxItems": 5, "items": named_item},
         },
         "required": [
             "sceneName",
@@ -726,11 +821,45 @@ def _reference_prompt_schema() -> dict[str, Any]:
 
 
 def _incidents_schema() -> dict[str, Any]:
-    return {"type": "object", "properties": {"incidents": {"type": "array", "items": {"type": "object"}}}, "required": ["incidents"]}
+    item = {
+        "type": "object",
+        "properties": {
+            "incidentId": {"type": "string"},
+            "label": {"type": "string"},
+            "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+            "objectId": {"type": "string"},
+            "objectLabel": {"type": "string"},
+            "description": {"type": "string"},
+            "evidenceHint": {"type": "string"},
+        },
+        "required": ["incidentId", "label", "severity", "objectLabel", "description", "evidenceHint"],
+    }
+    return {"type": "object", "properties": {"incidents": {"type": "array", "items": item}}, "required": ["incidents"]}
 
 
 def _tasks_schema() -> dict[str, Any]:
-    return {"type": "object", "properties": {"tasks": {"type": "array", "items": {"type": "object"}}}, "required": ["tasks"]}
+    item = {
+        "type": "object",
+        "properties": {
+            "taskId": {"type": "string"},
+            "incidentId": {"type": "string"},
+            "taskType": {"type": "string", "enum": ["object_centered", "relative_positioned", "appearance_state"]},
+            "instruction": {"type": "string"},
+            "expectedAnswer": {"type": "string"},
+            "evidenceCardDraft": {"type": "object"},
+            "siteStateDelta": {"type": "object"},
+        },
+        "required": [
+            "taskId",
+            "incidentId",
+            "taskType",
+            "instruction",
+            "expectedAnswer",
+            "evidenceCardDraft",
+            "siteStateDelta",
+        ],
+    }
+    return {"type": "object", "properties": {"tasks": {"type": "array", "items": item}}, "required": ["tasks"]}
 
 
 def _quality_schema() -> dict[str, Any]:
@@ -738,11 +867,11 @@ def _quality_schema() -> dict[str, Any]:
         "type": "object",
         "properties": {
             "sampleId": {"type": "string"},
-            "qualityScore": {"type": "number"},
-            "visibilityScore": {"type": "number"},
-            "annotationConsistencyScore": {"type": "number"},
-            "incidentConsistencyScore": {"type": "number"},
-            "artifactScore": {"type": "number"},
+            "qualityScore": {"type": "number", "minimum": 0, "maximum": 1},
+            "visibilityScore": {"type": "number", "minimum": 0, "maximum": 1},
+            "annotationConsistencyScore": {"type": "number", "minimum": 0, "maximum": 1},
+            "incidentConsistencyScore": {"type": "number", "minimum": 0, "maximum": 1},
+            "artifactScore": {"type": "number", "minimum": 0, "maximum": 1},
             "decision": {"type": "string", "enum": ["accept", "reject"]},
             "reason": {"type": "string"},
         },
@@ -760,12 +889,49 @@ def _quality_schema() -> dict[str, Any]:
 
 
 def _evidence_cards_schema() -> dict[str, Any]:
+    item = {
+        "type": "object",
+        "properties": {
+            "evidenceCardId": {"type": "string"},
+            "sampleId": {"type": "string"},
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "observation": {"type": "string"},
+            "confidence": {"type": "string"},
+            "supportingFrames": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": [
+            "evidenceCardId",
+            "sampleId",
+            "title",
+            "summary",
+            "observation",
+            "confidence",
+            "supportingFrames",
+        ],
+    }
     return {
         "type": "object",
-        "properties": {"evidenceCards": {"type": "array", "items": {"type": "object"}}},
+        "properties": {"evidenceCards": {"type": "array", "items": item}},
         "required": ["evidenceCards"],
     }
 
 
 def _site_state_schema() -> dict[str, Any]:
-    return {"type": "object", "properties": {"siteState": {"type": "object"}}, "required": ["siteState"]}
+    return {
+        "type": "object",
+        "properties": {
+            "siteState": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string"},
+                    "summary": {"type": "string"},
+                    "openIncidentIds": {"type": "array", "items": {"type": "string"}},
+                    "evidenceCardIds": {"type": "array", "items": {"type": "string"}},
+                    "updatedObjectLabels": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["status", "summary", "openIncidentIds", "evidenceCardIds", "updatedObjectLabels"],
+            }
+        },
+        "required": ["siteState"],
+    }

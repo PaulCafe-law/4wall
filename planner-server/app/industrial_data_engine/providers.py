@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import base64
 import json
+import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
-import sys
 import time
 from typing import Any, Protocol
 
@@ -82,26 +83,55 @@ class GeminiTextProvider:
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
-                "responseFormat": {
-                    "text": {
-                        "mimeType": "application/json",
-                        "schema": schema,
-                    }
-                }
+                "responseMimeType": "application/json",
+                "responseSchema": schema,
+                "temperature": 0.2,
+                "maxOutputTokens": 4096,
             },
         }
-        try:
-            response = httpx.post(
-                url,
-                headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                json=payload,
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            body = response.json()
-            return _loads_json_object(_extract_gemini_text(body))
-        except Exception as exc:
-            raise IndustrialProviderError(f"{purpose}_gemini_failed:{exc}") from exc
+        last_http_error: httpx.HTTPStatusError | None = None
+        last_transport_error: httpx.TransportError | None = None
+        last_parse_error: Exception | None = None
+        for attempt in range(1, 7):
+            try:
+                response = httpx.post(
+                    url,
+                    headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
+                    json=payload,
+                    timeout=self.timeout,
+                )
+                response.raise_for_status()
+                try:
+                    body = response.json()
+                    return _loads_json_object(_extract_gemini_text(body))
+                except (ValueError, IndustrialProviderError) as exc:
+                    last_parse_error = exc
+                    if attempt == 6:
+                        raise IndustrialProviderError(f"{purpose}_gemini_failed:{exc}") from exc
+                    time.sleep(_transport_retry_delay_seconds(attempt))
+            except httpx.HTTPStatusError as exc:
+                last_http_error = exc
+                if exc.response.status_code not in {429, 502, 503, 504} or attempt == 6:
+                    raise IndustrialProviderError(
+                        f"{purpose}_gemini_failed:{exc.response.status_code}:{_error_excerpt(exc.response)}"
+                    ) from exc
+                time.sleep(_retry_delay_seconds(exc.response, attempt))
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_transport_error = exc
+                if attempt == 6:
+                    raise IndustrialProviderError(f"{purpose}_gemini_failed:{exc}") from exc
+                time.sleep(_transport_retry_delay_seconds(attempt))
+            except Exception as exc:
+                raise IndustrialProviderError(f"{purpose}_gemini_failed:{exc}") from exc
+        if last_http_error is not None:
+            raise IndustrialProviderError(
+                f"{purpose}_gemini_failed:{last_http_error.response.status_code}:{_error_excerpt(last_http_error.response)}"
+            ) from last_http_error
+        if last_transport_error is not None:
+            raise IndustrialProviderError(f"{purpose}_gemini_failed:{last_transport_error}") from last_transport_error
+        if last_parse_error is not None:
+            raise IndustrialProviderError(f"{purpose}_gemini_failed:{last_parse_error}") from last_parse_error
+        raise IndustrialProviderError(f"{purpose}_gemini_failed:unexpected_empty_retry_loop")
 
 
 class WorldLabsMarbleProvider:
@@ -272,7 +302,8 @@ class OllamaQwenVLMQualityJudgeProvider:
         prompt = (
             "You are the 4WALL Industrial Data Engine quality judge. "
             "Return only JSON matching this JSON schema. Evaluate visibility, annotation consistency, "
-            "incident consistency, artifacts, and evidence grounding.\n\n"
+            "incident consistency, artifacts, and evidence grounding. "
+            "All score fields must be floats from 0.0 to 1.0, where 1.0 is best.\n\n"
             f"Schema:\n{json.dumps(schema, ensure_ascii=True)}\n\n"
             f"Sample:\n{json.dumps(sample, ensure_ascii=False)}"
         )
@@ -301,23 +332,22 @@ class GSplatRendererWorker:
         if not settings.gsplat_render_command:
             raise IndustrialProviderError("missing_gsplat_render_command")
         self.python = _resolve_python(settings.gsplat_python_env)
+        self.command_template = settings.gsplat_render_command
 
     def render(self, *, world_spz: Path, metric_metadata: Path, camera_poses: Path, output_dir: Path) -> None:
-        script = Path(__file__).resolve().parents[2] / "scripts" / "industrial_engine" / "render_gsplat.py"
         output_dir.mkdir(parents=True, exist_ok=True)
-        command = [
-            str(self.python),
-            str(script),
-            "--world-spz",
-            str(world_spz),
-            "--metric-metadata",
-            str(metric_metadata),
-            "--camera-poses",
-            str(camera_poses),
-            "--output-dir",
-            str(output_dir),
-        ]
-        _run_command(command, "gsplat_render_failed")
+        command = _format_command_template(
+            self.command_template,
+            world_spz=world_spz,
+            metric_metadata=metric_metadata,
+            camera_poses=camera_poses,
+            output_dir=output_dir,
+        )
+        env = dict(os.environ)
+        env["PATH"] = f"{self.python.parent}{os.pathsep}{env.get('PATH', '')}"
+        _run_command(command, "gsplat_render_failed", env=env)
+        if not (output_dir / "rgb").exists() or not (output_dir / "depth").exists():
+            raise IndustrialProviderError("gsplat_render_missing_rgb_or_depth_output")
 
 
 class BoxerAnnotationWorker:
@@ -330,6 +360,7 @@ class BoxerAnnotationWorker:
         self.checkpoint_path = Path(settings.boxer_checkpoint_path)
         if not self.repo_path.exists() or not self.checkpoint_path.exists():
             raise IndustrialProviderError("boxer_repo_or_checkpoint_not_found")
+        self.command_template = settings.boxer_annotation_command
 
     def annotate(
         self,
@@ -340,27 +371,20 @@ class BoxerAnnotationWorker:
         vocabulary_path: Path,
         output_dir: Path,
     ) -> None:
-        script = Path(__file__).resolve().parents[2] / "scripts" / "industrial_engine" / "run_boxer_annotation.py"
         output_dir.mkdir(parents=True, exist_ok=True)
-        command = [
-            sys.executable,
-            str(script),
-            "--boxer-repo",
-            str(self.repo_path),
-            "--checkpoint",
-            str(self.checkpoint_path),
-            "--rgb-dir",
-            str(rgb_dir),
-            "--depth-dir",
-            str(depth_dir),
-            "--camera-poses",
-            str(camera_poses),
-            "--vocabulary",
-            str(vocabulary_path),
-            "--output-dir",
-            str(output_dir),
-        ]
+        command = _format_command_template(
+            self.command_template,
+            boxer_repo=self.repo_path,
+            checkpoint=self.checkpoint_path,
+            rgb_dir=rgb_dir,
+            depth_dir=depth_dir,
+            camera_poses=camera_poses,
+            vocabulary=vocabulary_path,
+            output_dir=output_dir,
+        )
         _run_command(command, "boxer_annotation_failed")
+        if not (output_dir / "object_annotations_raw.json").exists() or not (output_dir / "object_annotations_3d.json").exists():
+            raise IndustrialProviderError("boxer_annotation_missing_required_outputs")
 
 
 class EGOPlannerWorker:
@@ -420,9 +444,11 @@ def validate_quality_judgement(judgement: dict[str, Any]) -> None:
         "artifactScore",
     ):
         try:
-            float(judgement[key])
+            value = float(judgement[key])
         except (TypeError, ValueError) as exc:
             raise IndustrialProviderError(f"quality_judgement_invalid_number:{key}") from exc
+        if value < 0.0 or value > 1.0:
+            raise IndustrialProviderError(f"quality_judgement_score_out_of_range:{key}")
     if judgement["decision"] not in {"accept", "reject"}:
         raise IndustrialProviderError("quality_judgement_invalid_decision")
 
@@ -452,6 +478,39 @@ def _loads_json_object(value: str) -> dict[str, Any]:
     return payload
 
 
+def _error_excerpt(response: httpx.Response) -> str:
+    return response.text.strip().replace("\n", " ")[:500]
+
+
+def _retry_delay_seconds(response: httpx.Response, attempt: int) -> float:
+    fallback = min(5 * attempt * attempt, 30)
+    if response.status_code != 429:
+        return fallback
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
+    details = list(body.get("details") or [])
+    error = body.get("error") if isinstance(body.get("error"), dict) else {}
+    details.extend(error.get("details") or [])
+    for detail in details:
+        retry_delay = str(detail.get("retryDelay") or "")
+        if retry_delay.endswith("s"):
+            try:
+                return min(max(float(retry_delay[:-1]) + 1, fallback), 120)
+            except ValueError:
+                pass
+    message = str(((body.get("error") or {}).get("message")) or response.text)
+    match = re.search(r"retry in ([0-9.]+)s", message, flags=re.IGNORECASE)
+    if match:
+        return min(max(float(match.group(1)) + 1, fallback), 120)
+    return fallback
+
+
+def _transport_retry_delay_seconds(attempt: int) -> float:
+    return float(min(2 * attempt * attempt, 30))
+
+
 def _world_text_prompt(scene_description: dict[str, Any], reference_prompt: dict[str, Any]) -> str:
     return "\n\n".join(
         [
@@ -476,8 +535,15 @@ def _resolve_python(value: str) -> Path:
     raise IndustrialProviderError("gsplat_python_env_not_found")
 
 
-def _run_command(command: list[str], failure_prefix: str) -> None:
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+def _format_command_template(command_template: str, **values: Path) -> list[str]:
+    return [
+        part.format(**{key: str(value) for key, value in values.items()})
+        for part in shlex.split(command_template)
+    ]
+
+
+def _run_command(command: list[str], failure_prefix: str, *, env: dict[str, str] | None = None) -> None:
+    result = subprocess.run(command, capture_output=True, text=True, check=False, env=env)
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or str(command)
         raise IndustrialProviderError(f"{failure_prefix}:{detail}")
