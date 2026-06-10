@@ -13,7 +13,13 @@ from sqlmodel import select
 
 from app.config import Settings
 from app.industrial_data_engine.constants import STAGES
-from app.industrial_data_engine.pipeline import _camera_poses, _scene_schema, run_industrial_engine_job
+from app.industrial_data_engine.pipeline import (
+    _camera_poses,
+    _incidents_schema,
+    _scene_schema,
+    _tasks_schema,
+    run_industrial_engine_job,
+)
 from app.industrial_data_engine.providers import (
     BoxerAnnotationWorker,
     EGOPlannerWorker,
@@ -236,6 +242,14 @@ def test_scene_schema_bounds_generated_arrays() -> None:
     assert schema["properties"]["hazardZones"]["maxItems"] == 3
     assert schema["properties"]["cameraPlacementPlan"]["maxItems"] == 4
     assert schema["properties"]["incidentDesignHints"]["maxItems"] == 5
+
+
+def test_incident_and_task_schemas_bound_generated_arrays() -> None:
+    incident_schema = _incidents_schema(1)
+    task_schema = _tasks_schema(3)
+
+    assert incident_schema["properties"]["incidents"]["maxItems"] == 1
+    assert task_schema["properties"]["tasks"]["maxItems"] == 3
 
 
 def test_photo_mode_requires_and_stores_uploaded_photos(client, session_factory) -> None:
@@ -561,12 +575,20 @@ def test_full_industrial_engine_pipeline_stage_transitions(client, session_facto
         stages = session.exec(
             select(IndustrialEngineJobStage).where(IndustrialEngineJobStage.job_id == job_id)
         ).all()
+        exported_dataset = IndustrialArtifactStore.from_settings(test_settings).read_bytes(
+            f"{job_id}/exports/dataset.jsonl"
+        )
 
     assert completed is not None
     assert completed.status == "succeeded"
     assert completed.current_stage == "export_dataset"
     assert len(completed.exports_json) >= 10
     assert {stage.status for stage in stages} == {"succeeded"}
+    assert exported_dataset is not None
+    exported_text = exported_dataset.decode("utf-8")
+    assert "_local_" not in exported_text
+    assert "industrial-engine-" not in exported_text
+    assert "renders/initial/rgb/" in exported_text
 
 
 def test_pipeline_fails_when_final_boxer_outputs_no_objects(

@@ -405,13 +405,15 @@ def _stage_extra_views(context: dict[str, Any], workdir: Path) -> dict[str, Any]
 
 def _stage_incidents(context: dict[str, Any]) -> dict[str, Any]:
     providers: ProviderBundle = context["providers"]
+    settings: Settings = context["settings"]
+    max_incidents = max(1, settings.industrial_engine_max_incidents_per_scene)
     prompt = (
-        "Generate industrial incident scenarios based only on objects present in the final scene graph. "
+        f"Generate at most {max_incidents} industrial incident scenario(s) based only on objects present in the final scene graph. "
         "Do not invent forklift or control-panel incidents unless those objects exist. Return JSON.\n\n"
         f"Scene graph:\n{json.dumps(context.get('final_scene_graph') or {}, ensure_ascii=False)}"
     )
-    incidents = providers.text.generate_json(purpose="incidents", prompt=prompt, schema=_incidents_schema())
-    _validate_incidents(incidents)
+    incidents = providers.text.generate_json(purpose="incidents", prompt=prompt, schema=_incidents_schema(max_incidents))
+    _validate_incidents(incidents, max_incidents=max_incidents)
     _write_json(context, "incidents/incidents.json", incidents)
     context["incidents"] = incidents
     return {"artifact": "incidents/incidents.json", "incidentCount": len(incidents.get("incidents", []))}
@@ -419,13 +421,16 @@ def _stage_incidents(context: dict[str, Any]) -> dict[str, Any]:
 
 def _stage_tasks(context: dict[str, Any]) -> dict[str, Any]:
     providers: ProviderBundle = context["providers"]
+    incidents = context.get("incidents", {}).get("incidents") or []
+    max_tasks = max(1, len(incidents) * 3)
     prompt = (
-        "For each incident, generate three inspection tasks: object-centered, relative-positioned, "
-        "and appearance/state-centered. Return JSON.\n\n"
+        "For each incident, generate exactly three concise inspection tasks: one object-centered, "
+        "one relative-positioned, and one appearance/state-centered. "
+        f"Return at most {max_tasks} tasks total as JSON.\n\n"
         f"Incidents:\n{json.dumps(context.get('incidents') or {}, ensure_ascii=False)}"
     )
-    tasks = providers.text.generate_json(purpose="inspection_tasks", prompt=prompt, schema=_tasks_schema())
-    _validate_tasks(tasks)
+    tasks = providers.text.generate_json(purpose="inspection_tasks", prompt=prompt, schema=_tasks_schema(max_tasks))
+    _validate_tasks(tasks, max_tasks=max_tasks)
     _write_json(context, "tasks/inspection_tasks.json", tasks)
     context["tasks"] = tasks
     return {"artifact": "tasks/inspection_tasks.json", "taskCount": len(tasks.get("tasks", []))}
@@ -447,12 +452,16 @@ def _stage_samples(context: dict[str, Any]) -> dict[str, Any]:
     samples = []
     for index, task in enumerate(tasks):
         incident = incidents[index % len(incidents)] if incidents else {}
+        rgb_artifacts = [_render_artifact_path(context, path) for path in rgb_paths[:3]]
+        depth_artifacts = [_render_artifact_path(context, path) for path in depth_paths[:3]]
         samples.append(
             {
                 "sample_id": f"sample_{index + 1:04d}",
                 "task_instruction": task.get("instruction") or task.get("task_instruction") or "",
-                "rgb_frame_paths": [str(path) for path in rgb_paths[:3]],
-                "depth_map_paths": [str(path) for path in depth_paths[:3]],
+                "rgb_frame_paths": rgb_artifacts,
+                "depth_map_paths": depth_artifacts,
+                "_local_rgb_frame_paths": [str(path) for path in rgb_paths[:3]],
+                "_local_depth_map_paths": [str(path) for path in depth_paths[:3]],
                 "camera_poses": "camera_poses/initial_camera_poses.json",
                 "object_annotations_2d": "annotations/final/object_annotations_raw.json",
                 "object_annotations_3d": "annotations/final/object_annotations_3d.json",
@@ -462,7 +471,7 @@ def _stage_samples(context: dict[str, Any]) -> dict[str, Any]:
                 "site_state_delta": task.get("siteStateDelta") or {},
             }
         )
-    _write_text(context, "samples/dataset_samples_raw.jsonl", _jsonl(samples), "application/x-ndjson")
+    _write_text(context, "samples/dataset_samples_raw.jsonl", _jsonl(_exportable_samples(samples)), "application/x-ndjson")
     context["samples"] = samples
     return {"artifact": "samples/dataset_samples_raw.jsonl", "sampleCount": len(samples)}
 
@@ -477,18 +486,20 @@ def _stage_quality(context: dict[str, Any]) -> dict[str, Any]:
     accepted = []
     rejected = []
     for sample in samples:
-        image_paths = [Path(path) for path in sample.get("rgb_frame_paths", [])[:3]]
+        image_paths = [Path(path) for path in sample.get("_local_rgb_frame_paths", [])[:3]]
         judgement = providers.quality_judge.judge_sample(sample=sample, image_paths=image_paths, schema=_quality_schema())
         judgements.append(judgement)
         score = float(judgement.get("qualityScore") or 0)
         decision = judgement.get("decision") or ("accept" if score >= threshold else "reject")
         (accepted if decision == "accept" and score >= threshold else rejected).append(sample)
     _write_json(context, "quality/quality_judgement.json", {"judgements": judgements, "qualityThreshold": threshold})
-    _write_text(context, "quality/dataset_samples_accepted.jsonl", _jsonl(accepted), "application/x-ndjson")
-    _write_text(context, "quality/dataset_samples_rejected.jsonl", _jsonl(rejected), "application/x-ndjson")
+    accepted_exportable = _exportable_samples(accepted)
+    rejected_exportable = _exportable_samples(rejected)
+    _write_text(context, "quality/dataset_samples_accepted.jsonl", _jsonl(accepted_exportable), "application/x-ndjson")
+    _write_text(context, "quality/dataset_samples_rejected.jsonl", _jsonl(rejected_exportable), "application/x-ndjson")
     if not accepted:
         raise IndustrialProviderError("quality_judge_rejected_all_samples")
-    context["accepted_samples"] = accepted
+    context["accepted_samples"] = accepted_exportable
     context["quality_judgements"] = judgements
     return {"acceptedCount": len(accepted), "rejectedCount": len(rejected), "artifact": "quality/quality_judgement.json"}
 
@@ -696,8 +707,10 @@ def _require_nonempty_fields(item: dict[str, Any], fields: tuple[str, ...], fail
         raise IndustrialProviderError(f"{failure}:{','.join(missing)}")
 
 
-def _validate_incidents(payload: dict[str, Any]) -> None:
+def _validate_incidents(payload: dict[str, Any], *, max_incidents: int | None = None) -> None:
     incidents = _require_items(payload, "incidents", "industrial_incidents_empty")
+    if max_incidents is not None and len(incidents) > max_incidents:
+        raise IndustrialProviderError("industrial_incidents_exceed_limit")
     required = ("incidentId", "label", "severity", "objectLabel", "description", "evidenceHint")
     for index, incident in enumerate(incidents):
         _require_nonempty_fields(incident, required, f"industrial_incident_missing_fields:{index}")
@@ -714,8 +727,10 @@ def _validate_scene(payload: dict[str, Any]) -> None:
         raise IndustrialProviderError("scene_description_objects_excessive")
 
 
-def _validate_tasks(payload: dict[str, Any]) -> None:
+def _validate_tasks(payload: dict[str, Any], *, max_tasks: int | None = None) -> None:
     tasks = _require_items(payload, "tasks", "inspection_tasks_empty")
+    if max_tasks is not None and len(tasks) > max_tasks:
+        raise IndustrialProviderError("inspection_tasks_exceed_limit")
     required = ("taskId", "incidentId", "taskType", "instruction", "expectedAnswer")
     for index, task in enumerate(tasks):
         _require_nonempty_fields(task, required, f"inspection_task_missing_fields:{index}")
@@ -740,6 +755,27 @@ def _validate_site_state(payload: dict[str, Any]) -> None:
     if not isinstance(site_state, dict) or not site_state:
         raise IndustrialProviderError("site_state_empty")
     _require_nonempty_fields(site_state, ("status", "summary"), "site_state_missing_fields")
+
+
+def _render_artifact_path(context: dict[str, Any], path: Path) -> str:
+    for pass_name in ("initial", "extra"):
+        render_dir = context.get(f"{pass_name}_render_dir")
+        if not isinstance(render_dir, Path):
+            continue
+        try:
+            relative = path.relative_to(render_dir).as_posix()
+        except ValueError:
+            continue
+        return f"renders/{pass_name}/{relative}"
+    raise IndustrialProviderError(f"render_path_not_in_uploaded_tree:{path}")
+
+
+def _exportable_sample(sample: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in sample.items() if not key.startswith("_local_")}
+
+
+def _exportable_samples(samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [_exportable_sample(sample) for sample in samples]
 
 
 def _jsonl(items: list[dict[str, Any]]) -> str:
@@ -820,7 +856,7 @@ def _reference_prompt_schema() -> dict[str, Any]:
     }
 
 
-def _incidents_schema() -> dict[str, Any]:
+def _incidents_schema(max_items: int = 5) -> dict[str, Any]:
     item = {
         "type": "object",
         "properties": {
@@ -834,10 +870,14 @@ def _incidents_schema() -> dict[str, Any]:
         },
         "required": ["incidentId", "label", "severity", "objectLabel", "description", "evidenceHint"],
     }
-    return {"type": "object", "properties": {"incidents": {"type": "array", "items": item}}, "required": ["incidents"]}
+    return {
+        "type": "object",
+        "properties": {"incidents": {"type": "array", "minItems": 1, "maxItems": max_items, "items": item}},
+        "required": ["incidents"],
+    }
 
 
-def _tasks_schema() -> dict[str, Any]:
+def _tasks_schema(max_items: int = 15) -> dict[str, Any]:
     item = {
         "type": "object",
         "properties": {
@@ -859,7 +899,11 @@ def _tasks_schema() -> dict[str, Any]:
             "siteStateDelta",
         ],
     }
-    return {"type": "object", "properties": {"tasks": {"type": "array", "items": item}}, "required": ["tasks"]}
+    return {
+        "type": "object",
+        "properties": {"tasks": {"type": "array", "minItems": 1, "maxItems": max_items, "items": item}},
+        "required": ["tasks"],
+    }
 
 
 def _quality_schema() -> dict[str, Any]:
