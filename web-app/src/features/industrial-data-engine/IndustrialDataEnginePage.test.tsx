@@ -78,7 +78,7 @@ describe('IndustrialDataEnginePage', () => {
     apiMock.listSites.mockResolvedValue([{ siteId: 'site-1', organizationId: 'org-1', name: 'Factory A' }])
   })
 
-  it('renders status, exports, Codex OAuth copy, and no API-key prompt', async () => {
+  it('renders localized status, exports, Codex OAuth copy, and no API-key prompt', async () => {
     renderWithProviders(<IndustrialDataEnginePage />, {
       auth: createAuthValue({
         session: createSession({
@@ -87,8 +87,8 @@ describe('IndustrialDataEnginePage', () => {
       }),
     })
 
-    expect(await screen.findByText('4WALL data jobs')).toBeInTheDocument()
-    expect(await screen.findByText(/quality judge/i)).toBeInTheDocument()
+    expect(await screen.findByText('4WALL 資料生成任務')).toBeInTheDocument()
+    expect(await screen.findByText('使用 Ollama Qwen-VL 檢查品質')).toBeInTheDocument()
     expect(await screen.findByText('dataset.jsonl')).toBeInTheDocument()
     expect(screen.getByText(/ChatGPT OAuth/)).toBeInTheDocument()
     expect(screen.queryByText(/OpenAI API key/i)).not.toBeInTheDocument()
@@ -110,18 +110,18 @@ describe('IndustrialDataEnginePage', () => {
       }),
     })
 
-    await user.click(await screen.findByRole('button', { name: 'Real factory photos to world' }))
+    await user.click(await screen.findByRole('button', { name: '真實照片生成場景' }))
     const file = new File(['photo'], 'factory.png', { type: 'image/png' })
-    fireEvent.change(await screen.findByLabelText(/Factory photos/), {
+    fireEvent.change(await screen.findByLabelText(/工廠照片/), {
       target: { files: [file] },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Create job' }))
+    fireEvent.click(screen.getByRole('button', { name: '建立任務' }))
 
     await waitFor(() => expect(apiMock.createIndustrialEngineJob).toHaveBeenCalledTimes(1))
     const formData = submitted.current as FormData
     expect(formData.get('organizationId')).toBe('org-1')
     expect(formData.get('mode')).toBe('real_factory_photos_to_world')
-    expect(JSON.parse(String(formData.get('incidentTypes')))).toContain('blocked aisle')
+    expect(JSON.parse(String(formData.get('incidentTypes')))).toContain('通道阻塞')
     expect(JSON.parse(String(formData.get('cameraModes')))).toContain('fixed_camera')
     expect(formData.getAll('photos')).toHaveLength(1)
   })
