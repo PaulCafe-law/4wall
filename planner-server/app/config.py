@@ -64,6 +64,7 @@ class Settings:
     codex_home: str | None = None
     worldlabs_api_key: str | None = None
     worldlabs_model: str = "marble-1.1-plus"
+    worldlabs_operation_timeout_seconds: int = 3600
     ollama_base_url: str = "http://localhost:11434"
     ollama_qwen_vlm_model: str = "qwen2.5vl:7b"
     ollama_request_timeout_seconds: int = 120
@@ -126,6 +127,7 @@ class Settings:
             codex_home=_env_str("CODEX_HOME"),
             worldlabs_api_key=_env_str("WORLDLABS_API_KEY"),
             worldlabs_model=_env_str("WORLDLABS_MODEL", "marble-1.1-plus") or "marble-1.1-plus",
+            worldlabs_operation_timeout_seconds=_env_int("WORLDLABS_OPERATION_TIMEOUT_SECONDS", 3600),
             ollama_base_url=(_env_str("OLLAMA_BASE_URL", "http://localhost:11434") or "http://localhost:11434").rstrip("/"),
             ollama_qwen_vlm_model=_env_str("OLLAMA_QWEN_VLM_MODEL", "qwen2.5vl:7b") or "qwen2.5vl:7b",
             ollama_request_timeout_seconds=_env_int("OLLAMA_REQUEST_TIMEOUT_SECONDS", 120),

@@ -43,6 +43,7 @@ As of the first production worker setup, the external worker requirements are:
 - Shared S3 artifact storage credentials.
 - Current Codex CLI installed and authenticated for the worker service user with `codex login --device-auth`.
 - `CODEX_TEXT_MODEL=gpt-5.5` for ChatGPT OAuth text stages. Empty values fall back to `gpt-5.5`.
+- `WORLDLABS_OPERATION_TIMEOUT_SECONDS=3600` or higher when Marble world generation is queued or slow.
 - Local Ollama with `OLLAMA_QWEN_VLM_MODEL=qwen2.5vl:7b`.
 - A real gsplat command that converts World Labs `.spz` plus camera poses into `rgb/` and `depth/` directories.
 - A real Boxer-compatible command that converts rendered `rgb/`, `depth/`, camera poses, and vocabulary into `object_annotations_raw.json` and `object_annotations_3d.json`.
@@ -85,6 +86,7 @@ Required provider failures are fail-fast:
 - `codex_oauth_not_authenticated`
 - `codex_text_generation_failed:{purpose}`
 - `missing_worldlabs_api_key`
+- `worldlabs_operation_timeout`
 - `ollama_qwen_vlm_unavailable`
 - `ollama_qwen_vlm_model_missing:{model}`
 - `missing_boxer_repo_or_checkpoint`

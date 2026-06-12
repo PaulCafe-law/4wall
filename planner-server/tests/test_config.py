@@ -26,6 +26,7 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     monkeypatch.setenv("CODEX_HOME", " /srv/codex-home ")
     monkeypatch.setenv("WORLDLABS_API_KEY", " worldlabs-key ")
     monkeypatch.setenv("WORLDLABS_MODEL", " marble-test ")
+    monkeypatch.setenv("WORLDLABS_OPERATION_TIMEOUT_SECONDS", " 1800 ")
     monkeypatch.setenv("OLLAMA_BASE_URL", " http://ollama.local:11434/ ")
     monkeypatch.setenv("OLLAMA_QWEN_VLM_MODEL", " qwen2.5vl:3b ")
     monkeypatch.setenv("OLLAMA_REQUEST_TIMEOUT_SECONDS", " 33 ")
@@ -66,6 +67,7 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.codex_home == "/srv/codex-home"
     assert settings.worldlabs_api_key == "worldlabs-key"
     assert settings.worldlabs_model == "marble-test"
+    assert settings.worldlabs_operation_timeout_seconds == 1800
     assert settings.ollama_base_url == "http://ollama.local:11434"
     assert settings.ollama_qwen_vlm_model == "qwen2.5vl:3b"
     assert settings.ollama_request_timeout_seconds == 33

@@ -163,6 +163,7 @@ class WorldLabsMarbleProvider:
         self.model = settings.worldlabs_model
         self.base_url = "https://api.worldlabs.ai/marble/v1"
         self.timeout = 120.0
+        self.operation_timeout = float(settings.worldlabs_operation_timeout_seconds)
 
     def create_world(
         self,
@@ -282,7 +283,8 @@ class WorldLabsMarbleProvider:
         return body.get("world") or body
 
     def _poll_operation(self, operation_id: str) -> dict[str, Any]:
-        for _ in range(180):
+        deadline = time.monotonic() + self.operation_timeout
+        while time.monotonic() < deadline:
             response = httpx.get(
                 f"{self.base_url}/operations/{operation_id}",
                 headers={"WLT-Api-Key": self.api_key},
