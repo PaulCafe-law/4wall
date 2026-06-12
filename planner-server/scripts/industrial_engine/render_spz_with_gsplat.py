@@ -10,6 +10,10 @@ import sys
 import numpy as np
 
 
+WORLDLABS_SPZ_WORLD_UP = np.array([0.0, -1.0, 0.0], dtype=np.float32)
+FALLBACK_WORLD_UP = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+
+
 def _load_spz(path: Path):
     try:
         from gsply import read_spz
@@ -58,9 +62,9 @@ def _camera_basis_from_yaw_pitch(yaw_deg: float, pitch_deg: float) -> tuple[np.n
         dtype=np.float32,
     )
     forward = forward / max(float(np.linalg.norm(forward)), 1e-6)
-    up = np.array([0.0, 1.0, 0.0], dtype=np.float32)
+    up = WORLDLABS_SPZ_WORLD_UP
     if abs(float(np.dot(forward, up))) > 0.95:
-        up = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+        up = FALLBACK_WORLD_UP
     right = np.cross(forward, up)
     right = right / max(float(np.linalg.norm(right)), 1e-6)
     down = np.cross(forward, right)
@@ -98,6 +102,7 @@ def _camera_matrices(
                 "worldToCam": world_to_cam.tolist(),
                 "cameraPlacement": "worldlabs_panorama_origin",
                 "cameraOrigin": camera_origin.tolist(),
+                "worldUpAxis": WORLDLABS_SPZ_WORLD_UP.tolist(),
                 "forward": forward.tolist(),
                 "width": width,
                 "height": height,
@@ -232,6 +237,7 @@ def main() -> int:
         "height": args.height,
         "nonblankFrames": nonblank,
         "cameraPlacement": "worldlabs_panorama_origin",
+        "worldUpAxis": WORLDLABS_SPZ_WORLD_UP.tolist(),
         "metricScaleFactor": scale_factor,
         "groundPlaneOffset": ground_offset,
         "cameras": cameras,

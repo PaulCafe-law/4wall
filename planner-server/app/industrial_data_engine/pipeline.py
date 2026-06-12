@@ -279,8 +279,9 @@ def _stage_metric_world(context: dict[str, Any], workdir: Path) -> dict[str, Any
     metric = {
         "metric_scale_factor": metadata.get("metric_scale_factor"),
         "ground_plane_offset": metadata.get("ground_plane_offset"),
-        "coordinate_system": "worldlabs_y_up_metric",
-        "conversion_formula": "scaled = xyz * metric_scale_factor; scaled[..., 1] -= ground_plane_offset",
+        "coordinate_system": "worldlabs_spz_metric_y_down_up",
+        "conversion_formula": "scaled = xyz * metric_scale_factor; scaled[..., 1] -= ground_plane_offset; renderer treats world_up_axis as [0, -1, 0]",
+        "world_up_axis": [0, -1, 0],
         "generated_world_id": context["world"].get("world_id"),
         "world_asset_path": "world/world_asset.spz",
     }
