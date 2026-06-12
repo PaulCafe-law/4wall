@@ -5,6 +5,7 @@ import json
 from math import isfinite
 import os
 from pathlib import Path
+from types import SimpleNamespace
 import sys
 
 import numpy as np
@@ -17,8 +18,8 @@ FALLBACK_WORLD_UP = np.array([0.0, 0.0, 1.0], dtype=np.float32)
 def _load_spz(path: Path):
     try:
         from gsply import read_spz
-    except Exception as exc:  # pragma: no cover - runtime dependency gate
-        raise RuntimeError("gsply is required to read World Labs SPZ assets") from exc
+    except Exception:
+        return _load_spz_with_niantic(path)
 
     data = read_spz(str(path))
     if hasattr(data, "denormalize"):
@@ -30,6 +31,29 @@ def _load_spz(path: Path):
         if rgb is not None:
             data = rgb
     return data
+
+
+def _load_spz_with_niantic(path: Path):
+    try:
+        import spz
+    except Exception as exc:  # pragma: no cover - runtime dependency gate
+        raise RuntimeError("spz is required to read World Labs SPZ assets") from exc
+
+    cloud = spz.load_spz(str(path))
+    colors = getattr(cloud, "colors", None)
+    if colors is None:
+        sh = np.asarray(getattr(cloud, "sh", []), dtype=np.float32)
+        if sh.ndim == 3 and sh.shape[1] > 0:
+            colors = sh[:, 0, :]
+        else:
+            colors = sh
+    return SimpleNamespace(
+        means=getattr(cloud, "positions"),
+        scales=getattr(cloud, "scales"),
+        quats=getattr(cloud, "rotations"),
+        opacities=getattr(cloud, "alphas"),
+        sh0=colors,
+    )
 
 
 def _as_numpy(value, *, name: str, dims: int) -> np.ndarray:
