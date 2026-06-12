@@ -63,7 +63,16 @@ const job = {
       completedAt: '2026-06-08T00:03:00Z',
     },
     {
-      sequence: 16,
+      sequence: 4,
+      name: 'generate_reference_image_with_gpt_image_oauth',
+      status: 'succeeded',
+      reason: null,
+      output: {},
+      startedAt: '2026-06-08T00:03:00Z',
+      completedAt: '2026-06-08T00:04:00Z',
+    },
+    {
+      sequence: 17,
       name: 'quality_judge_with_ollama_qwen_vlm',
       status: 'succeeded',
       reason: null,
@@ -79,6 +88,12 @@ const job = {
       downloadUrl: '/v1/industrial-data-engine/jobs/job-1/exports/dataset.jsonl',
       contentType: 'application/x-ndjson',
       sizeBytes: 128,
+    },
+    {
+      artifactName: 'reference_image.png',
+      downloadUrl: '/v1/industrial-data-engine/jobs/job-1/exports/reference_image.png',
+      contentType: 'image/png',
+      sizeBytes: 2048,
     },
   ],
   createdAt: '2026-06-08T00:00:00Z',
@@ -108,8 +123,11 @@ describe('IndustrialDataEnginePage', () => {
     expect(await screen.findByText('4WALL 資料生成任務')).toBeInTheDocument()
     expect(await screen.findByText('Codex OAuth 產生工廠場景描述')).toBeInTheDocument()
     expect(await screen.findByText('產生參考影像提示')).toBeInTheDocument()
+    expect(await screen.findByText('GPT Image OAuth 產生參考圖')).toBeInTheDocument()
     expect(await screen.findByText('使用 Ollama Qwen-VL 檢查品質')).toBeInTheDocument()
     expect(await screen.findByText('dataset.jsonl')).toBeInTheDocument()
+    expect(await screen.findByText('reference_image.png')).toBeInTheDocument()
+    expect(screen.getByText(/文字 → GPT 參考圖 → World Labs 3D 場景/)).toBeInTheDocument()
     expect(screen.getByText(/ChatGPT OAuth/)).toBeInTheDocument()
     expect(screen.queryByText(/OpenAI API key/i)).not.toBeInTheDocument()
   })

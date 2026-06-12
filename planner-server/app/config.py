@@ -62,6 +62,11 @@ class Settings:
     codex_text_model: str = "gpt-5.5"
     codex_text_timeout_seconds: int = 600
     codex_home: str | None = None
+    gpt_image_oauth_command: str | None = None
+    gpt_image_oauth_model: str = "gpt-image-2"
+    gpt_image_oauth_timeout_seconds: int = 900
+    gpt_image_oauth_size: str = "1536x1024"
+    gpt_image_oauth_output_format: str = "png"
     worldlabs_api_key: str | None = None
     worldlabs_model: str = "marble-1.1-plus"
     worldlabs_operation_timeout_seconds: int = 3600
@@ -125,6 +130,11 @@ class Settings:
             codex_text_model=_env_str("CODEX_TEXT_MODEL", "gpt-5.5") or "gpt-5.5",
             codex_text_timeout_seconds=_env_int("CODEX_TEXT_TIMEOUT_SECONDS", 600),
             codex_home=_env_str("CODEX_HOME"),
+            gpt_image_oauth_command=_env_str("GPT_IMAGE_OAUTH_COMMAND"),
+            gpt_image_oauth_model=_env_str("GPT_IMAGE_OAUTH_MODEL", "gpt-image-2") or "gpt-image-2",
+            gpt_image_oauth_timeout_seconds=_env_int("GPT_IMAGE_OAUTH_TIMEOUT_SECONDS", 900),
+            gpt_image_oauth_size=_env_str("GPT_IMAGE_OAUTH_SIZE", "1536x1024") or "1536x1024",
+            gpt_image_oauth_output_format=_env_str("GPT_IMAGE_OAUTH_OUTPUT_FORMAT", "png") or "png",
             worldlabs_api_key=_env_str("WORLDLABS_API_KEY"),
             worldlabs_model=_env_str("WORLDLABS_MODEL", "marble-1.1-plus") or "marble-1.1-plus",
             worldlabs_operation_timeout_seconds=_env_int("WORLDLABS_OPERATION_TIMEOUT_SECONDS", 3600),

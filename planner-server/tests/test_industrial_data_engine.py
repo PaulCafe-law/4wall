@@ -24,6 +24,7 @@ from app.industrial_data_engine.providers import (
     BoxerAnnotationWorker,
     CodexOAuthTextProvider,
     EGOPlannerWorker,
+    GPTImageOAuthReferenceProvider,
     GSplatRendererWorker,
     IndustrialProviderError,
     OllamaQwenVLMQualityJudgeProvider,
@@ -31,7 +32,7 @@ from app.industrial_data_engine.providers import (
     validate_quality_judgement,
 )
 from app.industrial_data_engine.storage import IndustrialArtifactStore
-from app.models import IndustrialEngineJob, IndustrialEngineJobStage
+from app.models import IndustrialEngineInputAsset, IndustrialEngineJob, IndustrialEngineJobStage
 from tests.helpers import login_web, seed_organization, seed_site, seed_user
 
 
@@ -220,6 +221,123 @@ def test_codex_oauth_text_provider_fails_on_invalid_json(monkeypatch, test_setti
             purpose="scene_description",
             prompt="Return JSON.",
             schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        )
+
+
+def test_gpt_image_oauth_provider_uses_command_contract_and_sanitized_env(
+    monkeypatch, tmp_path: Path, test_settings: Settings
+) -> None:
+    settings = replace(
+        test_settings,
+        gpt_image_oauth_command="gpt-image-bridge --profile prod",
+        gpt_image_oauth_model="gpt-image-2",
+        gpt_image_oauth_timeout_seconds=901,
+        gpt_image_oauth_size="1536x1024",
+        gpt_image_oauth_output_format="png",
+    )
+    captured: dict[str, object] = {}
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-leak")
+    monkeypatch.setenv("CODEX_API_KEY", "must-not-leak")
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.shutil.which",
+        lambda value: "/usr/local/bin/gpt-image-bridge" if value == "gpt-image-bridge" else None,
+    )
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        captured["timeout"] = kwargs["timeout"]
+        input_path = Path(command[command.index("--input") + 1])
+        output_path = Path(command[command.index("--output") + 1])
+        metadata_path = Path(command[command.index("--metadata-output") + 1])
+        captured["input"] = json.loads(input_path.read_text(encoding="utf-8"))
+        output_path.write_bytes(_png_bytes(width=1024, height=768))
+        metadata_path.write_text('{"imageId":"img-1"}', encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
+
+    payload = GPTImageOAuthReferenceProvider(settings).generate_reference_image(
+        job_id="job-1",
+        scene_description={"sceneName": "Factory"},
+        reference_prompt={"referenceImagePrompt": "real factory", "negativePrompt": "cartoon"},
+        output_dir=tmp_path,
+    )
+
+    assert payload["width"] == 1024
+    assert payload["height"] == 768
+    assert payload["format"] == "png"
+    assert payload["metadata"] == {"imageId": "img-1"}
+    assert captured["command"][:2] == ["/usr/local/bin/gpt-image-bridge", "--profile"]
+    assert "--input" in captured["command"]
+    assert captured["input"]["model"] == "gpt-image-2"
+    assert captured["input"]["purpose"] == "flymirage_reference_image"
+    assert captured["input"]["returnFormat"] == "png"
+    assert captured["timeout"] == 901.0
+    env = captured["env"]
+    assert "OPENAI_API_KEY" not in env
+    assert "CODEX_API_KEY" not in env
+
+
+def test_gpt_image_oauth_provider_validates_health(monkeypatch, test_settings: Settings) -> None:
+    settings = replace(test_settings, gpt_image_oauth_command="gpt-image-bridge")
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.shutil.which",
+        lambda value: "/usr/local/bin/gpt-image-bridge" if value == "gpt-image-bridge" else None,
+    )
+
+    def fake_run(command, **kwargs):
+        assert command == ["/usr/local/bin/gpt-image-bridge", "--health"]
+        return subprocess.CompletedProcess(command, 0, '{"authenticated": true, "model": "gpt-image-2"}', "")
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
+
+    GPTImageOAuthReferenceProvider(settings).validate_authentication()
+
+
+def test_gpt_image_oauth_provider_fails_fast_when_missing_or_unauthenticated(
+    monkeypatch, test_settings: Settings
+) -> None:
+    monkeypatch.setattr("app.industrial_data_engine.providers.shutil.which", lambda value: None)
+    with pytest.raises(IndustrialProviderError, match="missing_gpt_image_oauth_command"):
+        GPTImageOAuthReferenceProvider(replace(test_settings, gpt_image_oauth_command="missing")).validate_authentication()
+
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.shutil.which",
+        lambda value: "/usr/local/bin/gpt-image-bridge" if value == "gpt-image-bridge" else None,
+    )
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.subprocess.run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, '{"authenticated": false}', ""),
+    )
+    with pytest.raises(IndustrialProviderError, match="gpt_image_oauth_not_authenticated"):
+        GPTImageOAuthReferenceProvider(
+            replace(test_settings, gpt_image_oauth_command="gpt-image-bridge")
+        ).validate_authentication()
+
+
+def test_gpt_image_oauth_provider_rejects_small_or_invalid_images(
+    monkeypatch, tmp_path: Path, test_settings: Settings
+) -> None:
+    settings = replace(test_settings, gpt_image_oauth_command="gpt-image-bridge")
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.shutil.which",
+        lambda value: "/usr/local/bin/gpt-image-bridge" if value == "gpt-image-bridge" else None,
+    )
+
+    def fake_run(command, **kwargs):
+        Path(command[command.index("--output") + 1]).write_bytes(_png_bytes(width=64, height=64))
+        Path(command[command.index("--metadata-output") + 1]).write_text("{}", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
+
+    with pytest.raises(IndustrialProviderError, match="invalid_reference_image:too_small"):
+        GPTImageOAuthReferenceProvider(settings).generate_reference_image(
+            job_id="job-1",
+            scene_description={"sceneName": "Factory"},
+            reference_prompt={"referenceImagePrompt": "real factory", "negativePrompt": "cartoon"},
+            output_dir=tmp_path,
         )
 
 
@@ -547,6 +665,7 @@ def test_full_industrial_engine_pipeline_stage_transitions(client, session_facto
 
         bundle = ProviderBundle(
             text=_FakeTextProvider(),
+            image_reference=_FakeImageReferenceProvider(),
             world=_FakeWorldProvider(),
             quality_judge=_FakeQualityJudge(),
             renderer=_FakeRenderer(),
@@ -569,11 +688,14 @@ def test_full_industrial_engine_pipeline_stage_transitions(client, session_facto
         exported_metadata = IndustrialArtifactStore.from_settings(test_settings).read_bytes(
             f"{job_id}/exports/metadata.json"
         )
+        exported_reference_image = IndustrialArtifactStore.from_settings(test_settings).read_bytes(
+            f"{job_id}/exports/reference_image.png"
+        )
 
     assert completed is not None
     assert completed.status == "succeeded"
     assert completed.current_stage == "export_dataset"
-    assert len(completed.exports_json) >= 10
+    assert len(completed.exports_json) >= 11
     assert {stage.status for stage in stages} == {"succeeded"}
     assert exported_dataset is not None
     exported_text = exported_dataset.decode("utf-8")
@@ -581,7 +703,10 @@ def test_full_industrial_engine_pipeline_stage_transitions(client, session_facto
     assert "industrial-engine-" not in exported_text
     assert "renders/initial/rgb/" in exported_text
     assert exported_metadata is not None
-    assert "Codex OAuth / ChatGPT" in json.loads(exported_metadata.decode("utf-8"))["providers"]
+    metadata_providers = json.loads(exported_metadata.decode("utf-8"))["providers"]
+    assert "Codex OAuth / ChatGPT" in metadata_providers
+    assert "GPT Image 2 OAuth" in metadata_providers
+    assert exported_reference_image == _png_bytes(width=1024, height=768)
 
 
 def test_pipeline_fails_when_final_boxer_outputs_no_objects(
@@ -602,6 +727,7 @@ def test_pipeline_fails_when_final_boxer_outputs_no_objects(
 
         bundle = ProviderBundle(
             text=_FakeTextProvider(),
+            image_reference=_FakeImageReferenceProvider(),
             world=_FakeWorldProvider(),
             quality_judge=_FakeQualityJudge(),
             renderer=_FakeRenderer(),
@@ -623,6 +749,73 @@ def test_pipeline_fails_when_final_boxer_outputs_no_objects(
     assert failed.failure_reason == "final_boxer_no_objects_detected"
 
 
+def test_photo_pipeline_skips_generated_reference_image(
+    client, session_factory, test_settings: Settings
+) -> None:
+    store = IndustrialArtifactStore.from_settings(test_settings)
+    with session_factory() as session:
+        org = seed_organization(session, name="Photo Pipeline Org")
+        user = seed_user(session, email="photo-pipeline@test.dev", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        job = IndustrialEngineJob(
+            organization_id=org.id,
+            created_by_user_id=user.id,
+            mode="real_factory_photos_to_world",
+            request_json={"mode": "real_factory_photos_to_world", "factoryAreaType": "assembly_line"},
+        )
+        session.add(job)
+        session.commit()
+        job_id = job.id
+        storage_key = store.write_bytes(
+            job_id=job_id,
+            relative_path="inputs/factory.png",
+            data=_png_bytes(width=1024, height=768),
+            content_type="image/png",
+        )
+        session.add(
+            IndustrialEngineInputAsset(
+                job_id=job_id,
+                file_name="factory.png",
+                content_type="image/png",
+                storage_key=storage_key,
+                size_bytes=128,
+            )
+        )
+        session.commit()
+
+        world = _FakeWorldProvider()
+        bundle = ProviderBundle(
+            text=_FakeTextProvider(),
+            image_reference=_FailingImageReferenceProvider(),
+            world=world,
+            quality_judge=_FakeQualityJudge(),
+            renderer=_FakeRenderer(),
+            annotator=_FakeAnnotator(),
+        )
+
+        run_industrial_engine_job(
+            session=session,
+            settings=test_settings,
+            job_id=job_id,
+            provider_factory=lambda _settings: bundle,
+        )
+
+        stage = session.exec(
+            select(IndustrialEngineJobStage).where(
+                IndustrialEngineJobStage.job_id == job_id,
+                IndustrialEngineJobStage.name == "generate_reference_image_with_gpt_image_oauth",
+            )
+        ).one()
+        completed = session.get(IndustrialEngineJob, job_id)
+
+    assert stage.status == "skipped"
+    assert stage.reason == "mode_not_text_to_world"
+    assert world.calls
+    assert world.calls[0]["generated_reference_image_path"] is None
+    assert len(world.calls[0]["input_image_paths"]) == 1
+    assert completed is not None
+    assert all(export["artifactName"] != "reference_image.png" for export in completed.exports_json)
+
+
 def test_pipeline_fails_when_codex_incidents_are_empty_objects(
     client, session_factory, test_settings: Settings
 ) -> None:
@@ -641,6 +834,7 @@ def test_pipeline_fails_when_codex_incidents_are_empty_objects(
 
         bundle = ProviderBundle(
             text=_EmptyIncidentTextProvider(),
+            image_reference=_FakeImageReferenceProvider(),
             world=_FakeWorldProvider(),
             quality_judge=_FakeQualityJudge(),
             renderer=_FakeRenderer(),
@@ -739,8 +933,46 @@ class _EmptyIncidentTextProvider(_FakeTextProvider):
         return super().generate_json(purpose=purpose, prompt=prompt, schema=schema)
 
 
+class _FakeImageReferenceProvider:
+    def validate_authentication(self) -> None:
+        return None
+
+    def generate_reference_image(
+        self,
+        *,
+        job_id: str,
+        scene_description: dict,
+        reference_prompt: dict,
+        output_dir: Path,
+    ) -> dict:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        image_path = output_dir / "reference_image.png"
+        image_path.write_bytes(_png_bytes(width=1024, height=768))
+        return {
+            "image_path": image_path,
+            "metadata": {"imageId": "img-1"},
+            "width": 1024,
+            "height": 768,
+            "format": "png",
+            "model": "gpt-image-2",
+            "size": "1536x1024",
+        }
+
+
+class _FailingImageReferenceProvider:
+    def validate_authentication(self) -> None:
+        raise AssertionError("photo mode must not validate GPT Image OAuth")
+
+    def generate_reference_image(self, **_kwargs) -> dict:
+        raise AssertionError("photo mode must not generate a synthetic reference image")
+
+
 class _FakeWorldProvider:
-    def create_world(self, **_kwargs) -> dict:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def create_world(self, **kwargs) -> dict:
+        self.calls.append(kwargs)
         return {
             "world_id": "world-1",
             "world": {"id": "world-1"},
@@ -807,3 +1039,14 @@ class _EmptyAnnotator:
         (output_dir / "object_annotations_raw.json").write_text(json.dumps({"frames": []}), encoding="utf-8")
         (output_dir / "object_annotations_3d.json").write_text(json.dumps(annotations), encoding="utf-8")
         (output_dir / "final_scene_graph.json").write_text(json.dumps(annotations), encoding="utf-8")
+
+
+def _png_bytes(*, width: int, height: int) -> bytes:
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\r"
+        + b"IHDR"
+        + width.to_bytes(4, "big")
+        + height.to_bytes(4, "big")
+        + b"\x08\x02\x00\x00\x00"
+    )

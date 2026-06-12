@@ -92,7 +92,7 @@ def run_industrial_engine_job(
             def validate_environment() -> dict[str, Any]:
                 providers = provider_factory(settings)
                 provider_holder["providers"] = providers
-                return _validate_environment(session, settings, providers, store)
+                return _validate_environment(session, settings, providers, store, mode=job.mode)
 
             _run_stage(session, job, "validate_environment", validate_environment)
             context["providers"] = provider_holder["providers"]
@@ -100,6 +100,7 @@ def run_industrial_engine_job(
             _materialize_inputs(session, store, job.id, workdir / "inputs")
             _run_stage(session, job, "generate_factory_scene_description_with_codex_oauth", lambda: _stage_scene(context))
             _run_stage(session, job, "generate_reference_image_prompt_with_codex_oauth", lambda: _stage_reference_prompt(context))
+            _run_stage(session, job, "generate_reference_image_with_gpt_image_oauth", lambda: _stage_reference_image(context, workdir))
             _run_stage(session, job, "create_world_with_world_labs_marble", lambda: _stage_world(context, workdir))
             _run_stage(session, job, "prepare_metric_world_asset", lambda: _stage_metric_world(context, workdir))
             _run_stage(session, job, "generate_initial_camera_poses", lambda: _stage_initial_camera_poses(context, workdir))
@@ -185,6 +186,8 @@ def _validate_environment(
     settings: Settings,
     providers: ProviderBundle,
     store: IndustrialArtifactStore,
+    *,
+    mode: str,
 ) -> dict[str, Any]:
     import os
 
@@ -193,6 +196,8 @@ def _validate_environment(
 
     if hasattr(providers.text, "validate_authentication"):
         providers.text.validate_authentication()
+    if mode == "text_to_world" and hasattr(providers.image_reference, "validate_authentication"):
+        providers.image_reference.validate_authentication()
     if hasattr(providers.quality_judge, "validate_model_available"):
         providers.quality_judge.validate_model_available()
     session.exec(text("SELECT 1"))
@@ -200,6 +205,7 @@ def _validate_environment(
     return {
         "providers": {
             "text": providers.text.__class__.__name__,
+            "imageReference": providers.image_reference.__class__.__name__,
             "world": providers.world.__class__.__name__,
             "qualityJudge": providers.quality_judge.__class__.__name__,
             "renderer": providers.renderer.__class__.__name__,
@@ -235,14 +241,65 @@ def _stage_reference_prompt(context: dict[str, Any]) -> dict[str, Any]:
     providers: ProviderBundle = context["providers"]
     scene = context["scene"]
     prompt = (
-        "Generate a rigorous reference image prompt for World Labs / Marble text-to-world. "
-        "Do not request image generation. Return only JSON.\n\n"
+        "Generate a rigorous GPT Image 2 reference-image prompt for a FlyMirage-style "
+        "World Labs / Marble text-to-world pipeline. The generated image should be a grounded, "
+        "realistic industrial reference view that Marble can use with the text prompt. Return only JSON.\n\n"
         f"Scene:\n{json.dumps(scene, ensure_ascii=False)}"
     )
     reference = providers.text.generate_json(purpose="reference_prompt", prompt=prompt, schema=_reference_prompt_schema())
     _write_json(context, "scene/reference_image_prompt.json", reference)
     context["reference_prompt"] = reference
     return {"artifact": "scene/reference_image_prompt.json", "style": reference.get("style")}
+
+
+def _stage_reference_image(context: dict[str, Any], workdir: Path) -> dict[str, Any]:
+    job: IndustrialEngineJob = context["job"]
+    if job.mode != "text_to_world":
+        context["generated_reference_image_path"] = None
+        return {"_stage_status": "skipped", "_stage_reason": "mode_not_text_to_world"}
+
+    providers: ProviderBundle = context["providers"]
+    result = providers.image_reference.generate_reference_image(
+        job_id=job.id,
+        scene_description=context["scene"],
+        reference_prompt=context["reference_prompt"],
+        output_dir=workdir / "reference_image",
+    )
+    image_path = result.get("image_path")
+    if not isinstance(image_path, Path):
+        raise IndustrialProviderError("gpt_image_generation_failed:image_path_missing")
+
+    image_format = result.get("format") or "png"
+    extension = "jpg" if image_format == "jpeg" else str(image_format)
+    relative_image_path = f"scene/reference_image.{extension}"
+    image_key = context["store"].write_bytes(
+        job_id=job.id,
+        relative_path=relative_image_path,
+        data=image_path.read_bytes(),
+        content_type=_content_type(relative_image_path),
+    )
+    metadata = {
+        "provider": "GPT Image 2 OAuth",
+        "model": result.get("model"),
+        "size": result.get("size"),
+        "width": result.get("width"),
+        "height": result.get("height"),
+        "format": image_format,
+        "commandMetadata": result.get("metadata") or {},
+    }
+    _write_json(context, "scene/reference_image_metadata.json", metadata)
+    context["generated_reference_image_path"] = image_path
+    context["reference_image_artifact_path"] = relative_image_path
+    context["reference_image_artifact_name"] = Path(relative_image_path).name
+    context["reference_image_key"] = image_key
+    context["reference_image_metadata"] = metadata
+    return {
+        "artifact": relative_image_path,
+        "metadataArtifact": "scene/reference_image_metadata.json",
+        "referenceImageKey": image_key,
+        "width": result.get("width"),
+        "height": result.get("height"),
+    }
 
 
 def _stage_world(context: dict[str, Any], workdir: Path) -> dict[str, Any]:
@@ -255,6 +312,7 @@ def _stage_world(context: dict[str, Any], workdir: Path) -> dict[str, Any]:
         scene_description=context["scene"],
         reference_prompt=context["reference_prompt"],
         input_image_paths=input_paths,
+        generated_reference_image_path=context.get("generated_reference_image_path"),
     )
     spz_payload = world.pop("spz_bytes", None)
     if not spz_payload:
@@ -553,7 +611,14 @@ def _stage_export(context: dict[str, Any], workdir: Path) -> dict[str, Any]:
         "quality_report.json": "quality/quality_judgement.json",
         "world_asset.spz": "world/world_asset.spz",
     }
+    reference_image_path = context.get("reference_image_artifact_path")
+    reference_image_name = context.get("reference_image_artifact_name")
+    if isinstance(reference_image_path, str) and isinstance(reference_image_name, str):
+        mapping[reference_image_name] = reference_image_path
     _write_json(context, "exports/coco_annotations.json", {"images": [], "annotations": [], "categories": []})
+    provider_names = ["Codex OAuth / ChatGPT", "World Labs / Marble", "Ollama Qwen-VL", "gsplat", "Boxer"]
+    if job.mode == "text_to_world":
+        provider_names.insert(1, "GPT Image 2 OAuth")
     _write_json(
         context,
         "exports/metadata.json",
@@ -561,7 +626,7 @@ def _stage_export(context: dict[str, Any], workdir: Path) -> dict[str, Any]:
             "jobId": job.id,
             "mode": job.mode,
             "generatedWorldId": context.get("world", {}).get("world_id"),
-            "providers": ["Codex OAuth / ChatGPT", "World Labs / Marble", "Ollama Qwen-VL", "gsplat", "Boxer"],
+            "providers": provider_names,
         },
     )
     rgb_zip = _zip_dir(workdir, context["initial_render_dir"] / "rgb", "rgb_frames.zip")
@@ -792,6 +857,8 @@ def _content_type(name: str) -> str:
         return "application/x-ndjson"
     if name.endswith(".png"):
         return "image/png"
+    if name.endswith(".jpg") or name.endswith(".jpeg"):
+        return "image/jpeg"
     if name.endswith(".zip"):
         return "application/zip"
     if name.endswith(".spz"):

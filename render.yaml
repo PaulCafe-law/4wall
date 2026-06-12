@@ -203,6 +203,16 @@ services:
         value: "600"
       - key: CODEX_HOME
         sync: false
+      - key: GPT_IMAGE_OAUTH_COMMAND
+        sync: false
+      - key: GPT_IMAGE_OAUTH_MODEL
+        value: gpt-image-2
+      - key: GPT_IMAGE_OAUTH_TIMEOUT_SECONDS
+        value: "900"
+      - key: GPT_IMAGE_OAUTH_SIZE
+        value: 1536x1024
+      - key: GPT_IMAGE_OAUTH_OUTPUT_FORMAT
+        value: png
       - key: WORLDLABS_API_KEY
         sync: false
       - key: WORLDLABS_MODEL
@@ -273,6 +283,16 @@ services:
         value: "600"
       - key: CODEX_HOME
         sync: false
+      - key: GPT_IMAGE_OAUTH_COMMAND
+        sync: false
+      - key: GPT_IMAGE_OAUTH_MODEL
+        value: gpt-image-2
+      - key: GPT_IMAGE_OAUTH_TIMEOUT_SECONDS
+        value: "900"
+      - key: GPT_IMAGE_OAUTH_SIZE
+        value: 1536x1024
+      - key: GPT_IMAGE_OAUTH_OUTPUT_FORMAT
+        value: png
       - key: WORLDLABS_API_KEY
         sync: false
       - key: WORLDLABS_MODEL

@@ -25,6 +25,19 @@ class TextProvider(Protocol):
     def generate_json(self, *, purpose: str, prompt: str, schema: dict[str, Any]) -> dict[str, Any]: ...
 
 
+class ImageReferenceProvider(Protocol):
+    def validate_authentication(self) -> None: ...
+
+    def generate_reference_image(
+        self,
+        *,
+        job_id: str,
+        scene_description: dict[str, Any],
+        reference_prompt: dict[str, Any],
+        output_dir: Path,
+    ) -> dict[str, Any]: ...
+
+
 class WorldProvider(Protocol):
     def create_world(
         self,
@@ -34,6 +47,7 @@ class WorldProvider(Protocol):
         scene_description: dict[str, Any],
         reference_prompt: dict[str, Any],
         input_image_paths: list[Path],
+        generated_reference_image_path: Path | None = None,
     ) -> dict[str, Any]: ...
 
 
@@ -64,6 +78,7 @@ class PathPlannerWorker(Protocol):
 @dataclass
 class ProviderBundle:
     text: TextProvider
+    image_reference: ImageReferenceProvider
     world: WorldProvider
     quality_judge: VLMQualityJudgeProvider
     renderer: RendererWorker
@@ -155,6 +170,115 @@ class CodexOAuthTextProvider:
         return env
 
 
+class GPTImageOAuthReferenceProvider:
+    def __init__(self, settings: Settings) -> None:
+        self.command_value = settings.gpt_image_oauth_command
+        self.model = settings.gpt_image_oauth_model
+        self.timeout = float(settings.gpt_image_oauth_timeout_seconds)
+        self.size = settings.gpt_image_oauth_size
+        self.output_format = settings.gpt_image_oauth_output_format.lower().lstrip(".")
+
+    def validate_authentication(self) -> None:
+        command = self._command_parts()
+        try:
+            result = subprocess.run(
+                [*command, "--health"],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=self._env(),
+                timeout=min(self.timeout, 60.0),
+            )
+        except FileNotFoundError as exc:
+            raise IndustrialProviderError("missing_gpt_image_oauth_command") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise IndustrialProviderError("gpt_image_oauth_not_authenticated:health_timeout") from exc
+        if result.returncode != 0:
+            raise IndustrialProviderError(f"gpt_image_oauth_not_authenticated:{_command_excerpt(result)}")
+        try:
+            health = _loads_json_object(result.stdout or result.stderr or "{}")
+        except Exception as exc:
+            raise IndustrialProviderError("gpt_image_oauth_not_authenticated:invalid_health_json") from exc
+        if health.get("authenticated") is not True:
+            raise IndustrialProviderError("gpt_image_oauth_not_authenticated")
+
+    def generate_reference_image(
+        self,
+        *,
+        job_id: str,
+        scene_description: dict[str, Any],
+        reference_prompt: dict[str, Any],
+        output_dir: Path,
+    ) -> dict[str, Any]:
+        command = self._command_parts()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        image_path = output_dir / f"reference_image.{self.output_format}"
+        metadata_path = output_dir / "reference_image_metadata.json"
+        input_path = output_dir / "reference_image_input.json"
+        payload = {
+            "model": self.model,
+            "purpose": "flymirage_reference_image",
+            "jobId": job_id,
+            "sceneName": scene_description.get("sceneName") or "",
+            "prompt": reference_prompt.get("referenceImagePrompt") or "",
+            "negativePrompt": reference_prompt.get("negativePrompt") or "",
+            "size": self.size,
+            "returnFormat": self.output_format,
+        }
+        input_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            result = subprocess.run(
+                [
+                    *command,
+                    "--input",
+                    str(input_path),
+                    "--output",
+                    str(image_path),
+                    "--metadata-output",
+                    str(metadata_path),
+                ],
+                cwd=output_dir,
+                capture_output=True,
+                text=True,
+                check=False,
+                env=self._env(),
+                timeout=self.timeout,
+            )
+        except FileNotFoundError as exc:
+            raise IndustrialProviderError("missing_gpt_image_oauth_command") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise IndustrialProviderError("gpt_image_generation_failed:timeout") from exc
+        if result.returncode != 0:
+            raise IndustrialProviderError(f"gpt_image_generation_failed:{_command_excerpt(result)}")
+        if not image_path.exists():
+            raise IndustrialProviderError("gpt_image_generation_failed:output_missing")
+        if not metadata_path.exists():
+            raise IndustrialProviderError("gpt_image_generation_failed:metadata_missing")
+        try:
+            metadata = _loads_json_object(metadata_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise IndustrialProviderError("gpt_image_generation_failed:invalid_metadata") from exc
+        width, height, image_format = _validate_reference_image(image_path)
+        return {
+            "image_path": image_path,
+            "metadata": metadata,
+            "width": width,
+            "height": height,
+            "format": image_format,
+            "model": self.model,
+            "size": self.size,
+        }
+
+    def _command_parts(self) -> list[str]:
+        return _resolve_command_parts(self.command_value, missing_error="missing_gpt_image_oauth_command")
+
+    def _env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        env.pop("OPENAI_API_KEY", None)
+        env.pop("CODEX_API_KEY", None)
+        return env
+
+
 class WorldLabsMarbleProvider:
     def __init__(self, settings: Settings) -> None:
         if not settings.worldlabs_api_key:
@@ -173,13 +297,21 @@ class WorldLabsMarbleProvider:
         scene_description: dict[str, Any],
         reference_prompt: dict[str, Any],
         input_image_paths: list[Path],
+        generated_reference_image_path: Path | None = None,
     ) -> dict[str, Any]:
         if mode == "real_factory_photos_to_world" and not input_image_paths:
             raise IndustrialProviderError("real_factory_photos_to_world_requires_photos")
 
         text_prompt = _world_text_prompt(scene_description, reference_prompt)
         if mode == "text_to_world":
-            world_prompt: dict[str, Any] = {"type": "text", "text_prompt": text_prompt}
+            if generated_reference_image_path is None:
+                raise IndustrialProviderError("text_to_world_requires_reference_image")
+            media_id = self._upload_image(generated_reference_image_path)
+            world_prompt: dict[str, Any] = {
+                "type": "image",
+                "image_prompt": {"source": "media_asset", "media_asset_id": media_id},
+                "text_prompt": text_prompt,
+            }
         else:
             media_assets = [self._upload_image(path) for path in input_image_paths]
             if len(media_assets) == 1:
@@ -229,6 +361,7 @@ class WorldLabsMarbleProvider:
         return {
             "world_id": world_id,
             "world": world,
+            "world_prompt_type": world_prompt["type"],
             "spz_bytes": base64.b64encode(spz_bytes).decode("ascii"),
             "semantics_metadata": splats.get("semantics_metadata") or {},
             "panorama_url": (assets.get("imagery") or {}).get("pano_url"),
@@ -437,6 +570,7 @@ class EGOPlannerWorker:
 def build_provider_bundle(settings: Settings) -> ProviderBundle:
     return ProviderBundle(
         text=CodexOAuthTextProvider(settings),
+        image_reference=GPTImageOAuthReferenceProvider(settings),
         world=WorldLabsMarbleProvider(settings),
         quality_judge=OllamaQwenVLMQualityJudgeProvider(settings),
         renderer=GSplatRendererWorker(settings),
@@ -526,6 +660,81 @@ def _resolve_executable(value: str) -> str:
     if path.is_file():
         return str(path)
     raise IndustrialProviderError("missing_codex_cli")
+
+
+def _resolve_command_parts(value: str | None, *, missing_error: str) -> list[str]:
+    if not value or not value.strip():
+        raise IndustrialProviderError(missing_error)
+    try:
+        parts = shlex.split(value)
+    except ValueError as exc:
+        raise IndustrialProviderError(missing_error) from exc
+    if not parts:
+        raise IndustrialProviderError(missing_error)
+    executable = shutil.which(parts[0])
+    if executable:
+        return [executable, *parts[1:]]
+    path = Path(parts[0])
+    if path.is_file():
+        return [str(path), *parts[1:]]
+    raise IndustrialProviderError(missing_error)
+
+
+def _validate_reference_image(path: Path) -> tuple[int, int, str]:
+    data = path.read_bytes()
+    if not data:
+        raise IndustrialProviderError("invalid_reference_image:empty")
+    try:
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            width, height = _png_dimensions(data)
+            image_format = "png"
+        elif data.startswith(b"\xff\xd8"):
+            width, height = _jpeg_dimensions(data)
+            image_format = "jpeg"
+        else:
+            raise IndustrialProviderError("invalid_reference_image:unsupported_format")
+    except IndustrialProviderError:
+        raise
+    except Exception as exc:
+        raise IndustrialProviderError("invalid_reference_image:decode_failed") from exc
+    if width < 512 or height < 512:
+        raise IndustrialProviderError("invalid_reference_image:too_small")
+    return width, height, image_format
+
+
+def _png_dimensions(data: bytes) -> tuple[int, int]:
+    if len(data) < 24:
+        raise IndustrialProviderError("invalid_reference_image:decode_failed")
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    if width <= 0 or height <= 0:
+        raise IndustrialProviderError("invalid_reference_image:decode_failed")
+    return width, height
+
+
+def _jpeg_dimensions(data: bytes) -> tuple[int, int]:
+    index = 2
+    while index + 9 < len(data):
+        if data[index] != 0xFF:
+            index += 1
+            continue
+        marker = data[index + 1]
+        index += 2
+        if marker in {0xD8, 0xD9}:
+            continue
+        if index + 2 > len(data):
+            break
+        segment_length = int.from_bytes(data[index : index + 2], "big")
+        if segment_length < 2 or index + segment_length > len(data):
+            break
+        if marker in {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}:
+            height = int.from_bytes(data[index + 3 : index + 5], "big")
+            width = int.from_bytes(data[index + 5 : index + 7], "big")
+            if width <= 0 or height <= 0:
+                break
+            return width, height
+        index += segment_length
+    raise IndustrialProviderError("invalid_reference_image:decode_failed")
 
 
 def _codex_text_prompt(*, purpose: str, prompt: str, schema: dict[str, Any]) -> str:

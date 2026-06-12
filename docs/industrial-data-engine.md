@@ -4,20 +4,23 @@
 
 Industrial Data Engine is a Sprint 3 planner-server and desktop web-app capability. It creates planning and training artifacts for industrial inspection workflows. It is not flight-critical and must not issue real-time flight commands.
 
-The production runtime does not use the OpenAI Platform API, does not require `OPENAI_API_KEY`, and does not use an OpenAI API-key-backed provider. The text JSON stages use Codex CLI authenticated with ChatGPT OAuth on the trusted worker host.
+The production runtime does not use the OpenAI Platform API, does not require `OPENAI_API_KEY`, and does not use an OpenAI API-key-backed provider. The text JSON stages use Codex CLI authenticated with ChatGPT OAuth on the trusted worker host. Text-to-world jobs also use a worker-local GPT Image OAuth command bridge to create a FlyMirage-style reference image before World Labs generation.
 
 ## Gap Analysis
 
 - Long-running world generation, rendering, annotation, and quality judging cannot run inside API request handlers. The API creates durable jobs; a worker processes queued jobs.
 - Provider failures must be visible as job/stage failures. The system must not create fake worlds, fake frames, fake annotations, or fake quality scores.
-- Stage 16 quality checking must use Ollama Qwen-VL, not Codex or an OpenAI API provider.
+- Quality checking must use Ollama Qwen-VL, not Codex or an OpenAI API provider.
 - The API and worker must share database and artifact storage so status polling and export downloads stay consistent.
 - Drone path planning is optional. With `ENABLE_EGO_PLANNER=false`, only the drone path planning sub-result is skipped.
+- Text-to-world quality was limited by pure text prompting. The revised flow follows the FlyMirage product pattern: structured scene JSON, reference-image prompt, generated reference image, then image-plus-text World Labs generation.
+- Real factory photo mode already has image grounding from user uploads and should not spend GPT Image OAuth budget on another synthetic reference image.
 
 ## Providers
 
 - `CodexOAuthTextProvider`: scene JSON, reference prompts, incidents, inspection tasks, Evidence Cards, and SiteState JSON through `codex exec` with ChatGPT OAuth.
-- `WorldLabsMarbleProvider`: text/image to world generation, operation polling, `.spz` download, panorama, and world metadata.
+- `GPTImageOAuthReferenceProvider`: text-to-world reference image generation through a worker-local OAuth command bridge. It is required only for `text_to_world` jobs.
+- `WorldLabsMarbleProvider`: image-plus-text or photo-plus-text world generation, operation polling, `.spz` download, panorama, and world metadata.
 - `OllamaQwenVLMQualityJudgeProvider`: calls `OLLAMA_BASE_URL/api/chat` with `OLLAMA_QWEN_VLM_MODEL` and structured JSON output.
 - `GSplatRendererWorker`: calls `planner-server/scripts/industrial_engine/render_gsplat.py` to render RGB/depth outputs from `.spz`.
 - `BoxerAnnotationWorker`: calls `planner-server/scripts/industrial_engine/run_boxer_annotation.py` for 2D and 3D annotations.
@@ -43,6 +46,7 @@ As of the first production worker setup, the external worker requirements are:
 - Shared S3 artifact storage credentials.
 - Current Codex CLI installed and authenticated for the worker service user with `codex login --device-auth`.
 - `CODEX_TEXT_MODEL=gpt-5.5` for ChatGPT OAuth text stages. Empty values fall back to `gpt-5.5`.
+- `GPT_IMAGE_OAUTH_COMMAND` pointing at a worker-local bridge command that is already authenticated through OAuth and can generate `gpt-image-2` images without `OPENAI_API_KEY`.
 - `WORLDLABS_OPERATION_TIMEOUT_SECONDS=3600` or higher when Marble world generation is queued or slow.
 - Local Ollama with `OLLAMA_QWEN_VLM_MODEL=qwen2.5vl:7b`.
 - A real gsplat command that converts World Labs `.spz` plus camera poses into `rgb/` and `depth/` directories.
@@ -54,6 +58,19 @@ Boxer has an additional release gate: the public `facebookresearch/boxer` code a
 
 World Labs `.spz` assets are rendered from the panorama origin. Camera poses must therefore cover the panorama yaw range instead of orbiting point-cloud bounds. A production smoke run should use at least `INDUSTRIAL_ENGINE_MAX_CAMERA_POSES=8` so initial views cover 360 degrees in 45-degree increments; lower values are only wiring checks and may legitimately fail at Boxer because visible industrial objects were not sampled.
 
+## GPT Image OAuth Bridge
+
+The command bridge is an operational dependency of `text_to_world` jobs. It must support:
+
+```shell
+$GPT_IMAGE_OAUTH_COMMAND --health
+$GPT_IMAGE_OAUTH_COMMAND --input input.json --output reference_image.png --metadata-output reference_image_metadata.json
+```
+
+The health command must exit `0` and print JSON with `authenticated: true`. The generation command receives JSON with `model`, `purpose`, `jobId`, `sceneName`, `prompt`, `negativePrompt`, `size`, and `returnFormat`. The worker validates that the output is a real PNG/JPEG image, decodable enough to read dimensions, and at least `512x512`.
+
+The worker strips `OPENAI_API_KEY` and `CODEX_API_KEY` from the command environment. If the bridge is missing or unauthenticated, `text_to_world` fails fast; `real_factory_photos_to_world` skips this generated-image stage.
+
 ## Pipeline
 
 Each job records durable stage state so the API can return progress while the worker handles long-running work.
@@ -61,22 +78,23 @@ Each job records durable stage state so the API can return progress while the wo
 1. `validate_environment`
 2. `generate_factory_scene_description_with_codex_oauth`
 3. `generate_reference_image_prompt_with_codex_oauth`
-4. `create_world_with_world_labs_marble`
-5. `prepare_metric_world_asset`
-6. `generate_initial_camera_poses`
-7. `render_rgb_depth_with_gsplat`
-8. `run_boxer_annotation`
-9. `distance_aware_refinement`
-10. `plan_extra_observation_views`
-11. `render_extra_observations`
-12. `rerun_boxer_and_fuse`
-13. `generate_industrial_incidents_with_codex_oauth`
-14. `generate_inspection_tasks_with_codex_oauth`
-15. `render_dataset_samples`
-16. `quality_judge_with_ollama_qwen_vlm`
-17. `generate_evidence_cards_with_codex_oauth`
-18. `generate_site_state_json_with_codex_oauth`
-19. `export_dataset`
+4. `generate_reference_image_with_gpt_image_oauth`
+5. `create_world_with_world_labs_marble`
+6. `prepare_metric_world_asset`
+7. `generate_initial_camera_poses`
+8. `render_rgb_depth_with_gsplat`
+9. `run_boxer_annotation`
+10. `distance_aware_refinement`
+11. `plan_extra_observation_views`
+12. `render_extra_observations`
+13. `rerun_boxer_and_fuse`
+14. `generate_industrial_incidents_with_codex_oauth`
+15. `generate_inspection_tasks_with_codex_oauth`
+16. `render_dataset_samples`
+17. `quality_judge_with_ollama_qwen_vlm`
+18. `generate_evidence_cards_with_codex_oauth`
+19. `generate_site_state_json_with_codex_oauth`
+20. `export_dataset`
 
 ## Failure Policy
 
@@ -85,6 +103,10 @@ Required provider failures are fail-fast:
 - `missing_codex_cli`
 - `codex_oauth_not_authenticated`
 - `codex_text_generation_failed:{purpose}`
+- `missing_gpt_image_oauth_command`
+- `gpt_image_oauth_not_authenticated`
+- `gpt_image_generation_failed`
+- `invalid_reference_image`
 - `missing_worldlabs_api_key`
 - `worldlabs_operation_timeout`
 - `ollama_qwen_vlm_unavailable`
@@ -151,6 +173,7 @@ Expected export artifacts:
 - `rgb_frames.zip`
 - `depth_maps.zip`
 - `world_asset.spz`
+- `reference_image.png` for `text_to_world` jobs
 - `quality_report.json`
 
 Staging and production should use shared artifact storage so the API process and worker process can access the same inputs and outputs.

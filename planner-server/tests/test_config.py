@@ -24,6 +24,11 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     monkeypatch.setenv("CODEX_TEXT_MODEL", " gpt-test ")
     monkeypatch.setenv("CODEX_TEXT_TIMEOUT_SECONDS", " 321 ")
     monkeypatch.setenv("CODEX_HOME", " /srv/codex-home ")
+    monkeypatch.setenv("GPT_IMAGE_OAUTH_COMMAND", " /usr/local/bin/gpt-image-oauth ")
+    monkeypatch.setenv("GPT_IMAGE_OAUTH_MODEL", " gpt-image-test ")
+    monkeypatch.setenv("GPT_IMAGE_OAUTH_TIMEOUT_SECONDS", " 901 ")
+    monkeypatch.setenv("GPT_IMAGE_OAUTH_SIZE", " 1024x1024 ")
+    monkeypatch.setenv("GPT_IMAGE_OAUTH_OUTPUT_FORMAT", " png ")
     monkeypatch.setenv("WORLDLABS_API_KEY", " worldlabs-key ")
     monkeypatch.setenv("WORLDLABS_MODEL", " marble-test ")
     monkeypatch.setenv("WORLDLABS_OPERATION_TIMEOUT_SECONDS", " 1800 ")
@@ -65,6 +70,11 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.codex_text_model == "gpt-test"
     assert settings.codex_text_timeout_seconds == 321
     assert settings.codex_home == "/srv/codex-home"
+    assert settings.gpt_image_oauth_command == "/usr/local/bin/gpt-image-oauth"
+    assert settings.gpt_image_oauth_model == "gpt-image-test"
+    assert settings.gpt_image_oauth_timeout_seconds == 901
+    assert settings.gpt_image_oauth_size == "1024x1024"
+    assert settings.gpt_image_oauth_output_format == "png"
     assert settings.worldlabs_api_key == "worldlabs-key"
     assert settings.worldlabs_model == "marble-test"
     assert settings.worldlabs_operation_timeout_seconds == 1800

@@ -44,6 +44,7 @@ const stageLabels: Record<string, string> = {
   validate_environment: '檢查執行環境',
   generate_factory_scene_description_with_codex_oauth: 'Codex OAuth 產生工廠場景描述',
   generate_reference_image_prompt_with_codex_oauth: 'Codex OAuth 產生參考影像提示',
+  generate_reference_image_with_gpt_image_oauth: 'GPT Image OAuth 產生參考圖',
   generate_factory_scene_description_with_gemini: '產生工廠場景描述',
   generate_reference_image_prompt_with_gemini: '產生參考影像提示',
   create_world_with_world_labs_marble: '建立 World Labs 3D 場景',
@@ -175,7 +176,7 @@ export function IndustrialDataEnginePage() {
       <ShellSection
         eyebrow="工業資料引擎"
         title="4WALL 資料生成任務"
-        subtitle="建立可追蹤的工廠場景生成任務，查看 19 階段處理進度，並下載完成後的資料集成果。"
+        subtitle="建立可追蹤的工廠場景生成任務，查看 20 階段處理進度，並下載完成後的資料集成果。文字模式會走「文字 → GPT 參考圖 → World Labs 3D 場景」。"
       />
 
       <div className="grid gap-4 md:grid-cols-3">
