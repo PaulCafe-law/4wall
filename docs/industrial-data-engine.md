@@ -41,7 +41,8 @@ As of the first production worker setup, the external worker requirements are:
 
 - Render Postgres external connection string, not the Render internal host.
 - Shared S3 artifact storage credentials.
-- Codex CLI installed and authenticated for the worker service user with `codex login --device-auth`.
+- Current Codex CLI installed and authenticated for the worker service user with `codex login --device-auth`.
+- `CODEX_TEXT_MODEL=gpt-5.5` for ChatGPT OAuth text stages. Empty values fall back to `gpt-5.5`.
 - Local Ollama with `OLLAMA_QWEN_VLM_MODEL=qwen2.5vl:7b`.
 - A real gsplat command that converts World Labs `.spz` plus camera poses into `rgb/` and `depth/` directories.
 - A real Boxer-compatible command that converts rendered `rgb/`, `depth/`, camera poses, and vocabulary into `object_annotations_raw.json` and `object_annotations_3d.json`.
@@ -104,7 +105,7 @@ For production text stages, authenticate the trusted worker service user with:
 codex login --device-auth
 ```
 
-The worker may set `CODEX_HOME` when the Codex auth cache lives outside the default user home.
+Set `CODEX_TEXT_MODEL=gpt-5.5` unless a later smoke test proves a different ChatGPT OAuth model is supported. The worker may set `CODEX_HOME` when the Codex auth cache lives outside the default user home.
 
 ## API
 

@@ -18,4 +18,6 @@ The Industrial Data Engine worker can also use Codex CLI with ChatGPT OAuth for 
 codex login --device-auth
 ```
 
+Use a current Codex CLI release on the worker. The production default text model is `gpt-5.5`; older CLI builds may reject that model even when ChatGPT OAuth is valid.
+
 If the worker uses a non-default auth directory, set `CODEX_HOME` in the worker environment. Treat the Codex auth cache like a password.

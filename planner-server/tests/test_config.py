@@ -82,3 +82,11 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.industrial_engine_max_scenes_per_run == 2
     assert settings.industrial_engine_max_incidents_per_scene == 7
     assert settings.industrial_engine_max_camera_poses == 64
+
+
+def test_codex_text_model_defaults_to_chatgpt_oauth_supported_model(monkeypatch):
+    monkeypatch.setenv("CODEX_TEXT_MODEL", " ")
+
+    settings = Settings.from_env()
+
+    assert settings.codex_text_model == "gpt-5.5"

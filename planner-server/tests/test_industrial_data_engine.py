@@ -117,6 +117,7 @@ def test_codex_oauth_text_provider_uses_schema_output_and_sanitized_env(
         captured["command"] = command
         captured["env"] = kwargs["env"]
         captured["cwd"] = kwargs["cwd"]
+        captured["input"] = kwargs["input"]
         captured["timeout"] = kwargs["timeout"]
         output_path = Path(command[command.index("-o") + 1])
         schema_path = Path(command[command.index("--output-schema") + 1])
@@ -139,6 +140,9 @@ def test_codex_oauth_text_provider_uses_schema_output_and_sanitized_env(
     assert ["--sandbox", "read-only"] == command[command.index("--sandbox") : command.index("--sandbox") + 2]
     assert "--skip-git-repo-check" in command
     assert ["--model", "gpt-test"] == command[command.index("--model") : command.index("--model") + 2]
+    assert command[-1] == "-"
+    assert "Purpose: scene_description" in captured["input"]
+    assert "Return JSON." in captured["input"]
     assert captured["schema"]["required"] == ["name"]
     assert captured["timeout"] == 123.0
     env = captured["env"]

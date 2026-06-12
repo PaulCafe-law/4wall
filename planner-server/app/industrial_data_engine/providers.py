@@ -119,12 +119,14 @@ class CodexOAuthTextProvider:
             ]
             if self.model:
                 command.extend(["--model", self.model])
-            command.append(_codex_text_prompt(purpose=purpose, prompt=prompt, schema=schema))
+            command.append("-")
+            prompt_text = _codex_text_prompt(purpose=purpose, prompt=prompt, schema=schema)
             try:
                 result = subprocess.run(
                     command,
                     cwd=run_dir,
                     capture_output=True,
+                    input=prompt_text,
                     text=True,
                     check=False,
                     env=self._env(),

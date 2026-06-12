@@ -59,7 +59,7 @@ class Settings:
     web_signup_rate_limit_attempts: int = 5
     web_signup_rate_limit_window_seconds: int = 300
     codex_cli_path: str = "codex"
-    codex_text_model: str | None = None
+    codex_text_model: str = "gpt-5.5"
     codex_text_timeout_seconds: int = 600
     codex_home: str | None = None
     worldlabs_api_key: str | None = None
@@ -121,7 +121,7 @@ class Settings:
             line_default_group_id=_env_str("LINE_DEFAULT_GROUP_ID"),
             line_incident_notify_enabled=_env_bool("LINE_INCIDENT_NOTIFY_ENABLED", False),
             codex_cli_path=_env_str("CODEX_CLI_PATH", "codex") or "codex",
-            codex_text_model=_env_str("CODEX_TEXT_MODEL"),
+            codex_text_model=_env_str("CODEX_TEXT_MODEL", "gpt-5.5") or "gpt-5.5",
             codex_text_timeout_seconds=_env_int("CODEX_TEXT_TIMEOUT_SECONDS", 600),
             codex_home=_env_str("CODEX_HOME"),
             worldlabs_api_key=_env_str("WORLDLABS_API_KEY"),
