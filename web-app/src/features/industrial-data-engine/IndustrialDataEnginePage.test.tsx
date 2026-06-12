@@ -45,6 +45,24 @@ const job = {
       completedAt: '2026-06-08T00:00:01Z',
     },
     {
+      sequence: 2,
+      name: 'generate_factory_scene_description_with_codex_oauth',
+      status: 'succeeded',
+      reason: null,
+      output: {},
+      startedAt: '2026-06-08T00:01:00Z',
+      completedAt: '2026-06-08T00:02:00Z',
+    },
+    {
+      sequence: 3,
+      name: 'generate_reference_image_prompt_with_gemini',
+      status: 'succeeded',
+      reason: null,
+      output: {},
+      startedAt: '2026-06-08T00:02:00Z',
+      completedAt: '2026-06-08T00:03:00Z',
+    },
+    {
       sequence: 16,
       name: 'quality_judge_with_ollama_qwen_vlm',
       status: 'succeeded',
@@ -88,6 +106,8 @@ describe('IndustrialDataEnginePage', () => {
     })
 
     expect(await screen.findByText('4WALL 資料生成任務')).toBeInTheDocument()
+    expect(await screen.findByText('Codex OAuth 產生工廠場景描述')).toBeInTheDocument()
+    expect(await screen.findByText('產生參考影像提示')).toBeInTheDocument()
     expect(await screen.findByText('使用 Ollama Qwen-VL 檢查品質')).toBeInTheDocument()
     expect(await screen.findByText('dataset.jsonl')).toBeInTheDocument()
     expect(screen.getByText(/ChatGPT OAuth/)).toBeInTheDocument()

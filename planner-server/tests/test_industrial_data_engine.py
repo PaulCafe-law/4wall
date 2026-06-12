@@ -22,8 +22,8 @@ from app.industrial_data_engine.pipeline import (
 )
 from app.industrial_data_engine.providers import (
     BoxerAnnotationWorker,
+    CodexOAuthTextProvider,
     EGOPlannerWorker,
-    GeminiTextProvider,
     GSplatRendererWorker,
     IndustrialProviderError,
     OllamaQwenVLMQualityJudgeProvider,
@@ -98,141 +98,115 @@ def test_customer_admin_can_create_list_and_read_industrial_engine_job(client, s
     assert detail_response.json()["jobId"] == body["jobId"]
 
 
-def test_gemini_text_provider_uses_current_structured_output_payload(monkeypatch, test_settings: Settings) -> None:
-    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
+def test_codex_oauth_text_provider_uses_schema_output_and_sanitized_env(
+    monkeypatch, test_settings: Settings
+) -> None:
+    settings = replace(
+        test_settings,
+        codex_cli_path="codex",
+        codex_text_model="gpt-test",
+        codex_text_timeout_seconds=123,
+        codex_home="/tmp/codex-home",
+    )
     captured: dict[str, object] = {}
+    monkeypatch.setenv("OPENAI_API_KEY", "must-not-leak")
+    monkeypatch.setenv("CODEX_API_KEY", "must-not-leak")
+    monkeypatch.setattr("app.industrial_data_engine.providers.shutil.which", lambda value: "/usr/local/bin/codex")
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured["env"] = kwargs["env"]
+        captured["cwd"] = kwargs["cwd"]
+        captured["timeout"] = kwargs["timeout"]
+        output_path = Path(command[command.index("-o") + 1])
+        schema_path = Path(command[command.index("--output-schema") + 1])
+        captured["schema"] = json.loads(schema_path.read_text(encoding="utf-8"))
+        output_path.write_text('{"name":"ok"}', encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
 
-        def json(self) -> dict:
-            return {"candidates": [{"content": {"parts": [{"text": "{\"name\":\"ok\"}"}]}}]}
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
 
-    def fake_post(url: str, **kwargs):
-        captured["url"] = url
-        captured["json"] = kwargs["json"]
-        return FakeResponse()
-
-    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
-
-    payload = GeminiTextProvider(settings).generate_json(
+    payload = CodexOAuthTextProvider(settings).generate_json(
         purpose="scene_description",
         prompt="Return JSON.",
         schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
     )
 
     assert payload == {"name": "ok"}
-    request_json = captured["json"]
-    assert request_json["generationConfig"]["responseMimeType"] == "application/json"
-    assert request_json["generationConfig"]["temperature"] == 0.2
-    assert request_json["generationConfig"]["maxOutputTokens"] == 4096
-    assert "responseSchema" in request_json["generationConfig"]
-    assert "responseFormat" not in request_json["generationConfig"]
+    command = captured["command"]
+    assert command[:2] == ["/usr/local/bin/codex", "exec"]
+    assert "--ephemeral" in command
+    assert ["--sandbox", "read-only"] == command[command.index("--sandbox") : command.index("--sandbox") + 2]
+    assert "--skip-git-repo-check" in command
+    assert ["--model", "gpt-test"] == command[command.index("--model") : command.index("--model") + 2]
+    assert captured["schema"]["required"] == ["name"]
+    assert captured["timeout"] == 123.0
+    env = captured["env"]
+    assert "OPENAI_API_KEY" not in env
+    assert "CODEX_API_KEY" not in env
+    assert env["CODEX_HOME"] == "/tmp/codex-home"
 
 
-def test_gemini_text_provider_honors_retry_delay_on_quota_429(monkeypatch, test_settings: Settings) -> None:
-    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
-    request = httpx.Request("POST", "https://generativelanguage.googleapis.com/test")
-    responses = [
-        httpx.Response(
-            429,
-            request=request,
-            json={
-                "error": {
-                    "message": "Quota exceeded. Please retry in 51.2s.",
-                    "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "51s"}],
-                }
-            },
-        ),
-        httpx.Response(
-            200,
-            request=request,
-            json={"candidates": [{"content": {"parts": [{"text": "{\"name\":\"ok\"}"}]}}]},
-        ),
-    ]
-    sleeps: list[float] = []
+def test_codex_oauth_text_provider_validates_chatgpt_login(monkeypatch, test_settings: Settings) -> None:
+    monkeypatch.setattr("app.industrial_data_engine.providers.shutil.which", lambda value: "/usr/local/bin/codex")
 
-    def fake_post(*_args, **_kwargs):
-        return responses.pop(0)
+    def fake_run(command, **kwargs):
+        assert command == ["/usr/local/bin/codex", "login", "status"]
+        return subprocess.CompletedProcess(command, 0, "Logged in using ChatGPT", "")
 
-    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
-    monkeypatch.setattr("app.industrial_data_engine.providers.time.sleep", lambda seconds: sleeps.append(seconds))
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
 
-    payload = GeminiTextProvider(settings).generate_json(
-        purpose="scene_description",
-        prompt="Return JSON.",
-        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+    CodexOAuthTextProvider(test_settings).validate_authentication()
+
+
+def test_codex_oauth_text_provider_rejects_non_oauth_login(monkeypatch, test_settings: Settings) -> None:
+    monkeypatch.setattr("app.industrial_data_engine.providers.shutil.which", lambda value: "/usr/local/bin/codex")
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.subprocess.run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "Logged in using API key", ""),
     )
 
-    assert payload == {"name": "ok"}
-    assert sleeps == [52.0]
+    with pytest.raises(IndustrialProviderError, match="codex_oauth_not_authenticated:not_chatgpt_login"):
+        CodexOAuthTextProvider(test_settings).validate_authentication()
 
 
-def test_gemini_text_provider_retries_transient_read_timeout(monkeypatch, test_settings: Settings) -> None:
-    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
-    request = httpx.Request("POST", "https://generativelanguage.googleapis.com/test")
-    calls = {"count": 0}
-    sleeps: list[float] = []
+def test_codex_oauth_text_provider_fails_fast_when_cli_missing(monkeypatch, test_settings: Settings) -> None:
+    monkeypatch.setattr("app.industrial_data_engine.providers.shutil.which", lambda value: None)
 
-    class FakeResponse:
-        def raise_for_status(self) -> None:
-            return None
+    with pytest.raises(IndustrialProviderError, match="missing_codex_cli"):
+        CodexOAuthTextProvider(replace(test_settings, codex_cli_path="missing-codex"))
 
-        def json(self) -> dict:
-            return {"candidates": [{"content": {"parts": [{"text": "{\"name\":\"ok\"}"}]}}]}
 
-    def fake_post(*_args, **_kwargs):
-        calls["count"] += 1
-        if calls["count"] == 1:
-            raise httpx.ReadTimeout("read timed out", request=request)
-        return FakeResponse()
-
-    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
-    monkeypatch.setattr("app.industrial_data_engine.providers.time.sleep", lambda seconds: sleeps.append(seconds))
-
-    payload = GeminiTextProvider(settings).generate_json(
-        purpose="scene_description",
-        prompt="Return JSON.",
-        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+def test_codex_oauth_text_provider_fails_on_nonzero_exit(monkeypatch, test_settings: Settings) -> None:
+    monkeypatch.setattr("app.industrial_data_engine.providers.shutil.which", lambda value: "/usr/local/bin/codex")
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.subprocess.run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 1, "", "boom"),
     )
 
-    assert payload == {"name": "ok"}
-    assert calls["count"] == 2
-    assert sleeps == [2.0]
+    with pytest.raises(IndustrialProviderError, match="codex_text_generation_failed:scene_description:boom"):
+        CodexOAuthTextProvider(test_settings).generate_json(
+            purpose="scene_description",
+            prompt="Return JSON.",
+            schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        )
 
 
-def test_gemini_text_provider_retries_malformed_json_response(monkeypatch, test_settings: Settings) -> None:
-    settings = replace(test_settings, gemini_api_key="gemini-test-key", gemini_text_model="gemini-test-model")
-    calls = {"count": 0}
-    sleeps: list[float] = []
+def test_codex_oauth_text_provider_fails_on_invalid_json(monkeypatch, test_settings: Settings) -> None:
+    monkeypatch.setattr("app.industrial_data_engine.providers.shutil.which", lambda value: "/usr/local/bin/codex")
 
-    class FakeResponse:
-        def __init__(self, text: str) -> None:
-            self._text = text
+    def fake_run(command, **kwargs):
+        Path(command[command.index("-o") + 1]).write_text("not json", encoding="utf-8")
+        return subprocess.CompletedProcess(command, 0, "", "")
 
-        def raise_for_status(self) -> None:
-            return None
+    monkeypatch.setattr("app.industrial_data_engine.providers.subprocess.run", fake_run)
 
-        def json(self) -> dict:
-            return {"candidates": [{"content": {"parts": [{"text": self._text}]}}]}
-
-    def fake_post(*_args, **_kwargs):
-        calls["count"] += 1
-        return FakeResponse('{"name": ') if calls["count"] == 1 else FakeResponse('{"name":"ok"}')
-
-    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
-    monkeypatch.setattr("app.industrial_data_engine.providers.time.sleep", lambda seconds: sleeps.append(seconds))
-
-    payload = GeminiTextProvider(settings).generate_json(
-        purpose="scene_description",
-        prompt="Return JSON.",
-        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
-    )
-
-    assert payload == {"name": "ok"}
-    assert calls["count"] == 2
-    assert sleeps == [2.0]
+    with pytest.raises(IndustrialProviderError, match="codex_text_generation_failed:scene_description:invalid_json"):
+        CodexOAuthTextProvider(test_settings).generate_json(
+            purpose="scene_description",
+            prompt="Return JSON.",
+            schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        )
 
 
 def test_scene_schema_bounds_generated_arrays() -> None:
@@ -578,6 +552,9 @@ def test_full_industrial_engine_pipeline_stage_transitions(client, session_facto
         exported_dataset = IndustrialArtifactStore.from_settings(test_settings).read_bytes(
             f"{job_id}/exports/dataset.jsonl"
         )
+        exported_metadata = IndustrialArtifactStore.from_settings(test_settings).read_bytes(
+            f"{job_id}/exports/metadata.json"
+        )
 
     assert completed is not None
     assert completed.status == "succeeded"
@@ -589,6 +566,8 @@ def test_full_industrial_engine_pipeline_stage_transitions(client, session_facto
     assert "_local_" not in exported_text
     assert "industrial-engine-" not in exported_text
     assert "renders/initial/rgb/" in exported_text
+    assert exported_metadata is not None
+    assert "Codex OAuth / ChatGPT" in json.loads(exported_metadata.decode("utf-8"))["providers"]
 
 
 def test_pipeline_fails_when_final_boxer_outputs_no_objects(
@@ -630,7 +609,7 @@ def test_pipeline_fails_when_final_boxer_outputs_no_objects(
     assert failed.failure_reason == "final_boxer_no_objects_detected"
 
 
-def test_pipeline_fails_when_gemini_incidents_are_empty_objects(
+def test_pipeline_fails_when_codex_incidents_are_empty_objects(
     client, session_factory, test_settings: Settings
 ) -> None:
     with session_factory() as session:
@@ -666,7 +645,7 @@ def test_pipeline_fails_when_gemini_incidents_are_empty_objects(
 
     assert failed is not None
     assert failed.status == "failed"
-    assert failed.current_stage == "generate_industrial_incidents_with_gemini"
+    assert failed.current_stage == "generate_industrial_incidents_with_codex_oauth"
 
 
 class _FakeTextProvider:

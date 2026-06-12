@@ -42,6 +42,8 @@ const cameraModeLabels: Record<(typeof cameraModeOptions)[number], string> = {
 
 const stageLabels: Record<string, string> = {
   validate_environment: '檢查執行環境',
+  generate_factory_scene_description_with_codex_oauth: 'Codex OAuth 產生工廠場景描述',
+  generate_reference_image_prompt_with_codex_oauth: 'Codex OAuth 產生參考影像提示',
   generate_factory_scene_description_with_gemini: '產生工廠場景描述',
   generate_reference_image_prompt_with_gemini: '產生參考影像提示',
   create_world_with_world_labs_marble: '建立 World Labs 3D 場景',
@@ -53,10 +55,14 @@ const stageLabels: Record<string, string> = {
   plan_extra_observation_views: '規劃補充觀測視角',
   render_extra_observations: '渲染補充觀測資料',
   rerun_boxer_and_fuse: '重新標註並融合結果',
+  generate_industrial_incidents_with_codex_oauth: 'Codex OAuth 產生工業異常事件',
+  generate_inspection_tasks_with_codex_oauth: 'Codex OAuth 產生巡檢任務',
   generate_industrial_incidents_with_gemini: '產生工業異常事件',
   generate_inspection_tasks_with_gemini: '產生巡檢任務',
   render_dataset_samples: '建立資料集樣本',
   quality_judge_with_ollama_qwen_vlm: '使用 Ollama Qwen-VL 檢查品質',
+  generate_evidence_cards_with_codex_oauth: 'Codex OAuth 產生證據卡',
+  generate_site_state_json_with_codex_oauth: 'Codex OAuth 產生場域狀態資料',
   generate_evidence_cards_with_gemini: '產生證據卡',
   generate_site_state_json_with_gemini: '產生場域狀態資料',
   export_dataset: '匯出資料集',

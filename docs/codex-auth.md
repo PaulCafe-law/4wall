@@ -1,6 +1,6 @@
 # Codex Authentication
 
-This project does not use an OpenAI API key for Codex development authentication.
+This project does not use an OpenAI API key for Codex authentication.
 
 Use Codex through your ChatGPT account:
 
@@ -12,4 +12,10 @@ You can also sign in through Codex App or the Codex IDE extension with **Continu
 
 Do not put `OPENAI_API_KEY` in `.env` for this project. If Codex asks for an API key, switch the Codex surface to ChatGPT OAuth login instead.
 
-Codex usage is managed by the user's ChatGPT subscription and Codex allowance. The 4WALL backend does not own or meter Codex development usage.
+The Industrial Data Engine worker can also use Codex CLI with ChatGPT OAuth for trusted text JSON generation. Run this once as the worker service user:
+
+```shell
+codex login --device-auth
+```
+
+If the worker uses a non-default auth directory, set `CODEX_HOME` in the worker environment. Treat the Codex auth cache like a password.

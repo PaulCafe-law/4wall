@@ -4,7 +4,7 @@
 
 Industrial Data Engine is a Sprint 3 planner-server and desktop web-app capability. It creates planning and training artifacts for industrial inspection workflows. It is not flight-critical and must not issue real-time flight commands.
 
-The production runtime does not use the OpenAI API, does not require `OPENAI_API_KEY`, and does not use Codex as a production provider. Codex is limited to development, review, QA, security review, and post-run human-assisted inspection.
+The production runtime does not use the OpenAI Platform API, does not require `OPENAI_API_KEY`, and does not use an OpenAI API-key-backed provider. The text JSON stages use Codex CLI authenticated with ChatGPT OAuth on the trusted worker host.
 
 ## Gap Analysis
 
@@ -16,7 +16,7 @@ The production runtime does not use the OpenAI API, does not require `OPENAI_API
 
 ## Providers
 
-- `GeminiTextProvider`: scene JSON, reference prompts, incidents, inspection tasks, Evidence Cards, and SiteState JSON.
+- `CodexOAuthTextProvider`: scene JSON, reference prompts, incidents, inspection tasks, Evidence Cards, and SiteState JSON through `codex exec` with ChatGPT OAuth.
 - `WorldLabsMarbleProvider`: text/image to world generation, operation polling, `.spz` download, panorama, and world metadata.
 - `OllamaQwenVLMQualityJudgeProvider`: calls `OLLAMA_BASE_URL/api/chat` with `OLLAMA_QWEN_VLM_MODEL` and structured JSON output.
 - `GSplatRendererWorker`: calls `planner-server/scripts/industrial_engine/render_gsplat.py` to render RGB/depth outputs from `.spz`.
@@ -41,6 +41,7 @@ As of the first production worker setup, the external worker requirements are:
 
 - Render Postgres external connection string, not the Render internal host.
 - Shared S3 artifact storage credentials.
+- Codex CLI installed and authenticated for the worker service user with `codex login --device-auth`.
 - Local Ollama with `OLLAMA_QWEN_VLM_MODEL=qwen2.5vl:7b`.
 - A real gsplat command that converts World Labs `.spz` plus camera poses into `rgb/` and `depth/` directories.
 - A real Boxer-compatible command that converts rendered `rgb/`, `depth/`, camera poses, and vocabulary into `object_annotations_raw.json` and `object_annotations_3d.json`.
@@ -56,8 +57,8 @@ World Labs `.spz` assets are rendered from the panorama origin. Camera poses mus
 Each job records durable stage state so the API can return progress while the worker handles long-running work.
 
 1. `validate_environment`
-2. `generate_factory_scene_description_with_gemini`
-3. `generate_reference_image_prompt_with_gemini`
+2. `generate_factory_scene_description_with_codex_oauth`
+3. `generate_reference_image_prompt_with_codex_oauth`
 4. `create_world_with_world_labs_marble`
 5. `prepare_metric_world_asset`
 6. `generate_initial_camera_poses`
@@ -67,19 +68,21 @@ Each job records durable stage state so the API can return progress while the wo
 10. `plan_extra_observation_views`
 11. `render_extra_observations`
 12. `rerun_boxer_and_fuse`
-13. `generate_industrial_incidents_with_gemini`
-14. `generate_inspection_tasks_with_gemini`
+13. `generate_industrial_incidents_with_codex_oauth`
+14. `generate_inspection_tasks_with_codex_oauth`
 15. `render_dataset_samples`
 16. `quality_judge_with_ollama_qwen_vlm`
-17. `generate_evidence_cards_with_gemini`
-18. `generate_site_state_json_with_gemini`
+17. `generate_evidence_cards_with_codex_oauth`
+18. `generate_site_state_json_with_codex_oauth`
 19. `export_dataset`
 
 ## Failure Policy
 
 Required provider failures are fail-fast:
 
-- `missing_gemini_api_key`
+- `missing_codex_cli`
+- `codex_oauth_not_authenticated`
+- `codex_text_generation_failed:{purpose}`
 - `missing_worldlabs_api_key`
 - `ollama_qwen_vlm_unavailable`
 - `ollama_qwen_vlm_model_missing:{model}`
@@ -94,6 +97,14 @@ If `OPENAI_API_KEY` exists in the environment, the worker only logs:
 ```text
 This project does not use OpenAI API keys. Use ChatGPT OAuth for Codex development login.
 ```
+
+For production text stages, authenticate the trusted worker service user with:
+
+```shell
+codex login --device-auth
+```
+
+The worker may set `CODEX_HOME` when the Codex auth cache lives outside the default user home.
 
 ## API
 

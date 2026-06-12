@@ -7,8 +7,8 @@ STAGE_STATUSES = {"pending", "running", "succeeded", "failed", "skipped"}
 
 STAGES: tuple[tuple[int, str], ...] = (
     (1, "validate_environment"),
-    (2, "generate_factory_scene_description_with_gemini"),
-    (3, "generate_reference_image_prompt_with_gemini"),
+    (2, "generate_factory_scene_description_with_codex_oauth"),
+    (3, "generate_reference_image_prompt_with_codex_oauth"),
     (4, "create_world_with_world_labs_marble"),
     (5, "prepare_metric_world_asset"),
     (6, "generate_initial_camera_poses"),
@@ -18,12 +18,12 @@ STAGES: tuple[tuple[int, str], ...] = (
     (10, "plan_extra_observation_views"),
     (11, "render_extra_observations"),
     (12, "rerun_boxer_and_fuse"),
-    (13, "generate_industrial_incidents_with_gemini"),
-    (14, "generate_inspection_tasks_with_gemini"),
+    (13, "generate_industrial_incidents_with_codex_oauth"),
+    (14, "generate_inspection_tasks_with_codex_oauth"),
     (15, "render_dataset_samples"),
     (16, "quality_judge_with_ollama_qwen_vlm"),
-    (17, "generate_evidence_cards_with_gemini"),
-    (18, "generate_site_state_json_with_gemini"),
+    (17, "generate_evidence_cards_with_codex_oauth"),
+    (18, "generate_site_state_json_with_codex_oauth"),
     (19, "export_dataset"),
 )
 

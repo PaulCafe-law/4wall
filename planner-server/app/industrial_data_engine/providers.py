@@ -5,9 +5,10 @@ import base64
 import json
 import os
 from pathlib import Path
-import re
+import shutil
 import shlex
 import subprocess
+import tempfile
 import time
 from typing import Any, Protocol
 
@@ -70,68 +71,85 @@ class ProviderBundle:
     ego_planner: PathPlannerWorker | None = None
 
 
-class GeminiTextProvider:
+class CodexOAuthTextProvider:
     def __init__(self, settings: Settings) -> None:
-        if not settings.gemini_api_key:
-            raise IndustrialProviderError("missing_gemini_api_key")
-        self.api_key = settings.gemini_api_key
-        self.model = settings.gemini_text_model
-        self.timeout = 120.0
+        self.executable = _resolve_executable(settings.codex_cli_path)
+        self.model = settings.codex_text_model
+        self.timeout = float(settings.codex_text_timeout_seconds)
+        self.codex_home = settings.codex_home
+
+    def validate_authentication(self) -> None:
+        try:
+            result = subprocess.run(
+                [self.executable, "login", "status"],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=self._env(),
+                timeout=min(self.timeout, 30.0),
+            )
+        except FileNotFoundError as exc:
+            raise IndustrialProviderError("missing_codex_cli") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise IndustrialProviderError("codex_oauth_not_authenticated:login_status_timeout") from exc
+        if result.returncode != 0:
+            detail = _command_excerpt(result)
+            raise IndustrialProviderError(f"codex_oauth_not_authenticated:{detail}")
+        status = f"{result.stdout}\n{result.stderr}"
+        if "chatgpt" not in status.lower():
+            raise IndustrialProviderError("codex_oauth_not_authenticated:not_chatgpt_login")
 
     def generate_json(self, *, purpose: str, prompt: str, schema: dict[str, Any]) -> dict[str, Any]:
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{self.model}:generateContent"
-        payload = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "responseSchema": schema,
-                "temperature": 0.2,
-                "maxOutputTokens": 4096,
-            },
-        }
-        last_http_error: httpx.HTTPStatusError | None = None
-        last_transport_error: httpx.TransportError | None = None
-        last_parse_error: Exception | None = None
-        for attempt in range(1, 7):
+        with tempfile.TemporaryDirectory(prefix=f"codex-text-{purpose}-") as temp_dir:
+            run_dir = Path(temp_dir)
+            schema_path = run_dir / "schema.json"
+            output_path = run_dir / "output.json"
+            schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), encoding="utf-8")
+            command = [
+                self.executable,
+                "exec",
+                "--ephemeral",
+                "--sandbox",
+                "read-only",
+                "--skip-git-repo-check",
+                "--output-schema",
+                str(schema_path),
+                "-o",
+                str(output_path),
+            ]
+            if self.model:
+                command.extend(["--model", self.model])
+            command.append(_codex_text_prompt(purpose=purpose, prompt=prompt, schema=schema))
             try:
-                response = httpx.post(
-                    url,
-                    headers={"x-goog-api-key": self.api_key, "Content-Type": "application/json"},
-                    json=payload,
+                result = subprocess.run(
+                    command,
+                    cwd=run_dir,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    env=self._env(),
                     timeout=self.timeout,
                 )
-                response.raise_for_status()
-                try:
-                    body = response.json()
-                    return _loads_json_object(_extract_gemini_text(body))
-                except (ValueError, IndustrialProviderError) as exc:
-                    last_parse_error = exc
-                    if attempt == 6:
-                        raise IndustrialProviderError(f"{purpose}_gemini_failed:{exc}") from exc
-                    time.sleep(_transport_retry_delay_seconds(attempt))
-            except httpx.HTTPStatusError as exc:
-                last_http_error = exc
-                if exc.response.status_code not in {429, 502, 503, 504} or attempt == 6:
-                    raise IndustrialProviderError(
-                        f"{purpose}_gemini_failed:{exc.response.status_code}:{_error_excerpt(exc.response)}"
-                    ) from exc
-                time.sleep(_retry_delay_seconds(exc.response, attempt))
-            except (httpx.TimeoutException, httpx.TransportError) as exc:
-                last_transport_error = exc
-                if attempt == 6:
-                    raise IndustrialProviderError(f"{purpose}_gemini_failed:{exc}") from exc
-                time.sleep(_transport_retry_delay_seconds(attempt))
+            except FileNotFoundError as exc:
+                raise IndustrialProviderError("missing_codex_cli") from exc
+            except subprocess.TimeoutExpired as exc:
+                raise IndustrialProviderError(f"codex_text_generation_failed:{purpose}:timeout") from exc
+            if result.returncode != 0:
+                raise IndustrialProviderError(f"codex_text_generation_failed:{purpose}:{_command_excerpt(result)}")
+            if not output_path.exists():
+                raise IndustrialProviderError(f"codex_text_generation_failed:{purpose}:output_missing")
+            try:
+                return _loads_json_object(output_path.read_text(encoding="utf-8"))
             except Exception as exc:
-                raise IndustrialProviderError(f"{purpose}_gemini_failed:{exc}") from exc
-        if last_http_error is not None:
-            raise IndustrialProviderError(
-                f"{purpose}_gemini_failed:{last_http_error.response.status_code}:{_error_excerpt(last_http_error.response)}"
-            ) from last_http_error
-        if last_transport_error is not None:
-            raise IndustrialProviderError(f"{purpose}_gemini_failed:{last_transport_error}") from last_transport_error
-        if last_parse_error is not None:
-            raise IndustrialProviderError(f"{purpose}_gemini_failed:{last_parse_error}") from last_parse_error
-        raise IndustrialProviderError(f"{purpose}_gemini_failed:unexpected_empty_retry_loop")
+                raise IndustrialProviderError(f"codex_text_generation_failed:{purpose}:invalid_json:{exc}") from exc
+
+    def _env(self) -> dict[str, str]:
+        env = dict(os.environ)
+        env.pop("OPENAI_API_KEY", None)
+        env.pop("CODEX_API_KEY", None)
+        if self.codex_home:
+            env["CODEX_HOME"] = self.codex_home
+        return env
 
 
 class WorldLabsMarbleProvider:
@@ -413,7 +431,7 @@ class EGOPlannerWorker:
 
 def build_provider_bundle(settings: Settings) -> ProviderBundle:
     return ProviderBundle(
-        text=GeminiTextProvider(settings),
+        text=CodexOAuthTextProvider(settings),
         world=WorldLabsMarbleProvider(settings),
         quality_judge=OllamaQwenVLMQualityJudgeProvider(settings),
         renderer=GSplatRendererWorker(settings),
@@ -453,17 +471,6 @@ def validate_quality_judgement(judgement: dict[str, Any]) -> None:
         raise IndustrialProviderError("quality_judgement_invalid_decision")
 
 
-def _extract_gemini_text(body: dict[str, Any]) -> str:
-    candidates = body.get("candidates") or []
-    if not candidates:
-        raise IndustrialProviderError("gemini_candidates_missing")
-    parts = ((candidates[0].get("content") or {}).get("parts") or [])
-    texts = [part.get("text", "") for part in parts if part.get("text")]
-    if not texts:
-        raise IndustrialProviderError("gemini_text_missing")
-    return "\n".join(texts)
-
-
 def _loads_json_object(value: str) -> dict[str, Any]:
     try:
         payload = json.loads(value)
@@ -480,35 +487,6 @@ def _loads_json_object(value: str) -> dict[str, Any]:
 
 def _error_excerpt(response: httpx.Response) -> str:
     return response.text.strip().replace("\n", " ")[:500]
-
-
-def _retry_delay_seconds(response: httpx.Response, attempt: int) -> float:
-    fallback = min(5 * attempt * attempt, 30)
-    if response.status_code != 429:
-        return fallback
-    try:
-        body = response.json()
-    except ValueError:
-        body = {}
-    details = list(body.get("details") or [])
-    error = body.get("error") if isinstance(body.get("error"), dict) else {}
-    details.extend(error.get("details") or [])
-    for detail in details:
-        retry_delay = str(detail.get("retryDelay") or "")
-        if retry_delay.endswith("s"):
-            try:
-                return min(max(float(retry_delay[:-1]) + 1, fallback), 120)
-            except ValueError:
-                pass
-    message = str(((body.get("error") or {}).get("message")) or response.text)
-    match = re.search(r"retry in ([0-9.]+)s", message, flags=re.IGNORECASE)
-    if match:
-        return min(max(float(match.group(1)) + 1, fallback), 120)
-    return fallback
-
-
-def _transport_retry_delay_seconds(attempt: int) -> float:
-    return float(min(2 * attempt * attempt, 30))
 
 
 def _world_text_prompt(scene_description: dict[str, Any], reference_prompt: dict[str, Any]) -> str:
@@ -533,6 +511,32 @@ def _resolve_python(value: str) -> Path:
         if unix_python.exists():
             return unix_python
     raise IndustrialProviderError("gsplat_python_env_not_found")
+
+
+def _resolve_executable(value: str) -> str:
+    resolved = shutil.which(value)
+    if resolved:
+        return resolved
+    path = Path(value)
+    if path.is_file():
+        return str(path)
+    raise IndustrialProviderError("missing_codex_cli")
+
+
+def _codex_text_prompt(*, purpose: str, prompt: str, schema: dict[str, Any]) -> str:
+    return (
+        "You are the 4WALL Industrial Data Engine text JSON provider. "
+        "Generate only the final JSON object requested by the task. "
+        "Do not inspect files, do not run commands, and do not include Markdown. "
+        "The final response must satisfy the provided JSON schema.\n\n"
+        f"Purpose: {purpose}\n\n"
+        f"JSON schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
+        f"Task:\n{prompt}"
+    )
+
+
+def _command_excerpt(result: subprocess.CompletedProcess[str]) -> str:
+    return (result.stderr.strip() or result.stdout.strip() or "command_failed").replace("\n", " ")[:500]
 
 
 def _format_command_template(command_template: str, **values: Path) -> list[str]:

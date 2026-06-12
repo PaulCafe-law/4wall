@@ -58,8 +58,10 @@ class Settings:
     line_incident_notify_enabled: bool
     web_signup_rate_limit_attempts: int = 5
     web_signup_rate_limit_window_seconds: int = 300
-    gemini_api_key: str | None = None
-    gemini_text_model: str = "gemini-2.5-pro"
+    codex_cli_path: str = "codex"
+    codex_text_model: str | None = None
+    codex_text_timeout_seconds: int = 600
+    codex_home: str | None = None
     worldlabs_api_key: str | None = None
     worldlabs_model: str = "marble-1.1-plus"
     ollama_base_url: str = "http://localhost:11434"
@@ -118,8 +120,10 @@ class Settings:
             line_webhook_enabled=_env_bool("LINE_WEBHOOK_ENABLED", False),
             line_default_group_id=_env_str("LINE_DEFAULT_GROUP_ID"),
             line_incident_notify_enabled=_env_bool("LINE_INCIDENT_NOTIFY_ENABLED", False),
-            gemini_api_key=_env_str("GEMINI_API_KEY"),
-            gemini_text_model=_env_str("GEMINI_TEXT_MODEL", "gemini-2.5-pro") or "gemini-2.5-pro",
+            codex_cli_path=_env_str("CODEX_CLI_PATH", "codex") or "codex",
+            codex_text_model=_env_str("CODEX_TEXT_MODEL"),
+            codex_text_timeout_seconds=_env_int("CODEX_TEXT_TIMEOUT_SECONDS", 600),
+            codex_home=_env_str("CODEX_HOME"),
             worldlabs_api_key=_env_str("WORLDLABS_API_KEY"),
             worldlabs_model=_env_str("WORLDLABS_MODEL", "marble-1.1-plus") or "marble-1.1-plus",
             ollama_base_url=(_env_str("OLLAMA_BASE_URL", "http://localhost:11434") or "http://localhost:11434").rstrip("/"),

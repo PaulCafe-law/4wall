@@ -98,8 +98,8 @@ def run_industrial_engine_job(
             context["providers"] = provider_holder["providers"]
 
             _materialize_inputs(session, store, job.id, workdir / "inputs")
-            _run_stage(session, job, "generate_factory_scene_description_with_gemini", lambda: _stage_scene(context))
-            _run_stage(session, job, "generate_reference_image_prompt_with_gemini", lambda: _stage_reference_prompt(context))
+            _run_stage(session, job, "generate_factory_scene_description_with_codex_oauth", lambda: _stage_scene(context))
+            _run_stage(session, job, "generate_reference_image_prompt_with_codex_oauth", lambda: _stage_reference_prompt(context))
             _run_stage(session, job, "create_world_with_world_labs_marble", lambda: _stage_world(context, workdir))
             _run_stage(session, job, "prepare_metric_world_asset", lambda: _stage_metric_world(context, workdir))
             _run_stage(session, job, "generate_initial_camera_poses", lambda: _stage_initial_camera_poses(context, workdir))
@@ -109,12 +109,12 @@ def run_industrial_engine_job(
             _run_stage(session, job, "plan_extra_observation_views", lambda: _stage_extra_views(context, workdir))
             _run_stage(session, job, "render_extra_observations", lambda: _stage_render(context, workdir, "extra"))
             _run_stage(session, job, "rerun_boxer_and_fuse", lambda: _stage_boxer(context, workdir, "final"))
-            _run_stage(session, job, "generate_industrial_incidents_with_gemini", lambda: _stage_incidents(context))
-            _run_stage(session, job, "generate_inspection_tasks_with_gemini", lambda: _stage_tasks(context))
+            _run_stage(session, job, "generate_industrial_incidents_with_codex_oauth", lambda: _stage_incidents(context))
+            _run_stage(session, job, "generate_inspection_tasks_with_codex_oauth", lambda: _stage_tasks(context))
             _run_stage(session, job, "render_dataset_samples", lambda: _stage_samples(context))
             _run_stage(session, job, "quality_judge_with_ollama_qwen_vlm", lambda: _stage_quality(context))
-            _run_stage(session, job, "generate_evidence_cards_with_gemini", lambda: _stage_evidence_cards(context))
-            _run_stage(session, job, "generate_site_state_json_with_gemini", lambda: _stage_site_state(context))
+            _run_stage(session, job, "generate_evidence_cards_with_codex_oauth", lambda: _stage_evidence_cards(context))
+            _run_stage(session, job, "generate_site_state_json_with_codex_oauth", lambda: _stage_site_state(context))
             exports = _run_stage(session, job, "export_dataset", lambda: _stage_export(context, workdir))
 
             job.status = "succeeded"
@@ -191,6 +191,8 @@ def _validate_environment(
     if os.getenv("OPENAI_API_KEY"):
         logger.info(OPENAI_IGNORED_MESSAGE)
 
+    if hasattr(providers.text, "validate_authentication"):
+        providers.text.validate_authentication()
     if hasattr(providers.quality_judge, "validate_model_available"):
         providers.quality_judge.validate_model_available()
     session.exec(text("SELECT 1"))
@@ -234,7 +236,7 @@ def _stage_reference_prompt(context: dict[str, Any]) -> dict[str, Any]:
     scene = context["scene"]
     prompt = (
         "Generate a rigorous reference image prompt for World Labs / Marble text-to-world. "
-        "Do not request OpenAI image generation. Return only JSON.\n\n"
+        "Do not request image generation. Return only JSON.\n\n"
         f"Scene:\n{json.dumps(scene, ensure_ascii=False)}"
     )
     reference = providers.text.generate_json(purpose="reference_prompt", prompt=prompt, schema=_reference_prompt_schema())
@@ -559,7 +561,7 @@ def _stage_export(context: dict[str, Any], workdir: Path) -> dict[str, Any]:
             "jobId": job.id,
             "mode": job.mode,
             "generatedWorldId": context.get("world", {}).get("world_id"),
-            "providers": ["Gemini", "World Labs / Marble", "Ollama Qwen-VL", "gsplat", "Boxer"],
+            "providers": ["Codex OAuth / ChatGPT", "World Labs / Marble", "Ollama Qwen-VL", "gsplat", "Boxer"],
         },
     )
     rgb_zip = _zip_dir(workdir, context["initial_render_dir"] / "rgb", "rgb_frames.zip")
