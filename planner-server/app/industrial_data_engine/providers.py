@@ -545,6 +545,9 @@ def _codex_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
         if isinstance(value, dict):
             result = {key: visit(item) for key, item in value.items()}
             if result.get("type") == "object" or "properties" in result:
+                properties = result.setdefault("properties", {})
+                if isinstance(properties, dict):
+                    result["required"] = list(properties)
                 result["additionalProperties"] = False
             return result
         if isinstance(value, list):

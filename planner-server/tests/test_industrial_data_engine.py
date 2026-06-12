@@ -150,8 +150,9 @@ def test_codex_oauth_text_provider_uses_schema_output_and_sanitized_env(
     assert command[-1] == "-"
     assert "Purpose: scene_description" in captured["input"]
     assert "Return JSON." in captured["input"]
-    assert captured["schema"]["required"] == ["name"]
+    assert captured["schema"]["required"] == ["name", "details"]
     assert captured["schema"]["additionalProperties"] is False
+    assert captured["schema"]["properties"]["details"]["required"] == ["label"]
     assert captured["schema"]["properties"]["details"]["additionalProperties"] is False
     assert captured["timeout"] == 123.0
     env = captured["env"]
