@@ -104,7 +104,8 @@ class CodexOAuthTextProvider:
             run_dir = Path(temp_dir)
             schema_path = run_dir / "schema.json"
             output_path = run_dir / "output.json"
-            schema_path.write_text(json.dumps(schema, ensure_ascii=False, indent=2), encoding="utf-8")
+            codex_schema = _codex_output_schema(schema)
+            schema_path.write_text(json.dumps(codex_schema, ensure_ascii=False, indent=2), encoding="utf-8")
             command = [
                 self.executable,
                 "exec",
@@ -120,7 +121,7 @@ class CodexOAuthTextProvider:
             if self.model:
                 command.extend(["--model", self.model])
             command.append("-")
-            prompt_text = _codex_text_prompt(purpose=purpose, prompt=prompt, schema=schema)
+            prompt_text = _codex_text_prompt(purpose=purpose, prompt=prompt, schema=codex_schema)
             try:
                 result = subprocess.run(
                     command,
@@ -535,6 +536,20 @@ def _codex_text_prompt(*, purpose: str, prompt: str, schema: dict[str, Any]) -> 
         f"JSON schema:\n{json.dumps(schema, ensure_ascii=False)}\n\n"
         f"Task:\n{prompt}"
     )
+
+
+def _codex_output_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    def visit(value: Any) -> Any:
+        if isinstance(value, dict):
+            result = {key: visit(item) for key, item in value.items()}
+            if result.get("type") == "object" or "properties" in result:
+                result["additionalProperties"] = False
+            return result
+        if isinstance(value, list):
+            return [visit(item) for item in value]
+        return value
+
+    return visit(schema)
 
 
 def _command_excerpt(result: subprocess.CompletedProcess[str]) -> str:

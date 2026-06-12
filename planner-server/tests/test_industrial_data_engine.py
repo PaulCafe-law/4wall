@@ -130,7 +130,14 @@ def test_codex_oauth_text_provider_uses_schema_output_and_sanitized_env(
     payload = CodexOAuthTextProvider(settings).generate_json(
         purpose="scene_description",
         prompt="Return JSON.",
-        schema={"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+        schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "details": {"type": "object", "properties": {"label": {"type": "string"}}},
+            },
+            "required": ["name"],
+        },
     )
 
     assert payload == {"name": "ok"}
@@ -144,6 +151,8 @@ def test_codex_oauth_text_provider_uses_schema_output_and_sanitized_env(
     assert "Purpose: scene_description" in captured["input"]
     assert "Return JSON." in captured["input"]
     assert captured["schema"]["required"] == ["name"]
+    assert captured["schema"]["additionalProperties"] is False
+    assert captured["schema"]["properties"]["details"]["additionalProperties"] is False
     assert captured["timeout"] == 123.0
     env = captured["env"]
     assert "OPENAI_API_KEY" not in env
