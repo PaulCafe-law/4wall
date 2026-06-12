@@ -45,14 +45,20 @@ services:
         sync: false
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
-      - key: GEMINI_API_KEY
+      - key: CODEX_CLI_PATH
         sync: false
-      - key: GEMINI_TEXT_MODEL
-        value: gemini-2.5-pro
+      - key: CODEX_TEXT_MODEL
+        value: gpt-5.5
+      - key: CODEX_TEXT_TIMEOUT_SECONDS
+        value: "600"
+      - key: CODEX_HOME
+        sync: false
       - key: WORLDLABS_API_KEY
         sync: false
       - key: WORLDLABS_MODEL
         value: marble-1.1-plus
+      - key: WORLDLABS_OPERATION_TIMEOUT_SECONDS
+        value: "3600"
       - key: OLLAMA_BASE_URL
         sync: false
       - key: OLLAMA_QWEN_VLM_MODEL
@@ -119,14 +125,20 @@ services:
         sync: false
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
-      - key: GEMINI_API_KEY
+      - key: CODEX_CLI_PATH
         sync: false
-      - key: GEMINI_TEXT_MODEL
-        value: gemini-2.5-pro
+      - key: CODEX_TEXT_MODEL
+        value: gpt-5.5
+      - key: CODEX_TEXT_TIMEOUT_SECONDS
+        value: "600"
+      - key: CODEX_HOME
+        sync: false
       - key: WORLDLABS_API_KEY
         sync: false
       - key: WORLDLABS_MODEL
         value: marble-1.1-plus
+      - key: WORLDLABS_OPERATION_TIMEOUT_SECONDS
+        value: "3600"
       - key: OLLAMA_BASE_URL
         sync: false
       - key: OLLAMA_QWEN_VLM_MODEL
@@ -183,14 +195,20 @@ services:
         sync: false
       - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
         value: "false"
-      - key: GEMINI_API_KEY
+      - key: CODEX_CLI_PATH
         sync: false
-      - key: GEMINI_TEXT_MODEL
-        value: gemini-2.5-pro
+      - key: CODEX_TEXT_MODEL
+        value: gpt-5.5
+      - key: CODEX_TEXT_TIMEOUT_SECONDS
+        value: "600"
+      - key: CODEX_HOME
+        sync: false
       - key: WORLDLABS_API_KEY
         sync: false
       - key: WORLDLABS_MODEL
         value: marble-1.1-plus
+      - key: WORLDLABS_OPERATION_TIMEOUT_SECONDS
+        value: "3600"
       - key: OLLAMA_BASE_URL
         sync: false
       - key: OLLAMA_QWEN_VLM_MODEL
@@ -247,14 +265,20 @@ services:
         sync: false
       - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
         value: "false"
-      - key: GEMINI_API_KEY
+      - key: CODEX_CLI_PATH
         sync: false
-      - key: GEMINI_TEXT_MODEL
-        value: gemini-2.5-pro
+      - key: CODEX_TEXT_MODEL
+        value: gpt-5.5
+      - key: CODEX_TEXT_TIMEOUT_SECONDS
+        value: "600"
+      - key: CODEX_HOME
+        sync: false
       - key: WORLDLABS_API_KEY
         sync: false
       - key: WORLDLABS_MODEL
         value: marble-1.1-plus
+      - key: WORLDLABS_OPERATION_TIMEOUT_SECONDS
+        value: "3600"
       - key: OLLAMA_BASE_URL
         sync: false
       - key: OLLAMA_QWEN_VLM_MODEL
