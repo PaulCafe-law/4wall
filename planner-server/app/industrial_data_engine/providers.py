@@ -380,7 +380,7 @@ class WorldLabsMarbleProvider:
         media_asset = prepared.get("media_asset") or {}
         upload_info = prepared.get("upload_info") or {}
         upload_url = upload_info.get("upload_url")
-        media_id = media_asset.get("id")
+        media_id = media_asset.get("id") or media_asset.get("media_asset_id")
         if not upload_url or not media_id:
             raise IndustrialProviderError("worldlabs_media_upload_prepare_failed")
         response = httpx.request(

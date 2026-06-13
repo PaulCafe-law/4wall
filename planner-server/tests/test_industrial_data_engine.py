@@ -29,6 +29,7 @@ from app.industrial_data_engine.providers import (
     IndustrialProviderError,
     OllamaQwenVLMQualityJudgeProvider,
     ProviderBundle,
+    WorldLabsMarbleProvider,
     validate_quality_judgement,
 )
 from app.industrial_data_engine.storage import IndustrialArtifactStore
@@ -339,6 +340,43 @@ def test_gpt_image_oauth_provider_rejects_small_or_invalid_images(
             reference_prompt={"referenceImagePrompt": "real factory", "negativePrompt": "cartoon"},
             output_dir=tmp_path,
         )
+
+
+def test_worldlabs_upload_accepts_media_asset_id_response(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_settings: Settings
+) -> None:
+    image_path = tmp_path / "reference_image.png"
+    image_path.write_bytes(_png_bytes(width=1024, height=768))
+    provider = WorldLabsMarbleProvider(replace(test_settings, worldlabs_api_key="worldlabs-key"))
+
+    def fake_post_json(path: str, payload: dict) -> dict:
+        assert path == "/media-assets:prepare_upload"
+        assert payload["file_name"] == "reference_image.png"
+        return {
+            "media_asset": {"media_asset_id": "media-123"},
+            "upload_info": {
+                "upload_url": "https://upload.example.test",
+                "upload_method": "PUT",
+                "required_headers": {"x-test": "ok"},
+            },
+        }
+
+    captured: dict[str, object] = {}
+
+    def fake_request(method: str, url: str, **kwargs):
+        captured.update({"method": method, "url": url, **kwargs})
+        return httpx.Response(200, request=httpx.Request(method, url))
+
+    monkeypatch.setattr(provider, "_post_json", fake_post_json)
+    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.request", fake_request)
+
+    media_id = provider._upload_image(image_path)
+
+    assert media_id == "media-123"
+    assert captured["method"] == "PUT"
+    assert captured["url"] == "https://upload.example.test"
+    assert captured["headers"] == {"x-test": "ok"}
+    assert captured["content"] == image_path.read_bytes()
 
 
 def test_scene_schema_bounds_generated_arrays() -> None:
