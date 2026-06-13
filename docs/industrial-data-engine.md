@@ -71,6 +71,18 @@ The health command must exit `0` and print JSON with `authenticated: true`. The 
 
 The worker strips `OPENAI_API_KEY` and `CODEX_API_KEY` from the command environment. If the bridge is missing or unauthenticated, `text_to_world` fails fast; `real_factory_photos_to_world` skips this generated-image stage.
 
+The repo includes a Chrome/Playwright bridge at `planner-server/scripts/industrial_engine/gpt_image_oauth_bridge.mjs`. It is a worker-host adapter around a logged-in ChatGPT browser profile. Configure a wrapper command that exports the worker desktop display, points Node at a local `playwright-core` install, and uses a dedicated user data directory:
+
+```shell
+export GPT_IMAGE_OAUTH_CHROME_PATH=/usr/bin/google-chrome
+export GPT_IMAGE_OAUTH_USER_DATA_DIR=$HOME/4wall-worker/gpt-image-bridge/profile
+export GPT_IMAGE_OAUTH_HEADLESS=false
+export GPT_IMAGE_OAUTH_CDP_URL=http://127.0.0.1:9223
+node planner-server/scripts/industrial_engine/gpt_image_oauth_bridge.mjs --health
+```
+
+This adapter is not an OpenAI Platform API integration and must not receive `OPENAI_API_KEY`. It is also more operationally fragile than a first-party API, so production smoke runs should test `--health` before creating `text_to_world` jobs.
+
 ## Pipeline
 
 Each job records durable stage state so the API can return progress while the worker handles long-running work.
