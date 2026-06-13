@@ -24,7 +24,7 @@ function parseArgs(argv) {
     if (!next || next.startsWith("--")) {
       throw new Error(`missing_value:${value}`);
     }
-    args[key] = next;
+    args[key] = next.replace(/\r+$/, "");
     index += 1;
   }
   return args;
@@ -338,6 +338,75 @@ async function waitForGeneratedImage(page, seenSrcs, timeoutMs) {
   return selected;
 }
 
+async function writeGeneratedImageFromSource(page, outputPath) {
+  const payload = await page.evaluate(async () => {
+    const target = document.querySelector("[data-gpt-image-bridge-target='1']");
+    if (!target) {
+      return { ok: false, error: "generated_image_target_missing" };
+    }
+    const src = target.currentSrc || target.src || "";
+    if (!src) {
+      return { ok: false, error: "generated_image_source_missing" };
+    }
+    const response = await fetch(src, { credentials: "include" });
+    if (!response.ok) {
+      return { ok: false, error: "generated_image_source_fetch_failed", status: response.status, src };
+    }
+    const contentType = response.headers.get("content-type") || "";
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+    }
+    return {
+      ok: true,
+      contentType,
+      src,
+      bytes: bytes.length,
+      base64: btoa(binary),
+      naturalWidth: target.naturalWidth || 0,
+      naturalHeight: target.naturalHeight || 0,
+    };
+  });
+  if (!payload?.ok || !payload.base64) {
+    throw new Error(payload?.error || "generated_image_source_download_failed");
+  }
+  await writeFile(outputPath, Buffer.from(payload.base64, "base64"));
+  delete payload.base64;
+  return payload;
+}
+
+async function writeGeneratedImage(page, outputPath) {
+  try {
+    return { mode: "source_download", ...(await writeGeneratedImageFromSource(page, outputPath)) };
+  } catch (error) {
+    await page.evaluate(() => {
+      const target = document.querySelector("[data-gpt-image-bridge-target='1']");
+      if (!target) {
+        return;
+      }
+      const rect = target.getBoundingClientRect();
+      const minWidth = 768;
+      const minHeight = 512;
+      const scale = Math.max(minWidth / Math.max(rect.width, 1), minHeight / Math.max(rect.height, 1), 1);
+      target.style.width = `${Math.ceil(rect.width * scale)}px`;
+      target.style.height = "auto";
+      target.style.maxWidth = "none";
+      target.style.maxHeight = "none";
+      target.scrollIntoView({ block: "center", inline: "center" });
+    });
+    await page.waitForTimeout(500);
+    await page.locator("[data-gpt-image-bridge-target='1']").screenshot({
+      path: outputPath,
+      type: "png",
+      timeout: 60000,
+    });
+    return { mode: "element_screenshot", fallbackReason: error?.message || String(error) };
+  }
+}
+
 async function generate(args) {
   if (!args.input || !args.output || !args["metadata-output"]) {
     throw new Error("missing_required_generate_args");
@@ -357,11 +426,7 @@ async function generate(args) {
     const prompt = buildPrompt(input);
     await submitPrompt(page, prompt);
     const selected = await waitForGeneratedImage(page, seenSrcs, DEFAULT_TIMEOUT_MS);
-    await page.locator("[data-gpt-image-bridge-target='1']").screenshot({
-      path: args.output,
-      type: "png",
-      timeout: 60000,
-    });
+    const outputImage = await writeGeneratedImage(page, args.output);
     await writeFile(
       args["metadata-output"],
       `${JSON.stringify(
@@ -374,6 +439,7 @@ async function generate(args) {
           requestedSize: input.size,
           returnFormat: input.returnFormat || "png",
           selectedImage: selected,
+          outputImage,
           generatedAt: new Date().toISOString(),
           pageUrl: page.url(),
           bridgeMode: session.mode,
