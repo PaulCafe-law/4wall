@@ -13,6 +13,7 @@ import numpy as np
 
 WORLDLABS_SPZ_WORLD_UP = np.array([0.0, -1.0, 0.0], dtype=np.float32)
 FALLBACK_WORLD_UP = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+SH_C0 = 0.28209479177387814
 
 
 def _load_spz(path: Path):
@@ -33,6 +34,26 @@ def _load_spz(path: Path):
     return data
 
 
+def _configure_cuda_toolchain() -> None:
+    python_bin = str(Path(sys.executable).parent)
+    cuda_home = os.environ.get("CUDA_HOME")
+    if not cuda_home:
+        for candidate in ("/usr/local/cuda", "/usr/local/cuda-12.2", "/usr/local/cuda-12"):
+            if (Path(candidate) / "bin" / "nvcc").exists():
+                cuda_home = candidate
+                os.environ["CUDA_HOME"] = cuda_home
+                break
+    path_parts = [python_bin]
+    if cuda_home:
+        path_parts.insert(0, str(Path(cuda_home) / "bin"))
+        cuda_lib = str(Path(cuda_home) / "lib64")
+        existing_lib = os.environ.get("LD_LIBRARY_PATH", "")
+        os.environ["LD_LIBRARY_PATH"] = f"{cuda_lib}{os.pathsep}{existing_lib}" if existing_lib else cuda_lib
+    path_parts.append(os.environ.get("PATH", ""))
+    os.environ["PATH"] = os.pathsep.join(part for part in path_parts if part)
+    os.environ.setdefault("TORCH_CUDA_ARCH_LIST", "8.6")
+
+
 def _load_spz_with_niantic(path: Path):
     try:
         import spz
@@ -47,13 +68,37 @@ def _load_spz_with_niantic(path: Path):
             colors = sh[:, 0, :]
         else:
             colors = sh
+    positions = _reshape_feature(getattr(cloud, "positions"), name="positions", columns=3)
+    scales = _reshape_feature(getattr(cloud, "scales"), name="scales", columns=3)
+    rotations = _reshape_feature(getattr(cloud, "rotations"), name="rotations", columns=4)
+    alphas = np.asarray(getattr(cloud, "alphas"), dtype=np.float32).squeeze()
+    colors = _reshape_feature(colors, name="colors", columns=3)
+    if np.any(scales <= 0.0):
+        scales = np.exp(scales)
+    rotation_norms = np.linalg.norm(rotations, axis=1, keepdims=True)
+    rotations = rotations / np.maximum(rotation_norms, 1e-6)
+    if np.any((alphas < 0.0) | (alphas > 1.0)):
+        alphas = 1.0 / (1.0 + np.exp(-alphas))
+    if np.any((colors < 0.0) | (colors > 1.0)):
+        colors = np.clip(colors * SH_C0 + 0.5, 0.0, 1.0)
     return SimpleNamespace(
-        means=getattr(cloud, "positions"),
-        scales=getattr(cloud, "scales"),
-        quats=getattr(cloud, "rotations"),
-        opacities=getattr(cloud, "alphas"),
+        means=positions,
+        scales=scales,
+        quats=rotations,
+        opacities=alphas,
         sh0=colors,
     )
+
+
+def _reshape_feature(value, *, name: str, columns: int) -> np.ndarray:
+    array = np.asarray(value, dtype=np.float32)
+    if array.ndim == 1:
+        if array.size % columns != 0:
+            raise RuntimeError(f"{name}_wrong_flat_size:{array.shape}")
+        array = array.reshape((-1, columns))
+    if array.ndim != 2 or array.shape[1] != columns:
+        raise RuntimeError(f"{name}_wrong_shape:{array.shape}")
+    return array.astype(np.float32, copy=False)
 
 
 def _as_numpy(value, *, name: str, dims: int) -> np.ndarray:
@@ -152,7 +197,7 @@ def main() -> int:
     parser.add_argument("--width", type=int, default=768)
     parser.add_argument("--height", type=int, default=512)
     args = parser.parse_args()
-    os.environ["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '')}"
+    _configure_cuda_toolchain()
 
     world_spz = Path(args.world_spz)
     metric_metadata = Path(args.metric_metadata)
