@@ -45,6 +45,51 @@ const partnerCards = [
   },
 ]
 
+const industrialDataSteps = [
+  {
+    title: '生成工業場景',
+    body: '建立工廠、機台區、通道與設備區等場景。',
+  },
+  {
+    title: '模擬異常事件',
+    body: '產生冒煙、漏水、危險區入侵、通道阻塞等稀有事件。',
+  },
+  {
+    title: '自動產生標註',
+    body: '產出影像、事件標籤、mask、bounding box 與 metadata。',
+  },
+  {
+    title: '訓練巡檢模型',
+    body: '在真實資料不足時，持續驗證與優化事件辨識模型。',
+  },
+]
+
+const industrialValueCards = [
+  {
+    title: '補足稀有異常資料',
+    body: '不必等待事故真的發生，也能建立模型訓練資料。',
+  },
+  {
+    title: '降低標註與導入成本',
+    body: '自動產生影像、事件與標註資料，減少前期資料準備時間。',
+  },
+  {
+    title: '強化現場事件辨識',
+    body: '讓第四面牆平台從看見現場，進一步理解現場。',
+  },
+]
+
+const industrialRelationNodes = [
+  '現場管理平台',
+  '需要 AI 看懂事件',
+  '異常資料不足',
+  'Industrial Data Engine',
+  '更好的事件辨識模型',
+  '回到現場管理平台',
+]
+
+const industrialOutputs = ['合成影像與影片', '異常事件資料', '標註資料', '模型訓練集', '模型驗證資料']
+
 function CtaLink({
   href,
   children,
@@ -132,6 +177,9 @@ export function OfficialSitePage() {
             <a className="transition hover:text-chrome-950" href="#services">
               服務內容
             </a>
+            <a className="transition hover:text-chrome-950" href="#industrial-data-engine">
+              AI 資料引擎
+            </a>
             <a className="transition hover:text-chrome-950" href="#workflow">
               系統流程
             </a>
@@ -171,6 +219,21 @@ export function OfficialSitePage() {
               src="/official-assets/hero-field-ai.jpg"
               alt="第四面牆 AI 將無人機巡檢、現場影像與 AI 辨識疊合在工廠場域上"
             />
+          </div>
+
+          <div className="mt-5 flex flex-col gap-4 rounded-[2rem] bg-white px-6 py-5 shadow-[0_18px_70px_rgba(18,24,33,0.08)] md:flex-row md:items-center md:justify-between md:px-8">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-moss-500">Platform AI layer</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold tracking-[-0.045em] text-chrome-950">
+                平台底層 AI 能力建置中
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-chrome-700">
+                4WALL Industrial Data Engine 將協助第四面牆在異常事件資料不足時，仍能訓練與驗證現場事件辨識模型。
+              </p>
+            </div>
+            <CtaLink href="#industrial-data-engine" variant="secondary">
+              了解 Industrial Data Engine
+            </CtaLink>
           </div>
         </section>
 
@@ -220,6 +283,110 @@ export function OfficialSitePage() {
               image="/official-assets/line-agent-card.jpg"
               alt="LINE AI 助手推送工期警示與處理建議的卡片"
             />
+          </div>
+        </section>
+
+        <section id="industrial-data-engine" className="scroll-mt-20 px-4 py-14 md:py-24">
+          <SectionHeading
+            title="4WALL Industrial Data Engine"
+            subtitle="讓現場管理平台從「看見現場」進一步走向「理解現場」。"
+          />
+          <p className="mx-auto mt-5 max-w-4xl text-center text-base leading-8 text-chrome-700 md:text-lg">
+            第四面牆的現場管理平台整合影像、巡檢紀錄、Digital Twin、異常事件與處理流程。為了讓 AI 更穩定地辨識危險區入侵、通道阻塞、漏水、冒煙、儀表板異常與人員靠近高風險區域，我們正在建置平台底層的 AI 訓練資料與模型驗證引擎。
+          </p>
+
+          <div className="mx-auto mt-10 grid max-w-7xl gap-5 lg:grid-cols-[1.08fr_0.92fr]">
+            <article className="overflow-hidden rounded-[2.5rem] bg-white shadow-[0_18px_70px_rgba(18,24,33,0.1)]">
+              <img
+                className="h-full min-h-[25rem] w-full object-cover"
+                src="/official-assets/industrial-data-engine-control-room.png"
+                alt="台灣工業現場工程師正在討論監控影像中異常事件資料不足的問題。"
+                loading="lazy"
+              />
+            </article>
+            <article className="flex flex-col justify-center rounded-[2.5rem] bg-chrome-950 px-7 py-10 text-white shadow-[0_18px_70px_rgba(18,24,33,0.16)] md:px-10">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-moss-300">Data gap</p>
+              <h3 className="mt-3 font-display text-4xl font-semibold tracking-[-0.055em] md:text-6xl">
+                現場影像很多，異常資料很少。
+              </h3>
+              <p className="mt-5 text-base leading-8 text-chrome-200">
+                工業現場每天累積大量正常影像，但真正重要的異常事件發生頻率低、蒐集困難，也不適合為了訓練模型刻意製造事故。
+              </p>
+              <div className="mt-8 flex flex-wrap gap-2">
+                {['異常事件少', '標註成本高', '真實資料難取得'].map((chip) => (
+                  <span key={chip} className="rounded-full bg-white/10 px-4 py-2 text-sm text-chrome-100">
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            </article>
+          </div>
+
+          <div className="mx-auto mt-14 max-w-7xl">
+            <div className="text-center">
+              <h3 className="font-display text-3xl font-semibold tracking-[-0.045em] text-chrome-950 md:text-5xl">
+                資料引擎如何支撐現場事件辨識
+              </h3>
+              <p className="mx-auto mt-3 max-w-3xl text-sm leading-7 text-chrome-700 md:text-base">
+                生成工業場景 → 模擬異常事件 → 自動產生標註 → 訓練巡檢模型
+              </p>
+            </div>
+            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {industrialDataSteps.map((step, index) => (
+                <article key={step.title} className="rounded-[2rem] bg-white px-6 py-7 shadow-[0_18px_70px_rgba(18,24,33,0.08)]">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#eaf6f2] font-mono text-sm font-semibold text-moss-600">
+                    {String(index + 1).padStart(2, '0')}
+                  </div>
+                  <h4 className="mt-5 font-display text-2xl font-semibold tracking-[-0.04em] text-chrome-950">{step.title}</h4>
+                  <p className="mt-3 text-sm leading-6 text-chrome-700">{step.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="mx-auto mt-14 max-w-7xl">
+            <h3 className="text-center font-display text-3xl font-semibold tracking-[-0.045em] text-chrome-950 md:text-5xl">
+              底層資料能力，回到現場管理價值。
+            </h3>
+            <div className="mt-8 grid gap-4 md:grid-cols-3">
+              {industrialValueCards.map((card) => (
+                <article key={card.title} className="rounded-[2rem] bg-white px-6 py-8 shadow-[0_18px_70px_rgba(18,24,33,0.08)]">
+                  <h4 className="font-display text-2xl font-semibold tracking-[-0.04em] text-chrome-950">{card.title}</h4>
+                  <p className="mt-3 text-sm leading-6 text-chrome-700">{card.body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="mx-auto mt-14 grid max-w-7xl gap-5 rounded-[2.5rem] bg-white px-6 py-8 shadow-[0_18px_70px_rgba(18,24,33,0.1)] lg:grid-cols-[1.1fr_0.9fr] lg:px-8 lg:py-10">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                {industrialRelationNodes.map((node, index) => (
+                  <div key={node} className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-4 py-2 text-sm font-medium ${
+                        node === 'Industrial Data Engine'
+                          ? 'bg-chrome-950 text-white'
+                          : 'bg-[#f5f5f7] text-chrome-800'
+                      }`}
+                    >
+                      {node}
+                    </span>
+                    {index < industrialRelationNodes.length - 1 ? <span className="text-chrome-400">→</span> : null}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-7 flex flex-wrap gap-2">
+                {industrialOutputs.map((output) => (
+                  <span key={output} className="rounded-full border border-chrome-200 bg-white px-4 py-2 text-sm text-chrome-700">
+                    {output}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <p className="text-base leading-8 text-chrome-700">
+              Industrial Data Engine 不是獨立的新方向，而是第四面牆現場管理平台的底層 AI 資料能力，協助平台在真實異常資料不足時，仍能持續訓練、驗證與優化事件辨識模型。
+            </p>
           </div>
         </section>
 
