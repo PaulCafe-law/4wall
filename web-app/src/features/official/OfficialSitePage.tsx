@@ -358,35 +358,30 @@ export function OfficialSitePage() {
             </div>
           </div>
 
-          <div className="mx-auto mt-14 grid max-w-7xl gap-5 rounded-[2.5rem] bg-white px-6 py-8 shadow-[0_18px_70px_rgba(18,24,33,0.1)] lg:grid-cols-[1.1fr_0.9fr] lg:px-8 lg:py-10">
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                {industrialRelationNodes.map((node, index) => (
-                  <div key={node} className="flex items-center gap-2">
-                    <span
-                      className={`rounded-full px-4 py-2 text-sm font-medium ${
-                        node === 'Industrial Data Engine'
-                          ? 'bg-chrome-950 text-white'
-                          : 'bg-[#f5f5f7] text-chrome-800'
-                      }`}
-                    >
-                      {node}
-                    </span>
-                    {index < industrialRelationNodes.length - 1 ? <span className="text-chrome-400">→</span> : null}
-                  </div>
-                ))}
-              </div>
-              <div className="mt-7 flex flex-wrap gap-2">
-                {industrialOutputs.map((output) => (
-                  <span key={output} className="rounded-full border border-chrome-200 bg-white px-4 py-2 text-sm text-chrome-700">
-                    {output}
+          <div className="mx-auto mt-14 max-w-7xl rounded-[2.5rem] bg-white px-6 py-8 shadow-[0_18px_70px_rgba(18,24,33,0.1)] lg:px-8 lg:py-10">
+            <div className="flex flex-wrap items-center gap-2">
+              {industrialRelationNodes.map((node, index) => (
+                <div key={node} className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-4 py-2 text-sm font-medium ${
+                      node === 'Industrial Data Engine'
+                        ? 'bg-chrome-950 text-white'
+                        : 'bg-[#f5f5f7] text-chrome-800'
+                    }`}
+                  >
+                    {node}
                   </span>
-                ))}
-              </div>
+                  {index < industrialRelationNodes.length - 1 ? <span className="text-chrome-400">→</span> : null}
+                </div>
+              ))}
             </div>
-            <p className="text-base leading-8 text-chrome-700">
-              Industrial Data Engine 不是獨立的新方向，而是第四面牆現場管理平台的底層 AI 資料能力，協助平台在真實異常資料不足時，仍能持續訓練、驗證與優化事件辨識模型。
-            </p>
+            <div className="mt-7 flex flex-wrap gap-2">
+              {industrialOutputs.map((output) => (
+                <span key={output} className="rounded-full border border-chrome-200 bg-white px-4 py-2 text-sm text-chrome-700">
+                  {output}
+                </span>
+              ))}
+            </div>
           </div>
         </section>
 
