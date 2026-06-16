@@ -7,8 +7,12 @@ on:
       - "shared-schemas/**"
       - "docs/api-spec.md"
       - "docs/auth.md"
+      - "docs/codex-auth.md"
+      - "docs/industrial-data-engine.md"
       - "docs/server-architecture.md"
       - "docs/web-*.md"
+      - ".env.example"
+      - "render.yaml"
       - ".github/workflows/planner-server.yml"
   pull_request:
     paths:
@@ -16,8 +20,12 @@ on:
       - "shared-schemas/**"
       - "docs/api-spec.md"
       - "docs/auth.md"
+      - "docs/codex-auth.md"
+      - "docs/industrial-data-engine.md"
       - "docs/server-architecture.md"
       - "docs/web-*.md"
+      - ".env.example"
+      - "render.yaml"
       - ".github/workflows/planner-server.yml"
 
 jobs:

@@ -10,6 +10,7 @@ import { BillingPage } from '../features/billing/BillingPage'
 import { ControlPlanePage } from '../features/controlplane/ControlPlanePage'
 import { IncidentCenterPage } from '../features/incidents/IncidentCenterPage'
 import { IncidentDetailPage } from '../features/incidents/IncidentDetailPage'
+import { IndustrialDataEnginePage } from '../features/industrial-data-engine/IndustrialDataEnginePage'
 import { LiveOpsPage } from '../features/liveops/LiveOpsPage'
 import { MissionDetailPage } from '../features/missions/MissionDetailPage'
 import { MissionsPage } from '../features/missions/MissionsPage'
@@ -45,6 +46,7 @@ export function AppRoutes() {
                 <Route path="/missions/:missionId" element={<MissionDetailPage />} />
                 <Route path="/incidents" element={<IncidentCenterPage />} />
                 <Route path="/incidents/:incidentId" element={<IncidentDetailPage />} />
+                <Route path="/industrial-data-engine" element={<IndustrialDataEnginePage />} />
                 <Route path="/billing" element={<BillingPage />} />
                 <Route
                   path="/control-plane"

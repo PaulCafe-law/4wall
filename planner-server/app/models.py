@@ -370,6 +370,52 @@ class InspectionReport(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class IndustrialEngineJob(SQLModel, table=True):
+    __tablename__ = "industrial_engine_jobs"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    mode: str = Field(index=True)
+    status: str = Field(default="queued", index=True)
+    current_stage: str | None = Field(default=None, index=True)
+    failure_reason: str | None = None
+    request_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    result_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    exports_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class IndustrialEngineJobStage(SQLModel, table=True):
+    __tablename__ = "industrial_engine_job_stages"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    job_id: str = Field(foreign_key="industrial_engine_jobs.id", index=True)
+    sequence: int = Field(index=True)
+    name: str = Field(index=True)
+    status: str = Field(default="pending", index=True)
+    reason: str | None = None
+    output_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class IndustrialEngineInputAsset(SQLModel, table=True):
+    __tablename__ = "industrial_engine_input_assets"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    job_id: str = Field(foreign_key="industrial_engine_jobs.id", index=True)
+    file_name: str
+    content_type: str
+    storage_key: str
+    size_bytes: int
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class AuditEvent(SQLModel, table=True):
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     organization_id: str | None = Field(default=None, foreign_key="organization.id", index=True)

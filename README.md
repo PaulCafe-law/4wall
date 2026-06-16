@@ -61,17 +61,33 @@ npm run test
 npm run build
 ```
 
+## Codex Authentication
+
+This project uses Codex with ChatGPT OAuth, not an OpenAI API key.
+
+```powershell
+codex login
+```
+
+Do not add `OPENAI_API_KEY` to project `.env` files. See [codex-auth.md](docs/codex-auth.md).
+
+## Runtime Providers
+
+Industrial Data Engine production runtime uses Gemini, World Labs / Marble, Ollama Qwen-VL, gsplat, Boxer, and optional EGO-Planner. It does not use the OpenAI API. See [industrial-data-engine.md](docs/industrial-data-engine.md).
+
 ## Release Paths
 
-- Deploy topology source of truth: [render.yaml](/D:/The%20Fourth%20Wall%20AI/codebase/render.yaml)
-- Deploy and rollback procedure: [web-beta-release-runbook.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-release-runbook.md)
-- Staging/prod topology contract: [deploy-topology.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/deploy-topology.md)
+- Deploy topology source of truth: [render.yaml](render.yaml)
+- Deploy and rollback procedure: [web-beta-release-runbook.md](docs/web-beta-release-runbook.md)
+- Staging/prod topology contract: [deploy-topology.md](docs/deploy-topology.md)
 
 ## Key Docs
 
-- [architecture-building-route-assistant.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/architecture-building-route-assistant.md)
-- [api-spec.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/api-spec.md)
-- [PROD_READINESS_PLAN.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/PROD_READINESS_PLAN.md)
-- [web-beta-scope.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-beta-scope.md)
-- [web-threat-model.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/web-threat-model.md)
-- [deploy-topology.md](/D:/The%20Fourth%20Wall%20AI/codebase/docs/deploy-topology.md)
+- [architecture-building-route-assistant.md](docs/architecture-building-route-assistant.md)
+- [api-spec.md](docs/api-spec.md)
+- [codex-auth.md](docs/codex-auth.md)
+- [industrial-data-engine.md](docs/industrial-data-engine.md)
+- [PROD_READINESS_PLAN.md](docs/PROD_READINESS_PLAN.md)
+- [web-beta-scope.md](docs/web-beta-scope.md)
+- [web-threat-model.md](docs/web-threat-model.md)
+- [deploy-topology.md](docs/deploy-topology.md)

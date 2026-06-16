@@ -1,0 +1,17 @@
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: Googlebot
+User-agent: Bingbot
+User-agent: *
+Allow: /official
+Allow: /official/
+Allow: /official.md
+Allow: /llms.txt
+Allow: /sitemap.xml
+Allow: /official-assets/
+Allow: /assets/
+Allow: /favicon.svg
+Disallow: /
+
+Sitemap: https://four-wall-web.onrender.com/sitemap.xml

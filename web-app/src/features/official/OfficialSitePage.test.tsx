@@ -24,8 +24,25 @@ describe('OfficialSitePage', () => {
         '透過無人機、固定攝影機與 AI Agent 的無縫整合，為工廠與工地打造專屬的 Digital Twin，實現即時通報、精準追蹤與歷史回放的智慧大腦。',
       ),
     ).toBeInTheDocument()
-    expect(screen.getByText('智慧工地巡檢與風險管理')).toBeInTheDocument()
-    expect(screen.getByText('日常營運的虛擬工廠 Digital Twin')).toBeInTheDocument()
+    expect(document.querySelector('img[src="/official-assets/construction-plan.png"]')).toBeInTheDocument()
+    expect(document.querySelector('img[src="/official-assets/dashboard-bim.png"]')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'AI 資料引擎' })).toHaveAttribute('href', '#industrial-data-engine')
+    expect(screen.getByRole('link', { name: '了解 Industrial Data Engine' })).toHaveAttribute(
+      'href',
+      '#industrial-data-engine',
+    )
+    expect(document.querySelector('#industrial-data-engine')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '4WALL Industrial Data Engine' })).toBeInTheDocument()
+    expect(screen.getByText('讓現場管理平台從「看見現場」進一步走向「理解現場」。')).toBeInTheDocument()
+    expect(screen.getByText('平台底層 AI 能力建置中')).toBeInTheDocument()
+    expect(screen.getByText('資料引擎如何支撐現場事件辨識')).toBeInTheDocument()
+    expect(screen.getByText('底層資料能力，回到現場管理價值。')).toBeInTheDocument()
+    expect(screen.getByText('Industrial Data Engine')).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', {
+        name: '台灣工業現場工程師正在討論監控影像中異常事件資料不足的問題。',
+      }),
+    ).toHaveAttribute('src', '/official-assets/industrial-data-engine-control-room.png')
     expect(screen.getByRole('heading', { name: '合作機構' })).toBeInTheDocument()
     expect(screen.getByText('4wall AI 在建立下一代工廠及工地 AI native 系統。')).toBeInTheDocument()
     expect(screen.getByText('成大建築系')).toBeInTheDocument()
@@ -39,13 +56,15 @@ describe('OfficialSitePage', () => {
     ).toHaveAttribute('src', '/official-assets/hero-field-ai.jpg')
     expect(screen.getByRole('img', { name: '工地分期規劃與動線管理示意圖' })).toHaveAttribute(
       'src',
-      '/official-assets/construction-plan.jpg',
+      '/official-assets/construction-plan.png',
     )
     expect(screen.getByRole('link', { name: '4wallaitech@gmail.com' })).toHaveAttribute(
       'href',
       'mailto:4wallaitech@gmail.com',
     )
     expect(screen.getByRole('link', { name: '進入管理平台' })).toHaveAttribute('href', '/login')
+    expect(document.body).not.toHaveTextContent('新服務線')
+    expect(document.body).not.toHaveTextContent('pivot')
     expect(document.body).not.toHaveTextContent(['閉', '環'].join(''))
     expect(document.body).not.toHaveTextContent(['場域', '驗證'].join(''))
   })
@@ -58,14 +77,18 @@ describe('OfficialSitePage', () => {
       { route: '/official' },
     )
 
-    expect(document.title).toBe('第四面牆 AI｜工地巡檢與虛擬工廠 Digital Twin')
+    expect(document.title).toBe('第四面牆 AI｜工地與工廠現場管理、Digital Twin 與 AI 資料引擎')
     expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
       'content',
-      '第四面牆 AI 提供智慧工地巡檢、現場影像監測、異常事件通報與虛擬工廠 Digital Twin 服務，協助管理者遠端掌握真實場域狀態。',
+      '第四面牆 AI 整合工地與工廠影像、巡檢紀錄、Digital Twin、事件追蹤與 LINE 通報，並建置 Industrial Data Engine 作為現場事件辨識模型的底層 AI 訓練資料與驗證能力。',
     )
     expect(document.head.querySelector('meta[property="og:title"]')).toHaveAttribute(
       'content',
-      '第四面牆 AI｜工地巡檢與虛擬工廠 Digital Twin',
+      '第四面牆 AI｜工地與工廠現場管理、Digital Twin 與 AI 資料引擎',
+    )
+    expect(document.head.querySelector('meta[property="og:description"]')).toHaveAttribute(
+      'content',
+      '第四面牆 AI 整合工地與工廠影像、巡檢紀錄、Digital Twin、事件追蹤與 LINE 通報，並建置 Industrial Data Engine 作為現場事件辨識模型的底層 AI 訓練資料與驗證能力。',
     )
   })
 })

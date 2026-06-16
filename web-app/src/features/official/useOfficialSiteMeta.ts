@@ -1,8 +1,8 @@
 import { useEffect } from 'react'
 
-const OFFICIAL_TITLE = '第四面牆 AI｜工地巡檢與虛擬工廠 Digital Twin'
+const OFFICIAL_TITLE = '第四面牆 AI｜工地與工廠現場管理、Digital Twin 與 AI 資料引擎'
 const OFFICIAL_DESCRIPTION =
-  '第四面牆 AI 提供智慧工地巡檢、現場影像監測、異常事件通報與虛擬工廠 Digital Twin 服務，協助管理者遠端掌握真實場域狀態。'
+  '第四面牆 AI 整合工地與工廠影像、巡檢紀錄、Digital Twin、事件追蹤與 LINE 通報，並建置 Industrial Data Engine 作為現場事件辨識模型的底層 AI 訓練資料與驗證能力。'
 
 function ensureMeta(selector: string, create: () => HTMLMetaElement) {
   const existing = document.head.querySelector<HTMLMetaElement>(selector)

@@ -764,3 +764,50 @@ export interface IncidentDailySummary {
   unhandledIncidents: Incident[]
   lineSummaryMessage: string
 }
+
+export type IndustrialEngineMode = 'text_to_world' | 'real_factory_photos_to_world'
+export type IndustrialEngineJobStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+
+export interface IndustrialEngineStage {
+  sequence: number
+  name: string
+  status: string
+  reason: string | null
+  output: Record<string, unknown>
+  startedAt: string | null
+  completedAt: string | null
+}
+
+export interface IndustrialEngineInputAsset {
+  inputAssetId: string
+  fileName: string
+  contentType: string
+  sizeBytes: number
+  createdAt: string
+}
+
+export interface IndustrialEngineExport {
+  artifactName: string
+  downloadUrl: string
+  contentType: string
+  sizeBytes: number
+}
+
+export interface IndustrialEngineJob {
+  jobId: string
+  organizationId: string
+  siteId: string | null
+  status: IndustrialEngineJobStatus
+  mode: IndustrialEngineMode
+  currentStage: string | null
+  failureReason: string | null
+  request: Record<string, unknown>
+  result: Record<string, unknown>
+  stages: IndustrialEngineStage[]
+  inputs: IndustrialEngineInputAsset[]
+  exports: IndustrialEngineExport[]
+  createdAt: string
+  updatedAt: string
+  startedAt: string | null
+  completedAt: string | null
+}

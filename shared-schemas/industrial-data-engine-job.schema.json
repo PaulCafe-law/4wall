@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://4wall.ai/schemas/industrial-data-engine-job.schema.json",
+  "title": "4WALL Industrial Data Engine Job",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "organizationId": { "type": "string", "minLength": 1 },
+    "siteId": { "type": ["string", "null"] },
+    "mode": {
+      "type": "string",
+      "enum": ["text_to_world", "real_factory_photos_to_world"]
+    },
+    "factoryAreaType": { "type": "string", "minLength": 1 },
+    "incidentTypes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "cameraModes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": []
+    },
+    "notes": { "type": "string", "default": "" },
+    "qualityThreshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.7
+    },
+    "photos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fileName": { "type": "string" },
+          "contentType": { "type": "string" },
+          "sizeBytes": { "type": "integer", "minimum": 1 }
+        },
+        "required": ["fileName", "contentType", "sizeBytes"]
+      },
+      "default": []
+    }
+  },
+  "required": ["organizationId", "mode", "factoryAreaType"]
+}

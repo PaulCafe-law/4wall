@@ -4,14 +4,24 @@ on:
   push:
     paths:
       - "web-app/**"
+      - "shared-schemas/**"
+      - "docs/codex-auth.md"
+      - "docs/industrial-data-engine.md"
       - "docs/web-*.md"
       - "docs/deploy-topology.md"
+      - ".env.example"
+      - "render.yaml"
       - ".github/workflows/web-app.yml"
   pull_request:
     paths:
       - "web-app/**"
+      - "shared-schemas/**"
+      - "docs/codex-auth.md"
+      - "docs/industrial-data-engine.md"
       - "docs/web-*.md"
       - "docs/deploy-topology.md"
+      - ".env.example"
+      - "render.yaml"
       - ".github/workflows/web-app.yml"
 
 jobs:

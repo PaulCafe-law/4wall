@@ -21,6 +21,7 @@ import type {
   IncidentSeverity,
   IncidentSource,
   IncidentStatus,
+  IndustrialEngineJob,
   LiveFlightDetail,
   LiveFlightSummary,
   MissionDetail,
@@ -59,7 +60,7 @@ async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   if (options.token) {
     headers.set('Authorization', `Bearer ${options.token}`)
   }
-  if (options.body && !headers.has('Content-Type')) {
+  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json')
   }
 
@@ -421,6 +422,16 @@ export const api = {
   listControlPlaneAlerts: (token: string) =>
     apiFetch<AlertCenterItem[]>('/v1/control-plane/alerts', { token }),
   listSites: (token: string) => apiFetch<Site[]>('/v1/sites', { token }),
+  listIndustrialEngineJobs: (token: string) =>
+    apiFetch<IndustrialEngineJob[]>('/v1/industrial-data-engine/jobs', { token }),
+  getIndustrialEngineJob: (token: string, jobId: string) =>
+    apiFetch<IndustrialEngineJob>(`/v1/industrial-data-engine/jobs/${jobId}`, { token }),
+  createIndustrialEngineJob: (token: string, payload: FormData) =>
+    apiFetch<IndustrialEngineJob>('/v1/industrial-data-engine/jobs', {
+      method: 'POST',
+      token,
+      body: payload,
+    }),
   getSite: (token: string, siteId: string) => apiFetch<Site>(`/v1/sites/${siteId}`, { token }),
   createSite: (token: string, payload: SitePayload) =>
     apiFetch<Site>('/v1/sites', {
