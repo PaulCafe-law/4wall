@@ -4,6 +4,8 @@ server {
 
     root /usr/share/nginx/html;
     index index.html;
+    charset utf-8;
+    charset_types text/html text/xml text/plain text/markdown application/xml application/rss+xml application/javascript application/json;
 
     location = /healthz {
         access_log off;
@@ -11,9 +13,60 @@ server {
         return 200 'ok';
     }
 
+    location = /robots.txt {
+        try_files /robots.txt =404;
+        default_type text/plain;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    location = /llms.txt {
+        try_files /llms.txt =404;
+        default_type text/plain;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    location = /official.md {
+        try_files /official.md =404;
+        default_type text/markdown;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    location = /sitemap.xml {
+        try_files /sitemap.xml =404;
+        default_type application/xml;
+        add_header Cache-Control "public, max-age=3600";
+    }
+
+    location = /official {
+        try_files /official/index.html =404;
+        add_header Cache-Control "no-store";
+    }
+
+    location = /official/ {
+        try_files /official/index.html =404;
+        add_header Cache-Control "no-store";
+    }
+
+    location /official-assets/ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=86400";
+    }
+
     location /assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    location = / {
+        try_files /index.html =404;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+    }
+
+    location ~ ^/(login|invite|overview|sites|site-map|missions|incidents|industrial-data-engine|billing|control-plane|live-ops|organizations|support|audit)(/|$) {
+        try_files /index.html =404;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     }
 
     location / {

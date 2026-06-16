@@ -190,7 +190,11 @@ export function OfficialSitePage() {
               聯絡我們
             </a>
           </nav>
-          <Link className="rounded-full bg-chrome-950 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-chrome-800" to="/login">
+          <Link
+            className="rounded-full bg-chrome-950 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-chrome-800"
+            rel="nofollow"
+            to="/login"
+          >
             進入管理平台
           </Link>
         </div>
