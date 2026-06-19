@@ -34,6 +34,7 @@ import type {
   AlertCenterItem,
   SupportQueueItem,
   SupportQueueAction,
+  CameraDeviceList,
   TelemetryBatchRecord,
   WebSession,
 } from './types'
@@ -417,6 +418,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getOverview: (token: string) => apiFetch<Overview>('/v1/web/overview', { token }),
+  listCameras: (token: string) => apiFetch<CameraDeviceList>('/v1/cameras', { token }),
   getControlPlaneDashboard: (token: string) =>
     apiFetch<ControlPlaneDashboard>('/v1/control-plane/dashboard', { token }),
   listControlPlaneAlerts: (token: string) =>
@@ -679,6 +681,10 @@ export const api = {
     }),
   fetchArtifactBlob: async (token: string, path: string) => {
     const response = await artifactFetch(path, token)
+    return response.blob()
+  },
+  fetchCameraLatestFrameBlob: async (token: string, cameraId: string) => {
+    const response = await artifactFetch(`/v1/cameras/${cameraId}/latest-frame/image`, token)
     return response.blob()
   },
 }

@@ -329,6 +329,70 @@ def test_camera_health_list_is_org_scoped_and_counts_frames(client, session_fact
     assert blocked.status_code == 403
 
 
+def test_latest_frame_image_is_web_org_scoped(client, session_factory) -> None:
+    token = "fwcam_latest_frame"
+    frame_bytes = b"\xff\xd8latest-frame\xff\xd9"
+    checksum = hashlib.sha256(frame_bytes).hexdigest()
+    with session_factory() as session:
+        org_a = seed_organization(session, name="Latest Frame A")
+        org_b = seed_organization(session, name="Latest Frame B")
+        site = seed_site(session, organization_id=org_a.id, name="Latest Frame Site")
+        camera = _seed_camera(session, org_a.id, site.id, token=token)
+        camera_id = camera.id
+        seed_user(session, email="admin@latest-a.test", password=PASSWORD, org_roles=[(org_a.id, "customer_admin")])
+        seed_user(session, email="admin@latest-b.test", password=PASSWORD, org_roles=[(org_b.id, "customer_admin")])
+        session.commit()
+
+    camera_headers = {"Authorization": f"Bearer {token}"}
+    intent = client.post(
+        "/v1/camera-ingest/upload-intents",
+        headers=camera_headers,
+        json={
+            "frameId": "latest-frame",
+            "capturedAt": "2026-06-19T03:10:00Z",
+            "contentType": "image/jpeg",
+            "checksumSha256": checksum,
+            "sizeBytes": len(frame_bytes),
+        },
+    )
+    assert intent.status_code == 200, intent.text
+    assert client.put(intent.json()["uploadUrl"], headers=camera_headers, content=frame_bytes).status_code == 204
+    complete = client.post(
+        "/v1/camera-ingest/frames/latest-frame/complete",
+        headers=camera_headers,
+        json={"checksumSha256": checksum, "sizeBytes": len(frame_bytes)},
+    )
+    assert complete.status_code == 200, complete.text
+
+    admin_headers, _ = login_web(client, email="admin@latest-a.test", password=PASSWORD)
+    image = client.get(f"/v1/cameras/{camera_id}/latest-frame/image", headers=admin_headers)
+    assert image.status_code == 200, image.text
+    assert image.content == frame_bytes
+    assert image.headers["content-type"] == "image/jpeg"
+    assert image.headers["cache-control"] == "private, no-store"
+    assert image.headers["x-camera-frame-id"] == "latest-frame"
+
+    other_headers, _ = login_web(client, email="admin@latest-b.test", password=PASSWORD)
+    blocked = client.get(f"/v1/cameras/{camera_id}/latest-frame/image", headers=other_headers)
+    assert blocked.status_code == 403
+
+
+def test_latest_frame_image_returns_404_without_uploaded_frame(client, session_factory) -> None:
+    token = "fwcam_no_latest"
+    with session_factory() as session:
+        org = seed_organization(session, name="No Latest Org")
+        camera = _seed_camera(session, org.id, None, token=token)
+        camera_id = camera.id
+        seed_user(session, email="admin@no-latest.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        session.commit()
+
+    admin_headers, _ = login_web(client, email="admin@no-latest.test", password=PASSWORD)
+    response = client.get(f"/v1/cameras/{camera_id}/latest-frame/image", headers=admin_headers)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "camera_latest_frame_not_found"
+
+
 def _seed_camera(session, organization_id: str, site_id: str | None, *, token: str) -> CameraDevice:
     camera = CameraDevice(
         organization_id=organization_id,

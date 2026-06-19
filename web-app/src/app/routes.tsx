@@ -7,6 +7,7 @@ import { AuditPage } from '../features/audit/AuditPage'
 import { InvitePage } from '../features/auth/InvitePage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { BillingPage } from '../features/billing/BillingPage'
+import { CamerasPage } from '../features/cameras/CamerasPage'
 import { ControlPlanePage } from '../features/controlplane/ControlPlanePage'
 import { IncidentCenterPage } from '../features/incidents/IncidentCenterPage'
 import { IncidentDetailPage } from '../features/incidents/IncidentDetailPage'
@@ -40,6 +41,7 @@ export function AppRoutes() {
                 <Route path="/overview" element={<OverviewPage />} />
                 <Route path="/sites" element={<SitesPage />} />
                 <Route path="/sites/:siteId" element={<SitesPage />} />
+                <Route path="/cameras" element={<CamerasPage />} />
                 <Route path="/site-map" element={<SiteMapPage />} />
                 <Route path="/missions" element={<MissionsPage />} />
                 <Route path="/missions/new" element={<PlannerPage />} />

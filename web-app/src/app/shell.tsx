@@ -7,6 +7,7 @@ import { formatRole } from '../lib/presentation'
 const customerLinks = [
   { to: '/overview', label: '總覽' },
   { to: '/sites', label: '場域' },
+  { to: '/cameras', label: '固定攝影機' },
   { to: '/site-map', label: '場域地圖' },
   { to: '/missions', label: '任務' },
   { to: '/incidents', label: '異常事件' },
