@@ -23,6 +23,9 @@ JPEG frame and refreshes it on the same cadence as the Pi agent.
 - Refresh camera metadata and image blobs every 10 seconds.
 - Show operational status: last heartbeat, last frame time, latest frame id,
   upload status, analysis status, and counts.
+- Treat the camera-burned OSD timestamp as untrusted. The Pi agent overlays the
+  Pi system time onto uploaded frames so operators see the capture time even
+  when the camera clock is reset or unsynchronized.
 
 ## Explicit Non-Goals
 
