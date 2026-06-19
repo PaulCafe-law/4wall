@@ -17,6 +17,7 @@ from app.providers import MockRouteProvider, OsmOsrmRouteProvider, RouteProvider
 from app.rate_limit import RateLimiter
 from app.routers import (
     auth_router,
+    camera_ingest_router,
     incidents_router,
     industrial_data_engine_router,
     inspection_router,
@@ -73,6 +74,7 @@ def build_app(
     app.state.session_factory = session_factory
     app.state.route_provider = provider
     app.state.corridor_generator = generator
+    app.state.artifact_storage = storage
     app.state.artifact_service = artifact_service
     app.state.rate_limiter = RateLimiter()
 
@@ -103,6 +105,7 @@ def build_app(
         )
 
     app.include_router(auth_router)
+    app.include_router(camera_ingest_router)
     app.include_router(inspection_router)
     app.include_router(incidents_router)
     app.include_router(industrial_data_engine_router)

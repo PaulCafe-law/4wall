@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Protocol
 
 import boto3
+from botocore.exceptions import ClientError
 
 from app.config import Settings
 
@@ -24,6 +25,17 @@ class ArtifactStorage(Protocol):
     def write(self, *, key: str, data: bytes, content_type: str, cache_control: str) -> StoredArtifact: ...
 
     def read(self, key: str) -> bytes | None: ...
+
+    def delete(self, key: str) -> None: ...
+
+    def create_presigned_put_url(
+        self,
+        *,
+        key: str,
+        content_type: str,
+        cache_control: str,
+        expires_in_seconds: int,
+    ) -> str | None: ...
 
 
 class LocalFileArtifactStorage:
@@ -49,6 +61,19 @@ class LocalFileArtifactStorage:
         if not path.exists():
             return None
         return path.read_bytes()
+
+    def delete(self, key: str) -> None:
+        (self.root / key).unlink(missing_ok=True)
+
+    def create_presigned_put_url(
+        self,
+        *,
+        key: str,
+        content_type: str,
+        cache_control: str,
+        expires_in_seconds: int,
+    ) -> str | None:
+        return None
 
 
 class S3ArtifactStorage:
@@ -91,4 +116,37 @@ class S3ArtifactStorage:
             response = self.client.get_object(Bucket=self.bucket, Key=key)
         except self.client.exceptions.NoSuchKey:
             return None
+        except ClientError as exc:
+            if _is_missing_object_error(exc):
+                return None
+            raise
         return response["Body"].read()
+
+    def delete(self, key: str) -> None:
+        self.client.delete_object(Bucket=self.bucket, Key=key)
+
+    def create_presigned_put_url(
+        self,
+        *,
+        key: str,
+        content_type: str,
+        cache_control: str,
+        expires_in_seconds: int,
+    ) -> str | None:
+        return self.client.generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self.bucket,
+                "Key": key,
+                "ContentType": content_type,
+                "CacheControl": cache_control,
+            },
+            ExpiresIn=expires_in_seconds,
+        )
+
+
+def _is_missing_object_error(exc: ClientError) -> bool:
+    error = exc.response.get("Error", {})
+    code = str(error.get("Code", "")).lower()
+    status_code = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return code in {"nosuchkey", "notfound", "404"} or status_code == 404

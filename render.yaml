@@ -324,6 +324,86 @@ services:
       - key: EGO_PLANNER_COMMAND
         sync: false
 
+  - type: worker
+    name: four-wall-camera-analysis-worker-staging
+    runtime: docker
+    rootDir: planner-server
+    startCommand: python -m app.camera_analysis_worker
+    autoDeployTrigger: commit
+    envVars:
+      - key: BUILDING_ROUTE_ENVIRONMENT
+        value: staging
+      - key: BUILDING_ROUTE_APP_ORIGIN
+        sync: false
+      - key: BUILDING_ROUTE_DATABASE_URL
+        sync: false
+      - key: BUILDING_ROUTE_AUTH_SECRET_KEY
+        sync: false
+      - key: BUILDING_ROUTE_ARTIFACT_BACKEND
+        value: s3
+      - key: BUILDING_ROUTE_S3_BUCKET
+        sync: false
+      - key: BUILDING_ROUTE_S3_ENDPOINT_URL
+        sync: false
+      - key: BUILDING_ROUTE_S3_REGION
+        sync: false
+      - key: BUILDING_ROUTE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BUILDING_ROUTE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+      - key: CAMERA_ANALYSIS_PROVIDER
+        value: noop
+      - key: CAMERA_ANALYSIS_OLLAMA_BASE_URL
+        sync: false
+      - key: CAMERA_ANALYSIS_OLLAMA_MODEL
+        value: qwen2.5vl:7b
+      - key: CAMERA_ANALYSIS_OLLAMA_AUTH_TOKEN
+        sync: false
+      - key: CAMERA_ANALYSIS_TIMEOUT_SECONDS
+        value: "120"
+
+  - type: worker
+    name: four-wall-camera-analysis-worker
+    runtime: docker
+    rootDir: planner-server
+    startCommand: python -m app.camera_analysis_worker
+    autoDeployTrigger: "off"
+    envVars:
+      - key: BUILDING_ROUTE_ENVIRONMENT
+        value: production
+      - key: BUILDING_ROUTE_APP_ORIGIN
+        sync: false
+      - key: BUILDING_ROUTE_DATABASE_URL
+        sync: false
+      - key: BUILDING_ROUTE_AUTH_SECRET_KEY
+        sync: false
+      - key: BUILDING_ROUTE_ARTIFACT_BACKEND
+        value: s3
+      - key: BUILDING_ROUTE_S3_BUCKET
+        sync: false
+      - key: BUILDING_ROUTE_S3_ENDPOINT_URL
+        sync: false
+      - key: BUILDING_ROUTE_S3_REGION
+        sync: false
+      - key: BUILDING_ROUTE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BUILDING_ROUTE_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BUILDING_ROUTE_BOOTSTRAP_OPERATOR_ENABLED
+        value: "false"
+      - key: CAMERA_ANALYSIS_PROVIDER
+        value: noop
+      - key: CAMERA_ANALYSIS_OLLAMA_BASE_URL
+        sync: false
+      - key: CAMERA_ANALYSIS_OLLAMA_MODEL
+        value: qwen2.5vl:7b
+      - key: CAMERA_ANALYSIS_OLLAMA_AUTH_TOKEN
+        sync: false
+      - key: CAMERA_ANALYSIS_TIMEOUT_SECONDS
+        value: "120"
+
   - type: web
     name: four-wall-web-staging
     runtime: static

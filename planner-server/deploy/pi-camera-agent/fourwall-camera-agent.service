@@ -1,0 +1,22 @@
+[Unit]
+Description=4WALL Factory Camera Agent
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=fourwall-camera
+Group=fourwall-camera
+EnvironmentFile=/etc/fourwall-camera-agent.env
+WorkingDirectory=/opt/fourwall/planner-server
+ExecStart=/usr/bin/python3 /opt/fourwall/planner-server/scripts/camera_agent.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/fourwall-camera-agent
+
+[Install]
+WantedBy=multi-user.target

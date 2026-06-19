@@ -6,9 +6,9 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
 
-from app.models import OrganizationMembership, OperatorAccount, UserAccount
+from app.models import CameraDevice, OrganizationMembership, OperatorAccount, UserAccount
 from app.rate_limit import RateLimiter
-from app.security import AuthError, verify_access_token, verify_web_access_token
+from app.security import AuthError, hash_camera_device_token, verify_access_token, verify_web_access_token
 
 
 auth_scheme = HTTPBearer(auto_error=False)
@@ -63,6 +63,10 @@ def get_artifact_service(request: Request):
     return request.app.state.artifact_service
 
 
+def get_artifact_storage(request: Request):
+    return request.app.state.artifact_storage
+
+
 def get_route_provider(request: Request):
     return request.app.state.route_provider
 
@@ -115,6 +119,19 @@ def get_current_web_user(
         session.exec(select(OrganizationMembership).where(OrganizationMembership.user_id == user.id)).all()
     )
     return CurrentWebUser(user=user, memberships=memberships)
+
+
+def get_current_camera_device(
+    credentials: HTTPAuthorizationCredentials | None = Depends(auth_scheme),
+    session: Session = Depends(get_session),
+) -> CameraDevice:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing_bearer_token")
+    token_hash = hash_camera_device_token(credentials.credentials)
+    camera = session.exec(select(CameraDevice).where(CameraDevice.device_token_hash == token_hash)).first()
+    if camera is None or camera.status != "active":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="camera_device_unauthorized")
+    return camera
 
 
 def get_current_actor(

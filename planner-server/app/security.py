@@ -15,6 +15,7 @@ from app.models import OperatorAccount, RefreshToken, UserAccount, WebRefreshTok
 
 PBKDF2_ITERATIONS = 390_000
 WEB_REFRESH_COOKIE_NAME = "fw_refresh"
+CAMERA_DEVICE_TOKEN_PREFIX = "fwcam_"
 
 
 class AuthError(RuntimeError):
@@ -182,6 +183,18 @@ def revoke_web_refresh_token(session: Session, token_id: str) -> None:
 
 def create_invite_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def create_camera_device_token() -> str:
+    return f"{CAMERA_DEVICE_TOKEN_PREFIX}{secrets.token_urlsafe(32)}"
+
+
+def hash_camera_device_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def verify_camera_device_token(token: str, token_hash: str) -> bool:
+    return hmac.compare_digest(hash_camera_device_token(token), token_hash)
 
 
 def hash_invite_token(token: str) -> str:

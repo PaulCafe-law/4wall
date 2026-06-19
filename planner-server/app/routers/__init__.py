@@ -1,4 +1,5 @@
 from app.routers.auth import router as auth_router
+from app.routers.camera_ingest import router as camera_ingest_router
 from app.routers.incidents import router as incidents_router
 from app.routers.inspection import router as inspection_router
 from app.routers.line import router as line_router
@@ -9,6 +10,7 @@ from app.industrial_data_engine.router import router as industrial_data_engine_r
 
 __all__ = [
     "auth_router",
+    "camera_ingest_router",
     "incidents_router",
     "industrial_data_engine_router",
     "inspection_router",

@@ -28,6 +28,10 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "dispatchrecord" in table_names
     assert "inspectioneventrecord" in table_names
     assert "inspectionreport" in table_names
+    assert "camera_devices" in table_names
+    assert "camera_frames" in table_names
+    assert "equipment_watch_zones" in table_names
+    assert "equipment_state_observations" in table_names
 
     site_columns = {column["name"] for column in inspector.get_columns("site")}
     assert "map_config_json" in site_columns
@@ -48,3 +52,11 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     dispatch_columns = {column["name"] for column in inspector.get_columns("dispatchrecord")}
     assert "accepted_at" in dispatch_columns
     assert "closed_at" in dispatch_columns
+
+    camera_columns = {column["name"] for column in inspector.get_columns("camera_devices")}
+    assert "device_token_hash" in camera_columns
+    assert "sampling_interval_seconds" in camera_columns
+
+    frame_columns = {column["name"] for column in inspector.get_columns("camera_frames")}
+    assert "storage_key" in frame_columns
+    assert "analysis_status" in frame_columns

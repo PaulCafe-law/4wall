@@ -48,6 +48,11 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     monkeypatch.setenv("INDUSTRIAL_ENGINE_MAX_SCENES_PER_RUN", " 2 ")
     monkeypatch.setenv("INDUSTRIAL_ENGINE_MAX_INCIDENTS_PER_SCENE", " 7 ")
     monkeypatch.setenv("INDUSTRIAL_ENGINE_MAX_CAMERA_POSES", " 64 ")
+    monkeypatch.setenv("CAMERA_ANALYSIS_PROVIDER", " ollama ")
+    monkeypatch.setenv("CAMERA_ANALYSIS_OLLAMA_BASE_URL", " http://camera-ollama.local:11434/ ")
+    monkeypatch.setenv("CAMERA_ANALYSIS_OLLAMA_MODEL", " qwen2.5vl:7b ")
+    monkeypatch.setenv("CAMERA_ANALYSIS_OLLAMA_AUTH_TOKEN", " proxy-token ")
+    monkeypatch.setenv("CAMERA_ANALYSIS_TIMEOUT_SECONDS", " 44 ")
 
     settings = Settings.from_env()
 
@@ -94,6 +99,11 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.industrial_engine_max_scenes_per_run == 2
     assert settings.industrial_engine_max_incidents_per_scene == 7
     assert settings.industrial_engine_max_camera_poses == 64
+    assert settings.camera_analysis_provider == "ollama"
+    assert settings.camera_analysis_ollama_base_url == "http://camera-ollama.local:11434"
+    assert settings.camera_analysis_ollama_model == "qwen2.5vl:7b"
+    assert settings.camera_analysis_ollama_auth_token == "proxy-token"
+    assert settings.camera_analysis_timeout_seconds == 44
 
 
 def test_codex_text_model_defaults_to_chatgpt_oauth_supported_model(monkeypatch):
