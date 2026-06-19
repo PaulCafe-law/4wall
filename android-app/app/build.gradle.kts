@@ -105,10 +105,22 @@ android {
 }
 
 tasks.configureEach {
-    val isProdPackagingTask = name.startsWith("assembleProd") ||
-        name.startsWith("installProd") ||
-        name.startsWith("packageProd") ||
-        name.startsWith("bundleProd")
+    val prodPackagingTaskNames = setOf(
+        "assembleProd",
+        "assembleProdDebug",
+        "assembleProdRelease",
+        "installProdDebug",
+        "bundleProd",
+        "bundleProdDebug",
+        "bundleProdRelease",
+        "packageProdDebug",
+        "packageProdRelease",
+        "packageProdDebugBundle",
+        "packageProdReleaseBundle",
+        "packageProdDebugUniversalApk",
+        "packageProdReleaseUniversalApk"
+    )
+    val isProdPackagingTask = name in prodPackagingTaskNames
     if (isProdPackagingTask) {
         doFirst {
             if (resolvedDjiApiKey == "MISSING_DJI_API_KEY") {
