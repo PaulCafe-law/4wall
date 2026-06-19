@@ -8,6 +8,7 @@ on:
       - "docs/api-spec.md"
       - "docs/auth.md"
       - "docs/codex-auth.md"
+      - "docs/factory-camera-*.md"
       - "docs/industrial-data-engine.md"
       - "docs/server-architecture.md"
       - "docs/web-*.md"
@@ -21,6 +22,7 @@ on:
       - "docs/api-spec.md"
       - "docs/auth.md"
       - "docs/codex-auth.md"
+      - "docs/factory-camera-*.md"
       - "docs/industrial-data-engine.md"
       - "docs/server-architecture.md"
       - "docs/web-*.md"
@@ -49,5 +51,7 @@ jobs:
         run: |
           mkdir -p data
           python -m alembic upgrade head
+      - name: Validate camera deployment readiness
+        run: python scripts/camera_deployment_readiness.py --json
       - name: Run tests
         run: python -m pytest tests -q

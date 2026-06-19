@@ -86,6 +86,11 @@ class Settings:
     industrial_engine_max_scenes_per_run: int = 1
     industrial_engine_max_incidents_per_scene: int = 5
     industrial_engine_max_camera_poses: int = 48
+    camera_analysis_provider: str = "disabled"
+    camera_analysis_ollama_base_url: str = "http://localhost:11434"
+    camera_analysis_ollama_model: str = "qwen2.5vl:7b"
+    camera_analysis_ollama_auth_token: str | None = None
+    camera_analysis_timeout_seconds: int = 120
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -157,6 +162,18 @@ class Settings:
             industrial_engine_max_scenes_per_run=_env_int("INDUSTRIAL_ENGINE_MAX_SCENES_PER_RUN", 1),
             industrial_engine_max_incidents_per_scene=_env_int("INDUSTRIAL_ENGINE_MAX_INCIDENTS_PER_SCENE", 5),
             industrial_engine_max_camera_poses=_env_int("INDUSTRIAL_ENGINE_MAX_CAMERA_POSES", 48),
+            camera_analysis_provider=_env_str("CAMERA_ANALYSIS_PROVIDER", "disabled") or "disabled",
+            camera_analysis_ollama_base_url=(
+                _env_str("CAMERA_ANALYSIS_OLLAMA_BASE_URL")
+                or (_env_str("OLLAMA_BASE_URL", "http://localhost:11434") or "http://localhost:11434").rstrip("/")
+            ).rstrip("/"),
+            camera_analysis_ollama_model=(
+                _env_str("CAMERA_ANALYSIS_OLLAMA_MODEL")
+                or _env_str("OLLAMA_QWEN_VLM_MODEL", "qwen2.5vl:7b")
+                or "qwen2.5vl:7b"
+            ),
+            camera_analysis_ollama_auth_token=_env_str("CAMERA_ANALYSIS_OLLAMA_AUTH_TOKEN"),
+            camera_analysis_timeout_seconds=_env_int("CAMERA_ANALYSIS_TIMEOUT_SECONDS", 120),
         )
 
     @property

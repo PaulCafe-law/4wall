@@ -98,6 +98,86 @@ class Site(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class CameraDevice(SQLModel, table=True):
+    __tablename__ = "camera_devices"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    name: str = Field(index=True)
+    status: str = Field(default="active", index=True)
+    device_token_hash: str = Field(index=True, unique=True)
+    rtsp_configured: bool = False
+    sampling_interval_seconds: int = 10
+    retention_days: int = 7
+    local_spool_hours: int = 24
+    last_heartbeat_at: datetime | None = None
+    last_frame_at: datetime | None = None
+    last_error: str | None = None
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class CameraFrame(SQLModel, table=True):
+    __tablename__ = "camera_frames"
+
+    id: str = Field(primary_key=True)
+    camera_id: str = Field(foreign_key="camera_devices.id", index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    captured_at: datetime = Field(index=True)
+    storage_key: str = Field(index=True)
+    content_type: str
+    checksum_sha256: str | None = Field(default=None, index=True)
+    size_bytes: int | None = None
+    width: int | None = None
+    height: int | None = None
+    upload_status: str = Field(default="pending", index=True)
+    analysis_status: str = Field(default="pending", index=True)
+    upload_expires_at: datetime = Field(index=True)
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class EquipmentWatchZone(SQLModel, table=True):
+    __tablename__ = "equipment_watch_zones"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    camera_id: str = Field(foreign_key="camera_devices.id", index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    name: str = Field(index=True)
+    equipment_name: str = Field(index=True)
+    roi_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    expected_state: str
+    alert_on_states_json: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    min_confidence: float = 0.8
+    severity: str = Field(default="medium", index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class EquipmentStateObservation(SQLModel, table=True):
+    __tablename__ = "equipment_state_observations"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    camera_id: str = Field(foreign_key="camera_devices.id", index=True)
+    frame_id: str = Field(foreign_key="camera_frames.id", index=True)
+    watch_zone_id: str | None = Field(default=None, foreign_key="equipment_watch_zones.id", index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    state: str = Field(index=True)
+    confidence: float
+    status: str = Field(default="recorded", index=True)
+    reason: str | None = None
+    model_output_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    incident_id: str | None = Field(default=None, foreign_key="incidents.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class InspectionRoute(SQLModel, table=True):
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     organization_id: str = Field(foreign_key="organization.id", index=True)

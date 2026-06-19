@@ -149,7 +149,7 @@ def create_incident(
     settings,
     request: CreateIncidentRequestDto,
     *,
-    actor_user_id: str,
+    actor_user_id: str | None,
     actor_name: str,
 ) -> IncidentRecord:
     site = _validate_site_scope(session, organization_id=request.organizationId, site_id=request.siteId)
