@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import io
 import os
 from pathlib import Path
 import shlex
@@ -27,6 +28,7 @@ BUNDLE_FILES = (
         "deploy/pi-camera-agent/fourwall-camera-agent.env.example",
     ),
 )
+TEXT_BUNDLE_SUFFIXES = (".py", ".sh", ".service", ".env.example")
 
 
 @dataclass(frozen=True)
@@ -124,7 +126,12 @@ def create_bundle(output_path: Path) -> Path:
             source_path = PLANNER_ROOT / source_name
             if not source_path.exists():
                 raise FileNotFoundError(source_path)
-            archive.add(source_path, arcname=archive_name)
+            data = source_path.read_bytes()
+            if archive_name.endswith(TEXT_BUNDLE_SUFFIXES):
+                data = data.replace(b"\r\n", b"\n")
+            info = archive.gettarinfo(source_path, arcname=archive_name)
+            info.size = len(data)
+            archive.addfile(info, io.BytesIO(data))
     return output_path
 
 
