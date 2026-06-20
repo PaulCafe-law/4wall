@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Material, Mesh, Object3D } from 'three'
 
+import { composeViewRelativeFlyMove, type SiteMapFlyBasis } from './site-map-flight-controls'
 import type { SiteMapPlaceholderVariant } from './site-map-config'
 
 type ModelState = 'booting' | 'placeholder' | 'loaded' | 'unavailable'
@@ -262,6 +263,7 @@ function createThreeUnrealFlyControls(
     pitchDegrees = clamp(pitchDegrees, -FLY_PITCH_LIMIT_DEGREES, FLY_PITCH_LIMIT_DEGREES)
     camera.rotation.order = 'YXZ'
     camera.rotation.set(pitchDegrees * DEGREES_TO_RAD, yawDegrees * DEGREES_TO_RAD, 0, 'YXZ')
+    camera.updateMatrixWorld(true)
   }
 
   function currentSpeed() {
@@ -276,28 +278,27 @@ function createThreeUnrealFlyControls(
   }
 
   function moveAlongForward(distance: number) {
-    const forward = new THREE.Vector3()
-    camera.getWorldDirection(forward)
-    camera.position.add(forward.multiplyScalar(distance))
+    const { forward } = createThreeFlyBasis(THREE, camera)
+    camera.position.add(new THREE.Vector3(forward.x, forward.y, forward.z).multiplyScalar(distance))
   }
 
   function update(deltaSeconds: number) {
     if (!rightFlyActive || deltaSeconds <= 0) return
 
-    const forward = new THREE.Vector3()
-    camera.getWorldDirection(forward)
-    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
-    const moveVector = new THREE.Vector3()
+    const moveDirection = composeViewRelativeFlyMove(createThreeFlyBasis(THREE, camera), {
+      forward: pressedKeys.has('KeyW') || pressedKeys.has('ArrowUp'),
+      backward: pressedKeys.has('KeyS') || pressedKeys.has('ArrowDown'),
+      right: pressedKeys.has('KeyD') || pressedKeys.has('ArrowRight'),
+      left: pressedKeys.has('KeyA') || pressedKeys.has('ArrowLeft'),
+      up: pressedKeys.has('KeyE'),
+      down: pressedKeys.has('KeyQ'),
+    })
 
-    if (pressedKeys.has('KeyW') || pressedKeys.has('ArrowUp')) moveVector.add(forward)
-    if (pressedKeys.has('KeyS') || pressedKeys.has('ArrowDown')) moveVector.sub(forward)
-    if (pressedKeys.has('KeyD') || pressedKeys.has('ArrowRight')) moveVector.add(right)
-    if (pressedKeys.has('KeyA') || pressedKeys.has('ArrowLeft')) moveVector.sub(right)
-    if (pressedKeys.has('KeyE')) moveVector.y += 1
-    if (pressedKeys.has('KeyQ')) moveVector.y -= 1
-
-    if (moveVector.length() <= Number.EPSILON) return
-    camera.position.add(moveVector.normalize().multiplyScalar(currentSpeed() * deltaSeconds))
+    if (!moveDirection) return
+    camera.position.add(
+      new THREE.Vector3(moveDirection.x, moveDirection.y, moveDirection.z)
+        .multiplyScalar(currentSpeed() * deltaSeconds),
+    )
   }
 
   function onMouseDown(event: MouseEvent) {
@@ -398,6 +399,27 @@ function createThreeUnrealFlyControls(
       window.removeEventListener('blur', onBlur)
     },
   }
+}
+
+function createThreeFlyBasis(
+  THREE: typeof import('three'),
+  camera: import('three').PerspectiveCamera,
+): SiteMapFlyBasis {
+  camera.updateMatrixWorld(true)
+  const forward = new THREE.Vector3()
+  camera.getWorldDirection(forward).normalize()
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize()
+  const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize()
+
+  return {
+    forward: vectorToFlyVector(forward),
+    right: vectorToFlyVector(right),
+    up: vectorToFlyVector(up),
+  }
+}
+
+function vectorToFlyVector(vector: import('three').Vector3) {
+  return { x: vector.x, y: vector.y, z: vector.z }
 }
 
 function disposeMeshResources(child: Object3D) {

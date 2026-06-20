@@ -9,6 +9,7 @@ import {
   FILLMODE_NONE,
   MOUSEBUTTON_LEFT,
   MOUSEBUTTON_RIGHT,
+  Quat,
   RESOLUTION_AUTO,
   Script as PlayCanvasBaseScript,
   Vec2,
@@ -16,6 +17,8 @@ import {
   type Asset,
   type MouseEvent as PlayCanvasMouseEvent,
 } from 'playcanvas'
+
+import { composeViewRelativeFlyMove, type SiteMapFlyBasis, type SiteMapFlyVector } from './site-map-flight-controls'
 
 type SogViewerState = 'waiting' | 'loading' | 'loaded' | 'error'
 type Vec3Tuple = [number, number, number]
@@ -314,21 +317,23 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
   private moveFromKeyboard(dt: number) {
     if (!this.rightFlyActive || dt <= 0) return
 
-    const moveVector = new Vec3()
-    if (this.hasPressed('KeyW') || this.hasPressed('ArrowUp')) moveVector.add(this.entity.forward)
-    if (this.hasPressed('KeyS') || this.hasPressed('ArrowDown')) moveVector.sub(this.entity.forward)
-    if (this.hasPressed('KeyD') || this.hasPressed('ArrowRight')) moveVector.add(this.entity.right)
-    if (this.hasPressed('KeyA') || this.hasPressed('ArrowLeft')) moveVector.sub(this.entity.right)
-    if (this.hasPressed('KeyE')) moveVector.y += 1
-    if (this.hasPressed('KeyQ')) moveVector.y -= 1
+    const moveDirection = composeViewRelativeFlyMove(createPlayCanvasFlyBasis(this.yawDegrees, this.pitchDegrees), {
+      forward: this.hasPressed('KeyW') || this.hasPressed('ArrowUp'),
+      backward: this.hasPressed('KeyS') || this.hasPressed('ArrowDown'),
+      right: this.hasPressed('KeyD') || this.hasPressed('ArrowRight'),
+      left: this.hasPressed('KeyA') || this.hasPressed('ArrowLeft'),
+      up: this.hasPressed('KeyE'),
+      down: this.hasPressed('KeyQ'),
+    })
 
-    if (moveVector.length() <= Number.EPSILON) return
-    moveVector.normalize().mulScalar(this.currentSpeed() * dt)
+    if (!moveDirection) return
+    const moveVector = flyVectorToVec3(moveDirection).mulScalar(this.currentSpeed() * dt)
     this.entity.setPosition(new Vec3().copy(this.entity.getPosition()).add(moveVector))
   }
 
   private moveAlongForward(distance: number) {
-    const moveVector = new Vec3().copy(this.entity.forward).mulScalar(distance)
+    const { forward } = createPlayCanvasFlyBasis(this.yawDegrees, this.pitchDegrees)
+    const moveVector = flyVectorToVec3(forward).mulScalar(distance)
     this.entity.setPosition(new Vec3().copy(this.entity.getPosition()).add(moveVector))
   }
 
@@ -366,6 +371,24 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
     window.removeEventListener('keyup', this.onDomKeyUp)
     window.removeEventListener('blur', this.onDomBlur)
   }
+}
+
+function createPlayCanvasFlyBasis(yawDegrees: number, pitchDegrees: number): SiteMapFlyBasis {
+  const rotation = new Quat().setFromEulerAngles(pitchDegrees, yawDegrees, 0)
+
+  return {
+    forward: vec3ToFlyVector(rotation.transformVector(Vec3.FORWARD, new Vec3()).normalize()),
+    right: vec3ToFlyVector(rotation.transformVector(Vec3.RIGHT, new Vec3()).normalize()),
+    up: vec3ToFlyVector(rotation.transformVector(Vec3.UP, new Vec3()).normalize()),
+  }
+}
+
+function vec3ToFlyVector(vector: Vec3): SiteMapFlyVector {
+  return { x: vector.x, y: vector.y, z: vector.z }
+}
+
+function flyVectorToVec3(vector: SiteMapFlyVector) {
+  return new Vec3(vector.x, vector.y, vector.z)
 }
 
 function RentHouseSogAsset({
