@@ -7,6 +7,7 @@ import {
   EVENT_MOUSEMOVE,
   EVENT_MOUSEUP,
   FILLMODE_NONE,
+  MOUSEBUTTON_LEFT,
   MOUSEBUTTON_RIGHT,
   RESOLUTION_AUTO,
   Script as PlayCanvasBaseScript,
@@ -172,7 +173,8 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
   private readonly pressedKeys = new Set<string>()
   private lastSceneRadius = Number.NaN
   private canvasElement: HTMLCanvasElement | null = null
-  private flyActive = false
+  private leftLookActive = false
+  private rightFlyActive = false
   private yawDegrees = 0
   private pitchDegrees = 0
   private readonly onDomWheel = (event: WheelEvent) => {
@@ -188,7 +190,7 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
     const keyCode = getKeyboardCode(event)
     if (!keyCode) return
     this.pressedKeys.add(keyCode)
-    if (this.flyActive && shouldCaptureFlyKey(keyCode)) {
+    if (this.rightFlyActive && shouldCaptureFlyKey(keyCode)) {
       event.preventDefault()
       event.stopPropagation()
     }
@@ -196,13 +198,14 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
   private readonly onDomKeyUp = (event: KeyboardEvent) => {
     const keyCode = getKeyboardCode(event)
     if (keyCode) this.pressedKeys.delete(keyCode)
-    if (this.flyActive && keyCode && shouldCaptureFlyKey(keyCode)) {
+    if (this.rightFlyActive && keyCode && shouldCaptureFlyKey(keyCode)) {
       event.preventDefault()
       event.stopPropagation()
     }
   }
   private readonly onDomBlur = () => {
-    this.flyActive = false
+    this.leftLookActive = false
+    this.rightFlyActive = false
     this.pressedKeys.clear()
     this.setCanvasCursor()
   }
@@ -233,7 +236,7 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
     if (!isSameVec3(this.lastFocusPoint, this.focusPoint) || this.lastSceneRadius !== this.sceneRadius) {
       this.lastFocusPoint.copy(this.focusPoint)
       this.lastSceneRadius = this.sceneRadius
-      if (!this.flyActive) {
+      if (!this.isLooking()) {
         this.syncLookAnglesFromFocus()
       }
     }
@@ -242,10 +245,11 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
   }
 
   private onMouseDown(event: PlayCanvasMouseEvent) {
-    if (event.button !== MOUSEBUTTON_RIGHT) return
+    if (event.button !== MOUSEBUTTON_LEFT && event.button !== MOUSEBUTTON_RIGHT) return
 
     this.lastPointer.set(event.x, event.y)
-    this.flyActive = true
+    if (event.button === MOUSEBUTTON_LEFT) this.leftLookActive = true
+    if (event.button === MOUSEBUTTON_RIGHT) this.rightFlyActive = true
     this.canvasElement?.focus({ preventScroll: true })
     this.setCanvasCursor()
     event.event.preventDefault()
@@ -253,15 +257,15 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
   }
 
   private onMouseMove(event: PlayCanvasMouseEvent) {
-    if (!this.flyActive) return
+    if (!this.isLooking()) return
 
     const deltaX = event.x - this.lastPointer.x
     const deltaY = event.y - this.lastPointer.y
     this.lastPointer.set(event.x, event.y)
 
-    this.yawDegrees -= deltaX * SOG_FLY_LOOK_SPEED_DEGREES
+    this.yawDegrees += deltaX * SOG_FLY_LOOK_SPEED_DEGREES
     this.pitchDegrees = clamp(
-      this.pitchDegrees - deltaY * SOG_FLY_LOOK_SPEED_DEGREES,
+      this.pitchDegrees + deltaY * SOG_FLY_LOOK_SPEED_DEGREES,
       -SOG_FLY_PITCH_LIMIT_DEGREES,
       SOG_FLY_PITCH_LIMIT_DEGREES,
     )
@@ -271,10 +275,13 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
   }
 
   private onMouseUp(event: PlayCanvasMouseEvent) {
-    if (event.button !== MOUSEBUTTON_RIGHT) return
+    if (event.button !== MOUSEBUTTON_LEFT && event.button !== MOUSEBUTTON_RIGHT) return
 
-    this.flyActive = false
-    this.pressedKeys.clear()
+    if (event.button === MOUSEBUTTON_LEFT) this.leftLookActive = false
+    if (event.button === MOUSEBUTTON_RIGHT) {
+      this.rightFlyActive = false
+      this.pressedKeys.clear()
+    }
     this.setCanvasCursor()
     event.event.preventDefault()
     event.event.stopPropagation()
@@ -305,7 +312,7 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
   }
 
   private moveFromKeyboard(dt: number) {
-    if (!this.flyActive || dt <= 0) return
+    if (!this.rightFlyActive || dt <= 0) return
 
     const moveVector = new Vec3()
     if (this.hasPressed('KeyW') || this.hasPressed('ArrowUp')) moveVector.add(this.entity.forward)
@@ -342,7 +349,11 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
 
   private setCanvasCursor() {
     if (!this.canvasElement) return
-    this.canvasElement.style.cursor = this.flyActive ? 'grabbing' : 'crosshair'
+    this.canvasElement.style.cursor = this.isLooking() ? 'grabbing' : 'crosshair'
+  }
+
+  private isLooking() {
+    return this.leftLookActive || this.rightFlyActive
   }
 
   private destroyControls() {
