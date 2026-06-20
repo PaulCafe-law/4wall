@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Material, Mesh, Object3D } from 'three'
 
-import { composeViewRelativeFlyMove, type SiteMapFlyBasis } from './site-map-flight-controls'
+import { composeViewRelativeFlyMove, createNoRollFlyBasis, type SiteMapFlyBasis } from './site-map-flight-controls'
 import type { SiteMapPlaceholderVariant } from './site-map-config'
 
 type ModelState = 'booting' | 'placeholder' | 'loaded' | 'unavailable'
@@ -22,7 +22,6 @@ const FLY_SLOW_MULTIPLIER = 0.25
 const FLY_WHEEL_STEP_MIN = 0.012
 const FLY_WHEEL_STEP_MAX = 0.12
 const RAD_TO_DEGREES = 180 / Math.PI
-const DEGREES_TO_RAD = Math.PI / 180
 const FLY_MOVEMENT_KEYS = new Set([
   'KeyW',
   'KeyA',
@@ -261,8 +260,13 @@ function createThreeUnrealFlyControls(
 
   function applyRotation() {
     pitchDegrees = clamp(pitchDegrees, -FLY_PITCH_LIMIT_DEGREES, FLY_PITCH_LIMIT_DEGREES)
-    camera.rotation.order = 'YXZ'
-    camera.rotation.set(pitchDegrees * DEGREES_TO_RAD, yawDegrees * DEGREES_TO_RAD, 0, 'YXZ')
+    const basis = createNoRollFlyBasis(yawDegrees, pitchDegrees)
+    camera.up.set(basis.up.x, basis.up.y, basis.up.z)
+    camera.lookAt(
+      camera.position.x + basis.forward.x,
+      camera.position.y + basis.forward.y,
+      camera.position.z + basis.forward.z,
+    )
     camera.updateMatrixWorld(true)
   }
 
