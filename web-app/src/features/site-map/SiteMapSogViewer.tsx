@@ -19,6 +19,7 @@ import {
 
 import {
   composeViewRelativeFlyMove,
+  createFlyAnglesFromDirection,
   createNoRollFlyBasis,
   type SiteMapFlyBasis,
   type SiteMapFlyVector,
@@ -56,7 +57,6 @@ const SOG_FLY_FAST_MULTIPLIER = 3
 const SOG_FLY_SLOW_MULTIPLIER = 0.25
 const SOG_FLY_WHEEL_STEP_MIN = 0.012
 const SOG_FLY_WHEEL_STEP_MAX = 0.12
-const RAD_TO_DEGREES = 180 / Math.PI
 const DEFAULT_CAMERA_FRAME: CameraFrame = {
   focus: [0, 0, 0],
   position: [0, 0.4, 3.4],
@@ -304,8 +304,9 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
       return
     }
     direction.normalize()
-    this.yawDegrees = Math.atan2(-direction.x, -direction.z) * RAD_TO_DEGREES
-    this.pitchDegrees = Math.asin(clamp(direction.y, -1, 1)) * RAD_TO_DEGREES
+    const angles = createFlyAnglesFromDirection(vec3ToFlyVector(direction), 'z')
+    this.yawDegrees = angles.yawDegrees
+    this.pitchDegrees = angles.pitchDegrees
     this.applyRotation()
   }
 
@@ -315,7 +316,7 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
       -SOG_FLY_PITCH_LIMIT_DEGREES,
       SOG_FLY_PITCH_LIMIT_DEGREES,
     )
-    const basis = createNoRollFlyBasis(this.yawDegrees, this.pitchDegrees)
+    const basis = createPlayCanvasFlyBasis(this.yawDegrees, this.pitchDegrees)
     const position = this.entity.getPosition()
     this.entity.lookAt(
       new Vec3(
@@ -387,7 +388,11 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
 }
 
 function createPlayCanvasFlyBasis(yawDegrees: number, pitchDegrees: number): SiteMapFlyBasis {
-  return createNoRollFlyBasis(yawDegrees, pitchDegrees)
+  return createNoRollFlyBasis(yawDegrees, pitchDegrees, 'z')
+}
+
+function vec3ToFlyVector(vector: Vec3): SiteMapFlyVector {
+  return { x: vector.x, y: vector.y, z: vector.z }
 }
 
 function flyVectorToVec3(vector: SiteMapFlyVector) {

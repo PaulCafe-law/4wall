@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Material, Mesh, Object3D } from 'three'
 
-import { composeViewRelativeFlyMove, createNoRollFlyBasis, type SiteMapFlyBasis } from './site-map-flight-controls'
+import {
+  composeViewRelativeFlyMove,
+  createFlyAnglesFromDirection,
+  createNoRollFlyBasis,
+  type SiteMapFlyBasis,
+} from './site-map-flight-controls'
 import type { SiteMapPlaceholderVariant } from './site-map-config'
 
 type ModelState = 'booting' | 'placeholder' | 'loaded' | 'unavailable'
@@ -21,7 +26,6 @@ const FLY_FAST_MULTIPLIER = 3
 const FLY_SLOW_MULTIPLIER = 0.25
 const FLY_WHEEL_STEP_MIN = 0.012
 const FLY_WHEEL_STEP_MAX = 0.12
-const RAD_TO_DEGREES = 180 / Math.PI
 const FLY_MOVEMENT_KEYS = new Set([
   'KeyW',
   'KeyA',
@@ -253,8 +257,9 @@ function createThreeUnrealFlyControls(
       return
     }
     direction.normalize()
-    yawDegrees = Math.atan2(-direction.x, -direction.z) * RAD_TO_DEGREES
-    pitchDegrees = Math.asin(clamp(direction.y, -1, 1)) * RAD_TO_DEGREES
+    const angles = createFlyAnglesFromDirection(vectorToFlyVector(direction))
+    yawDegrees = angles.yawDegrees
+    pitchDegrees = angles.pitchDegrees
     applyRotation()
   }
 
