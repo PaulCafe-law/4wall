@@ -43,10 +43,10 @@ export const SITE_MAP_CONFIGS: SiteMapConfig[] = [
   {
     key: 'rent-house',
     label: '租屋處',
-    description: 'SuperSplat 裁切後的 3D Gaussian Splat SOG 場域，透過登入後短效 URL 載入。',
+    description: 'SuperSplat 裁切後的 3D Gaussian Splat 場域，僅管理者帳號可查看。',
     assetKind: 'sog',
     manifestAssetKey: 'rent-house',
-    modelAssetPath: 'private R2: site-map-assets/rent-house/v1/rent-house.v1.sog',
+    modelAssetPath: '租屋處 3DGS 場域模型',
     planLabel: '租屋處 3DGS',
     placeholderVariant: 'rent-house',
     internalOnly: true,

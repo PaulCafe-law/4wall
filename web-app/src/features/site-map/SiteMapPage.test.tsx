@@ -162,8 +162,10 @@ describe('SiteMapPage', () => {
     })
 
     expect(await screen.findByRole('option', { name: '租屋處' })).toBeInTheDocument()
+    expect(screen.getByText('SuperSplat 裁切後的 3D Gaussian Splat 場域，僅管理者帳號可查看。')).toBeInTheDocument()
     expect(screen.getByText('SOG 場域測試模式')).toBeInTheDocument()
     expect(await screen.findByText('SOG 場域測試模式')).toBeInTheDocument()
+    expect(screen.queryByText(/短效/)).not.toBeInTheDocument()
     expect(screen.getByText('目前沒有事件標記')).toBeInTheDocument()
     await waitFor(() => {
       expect(apiMock.getSiteMapAssetManifest).toHaveBeenCalledWith('test-token', 'rent-house')
