@@ -12,6 +12,29 @@ const modelStateLabel: Record<ModelState, string> = {
   unavailable: '瀏覽器不支援 WebGL',
 }
 
+const FLY_LOOK_SPEED_DEGREES = 0.14
+const FLY_PITCH_LIMIT_DEGREES = 88
+const FLY_SPEED_MIN = 1.5
+const FLY_SPEED_MAX = 18
+const FLY_FAST_MULTIPLIER = 3
+const FLY_SLOW_MULTIPLIER = 0.25
+const FLY_WHEEL_STEP_MIN = 0.012
+const FLY_WHEEL_STEP_MAX = 0.12
+const RAD_TO_DEGREES = 180 / Math.PI
+const DEGREES_TO_RAD = Math.PI / 180
+const FLY_MOVEMENT_KEYS = new Set([
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'KeyQ',
+  'KeyE',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+])
+
 export function SiteMapThreeViewer({
   modelUrl,
   siteLabel,
@@ -41,10 +64,9 @@ export function SiteMapThreeViewer({
     let cleanup: (() => void) | undefined
 
     async function bootViewer() {
-      const [THREE, { GLTFLoader }, { OrbitControls }] = await Promise.all([
+      const [THREE, { GLTFLoader }] = await Promise.all([
         import('three'),
         import('three/examples/jsm/loaders/GLTFLoader.js'),
-        import('three/examples/jsm/controls/OrbitControls.js'),
       ])
 
       const nextCanvas = canvasRef.current
@@ -72,15 +94,14 @@ export function SiteMapThreeViewer({
 
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
-      const controls = new OrbitControls(camera, renderer.domElement)
-      controls.enableDamping = true
-      controls.target.set(0, 4, 0)
-      controls.enablePan = true
-      controls.screenSpacePanning = false
-      controls.zoomToCursor = true
-      controls.maxPolarAngle = Math.PI * 0.48
-      controls.minDistance = 0.35
-      controls.maxDistance = 180
+      let sceneRadius = 44
+      const controls = createThreeUnrealFlyControls(
+        THREE,
+        camera,
+        renderer.domElement,
+        () => sceneRadius,
+        () => new THREE.Vector3(0, 4, 0),
+      )
 
       scene.add(new THREE.AmbientLight(0xffffff, 1.1))
       const sun = new THREE.DirectionalLight(0xffffff, 1.8)
@@ -99,10 +120,9 @@ export function SiteMapThreeViewer({
           if (disposed) return
           scene.remove(placeholder)
           loadedModel = gltf.scene
-          fitModelToViewer(THREE, gltf.scene)
+          sceneRadius = fitModelToViewer(THREE, gltf.scene)
           scene.add(gltf.scene)
-          controls.target.set(0, 4, 0)
-          controls.update()
+          controls.syncToFocus()
           setModelState('loaded')
         },
         undefined,
@@ -122,9 +142,13 @@ export function SiteMapThreeViewer({
       }
 
       let animationId = 0
+      let previousFrameTime = performance.now()
       function animate() {
         if (disposed) return
-        controls.update()
+        const nextFrameTime = performance.now()
+        const deltaSeconds = Math.min(0.1, Math.max(0, (nextFrameTime - previousFrameTime) / 1000))
+        previousFrameTime = nextFrameTime
+        controls.update(deltaSeconds)
         renderer.render(scene, camera)
         animationId = window.requestAnimationFrame(animate)
       }
@@ -186,11 +210,194 @@ function fitModelToViewer(THREE: typeof import('three'), model: Object3D) {
   const center = box.getCenter(new THREE.Vector3())
   const maxDimension = Math.max(size.x, size.y, size.z)
 
-  if (!Number.isFinite(maxDimension) || maxDimension <= 0) return
+  if (!Number.isFinite(maxDimension) || maxDimension <= 0) return 44
 
   const scale = 44 / maxDimension
   model.scale.setScalar(scale)
   model.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale)
+  return 44
+}
+
+function createThreeUnrealFlyControls(
+  THREE: typeof import('three'),
+  camera: import('three').PerspectiveCamera,
+  canvas: HTMLCanvasElement,
+  getSceneRadius: () => number,
+  getFocusPoint: () => import('three').Vector3,
+) {
+  const pressedKeys = new Set<string>()
+  let leftLookActive = false
+  let rightFlyActive = false
+  let lastPointerX = 0
+  let lastPointerY = 0
+  let yawDegrees = 0
+  let pitchDegrees = 0
+
+  canvas.tabIndex = 0
+
+  function isLooking() {
+    return leftLookActive || rightFlyActive
+  }
+
+  function setCanvasCursor() {
+    canvas.style.cursor = isLooking() ? 'grabbing' : 'crosshair'
+  }
+
+  function syncToFocus() {
+    if (isLooking()) return
+    const direction = new THREE.Vector3().subVectors(getFocusPoint(), camera.position)
+    if (direction.length() <= Number.EPSILON) {
+      yawDegrees = 0
+      pitchDegrees = 0
+      applyRotation()
+      return
+    }
+    direction.normalize()
+    yawDegrees = Math.atan2(-direction.x, -direction.z) * RAD_TO_DEGREES
+    pitchDegrees = Math.asin(clamp(direction.y, -1, 1)) * RAD_TO_DEGREES
+    applyRotation()
+  }
+
+  function applyRotation() {
+    pitchDegrees = clamp(pitchDegrees, -FLY_PITCH_LIMIT_DEGREES, FLY_PITCH_LIMIT_DEGREES)
+    camera.rotation.order = 'YXZ'
+    camera.rotation.set(pitchDegrees * DEGREES_TO_RAD, yawDegrees * DEGREES_TO_RAD, 0, 'YXZ')
+  }
+
+  function currentSpeed() {
+    let multiplier = 1
+    if (pressedKeys.has('ShiftLeft') || pressedKeys.has('ShiftRight')) multiplier *= FLY_FAST_MULTIPLIER
+    if (pressedKeys.has('ControlLeft') || pressedKeys.has('ControlRight')) multiplier *= FLY_SLOW_MULTIPLIER
+    return clamp(getSceneRadius() * 0.35, FLY_SPEED_MIN, FLY_SPEED_MAX) * multiplier
+  }
+
+  function wheelStep() {
+    return clamp(getSceneRadius() * 0.004, FLY_WHEEL_STEP_MIN, FLY_WHEEL_STEP_MAX)
+  }
+
+  function moveAlongForward(distance: number) {
+    const forward = new THREE.Vector3()
+    camera.getWorldDirection(forward)
+    camera.position.add(forward.multiplyScalar(distance))
+  }
+
+  function update(deltaSeconds: number) {
+    if (!rightFlyActive || deltaSeconds <= 0) return
+
+    const forward = new THREE.Vector3()
+    camera.getWorldDirection(forward)
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0)
+    const moveVector = new THREE.Vector3()
+
+    if (pressedKeys.has('KeyW') || pressedKeys.has('ArrowUp')) moveVector.add(forward)
+    if (pressedKeys.has('KeyS') || pressedKeys.has('ArrowDown')) moveVector.sub(forward)
+    if (pressedKeys.has('KeyD') || pressedKeys.has('ArrowRight')) moveVector.add(right)
+    if (pressedKeys.has('KeyA') || pressedKeys.has('ArrowLeft')) moveVector.sub(right)
+    if (pressedKeys.has('KeyE')) moveVector.y += 1
+    if (pressedKeys.has('KeyQ')) moveVector.y -= 1
+
+    if (moveVector.length() <= Number.EPSILON) return
+    camera.position.add(moveVector.normalize().multiplyScalar(currentSpeed() * deltaSeconds))
+  }
+
+  function onMouseDown(event: MouseEvent) {
+    if (event.button !== 0 && event.button !== 2) return
+    lastPointerX = event.clientX
+    lastPointerY = event.clientY
+    if (event.button === 0) leftLookActive = true
+    if (event.button === 2) rightFlyActive = true
+    canvas.focus({ preventScroll: true })
+    setCanvasCursor()
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function onMouseMove(event: MouseEvent) {
+    if (!isLooking()) return
+    const deltaX = event.clientX - lastPointerX
+    const deltaY = event.clientY - lastPointerY
+    lastPointerX = event.clientX
+    lastPointerY = event.clientY
+    yawDegrees += deltaX * FLY_LOOK_SPEED_DEGREES
+    pitchDegrees += deltaY * FLY_LOOK_SPEED_DEGREES
+    applyRotation()
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function onMouseUp(event: MouseEvent) {
+    if (event.button !== 0 && event.button !== 2) return
+    if (event.button === 0) leftLookActive = false
+    if (event.button === 2) {
+      rightFlyActive = false
+      pressedKeys.clear()
+    }
+    setCanvasCursor()
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function onWheel(event: WheelEvent) {
+    if (event.deltaY !== 0) moveAlongForward(-event.deltaY * wheelStep())
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function onContextMenu(event: MouseEvent) {
+    event.preventDefault()
+  }
+
+  function onKeyDown(event: KeyboardEvent) {
+    const code = getKeyboardCode(event)
+    if (!code) return
+    pressedKeys.add(code)
+    if (rightFlyActive && shouldCaptureFlyKey(code)) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+
+  function onKeyUp(event: KeyboardEvent) {
+    const code = getKeyboardCode(event)
+    if (code) pressedKeys.delete(code)
+    if (rightFlyActive && code && shouldCaptureFlyKey(code)) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+
+  function onBlur() {
+    leftLookActive = false
+    rightFlyActive = false
+    pressedKeys.clear()
+    setCanvasCursor()
+  }
+
+  canvas.addEventListener('mousedown', onMouseDown)
+  canvas.addEventListener('wheel', onWheel, { passive: false })
+  canvas.addEventListener('contextmenu', onContextMenu)
+  window.addEventListener('mousemove', onMouseMove)
+  window.addEventListener('mouseup', onMouseUp)
+  window.addEventListener('keydown', onKeyDown)
+  window.addEventListener('keyup', onKeyUp)
+  window.addEventListener('blur', onBlur)
+  setCanvasCursor()
+  syncToFocus()
+
+  return {
+    update,
+    syncToFocus,
+    dispose() {
+      canvas.removeEventListener('mousedown', onMouseDown)
+      canvas.removeEventListener('wheel', onWheel)
+      canvas.removeEventListener('contextmenu', onContextMenu)
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keyup', onKeyUp)
+      window.removeEventListener('blur', onBlur)
+    },
+  }
 }
 
 function disposeMeshResources(child: Object3D) {
@@ -295,4 +502,22 @@ function addBox(
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), material)
   mesh.position.set(...position)
   group.add(mesh)
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function getKeyboardCode(event: KeyboardEvent) {
+  if (event.code) return event.code
+  if (event.key.length === 1) return `Key${event.key.toUpperCase()}`
+  return event.key
+}
+
+function shouldCaptureFlyKey(code: string) {
+  return FLY_MOVEMENT_KEYS.has(code)
+    || code === 'ShiftLeft'
+    || code === 'ShiftRight'
+    || code === 'ControlLeft'
+    || code === 'ControlRight'
 }
