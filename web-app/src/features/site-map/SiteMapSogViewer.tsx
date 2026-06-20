@@ -47,7 +47,7 @@ export function SiteMapSogViewer({
         ? 'SOG 場域無法載入'
         : manifestLoading || viewerState === 'loading'
           ? 'SOG 場域載入中'
-          : '等待短效模型 URL'
+          : '等待模型載入資訊'
 
   return (
     <div className="relative min-h-[34rem] overflow-hidden rounded-[1.5rem] border border-chrome-200 bg-chrome-950">
@@ -75,8 +75,8 @@ export function SiteMapSogViewer({
       {viewerState !== 'loaded' || manifestError ? (
         <div className="absolute bottom-4 left-4 max-w-md rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-xs leading-5 text-white/85 shadow-panel backdrop-blur">
           {manifestError
-            ? '無法取得登入後短效模型 URL。請確認帳號權限、API 設定與 R2 asset key。'
-            : `${siteLabel} 使用 private R2 SOG 資產，取得短效 URL 後才會開始載入。`}
+            ? '無法取得私人場域模型。請確認帳號權限、API 設定與 R2 asset key。'
+            : `${siteLabel} 是管理者限定的私人 3DGS 場域，登入後會自動載入模型檔。`}
         </div>
       ) : null}
     </div>
