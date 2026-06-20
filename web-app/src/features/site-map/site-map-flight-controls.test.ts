@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   composeViewRelativeFlyMove,
+  createFlyAnglesFromDirection,
   createNoRollFlyBasis,
   type SiteMapFlyBasis,
   type SiteMapFlyVector,
@@ -72,6 +73,55 @@ describe('createNoRollFlyBasis', () => {
 
     expect(basis.forward.x).toBeGreaterThan(0)
     expect(basis.forward.z).toBeLessThan(0)
+  })
+
+  it('keeps a z-up SOG room upright while yawing from a standing floor view', () => {
+    for (const yaw of [0, -24, 38]) {
+      const basis = createNoRollFlyBasis(yaw, 0, 'z')
+
+      expectVectorLengthToBeOne(basis.forward)
+      expectVectorLengthToBeOne(basis.right)
+      expectVectorLengthToBeOne(basis.up)
+      expect(basis.up.x).toBeCloseTo(0)
+      expect(basis.up.y).toBeCloseTo(0)
+      expect(basis.up.z).toBeCloseTo(1)
+      expect(dotFlyVectors(basis.forward, basis.right)).toBeCloseTo(0)
+      expect(dotFlyVectors(basis.forward, basis.up)).toBeCloseTo(0)
+      expect(dotFlyVectors(basis.right, basis.up)).toBeCloseTo(0)
+    }
+  })
+
+  it('turns a z-up SOG view right when the yaw angle decreases', () => {
+    const basis = createNoRollFlyBasis(-20, 0, 'z')
+
+    expect(basis.forward.x).toBeLessThan(0)
+    expect(basis.forward.y).toBeLessThan(0)
+    expect(basis.up.z).toBeCloseTo(1)
+  })
+})
+
+describe('createFlyAnglesFromDirection', () => {
+  it('round-trips y-up GLB look directions', () => {
+    const basis = createNoRollFlyBasis(-32, 28)
+    const angles = createFlyAnglesFromDirection(basis.forward)
+
+    expect(angles.yawDegrees).toBeCloseTo(-32)
+    expect(angles.pitchDegrees).toBeCloseTo(28)
+  })
+
+  it('round-trips z-up SOG look directions', () => {
+    const basis = createNoRollFlyBasis(-32, 28, 'z')
+    const angles = createFlyAnglesFromDirection(basis.forward, 'z')
+
+    expect(angles.yawDegrees).toBeCloseTo(-32)
+    expect(angles.pitchDegrees).toBeCloseTo(28)
+  })
+
+  it('treats the rent-house overhead camera as looking down the z axis', () => {
+    const angles = createFlyAnglesFromDirection({ x: 0, y: -0.18, z: -1 }, 'z')
+
+    expect(angles.yawDegrees).toBeCloseTo(0)
+    expect(angles.pitchDegrees).toBeLessThan(-75)
   })
 })
 
