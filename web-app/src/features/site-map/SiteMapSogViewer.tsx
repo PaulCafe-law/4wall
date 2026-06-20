@@ -6,13 +6,7 @@ import {
   EVENT_MOUSEDOWN,
   EVENT_MOUSEMOVE,
   EVENT_MOUSEUP,
-  EVENT_TOUCHCANCEL,
-  EVENT_TOUCHEND,
-  EVENT_TOUCHMOVE,
-  EVENT_TOUCHSTART,
   FILLMODE_NONE,
-  MOUSEBUTTON_LEFT,
-  MOUSEBUTTON_MIDDLE,
   MOUSEBUTTON_RIGHT,
   RESOLUTION_AUTO,
   Script as PlayCanvasBaseScript,
@@ -20,7 +14,6 @@ import {
   Vec3,
   type Asset,
   type MouseEvent as PlayCanvasMouseEvent,
-  type TouchEvent as PlayCanvasTouchEvent,
 } from 'playcanvas'
 
 type SogViewerState = 'waiting' | 'loading' | 'loaded' | 'error'
@@ -47,15 +40,32 @@ type SogResourceWithBounds = {
 const SOG_MODEL_POSITION: Vec3Tuple = [0, -0.7, 0]
 const SOG_MODEL_ROTATION_Z_DEGREES = 180
 const SOG_CAMERA_FOV_DEGREES = 58
-const SOG_ORBIT_MIN_POLAR_ANGLE = 0.08
-const SOG_ORBIT_MAX_POLAR_ANGLE = Math.PI * 0.48
-const SOG_ORBIT_ROTATE_SPEED = 0.0052
-const SOG_ORBIT_ZOOM_SPEED = 0.12
+const SOG_FLY_LOOK_SPEED_DEGREES = 0.14
+const SOG_FLY_PITCH_LIMIT_DEGREES = 88
+const SOG_FLY_SPEED_MIN = 1.5
+const SOG_FLY_SPEED_MAX = 18
+const SOG_FLY_FAST_MULTIPLIER = 3
+const SOG_FLY_SLOW_MULTIPLIER = 0.25
+const SOG_FLY_WHEEL_STEP_MIN = 0.012
+const SOG_FLY_WHEEL_STEP_MAX = 0.12
+const RAD_TO_DEGREES = 180 / Math.PI
 const DEFAULT_CAMERA_FRAME: CameraFrame = {
   focus: [0, 0, 0],
   position: [0, 0.4, 3.4],
   radius: 4,
 }
+const FLY_MOVEMENT_KEYS = new Set([
+  'KeyW',
+  'KeyA',
+  'KeyS',
+  'KeyD',
+  'KeyQ',
+  'KeyE',
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+])
 
 export function SiteMapSogViewer({
   assetUrl,
@@ -122,7 +132,7 @@ function SiteMapSogViewerSession({
           <Entity name="Camera" position={cameraFrame.position}>
             <Camera fov={SOG_CAMERA_FOV_DEGREES} nearClip={0.01} farClip={Math.max(1000, cameraFrame.radius * 8)} />
             <PlayCanvasScript
-              script={SiteMapOrbitControls}
+              script={SiteMapUnrealFlyControls}
               focusPoint={cameraFocus}
               sceneRadius={cameraFrame.radius}
             />
@@ -151,217 +161,199 @@ function SiteMapSogViewerSession({
   )
 }
 
-class SiteMapOrbitControls extends PlayCanvasBaseScript {
-  static scriptName = 'siteMapOrbitControls'
+class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
+  static scriptName = 'siteMapUnrealFlyControls'
 
   focusPoint = new Vec3()
   sceneRadius = DEFAULT_CAMERA_FRAME.radius
 
-  private readonly target = new Vec3()
   private readonly lastFocusPoint = new Vec3(Number.NaN, Number.NaN, Number.NaN)
   private readonly lastPointer = new Vec2()
-  private readonly lastPinchMidPoint = new Vec2()
-  private orbiting = false
-  private panning = false
-  private distance = DEFAULT_CAMERA_FRAME.radius
-  private theta = 0
-  private phi = Math.PI * 0.45
-  private lastPinchDistance = 0
+  private readonly pressedKeys = new Set<string>()
   private lastSceneRadius = Number.NaN
   private canvasElement: HTMLCanvasElement | null = null
+  private flyActive = false
+  private yawDegrees = 0
+  private pitchDegrees = 0
   private readonly onDomWheel = (event: WheelEvent) => {
     if (event.deltaY === 0) return
-    this.zoomByWheelDelta(event.deltaY > 0 ? 1 : -1)
+    this.moveAlongForward(-event.deltaY * this.wheelStep())
     event.preventDefault()
     event.stopPropagation()
   }
+  private readonly onDomContextMenu = (event: MouseEvent) => {
+    event.preventDefault()
+  }
+  private readonly onDomKeyDown = (event: KeyboardEvent) => {
+    const keyCode = getKeyboardCode(event)
+    if (!keyCode) return
+    this.pressedKeys.add(keyCode)
+    if (this.flyActive && shouldCaptureFlyKey(keyCode)) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+  private readonly onDomKeyUp = (event: KeyboardEvent) => {
+    const keyCode = getKeyboardCode(event)
+    if (keyCode) this.pressedKeys.delete(keyCode)
+    if (this.flyActive && keyCode && shouldCaptureFlyKey(keyCode)) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
+  }
+  private readonly onDomBlur = () => {
+    this.flyActive = false
+    this.pressedKeys.clear()
+    this.setCanvasCursor()
+  }
 
   initialize() {
-    this.target.copy(this.focusPoint)
     this.lastFocusPoint.copy(this.focusPoint)
     this.lastSceneRadius = this.sceneRadius
-    this.syncFromCamera()
-    this.applyCamera()
+    this.syncLookAnglesFromFocus()
 
     this.app.mouse?.disableContextMenu()
     this.app.mouse?.on(EVENT_MOUSEDOWN, this.onMouseDown, this)
     this.app.mouse?.on(EVENT_MOUSEMOVE, this.onMouseMove, this)
     this.app.mouse?.on(EVENT_MOUSEUP, this.onMouseUp, this)
-    this.app.touch?.on(EVENT_TOUCHSTART, this.onTouchStart, this)
-    this.app.touch?.on(EVENT_TOUCHMOVE, this.onTouchMove, this)
-    this.app.touch?.on(EVENT_TOUCHEND, this.onTouchEnd, this)
-    this.app.touch?.on(EVENT_TOUCHCANCEL, this.onTouchEnd, this)
     this.canvasElement = getCanvasElement(this.app.graphicsDevice.canvas)
-    this.canvasElement?.addEventListener('wheel', this.onDomWheel, { passive: false })
+    if (this.canvasElement) {
+      this.canvasElement.tabIndex = 0
+      this.setCanvasCursor()
+      this.canvasElement.addEventListener('wheel', this.onDomWheel, { passive: false })
+      this.canvasElement.addEventListener('contextmenu', this.onDomContextMenu)
+    }
+    window.addEventListener('keydown', this.onDomKeyDown)
+    window.addEventListener('keyup', this.onDomKeyUp)
+    window.addEventListener('blur', this.onDomBlur)
     this.on('destroy', this.destroyControls, this)
   }
 
-  update() {
-    if (isSameVec3(this.lastFocusPoint, this.focusPoint) && this.lastSceneRadius === this.sceneRadius) return
+  update(dt: number) {
+    if (!isSameVec3(this.lastFocusPoint, this.focusPoint) || this.lastSceneRadius !== this.sceneRadius) {
+      this.lastFocusPoint.copy(this.focusPoint)
+      this.lastSceneRadius = this.sceneRadius
+      if (!this.flyActive) {
+        this.syncLookAnglesFromFocus()
+      }
+    }
 
-    this.target.copy(this.focusPoint)
-    this.lastFocusPoint.copy(this.focusPoint)
-    this.lastSceneRadius = this.sceneRadius
-    this.syncFromCamera()
-    this.applyCamera()
+    this.moveFromKeyboard(dt)
   }
 
   private onMouseDown(event: PlayCanvasMouseEvent) {
+    if (event.button !== MOUSEBUTTON_RIGHT) return
+
     this.lastPointer.set(event.x, event.y)
-    this.orbiting = event.button === MOUSEBUTTON_LEFT
-    this.panning = event.button === MOUSEBUTTON_MIDDLE || event.button === MOUSEBUTTON_RIGHT
+    this.flyActive = true
+    this.canvasElement?.focus({ preventScroll: true })
+    this.setCanvasCursor()
     event.event.preventDefault()
+    event.event.stopPropagation()
   }
 
   private onMouseMove(event: PlayCanvasMouseEvent) {
+    if (!this.flyActive) return
+
     const deltaX = event.x - this.lastPointer.x
     const deltaY = event.y - this.lastPointer.y
     this.lastPointer.set(event.x, event.y)
 
-    if (this.orbiting) {
-      this.theta -= deltaX * SOG_ORBIT_ROTATE_SPEED
-      this.phi = clamp(this.phi + deltaY * SOG_ORBIT_ROTATE_SPEED, SOG_ORBIT_MIN_POLAR_ANGLE, SOG_ORBIT_MAX_POLAR_ANGLE)
-      this.applyCamera()
-      event.event.preventDefault()
-      return
-    }
-
-    if (this.panning) {
-      this.pan(deltaX, deltaY)
-      event.event.preventDefault()
-    }
+    this.yawDegrees -= deltaX * SOG_FLY_LOOK_SPEED_DEGREES
+    this.pitchDegrees = clamp(
+      this.pitchDegrees - deltaY * SOG_FLY_LOOK_SPEED_DEGREES,
+      -SOG_FLY_PITCH_LIMIT_DEGREES,
+      SOG_FLY_PITCH_LIMIT_DEGREES,
+    )
+    this.applyRotation()
+    event.event.preventDefault()
+    event.event.stopPropagation()
   }
 
   private onMouseUp(event: PlayCanvasMouseEvent) {
-    this.orbiting = false
-    this.panning = false
+    if (event.button !== MOUSEBUTTON_RIGHT) return
+
+    this.flyActive = false
+    this.pressedKeys.clear()
+    this.setCanvasCursor()
     event.event.preventDefault()
+    event.event.stopPropagation()
   }
 
-  private zoomByWheelDelta(wheelDelta: number) {
-    this.distance = clamp(
-      this.distance + wheelDelta * SOG_ORBIT_ZOOM_SPEED * this.distance,
-      this.minDistance(),
-      this.maxDistance(),
-    )
-    this.applyCamera()
-  }
-
-  private onTouchStart(event: PlayCanvasTouchEvent) {
-    if (event.touches.length === 1) {
-      const [touch] = event.touches
-      this.lastPointer.set(touch.x, touch.y)
-      this.orbiting = true
-      this.panning = false
-      this.lastPinchDistance = 0
-    } else if (event.touches.length >= 2) {
-      this.orbiting = false
-      this.panning = true
-      this.syncPinch(event)
-    }
-    event.event.preventDefault()
-  }
-
-  private onTouchMove(event: PlayCanvasTouchEvent) {
-    if (event.touches.length === 1 && this.orbiting) {
-      const [touch] = event.touches
-      const deltaX = touch.x - this.lastPointer.x
-      const deltaY = touch.y - this.lastPointer.y
-      this.lastPointer.set(touch.x, touch.y)
-      this.theta -= deltaX * SOG_ORBIT_ROTATE_SPEED
-      this.phi = clamp(this.phi + deltaY * SOG_ORBIT_ROTATE_SPEED, SOG_ORBIT_MIN_POLAR_ANGLE, SOG_ORBIT_MAX_POLAR_ANGLE)
-      this.applyCamera()
-    } else if (event.touches.length >= 2) {
-      const nextPinchDistance = getTouchDistance(event)
-      const nextPinchMidPoint = getTouchMidPoint(event)
-      if (this.lastPinchDistance > 0) {
-        const pinchDelta = nextPinchDistance - this.lastPinchDistance
-        this.distance = clamp(
-          this.distance - pinchDelta * 0.01 * this.distance,
-          this.minDistance(),
-          this.maxDistance(),
-        )
-        this.pan(nextPinchMidPoint.x - this.lastPinchMidPoint.x, nextPinchMidPoint.y - this.lastPinchMidPoint.y)
-      }
-      this.lastPinchDistance = nextPinchDistance
-      this.lastPinchMidPoint.copy(nextPinchMidPoint)
-    }
-    event.event.preventDefault()
-  }
-
-  private onTouchEnd(event: PlayCanvasTouchEvent) {
-    if (event.touches.length === 0) {
-      this.orbiting = false
-      this.panning = false
-      this.lastPinchDistance = 0
-    } else if (event.touches.length === 1) {
-      const [touch] = event.touches
-      this.lastPointer.set(touch.x, touch.y)
-      this.orbiting = true
-      this.panning = false
-      this.lastPinchDistance = 0
-    } else {
-      this.orbiting = false
-      this.panning = true
-      this.syncPinch(event)
-    }
-    event.event.preventDefault()
-  }
-
-  private syncFromCamera() {
+  private syncLookAnglesFromFocus() {
     const cameraPosition = this.entity.getPosition()
-    const offset = new Vec3().sub2(cameraPosition, this.target)
-    this.distance = clamp(offset.length(), this.minDistance(), this.maxDistance())
-    const normalizedY = clamp(offset.y / Math.max(this.distance, Number.EPSILON), -1, 1)
-    this.theta = Math.atan2(offset.x, offset.z)
-    this.phi = clamp(Math.acos(normalizedY), SOG_ORBIT_MIN_POLAR_ANGLE, SOG_ORBIT_MAX_POLAR_ANGLE)
+    const direction = new Vec3().sub2(this.focusPoint, cameraPosition)
+    if (direction.length() <= Number.EPSILON) {
+      this.yawDegrees = 0
+      this.pitchDegrees = 0
+      this.applyRotation()
+      return
+    }
+    direction.normalize()
+    this.yawDegrees = Math.atan2(-direction.x, -direction.z) * RAD_TO_DEGREES
+    this.pitchDegrees = Math.asin(clamp(direction.y, -1, 1)) * RAD_TO_DEGREES
+    this.applyRotation()
   }
 
-  private applyCamera() {
-    this.distance = clamp(this.distance, this.minDistance(), this.maxDistance())
-    this.phi = clamp(this.phi, SOG_ORBIT_MIN_POLAR_ANGLE, SOG_ORBIT_MAX_POLAR_ANGLE)
-
-    const sinPhi = Math.sin(this.phi)
-    this.entity.setPosition(
-      this.target.x + this.distance * sinPhi * Math.sin(this.theta),
-      this.target.y + this.distance * Math.cos(this.phi),
-      this.target.z + this.distance * sinPhi * Math.cos(this.theta),
+  private applyRotation() {
+    this.pitchDegrees = clamp(
+      this.pitchDegrees,
+      -SOG_FLY_PITCH_LIMIT_DEGREES,
+      SOG_FLY_PITCH_LIMIT_DEGREES,
     )
-    this.entity.lookAt(this.target)
+    this.entity.setEulerAngles(this.pitchDegrees, this.yawDegrees, 0)
   }
 
-  private pan(deltaX: number, deltaY: number) {
-    const canvasHeight = getCanvasClientHeight(this.app.graphicsDevice.canvas)
-    const pixelsToWorld =
-      (2 * this.distance * Math.tan((SOG_CAMERA_FOV_DEGREES * Math.PI) / 360)) / Math.max(canvasHeight, 1)
-    const right = new Vec3().copy(this.entity.right).mulScalar(-deltaX * pixelsToWorld)
-    const up = new Vec3().copy(this.entity.up).mulScalar(deltaY * pixelsToWorld)
-    this.target.add(right).add(up)
-    this.applyCamera()
+  private moveFromKeyboard(dt: number) {
+    if (!this.flyActive || dt <= 0) return
+
+    const moveVector = new Vec3()
+    if (this.hasPressed('KeyW') || this.hasPressed('ArrowUp')) moveVector.add(this.entity.forward)
+    if (this.hasPressed('KeyS') || this.hasPressed('ArrowDown')) moveVector.sub(this.entity.forward)
+    if (this.hasPressed('KeyD') || this.hasPressed('ArrowRight')) moveVector.add(this.entity.right)
+    if (this.hasPressed('KeyA') || this.hasPressed('ArrowLeft')) moveVector.sub(this.entity.right)
+    if (this.hasPressed('KeyE')) moveVector.y += 1
+    if (this.hasPressed('KeyQ')) moveVector.y -= 1
+
+    if (moveVector.length() <= Number.EPSILON) return
+    moveVector.normalize().mulScalar(this.currentSpeed() * dt)
+    this.entity.setPosition(new Vec3().copy(this.entity.getPosition()).add(moveVector))
   }
 
-  private syncPinch(event: PlayCanvasTouchEvent) {
-    this.lastPinchDistance = getTouchDistance(event)
-    this.lastPinchMidPoint.copy(getTouchMidPoint(event))
+  private moveAlongForward(distance: number) {
+    const moveVector = new Vec3().copy(this.entity.forward).mulScalar(distance)
+    this.entity.setPosition(new Vec3().copy(this.entity.getPosition()).add(moveVector))
   }
 
-  private minDistance() {
-    return 0.35
+  private hasPressed(code: string) {
+    return this.pressedKeys.has(code)
   }
 
-  private maxDistance() {
-    return Math.max(180, this.sceneRadius * 24)
+  private currentSpeed() {
+    let multiplier = 1
+    if (this.hasPressed('ShiftLeft') || this.hasPressed('ShiftRight')) multiplier *= SOG_FLY_FAST_MULTIPLIER
+    if (this.hasPressed('ControlLeft') || this.hasPressed('ControlRight')) multiplier *= SOG_FLY_SLOW_MULTIPLIER
+    return clamp(this.sceneRadius * 0.35, SOG_FLY_SPEED_MIN, SOG_FLY_SPEED_MAX) * multiplier
+  }
+
+  private wheelStep() {
+    return clamp(this.sceneRadius * 0.004, SOG_FLY_WHEEL_STEP_MIN, SOG_FLY_WHEEL_STEP_MAX)
+  }
+
+  private setCanvasCursor() {
+    if (!this.canvasElement) return
+    this.canvasElement.style.cursor = this.flyActive ? 'grabbing' : 'crosshair'
   }
 
   private destroyControls() {
     this.app.mouse?.off(EVENT_MOUSEDOWN, this.onMouseDown, this)
     this.app.mouse?.off(EVENT_MOUSEMOVE, this.onMouseMove, this)
     this.app.mouse?.off(EVENT_MOUSEUP, this.onMouseUp, this)
-    this.app.touch?.off(EVENT_TOUCHSTART, this.onTouchStart, this)
-    this.app.touch?.off(EVENT_TOUCHMOVE, this.onTouchMove, this)
-    this.app.touch?.off(EVENT_TOUCHEND, this.onTouchEnd, this)
-    this.app.touch?.off(EVENT_TOUCHCANCEL, this.onTouchEnd, this)
     this.canvasElement?.removeEventListener('wheel', this.onDomWheel)
+    this.canvasElement?.removeEventListener('contextmenu', this.onDomContextMenu)
+    window.removeEventListener('keydown', this.onDomKeyDown)
+    window.removeEventListener('keyup', this.onDomKeyUp)
+    window.removeEventListener('blur', this.onDomBlur)
   }
 }
 
@@ -441,24 +433,21 @@ function isSameVec3(left: Vec3, right: Vec3) {
   )
 }
 
-function getTouchDistance(event: PlayCanvasTouchEvent) {
-  const [first, second] = event.touches
-  if (!first || !second) return 0
-  return Math.hypot(second.x - first.x, second.y - first.y)
-}
-
-function getTouchMidPoint(event: PlayCanvasTouchEvent) {
-  const [first, second] = event.touches
-  if (!first || !second) return new Vec2()
-  return new Vec2((first.x + second.x) / 2, (first.y + second.y) / 2)
-}
-
-function getCanvasClientHeight(canvas: HTMLCanvasElement | OffscreenCanvas) {
-  if ('clientHeight' in canvas) return canvas.clientHeight
-  return canvas.height
-}
-
 function getCanvasElement(canvas: HTMLCanvasElement | OffscreenCanvas) {
   if ('clientHeight' in canvas && 'addEventListener' in canvas) return canvas as HTMLCanvasElement
   return null
+}
+
+function getKeyboardCode(event: KeyboardEvent) {
+  if (event.code) return event.code
+  if (event.key.length === 1) return `Key${event.key.toUpperCase()}`
+  return event.key
+}
+
+function shouldCaptureFlyKey(code: string) {
+  return FLY_MOVEMENT_KEYS.has(code)
+    || code === 'ShiftLeft'
+    || code === 'ShiftRight'
+    || code === 'ControlLeft'
+    || code === 'ControlRight'
 }
