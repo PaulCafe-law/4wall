@@ -1,11 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Application, Entity } from '@playcanvas/react'
 import { Camera, GSplat, Script } from '@playcanvas/react/components'
 import { useSplat } from '@playcanvas/react/hooks'
-import { FILLMODE_NONE, RESOLUTION_AUTO } from 'playcanvas'
+import { FILLMODE_NONE, RESOLUTION_AUTO, Vec3, type Asset } from 'playcanvas'
 import { CameraControls } from 'playcanvas/scripts/esm/camera-controls.mjs'
 
 type SogViewerState = 'waiting' | 'loading' | 'loaded' | 'error'
+type Vec3Tuple = [number, number, number]
+type CameraFrame = {
+  focus: Vec3Tuple
+  position: Vec3Tuple
+  radius: number
+}
+type SogResourceWithBounds = {
+  aabb?: {
+    center: { x: number; y: number; z: number }
+    halfExtents: { x: number; y: number; z: number }
+  }
+}
+
+const SOG_MODEL_POSITION: Vec3Tuple = [0, -0.7, 0]
+const SOG_MODEL_ROTATION_Z_DEGREES = 180
+const SOG_CAMERA_FOV_DEGREES = 58
+const DEFAULT_CAMERA_FRAME: CameraFrame = {
+  focus: [0, 0, 0],
+  position: [0, 0.4, 3.4],
+  radius: 4,
+}
 
 export function SiteMapSogViewer({
   assetUrl,
@@ -21,9 +42,12 @@ export function SiteMapSogViewer({
   manifestError: boolean
 }) {
   const [viewerState, setViewerState] = useState<SogViewerState>(assetUrl ? 'loading' : 'waiting')
+  const [cameraFrame, setCameraFrame] = useState<CameraFrame>(DEFAULT_CAMERA_FRAME)
+  const cameraFocus = useMemo(() => new Vec3(...cameraFrame.focus), [cameraFrame.focus])
 
   useEffect(() => {
     setViewerState(assetUrl ? 'loading' : 'waiting')
+    setCameraFrame(DEFAULT_CAMERA_FRAME)
   }, [assetUrl])
 
   if (import.meta.env.MODE === 'test') {
@@ -59,11 +83,22 @@ export function SiteMapSogViewer({
           resolutionMode={RESOLUTION_AUTO}
           graphicsDeviceOptions={{ antialias: false }}
         >
-          <Entity name="Camera" position={[0, 0.4, 3.4]}>
-            <Camera fov={58} nearClip={0.01} farClip={1000} />
-            <Script script={CameraControls} />
+          <Entity name="Camera" position={cameraFrame.position}>
+            <Camera fov={SOG_CAMERA_FOV_DEGREES} nearClip={0.01} farClip={Math.max(1000, cameraFrame.radius * 8)} />
+            <Script
+              script={CameraControls}
+              focusPoint={cameraFocus}
+              moveSpeed={Math.max(2, cameraFrame.radius * 0.9)}
+              moveFastSpeed={Math.max(4, cameraFrame.radius * 1.8)}
+              moveSlowSpeed={Math.max(0.5, cameraFrame.radius * 0.35)}
+              zoomSpeed={Math.max(0.001, cameraFrame.radius * 0.00045)}
+            />
           </Entity>
-          <RentHouseSogAsset assetUrl={assetUrl} onStateChange={setViewerState} />
+          <RentHouseSogAsset
+            assetUrl={assetUrl}
+            onCameraFrameChange={setCameraFrame}
+            onStateChange={setViewerState}
+          />
         </Application>
       ) : (
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_36%_30%,rgba(111,143,132,0.32),transparent_30%),linear-gradient(135deg,rgba(255,255,255,0.10),transparent_45%)]" />
@@ -85,9 +120,11 @@ export function SiteMapSogViewer({
 
 function RentHouseSogAsset({
   assetUrl,
+  onCameraFrameChange,
   onStateChange,
 }: {
   assetUrl: string
+  onCameraFrameChange: (frame: CameraFrame) => void
   onStateChange: (state: SogViewerState) => void
 }) {
   const { asset, loading, error } = useSplat(assetUrl)
@@ -101,14 +138,46 @@ function RentHouseSogAsset({
       onStateChange('loading')
       return
     }
+    onCameraFrameChange(createCameraFrameForSogAsset(asset))
     onStateChange('loaded')
-  }, [asset, error, loading, onStateChange])
+  }, [asset, error, loading, onCameraFrameChange, onStateChange])
 
   if (!asset) return null
 
   return (
-    <Entity name="Rent House SOG" rotation={[0, 0, 180]} position={[0, -0.7, 0]}>
-      <GSplat asset={asset} />
+    <Entity name="Rent House SOG" rotation={[0, 0, SOG_MODEL_ROTATION_Z_DEGREES]} position={SOG_MODEL_POSITION}>
+      <GSplat asset={asset} unified />
     </Entity>
   )
+}
+
+function createCameraFrameForSogAsset(asset: Asset): CameraFrame {
+  const aabb = (asset.resource as SogResourceWithBounds | null | undefined)?.aabb
+  if (!aabb) return DEFAULT_CAMERA_FRAME
+
+  const worldCenter = transformSogCenterToWorld([aabb.center.x, aabb.center.y, aabb.center.z])
+  const radius = Math.max(
+    1,
+    Math.hypot(aabb.halfExtents.x, aabb.halfExtents.y, aabb.halfExtents.z),
+  )
+  const fovRadians = SOG_CAMERA_FOV_DEGREES * (Math.PI / 180)
+  const distance = Math.max(4, (radius / Math.sin(fovRadians / 2)) * 1.15)
+
+  return {
+    focus: worldCenter,
+    position: [worldCenter[0], worldCenter[1] + radius * 0.18, worldCenter[2] + distance],
+    radius,
+  }
+}
+
+function transformSogCenterToWorld(center: Vec3Tuple): Vec3Tuple {
+  const radians = SOG_MODEL_ROTATION_Z_DEGREES * (Math.PI / 180)
+  const cos = Math.cos(radians)
+  const sin = Math.sin(radians)
+
+  return [
+    center[0] * cos - center[1] * sin + SOG_MODEL_POSITION[0],
+    center[0] * sin + center[1] * cos + SOG_MODEL_POSITION[1],
+    center[2] + SOG_MODEL_POSITION[2],
+  ]
 }
