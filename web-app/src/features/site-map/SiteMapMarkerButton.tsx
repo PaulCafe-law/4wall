@@ -4,8 +4,8 @@ import type { SiteMapIncidentMarker } from './site-map-utils'
 import {
   formatSiteMapSeverity,
   formatSiteMapStatus,
-  siteMapSeverityBadgeClass,
   siteMapIncidentTitle,
+  siteMapSeverityBadgeClass,
 } from './site-map-utils'
 
 export function SiteMapMarkerButton({
@@ -24,11 +24,12 @@ export function SiteMapMarkerButton({
   const left = screenPosition?.left ?? (mode === '2d' ? marker.x2d : marker.x3d)
   const top = screenPosition?.top ?? (mode === '2d' ? marker.y2d : marker.y3d)
   const title = siteMapIncidentTitle(marker.incident)
+  const status = formatSiteMapStatus(marker.incident.status)
 
   return (
     <button
       type="button"
-      aria-label={`${title}：${formatSiteMapStatus(marker.incident.status)}`}
+      aria-label={`${title}，${status}`}
       className={clsx(
         'absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2 rounded-full border px-3 py-2 text-left shadow-panel transition focus:outline-none focus:ring-2 focus:ring-ember-300/70',
         selected

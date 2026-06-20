@@ -16,10 +16,10 @@ export interface SiteMapIncidentMarker {
 }
 
 export const SITE_MAP_STATUS_OPTIONS: Array<{ value: IncidentStatus; label: string }> = [
-  { value: 'pending_review', label: '待確認' },
+  { value: 'pending_review', label: '待複核' },
   { value: 'confirmed', label: '已確認' },
   { value: 'in_progress', label: '處理中' },
-  { value: 'resolved', label: '已結案' },
+  { value: 'resolved', label: '已解決' },
   { value: 'false_positive', label: '誤判' },
 ]
 
@@ -27,7 +27,7 @@ export const SITE_MAP_SEVERITY_OPTIONS: Array<{ value: IncidentSeverity; label: 
   { value: 'low', label: '低' },
   { value: 'medium', label: '中' },
   { value: 'high', label: '高' },
-  { value: 'critical', label: '緊急' },
+  { value: 'critical', label: '嚴重' },
 ]
 
 const severityRank: Record<IncidentSeverity, number> = {
@@ -39,8 +39,12 @@ const severityRank: Record<IncidentSeverity, number> = {
 
 function formatSiteMapDisplayText(value: string | null | undefined, fallback: string) {
   const text = value?.trim()
-  if (!text || /�|\?{3,}/.test(text)) return fallback
+  if (!text || hasMojibake(text)) return fallback
   return text
+}
+
+function hasMojibake(value: string) {
+  return /[�]|嚗|蝷|撱|雿|鈭|銝|摰|敺|甇|獢|隤|蝣|璅/.test(value)
 }
 
 export function formatSiteMapStatus(status: IncidentStatus) {
@@ -77,14 +81,14 @@ export function incidentLocationText(incident: Incident) {
 
 export function siteMapIncidentTitle(incident: Incident) {
   const location = incidentLocationText(incident)
-  const fallback = location === '未指定位置' ? '現場異常事件' : `${location} 異常事件`
+  const fallback = location === '未指定位置' ? '未命名異常事件' : `${location} 異常事件`
   return formatSiteMapDisplayText(incident.title, fallback)
 }
 
 export function siteMapIncidentDescription(incident: Incident) {
   return formatSiteMapDisplayText(
     incident.description || incident.aiSummary,
-    '尚未提供描述，請進入事件詳情查看處理紀錄。',
+    '尚未提供事件描述。請進入事件詳情補充現場資訊、處理狀態與證據。',
   )
 }
 

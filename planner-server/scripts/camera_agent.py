@@ -16,11 +16,14 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
 DEFAULT_INTERVAL_SECONDS = 10
 DEFAULT_SPOOL_HOURS = 24
 DEFAULT_HTTP_TIMEOUT_SECONDS = 30
+DEFAULT_TIMESTAMP_OVERLAY_ENABLED = True
+DEFAULT_TIMESTAMP_FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 RTSP_URL_PATTERN = re.compile(r"rtsp://\S+", flags=re.IGNORECASE)
 
 
@@ -34,6 +37,9 @@ class AgentConfig:
     interval_seconds: int
     local_spool_hours: int
     http_timeout_seconds: int
+    timestamp_overlay_enabled: bool
+    timestamp_overlay_timezone: str | None
+    timestamp_overlay_font_file: str
 
 
 @dataclass(frozen=True)
@@ -214,6 +220,7 @@ def capture_frame(config: AgentConfig) -> PendingFrame:
     image_path = config.spool_dir / "pending" / f"{frame_id}.jpg"
     metadata_path = _metadata_path(config, frame_id)
     _capture_rtsp_image(config, image_path)
+    _apply_timestamp_overlay(config, image_path, captured_at)
     data = image_path.read_bytes()
     frame = PendingFrame(
         frameId=frame_id,
@@ -288,6 +295,17 @@ def _check_config_values(config: AgentConfig) -> list[DoctorCheck]:
         checks.append(DoctorCheck("config.http_timeout_seconds", "pass", str(config.http_timeout_seconds)))
     else:
         checks.append(DoctorCheck("config.http_timeout_seconds", "fail", "must be positive"))
+
+    if config.timestamp_overlay_enabled:
+        try:
+            _timestamp_overlay_text(datetime.now(timezone.utc), config.timestamp_overlay_timezone)
+        except Exception as exc:
+            checks.append(DoctorCheck("config.timestamp_overlay", "fail", _safe_error(exc)))
+        else:
+            detail = config.timestamp_overlay_timezone or "system local timezone"
+            checks.append(DoctorCheck("config.timestamp_overlay", "pass", detail))
+    else:
+        checks.append(DoctorCheck("config.timestamp_overlay", "warn", "disabled"))
     return checks
 
 
@@ -381,6 +399,70 @@ def _capture_rtsp_image(config: AgentConfig, image_path: Path, *, timeout_second
         raise CameraAgentError(f"ffmpeg_capture_failed:{_redact_sensitive(completed.stderr).strip()[:200]}")
 
 
+def _apply_timestamp_overlay(config: AgentConfig, image_path: Path, captured_at: datetime) -> None:
+    if not config.timestamp_overlay_enabled:
+        return
+    timestamp_path = image_path.with_name(f"{image_path.stem}.timestamp.txt")
+    overlay_path = image_path.with_name(f"{image_path.stem}.overlay.jpg")
+    timestamp_path.write_text(_timestamp_overlay_text(captured_at, config.timestamp_overlay_timezone), encoding="utf-8")
+    drawtext_options = [
+        f"textfile={_escape_drawtext_value(str(timestamp_path))}",
+        "x=8",
+        "y=8",
+        "fontsize=24",
+        "fontcolor=white",
+        "box=1",
+        "boxcolor=black@0.75",
+        "boxborderw=6",
+    ]
+    if config.timestamp_overlay_font_file:
+        drawtext_options.insert(0, f"fontfile={_escape_drawtext_value(config.timestamp_overlay_font_file)}")
+    command = [
+        config.ffmpeg_path,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        str(image_path),
+        "-vf",
+        "drawtext=" + ":".join(drawtext_options),
+        "-frames:v",
+        "1",
+        "-q:v",
+        "3",
+        str(overlay_path),
+    ]
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        if completed.returncode != 0:
+            overlay_path.unlink(missing_ok=True)
+            raise CameraAgentError(f"timestamp_overlay_failed:{_redact_sensitive(completed.stderr).strip()[:200]}")
+        overlay_path.replace(image_path)
+    finally:
+        timestamp_path.unlink(missing_ok=True)
+
+
+def _timestamp_overlay_text(captured_at: datetime, timezone_name: str | None) -> str:
+    if timezone_name:
+        try:
+            display_at = captured_at.astimezone(ZoneInfo(timezone_name))
+        except ZoneInfoNotFoundError as exc:
+            raise CameraAgentError(f"invalid_timestamp_timezone:{timezone_name}") from exc
+    else:
+        display_at = captured_at.astimezone()
+    return display_at.strftime("%Y-%m-%d %H:%M:%S %z")
+
+
+def _escape_drawtext_value(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace(":", "\\:")
+        .replace(",", "\\,")
+        .replace("'", "\\'")
+    )
+
+
 def _print_doctor_result(result: DoctorResult, *, as_json: bool) -> None:
     if as_json:
         print(json.dumps({"ok": result.ok, "checks": [asdict(check) for check in result.checks]}, indent=2))
@@ -449,6 +531,15 @@ def _config_from_env() -> AgentConfig:
         interval_seconds=_env_int("CAMERA_AGENT_INTERVAL_SECONDS", DEFAULT_INTERVAL_SECONDS),
         local_spool_hours=_env_int("CAMERA_AGENT_LOCAL_SPOOL_HOURS", DEFAULT_SPOOL_HOURS),
         http_timeout_seconds=_env_int("CAMERA_AGENT_HTTP_TIMEOUT_SECONDS", DEFAULT_HTTP_TIMEOUT_SECONDS),
+        timestamp_overlay_enabled=_env_bool(
+            "CAMERA_AGENT_TIMESTAMP_OVERLAY_ENABLED",
+            DEFAULT_TIMESTAMP_OVERLAY_ENABLED,
+        ),
+        timestamp_overlay_timezone=os.getenv("CAMERA_AGENT_TIMESTAMP_OVERLAY_TIMEZONE", "").strip() or None,
+        timestamp_overlay_font_file=os.getenv(
+            "CAMERA_AGENT_TIMESTAMP_FONT_FILE",
+            DEFAULT_TIMESTAMP_FONT_FILE,
+        ).strip(),
     )
 
 
@@ -462,6 +553,13 @@ def _required_env(name: str) -> str:
 def _env_int(name: str, default: int) -> int:
     value = os.getenv(name, "").strip()
     return int(value) if value else default
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
 
 
 def _safe_error(exc: Exception) -> str:

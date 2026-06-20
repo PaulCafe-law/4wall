@@ -327,6 +327,14 @@ class SiteDto(BaseModel):
     updatedAt: datetime
 
 
+class SiteMapAssetManifestDto(BaseModel):
+    assetKey: str
+    label: str
+    assetType: Literal["sog"]
+    assetUrl: str
+    expiresAt: datetime
+
+
 class EvidenceArtifactDto(BaseModel):
     artifactName: str
     downloadUrl: str

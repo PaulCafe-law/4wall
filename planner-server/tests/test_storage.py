@@ -38,6 +38,20 @@ def test_s3_artifact_storage_read_reraises_non_missing_client_error() -> None:
         storage.read("denied.jpg")
 
 
+def test_s3_artifact_storage_creates_presigned_get_url() -> None:
+    client = FakeS3Client()
+    storage = S3ArtifactStorage(bucket="bucket", client=client)
+
+    url = storage.create_presigned_get_url(key="site-map-assets/rent-house/v1/rent-house.v1.sog", expires_in_seconds=300)
+
+    assert url == "https://signed.example.test/get_object"
+    assert client.presigned_calls[-1] == {
+        "ClientMethod": "get_object",
+        "Params": {"Bucket": "bucket", "Key": "site-map-assets/rent-house/v1/rent-house.v1.sog"},
+        "ExpiresIn": 300,
+    }
+
+
 class FakeS3Client:
     class exceptions:
         NoSuchKey = type("NoSuchKey", (Exception,), {})
@@ -46,6 +60,7 @@ class FakeS3Client:
         self.error_code = error_code
         self.status_code = status_code
         self.deleted_keys: list[str] = []
+        self.presigned_calls: list[dict] = []
 
     def get_object(self, *, Bucket: str, Key: str):
         if self.error_code:
@@ -60,3 +75,13 @@ class FakeS3Client:
 
     def delete_object(self, *, Bucket: str, Key: str) -> None:
         self.deleted_keys.append(Key)
+
+    def generate_presigned_url(self, ClientMethod: str, *, Params: dict, ExpiresIn: int) -> str:
+        self.presigned_calls.append(
+            {
+                "ClientMethod": ClientMethod,
+                "Params": Params,
+                "ExpiresIn": ExpiresIn,
+            }
+        )
+        return f"https://signed.example.test/{ClientMethod}"

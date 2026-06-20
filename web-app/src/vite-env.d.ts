@@ -6,6 +6,12 @@ interface ImportMetaEnv {
   readonly VITE_GOOGLE_MAPS_API_KEY?: string
 }
 
+declare module 'playcanvas/scripts/esm/camera-controls.mjs' {
+  import type { Script } from 'playcanvas'
+
+  export const CameraControls: typeof Script
+}
+
 interface ImportMeta {
   readonly env: ImportMetaEnv
 }

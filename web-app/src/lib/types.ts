@@ -199,6 +199,14 @@ export interface Site {
   updatedAt: string
 }
 
+export interface SiteMapAssetManifest {
+  assetKey: string
+  label: string
+  assetType: 'sog'
+  assetUrl: string
+  expiresAt: string
+}
+
 export interface LaunchPointSummary {
   launchPointId?: string
   label?: string
@@ -507,6 +515,46 @@ export interface Overview {
   latestReportSummary: InspectionReportSummary | null
   latestEventSummary: OverviewEventSummary | null
   supportSummary: OverviewSupportSummary | null
+}
+
+export interface CameraFrame {
+  frameId: string
+  cameraId: string
+  capturedAt: string
+  storageKey: string
+  contentType: string
+  checksumSha256: string | null
+  sizeBytes: number | null
+  width: number | null
+  height: number | null
+  uploadStatus: string
+  analysisStatus: string
+  errorMessage: string | null
+  uploadExpiresAt: string
+  completedAt: string | null
+}
+
+export interface CameraDevice {
+  cameraId: string
+  organizationId: string
+  siteId: string | null
+  name: string
+  status: string
+  rtspConfigured: boolean
+  samplingIntervalSeconds: number
+  retentionDays: number
+  localSpoolHours: number
+  lastHeartbeatAt: string | null
+  lastFrameAt: string | null
+  lastError: string | null
+  uploadedFrameCount: number
+  queuedFrameCount: number
+  failedFrameCount: number
+  latestFrame: CameraFrame | null
+}
+
+export interface CameraDeviceList {
+  cameras: CameraDevice[]
 }
 
 export interface AlertCenterItem {

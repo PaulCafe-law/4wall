@@ -371,6 +371,31 @@ def get_camera_device(
     return _serialize_camera_status(session, camera)
 
 
+@router.get("/v1/cameras/{camera_id}/latest-frame/image")
+def get_camera_latest_frame_image(
+    camera_id: str,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+    storage: ArtifactStorage = Depends(get_artifact_storage),
+) -> Response:
+    camera = _load_camera_for_web(session, current_user, camera_id, write=False)
+    frame = _latest_uploaded_frame_for_camera(session, camera)
+    if frame is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="camera_latest_frame_not_found")
+    data = storage.read(frame.storage_key)
+    if data is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="camera_frame_object_missing")
+    return Response(
+        content=data,
+        media_type=frame.content_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Camera-Frame-Id": frame.id,
+            "X-Camera-Captured-At": _as_utc(frame.captured_at).isoformat().replace("+00:00", "Z"),
+        },
+    )
+
+
 @router.get("/v1/cameras/{camera_id}/watch-zones", response_model=EquipmentWatchZonesDto)
 def list_camera_watch_zones(
     camera_id: str,
@@ -509,11 +534,7 @@ def _serialize_frame(frame: CameraFrame) -> CameraFrameDto:
 
 
 def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDeviceStatusDto:
-    latest_frame = session.exec(
-        select(CameraFrame)
-        .where(CameraFrame.camera_id == camera.id)
-        .order_by(CameraFrame.captured_at.desc(), CameraFrame.created_at.desc())
-    ).first()
+    latest_frame = _latest_frame_for_camera(session, camera)
     return CameraDeviceStatusDto(
         cameraId=camera.id,
         organizationId=camera.organization_id,
@@ -533,6 +554,22 @@ def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDe
         + _count_camera_frames(session, camera, analysis_status="failed"),
         latestFrame=_serialize_frame(latest_frame) if latest_frame is not None else None,
     )
+
+
+def _latest_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFrame | None:
+    return session.exec(
+        select(CameraFrame)
+        .where(CameraFrame.camera_id == camera.id)
+        .order_by(CameraFrame.captured_at.desc(), CameraFrame.created_at.desc())
+    ).first()
+
+
+def _latest_uploaded_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFrame | None:
+    return session.exec(
+        select(CameraFrame)
+        .where(CameraFrame.camera_id == camera.id, CameraFrame.upload_status == "uploaded")
+        .order_by(CameraFrame.captured_at.desc(), CameraFrame.created_at.desc())
+    ).first()
 
 
 def _serialize_zone(zone: EquipmentWatchZone) -> EquipmentWatchZoneDto:

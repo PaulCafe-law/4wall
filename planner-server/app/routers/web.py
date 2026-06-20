@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from app.audit import record_audit
 from app.deps import (
     CurrentWebUser,
+    get_artifact_storage,
     get_current_web_user,
     get_rate_limiter,
     get_session,
@@ -69,6 +70,7 @@ from app.web_dto import (
     OrganizationMemberDto,
     OrganizationSummaryDto,
     SiteDto,
+    SiteMapAssetManifestDto,
     SiteMapDto,
     SiteZoneDto,
     LaunchPointDto,
@@ -96,6 +98,7 @@ router = APIRouter(tags=["web"])
 STALE_TELEMETRY_SECONDS = 90
 LOW_BATTERY_THRESHOLD = 25
 SITE_MAP_DEFAULT_OFFSET = 0.00012
+SITE_MAP_RENT_HOUSE_ASSET_KEY = "rent-house"
 
 
 @router.post("/v1/web/session/login", response_model=WebSessionDto)
@@ -869,6 +872,31 @@ def patch_site(
     )
     session.commit()
     return _serialize_site(session, site)
+
+
+@router.get("/v1/site-map-assets/{asset_key}/manifest", response_model=SiteMapAssetManifestDto)
+def get_site_map_asset_manifest(
+    asset_key: str,
+    current_user: CurrentWebUser = Depends(require_internal_user),
+    settings=Depends(get_settings),
+    storage=Depends(get_artifact_storage),
+) -> SiteMapAssetManifestDto:
+    if asset_key != SITE_MAP_RENT_HOUSE_ASSET_KEY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="site_map_asset_not_found")
+    storage_key = settings.site_map_rent_house_sog_key
+    if not storage_key:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="site_map_asset_not_configured")
+    ttl_seconds = max(60, settings.site_map_asset_url_ttl_seconds)
+    asset_url = storage.create_presigned_get_url(key=storage_key, expires_in_seconds=ttl_seconds)
+    if not asset_url:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="site_map_asset_url_unavailable")
+    return SiteMapAssetManifestDto(
+        assetKey=asset_key,
+        label="租屋處",
+        assetType="sog",
+        assetUrl=asset_url,
+        expiresAt=datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds),
+    )
 
 
 @router.get("/v1/billing/invoices", response_model=list[BillingInvoiceDto])

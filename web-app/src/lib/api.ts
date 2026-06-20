@@ -31,9 +31,11 @@ import type {
   OrganizationDetail,
   OrganizationSummary,
   Site,
+  SiteMapAssetManifest,
   AlertCenterItem,
   SupportQueueItem,
   SupportQueueAction,
+  CameraDeviceList,
   TelemetryBatchRecord,
   WebSession,
 } from './types'
@@ -417,11 +419,14 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   getOverview: (token: string) => apiFetch<Overview>('/v1/web/overview', { token }),
+  listCameras: (token: string) => apiFetch<CameraDeviceList>('/v1/cameras', { token }),
   getControlPlaneDashboard: (token: string) =>
     apiFetch<ControlPlaneDashboard>('/v1/control-plane/dashboard', { token }),
   listControlPlaneAlerts: (token: string) =>
     apiFetch<AlertCenterItem[]>('/v1/control-plane/alerts', { token }),
   listSites: (token: string) => apiFetch<Site[]>('/v1/sites', { token }),
+  getSiteMapAssetManifest: (token: string, assetKey: string) =>
+    apiFetch<SiteMapAssetManifest>(`/v1/site-map-assets/${assetKey}/manifest`, { token }),
   listIndustrialEngineJobs: (token: string) =>
     apiFetch<IndustrialEngineJob[]>('/v1/industrial-data-engine/jobs', { token }),
   getIndustrialEngineJob: (token: string, jobId: string) =>
@@ -679,6 +684,10 @@ export const api = {
     }),
   fetchArtifactBlob: async (token: string, path: string) => {
     const response = await artifactFetch(path, token)
+    return response.blob()
+  },
+  fetchCameraLatestFrameBlob: async (token: string, cameraId: string) => {
+    const response = await artifactFetch(`/v1/cameras/${cameraId}/latest-frame/image`, token)
     return response.blob()
   },
 }

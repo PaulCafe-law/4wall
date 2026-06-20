@@ -37,6 +37,13 @@ class ArtifactStorage(Protocol):
         expires_in_seconds: int,
     ) -> str | None: ...
 
+    def create_presigned_get_url(
+        self,
+        *,
+        key: str,
+        expires_in_seconds: int,
+    ) -> str | None: ...
+
 
 class LocalFileArtifactStorage:
     def __init__(self, root: str) -> None:
@@ -71,6 +78,14 @@ class LocalFileArtifactStorage:
         key: str,
         content_type: str,
         cache_control: str,
+        expires_in_seconds: int,
+    ) -> str | None:
+        return None
+
+    def create_presigned_get_url(
+        self,
+        *,
+        key: str,
         expires_in_seconds: int,
     ) -> str | None:
         return None
@@ -140,6 +155,21 @@ class S3ArtifactStorage:
                 "Key": key,
                 "ContentType": content_type,
                 "CacheControl": cache_control,
+            },
+            ExpiresIn=expires_in_seconds,
+        )
+
+    def create_presigned_get_url(
+        self,
+        *,
+        key: str,
+        expires_in_seconds: int,
+    ) -> str | None:
+        return self.client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": self.bucket,
+                "Key": key,
             },
             ExpiresIn=expires_in_seconds,
         )
