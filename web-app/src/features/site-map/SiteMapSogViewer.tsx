@@ -9,7 +9,6 @@ import {
   FILLMODE_NONE,
   MOUSEBUTTON_LEFT,
   MOUSEBUTTON_RIGHT,
-  Quat,
   RESOLUTION_AUTO,
   Script as PlayCanvasBaseScript,
   Vec2,
@@ -18,7 +17,12 @@ import {
   type MouseEvent as PlayCanvasMouseEvent,
 } from 'playcanvas'
 
-import { composeViewRelativeFlyMove, type SiteMapFlyBasis, type SiteMapFlyVector } from './site-map-flight-controls'
+import {
+  composeViewRelativeFlyMove,
+  createNoRollFlyBasis,
+  type SiteMapFlyBasis,
+  type SiteMapFlyVector,
+} from './site-map-flight-controls'
 
 type SogViewerState = 'waiting' | 'loading' | 'loaded' | 'error'
 type Vec3Tuple = [number, number, number]
@@ -311,7 +315,16 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
       -SOG_FLY_PITCH_LIMIT_DEGREES,
       SOG_FLY_PITCH_LIMIT_DEGREES,
     )
-    this.entity.setEulerAngles(this.pitchDegrees, this.yawDegrees, 0)
+    const basis = createNoRollFlyBasis(this.yawDegrees, this.pitchDegrees)
+    const position = this.entity.getPosition()
+    this.entity.lookAt(
+      new Vec3(
+        position.x + basis.forward.x,
+        position.y + basis.forward.y,
+        position.z + basis.forward.z,
+      ),
+      flyVectorToVec3(basis.up),
+    )
   }
 
   private moveFromKeyboard(dt: number) {
@@ -374,17 +387,7 @@ class SiteMapUnrealFlyControls extends PlayCanvasBaseScript {
 }
 
 function createPlayCanvasFlyBasis(yawDegrees: number, pitchDegrees: number): SiteMapFlyBasis {
-  const rotation = new Quat().setFromEulerAngles(pitchDegrees, yawDegrees, 0)
-
-  return {
-    forward: vec3ToFlyVector(rotation.transformVector(Vec3.FORWARD, new Vec3()).normalize()),
-    right: vec3ToFlyVector(rotation.transformVector(Vec3.RIGHT, new Vec3()).normalize()),
-    up: vec3ToFlyVector(rotation.transformVector(Vec3.UP, new Vec3()).normalize()),
-  }
-}
-
-function vec3ToFlyVector(vector: Vec3): SiteMapFlyVector {
-  return { x: vector.x, y: vector.y, z: vector.z }
+  return createNoRollFlyBasis(yawDegrees, pitchDegrees)
 }
 
 function flyVectorToVec3(vector: SiteMapFlyVector) {
