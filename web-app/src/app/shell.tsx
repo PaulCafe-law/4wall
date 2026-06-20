@@ -11,10 +11,9 @@ const customerLinks = [
   { to: '/site-map', label: '場域地圖' },
   { to: '/missions', label: '任務' },
   { to: '/incidents', label: '異常事件' },
+  { to: '/industrial-data-engine', label: '資料引擎' },
   { to: '/billing', label: '帳務' },
 ]
-
-customerLinks.splice(customerLinks.length - 1, 0, { to: '/industrial-data-engine', label: '資料引擎' })
 
 const internalLinks = [
   { to: '/control-plane', label: '控制平面' },
@@ -26,18 +25,18 @@ const internalLinks = [
 
 function linkClass(active: boolean) {
   return active
-    ? 'inline-flex w-fit items-center rounded-full bg-chrome-950 px-4 py-2 text-white'
-    : 'inline-flex w-fit items-center rounded-full px-4 py-2 text-chrome-700 transition hover:bg-white/70 hover:text-chrome-950'
+    ? 'inline-flex w-fit shrink-0 items-center rounded-full bg-chrome-950 px-4 py-2 text-white'
+    : 'inline-flex w-fit shrink-0 items-center rounded-full px-4 py-2 text-chrome-700 transition hover:bg-white/70 hover:text-chrome-950'
 }
 
 export function AppShell() {
   const auth = useAuth()
 
   return (
-    <>
-      <div className="md:hidden">
-        <div className="min-h-screen bg-grain px-6 py-10">
-          <div className="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur">
+    <div className="min-h-screen bg-grain md:grid md:grid-cols-[18rem_minmax(0,1fr)]">
+      <aside className="min-w-0 border-b border-white/60 bg-chrome-50/70 px-4 py-5 backdrop-blur md:border-b-0 md:border-r md:px-5 md:py-6">
+        <div className="space-y-6">
+          <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">
               The Fourth Wall
             </p>
@@ -48,104 +47,86 @@ export function AppShell() {
               Web 端負責規劃、營運、支援與客戶入口，不進 flight-critical loop。
             </p>
           </div>
-        </div>
-      </div>
 
-      <div className="hidden min-h-screen bg-grain md:grid md:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="min-w-0 border-r border-white/60 bg-chrome-50/70 px-5 py-6 backdrop-blur">
-          <div className="space-y-6">
+          <div className="space-y-4">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.34em] text-ember-500">
-                The Fourth Wall
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+                客戶工作區
               </p>
-              <h1 className="mt-3 font-display text-2xl font-semibold tracking-[-0.04em] text-chrome-950">
-                建築巡檢工作區
-              </h1>
-              <p className="mt-2 text-sm text-chrome-700">
-                Web 端負責規劃、營運、支援與客戶入口，不進 flight-critical loop。
-              </p>
+              <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 md:flex-col md:items-start md:overflow-visible md:pb-0">
+                {customerLinks.map((link) => (
+                  <NavLink key={link.to} to={link.to} className={({ isActive }) => linkClass(isActive)}>
+                    {link.label}
+                  </NavLink>
+                ))}
+              </nav>
             </div>
 
-            <div className="space-y-4">
+            {auth.isInternal ? (
               <div>
                 <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                  客戶工作區
+                  內部營運
                 </p>
-                <nav className="mt-3 flex flex-col items-start gap-2">
-                  {customerLinks.map((link) => (
+                <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 md:flex-col md:items-start md:overflow-visible md:pb-0">
+                  {internalLinks.map((link) => (
                     <NavLink key={link.to} to={link.to} className={({ isActive }) => linkClass(isActive)}>
                       {link.label}
                     </NavLink>
                   ))}
                 </nav>
               </div>
+            ) : null}
+          </div>
 
-              {auth.isInternal ? (
-                <div>
-                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                    內部營運
-                  </p>
-                  <nav className="mt-3 flex flex-col items-start gap-2">
-                    {internalLinks.map((link) => (
-                      <NavLink key={link.to} to={link.to} className={({ isActive }) => linkClass(isActive)}>
-                        {link.label}
-                      </NavLink>
-                    ))}
-                  </nav>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="rounded-[1.5rem] border border-white/70 bg-white/80 p-4 shadow-panel">
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
-                目前帳號
-              </p>
-              <p className="mt-3 text-sm font-medium text-chrome-950">{auth.user?.displayName}</p>
-              <p className="mt-1 break-all text-sm text-chrome-600">{auth.user?.email}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {auth.user?.globalRoles.map((role) => (
+          <div className="rounded-[1.5rem] border border-white/70 bg-white/80 p-4 shadow-panel">
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">
+              目前帳號
+            </p>
+            <p className="mt-3 text-sm font-medium text-chrome-950">{auth.user?.displayName}</p>
+            <p className="mt-1 break-all text-sm text-chrome-600">{auth.user?.email}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {auth.user?.globalRoles.map((role) => (
+                <span
+                  key={role}
+                  className="rounded-full bg-moss-300/40 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-moss-500"
+                >
+                  {formatRole(role)}
+                </span>
+              ))}
+              {auth.user?.memberships
+                .filter((membership) => membership.organizationId)
+                .map((membership) => (
                   <span
-                    key={role}
-                    className="rounded-full bg-moss-300/40 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-moss-500"
+                    key={membership.membershipId}
+                    className="rounded-full bg-chrome-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700"
                   >
-                    {formatRole(role)}
+                    {formatRole(membership.role)}
                   </span>
                 ))}
-                {auth.user?.memberships
-                  .filter((membership) => membership.organizationId)
-                  .map((membership) => (
-                    <span
-                      key={membership.membershipId}
-                      className="rounded-full bg-chrome-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700"
-                    >
-                      {formatRole(membership.role)}
-                    </span>
-                  ))}
-              </div>
             </div>
           </div>
-        </aside>
-
-        <div className="min-w-0">
-          <header className="sticky top-0 z-20 flex flex-col items-start gap-3 border-b border-white/60 bg-chrome-50/70 px-6 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">
-                目前頁面範圍
-              </p>
-              <p className="text-sm text-chrome-700">
-                目前位於客戶入口，可檢視場域、任務、報表與帳務資訊。
-              </p>
-            </div>
-            <ActionButton variant="secondary" onClick={() => void auth.logout()}>
-              登出
-            </ActionButton>
-          </header>
-
-          <main className="min-w-0 px-4 py-4 md:px-6 md:py-6">
-            <Outlet />
-          </main>
         </div>
+      </aside>
+
+      <div className="min-w-0">
+        <header className="sticky top-0 z-20 flex flex-col items-start gap-3 border-b border-white/60 bg-chrome-50/70 px-4 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div className="min-w-0">
+            <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">
+              目前頁面範圍
+            </p>
+            <p className="text-sm text-chrome-700">
+              目前位於客戶入口，可檢視場域、任務、報表與帳務資訊。
+            </p>
+          </div>
+          <ActionButton variant="secondary" onClick={() => void auth.logout()}>
+            登出
+          </ActionButton>
+        </header>
+
+        <main className="min-w-0 px-4 py-4 md:px-6 md:py-6">
+          <Outlet />
+        </main>
       </div>
-    </>
+    </div>
   )
 }

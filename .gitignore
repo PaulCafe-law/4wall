@@ -28,6 +28,11 @@ planner-server/storage/
 # Logs and temp
 *.log
 tmp/
+.tmp/
+
+# Private 3DGS source/output assets stay outside git and deploy images.
+*.ply
+*.sog
 
 # Project-local automation outputs
 .gstack/

@@ -4,8 +4,15 @@ import { clsx } from 'clsx'
 
 import { ActionButton, DataList, EmptyState, Field, Metric, Panel, Select, ShellSection, formatDateTime } from '../../components/ui'
 import { api } from '../../lib/api'
+import { useAuth } from '../../lib/auth'
 import { useAuthedQuery } from '../../lib/auth-query'
-import { DEFAULT_SITE_MAP_KEY, SITE_MAP_CONFIGS, getSiteMapConfig, type SiteMapKey } from './site-map-config'
+import {
+  DEFAULT_SITE_MAP_KEY,
+  getSiteMapConfig,
+  type SiteMapKey,
+  visibleSiteMapConfigs,
+} from './site-map-config'
+import { SiteMapSogViewer } from './SiteMapSogViewer'
 import { SiteMapThreeViewer } from './SiteMapThreeViewer'
 import { SiteMapTwoDViewer } from './SiteMapTwoDViewer'
 import {
@@ -30,16 +37,26 @@ function badgeClass(className: string) {
 }
 
 export function SiteMapPage() {
+  const auth = useAuth()
   const [searchParams, setSearchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<SiteMapViewMode>('3d')
   const [statusFilter, setStatusFilter] = useState('')
   const [severityFilter, setSeverityFilter] = useState('')
-  const siteMapConfig = getSiteMapConfig(searchParams.get('map'))
+  const siteMapConfigs = useMemo(() => visibleSiteMapConfigs({ includeInternal: auth.isInternal }), [auth.isInternal])
+  const siteMapConfig = getSiteMapConfig(searchParams.get('map'), siteMapConfigs)
 
   const incidentsQuery = useAuthedQuery({
     queryKey: ['site-map', 'incidents'],
     queryFn: (token) => api.listIncidents(token),
     staleTime: 10_000,
+  })
+
+  const rentHouseManifestQuery = useAuthedQuery({
+    queryKey: ['site-map-asset', siteMapConfig.manifestAssetKey],
+    queryFn: (token) => api.getSiteMapAssetManifest(token, siteMapConfig.manifestAssetKey ?? ''),
+    enabled: siteMapConfig.assetKind === 'sog' && Boolean(siteMapConfig.manifestAssetKey),
+    retry: false,
+    staleTime: 240_000,
   })
 
   const incidents = useMemo(() => incidentsQuery.data ?? [], [incidentsQuery.data])
@@ -90,30 +107,30 @@ export function SiteMapPage() {
       <ShellSection
         eyebrow="Site Map"
         title="場域地圖"
-        subtitle={`${siteMapConfig.label}：把異常事件放回現場位置，先用 Incident location JSON 做 2D / 3D 錨點，未來再接正式 BIM 模型與空間錨點資料表。`}
+        subtitle={`${siteMapConfig.label}，用於檢視場域模型、事件位置與 2D / 3D 對照。`}
         action={
           <Link
             className="inline-flex rounded-full border border-chrome-300 bg-white px-4 py-2 text-sm font-medium text-chrome-950 transition hover:border-chrome-500"
             to="/incidents"
           >
-            返回異常事件
+            查看事件中心
           </Link>
         }
       />
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Metric label="目前場域" value={siteMapConfig.label} hint={siteMapConfig.description} />
-        <Metric label="地圖事件" value={filteredIncidents.length} hint="依目前篩選條件顯示" />
-        <Metric label="高風險" value={criticalHighCount} hint="critical / high 優先處理" />
-        <Metric label="未結案" value={activeCount} hint="待確認、已確認、處理中" />
-        <Metric label="資料場域數" value={siteCount || '未指定'} hint={`${fallbackCount} 件使用示意座標`} />
+        <Metric label="事件標記" value={filteredIncidents.length} hint="依目前篩選條件顯示" />
+        <Metric label="高風險" value={criticalHighCount} hint="critical / high" />
+        <Metric label="未結案" value={activeCount} hint="尚需追蹤的事件" />
+        <Metric label="座標補位" value={fallbackCount} hint={`${siteCount || 0} 個來源場域`} />
       </div>
 
       <Panel>
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
           <Field label="場域">
             <Select value={siteMapConfig.key} onChange={(event) => selectSiteMap(event.target.value as SiteMapKey)}>
-              {SITE_MAP_CONFIGS.map((item) => (
+              {siteMapConfigs.map((item) => (
                 <option key={item.key} value={item.key}>
                   {item.label}
                 </option>
@@ -130,9 +147,9 @@ export function SiteMapPage() {
               ))}
             </Select>
           </Field>
-          <Field label="嚴重程度">
+          <Field label="嚴重度">
             <Select value={severityFilter} onChange={(event) => setSeverityFilter(event.target.value)}>
-              <option value="">全部嚴重程度</option>
+              <option value="">全部嚴重度</option>
               {SITE_MAP_SEVERITY_OPTIONS.map((item) => (
                 <option key={item.value} value={item.value}>
                   {item.label}
@@ -151,109 +168,119 @@ export function SiteMapPage() {
                 )}
                 onClick={() => setViewMode(mode)}
               >
-                {mode === '3d' ? '3D 場域' : '2D 平面'}
+                {mode === '3d' ? '3D 場域' : '2D 參考'}
               </button>
             ))}
           </div>
         </div>
       </Panel>
 
-      {incidentsQuery.isLoading ? <Panel><p className="text-sm text-chrome-700">載入場域事件中...</p></Panel> : null}
+      {incidentsQuery.isLoading ? (
+        <Panel>
+          <p className="text-sm text-chrome-700">載入場域事件中...</p>
+        </Panel>
+      ) : null}
       {incidentsQuery.isError ? (
         <Panel className="border-red-200 bg-red-50/85">
-          <p className="text-sm text-red-700">無法載入異常事件，請稍後再試。</p>
+          <p className="text-sm text-red-700">無法載入事件資料，請稍後重試。</p>
         </Panel>
       ) : null}
 
-      {!incidentsQuery.isLoading && !incidentsQuery.isError && markers.length === 0 ? (
-        <EmptyState
-          title="目前沒有可放入場域地圖的事件"
-          body="建立異常事件並填入場域、區域或設備後，這裡會顯示事件錨點。"
-        />
-      ) : null}
-
-      {markers.length > 0 ? (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-          <Panel className="p-3">
-            {viewMode === '3d' ? (
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <Panel className="p-3">
+          {viewMode === '3d' ? (
+            siteMapConfig.assetKind === 'sog' ? (
+              <SiteMapSogViewer
+                assetUrl={rentHouseManifestQuery.data?.assetUrl ?? null}
+                siteLabel={siteMapConfig.label}
+                modelAssetPath={siteMapConfig.modelAssetPath}
+                manifestLoading={rentHouseManifestQuery.isLoading}
+                manifestError={rentHouseManifestQuery.isError}
+              />
+            ) : (
               <SiteMapThreeViewer
-                modelUrl={siteMapConfig.modelUrl}
+                modelUrl={siteMapConfig.modelUrl ?? ''}
                 siteLabel={siteMapConfig.label}
                 modelAssetPath={siteMapConfig.modelAssetPath}
                 placeholderVariant={siteMapConfig.placeholderVariant}
               />
+            )
+          ) : (
+            <SiteMapTwoDViewer
+              markers={markers}
+              selectedIncidentId={selectedMarker?.incident.incidentId ?? null}
+              siteLabel={siteMapConfig.label}
+              planLabel={siteMapConfig.planLabel}
+              placeholderVariant={siteMapConfig.placeholderVariant}
+              onSelectIncident={selectIncident}
+            />
+          )}
+        </Panel>
+
+        <div className="space-y-6">
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Selected Incident</p>
+            {selectedMarker ? (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <h2 className="font-display text-2xl font-semibold leading-tight text-chrome-950">
+                    {selectedIncidentTitle}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-chrome-700">{selectedIncidentDescription}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className={badgeClass(siteMapStatusBadgeClass(selectedMarker.incident.status))}>
+                    {formatSiteMapStatus(selectedMarker.incident.status)}
+                  </span>
+                  <span className={badgeClass(siteMapSeverityBadgeClass(selectedMarker.incident.severity))}>
+                    {formatSiteMapSeverity(selectedMarker.incident.severity)}
+                  </span>
+                </div>
+                <DataList
+                  rows={[
+                    { label: '位置', value: incidentLocationText(selectedMarker.incident) },
+                    { label: '負責人', value: siteMapAssigneeText(selectedMarker.incident) },
+                    { label: '建立時間', value: formatDateTime(selectedMarker.incident.createdAt) },
+                    { label: '更新時間', value: formatDateTime(selectedMarker.incident.updatedAt) },
+                    {
+                      label: '3D 座標',
+                      value: selectedMarker.usedFallback3d
+                        ? '使用 fallback 座標'
+                        : `${selectedMarker.worldX}, ${selectedMarker.worldY}, ${selectedMarker.worldZ}`,
+                    },
+                    {
+                      label: '模型錨點',
+                      value: siteMapAnchorText(selectedMarker.incident),
+                    },
+                  ]}
+                />
+                <div className="flex flex-wrap gap-3">
+                  <Link
+                    className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm font-medium text-white"
+                    to={`/incidents/${selectedMarker.incident.incidentId}`}
+                  >
+                    開啟事件詳情
+                  </Link>
+                  <ActionButton variant="secondary" disabled>
+                    模型物件同步未啟用
+                  </ActionButton>
+                </div>
+              </div>
             ) : (
-              <SiteMapTwoDViewer
-                markers={markers}
-                selectedIncidentId={selectedMarker?.incident.incidentId ?? null}
-                siteLabel={siteMapConfig.label}
-                planLabel={siteMapConfig.planLabel}
-                placeholderVariant={siteMapConfig.placeholderVariant}
-                onSelectIncident={selectIncident}
+              <EmptyState
+                title="目前沒有事件標記"
+                body="場域模型仍可檢視。建立事件並補上 2D 或 3D 座標後，標記會出現在這裡。"
               />
             )}
           </Panel>
 
-          <div className="space-y-6">
-            <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Selected Incident</p>
-              {selectedMarker ? (
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <h2 className="font-display text-2xl font-semibold leading-tight text-chrome-950">
-                      {selectedIncidentTitle}
-                    </h2>
-                    <p className="mt-2 text-sm leading-6 text-chrome-700">
-                      {selectedIncidentDescription}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <span className={badgeClass(siteMapStatusBadgeClass(selectedMarker.incident.status))}>
-                      {formatSiteMapStatus(selectedMarker.incident.status)}
-                    </span>
-                    <span className={badgeClass(siteMapSeverityBadgeClass(selectedMarker.incident.severity))}>
-                      {formatSiteMapSeverity(selectedMarker.incident.severity)}
-                    </span>
-                  </div>
-                  <DataList
-                    rows={[
-                      { label: '位置', value: incidentLocationText(selectedMarker.incident) },
-                      { label: '負責人', value: siteMapAssigneeText(selectedMarker.incident) },
-                      { label: '建立時間', value: formatDateTime(selectedMarker.incident.createdAt) },
-                      { label: '更新時間', value: formatDateTime(selectedMarker.incident.updatedAt) },
-                      {
-                        label: '3D 座標',
-                        value: selectedMarker.usedFallback3d
-                          ? '使用示意座標'
-                          : `${selectedMarker.worldX}, ${selectedMarker.worldY}, ${selectedMarker.worldZ}`,
-                      },
-                      {
-                        label: '模型錨點',
-                        value: siteMapAnchorText(selectedMarker.incident),
-                      },
-                    ]}
-                  />
-                  <div className="flex flex-wrap gap-3">
-                    <Link
-                      className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm font-medium text-white"
-                      to={`/incidents/${selectedMarker.incident.incidentId}`}
-                    >
-                      查看事件詳情
-                    </Link>
-                    <ActionButton variant="secondary" disabled>
-                      BIM 物件選取尚未啟用
-                    </ActionButton>
-                  </div>
-                </div>
+          <Panel>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Priority Queue</p>
+            <div className="mt-4 space-y-3">
+              {markers.length === 0 ? (
+                <p className="text-sm leading-6 text-chrome-700">目前沒有符合篩選條件的事件。</p>
               ) : (
-                <p className="mt-4 text-sm text-chrome-700">請在地圖上選擇一筆事件。</p>
-              )}
-            </Panel>
-
-            <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Priority Queue</p>
-              <div className="mt-4 space-y-3">
-                {markers.slice(0, 6).map((marker) => (
+                markers.slice(0, 6).map((marker) => (
                   <button
                     key={marker.incident.incidentId}
                     type="button"
@@ -270,12 +297,12 @@ export function SiteMapPage() {
                       {formatSiteMapSeverity(marker.incident.severity)} / {incidentLocationText(marker.incident)}
                     </span>
                   </button>
-                ))}
-              </div>
-            </Panel>
-          </div>
+                ))
+              )}
+            </div>
+          </Panel>
         </div>
-      ) : null}
+      </div>
     </div>
   )
 }

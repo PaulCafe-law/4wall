@@ -199,6 +199,14 @@ export interface Site {
   updatedAt: string
 }
 
+export interface SiteMapAssetManifest {
+  assetKey: string
+  label: string
+  assetType: 'sog'
+  assetUrl: string
+  expiresAt: string
+}
+
 export interface LaunchPointSummary {
   launchPointId?: string
   label?: string

@@ -91,6 +91,8 @@ class Settings:
     camera_analysis_ollama_model: str = "qwen2.5vl:7b"
     camera_analysis_ollama_auth_token: str | None = None
     camera_analysis_timeout_seconds: int = 120
+    site_map_rent_house_sog_key: str | None = None
+    site_map_asset_url_ttl_seconds: int = 300
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -174,6 +176,8 @@ class Settings:
             ),
             camera_analysis_ollama_auth_token=_env_str("CAMERA_ANALYSIS_OLLAMA_AUTH_TOKEN"),
             camera_analysis_timeout_seconds=_env_int("CAMERA_ANALYSIS_TIMEOUT_SECONDS", 120),
+            site_map_rent_house_sog_key=_env_str("BUILDING_ROUTE_SITE_MAP_RENT_HOUSE_SOG_KEY"),
+            site_map_asset_url_ttl_seconds=_env_int("BUILDING_ROUTE_SITE_MAP_ASSET_URL_TTL_SECONDS", 300),
         )
 
     @property

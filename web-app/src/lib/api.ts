@@ -31,6 +31,7 @@ import type {
   OrganizationDetail,
   OrganizationSummary,
   Site,
+  SiteMapAssetManifest,
   AlertCenterItem,
   SupportQueueItem,
   SupportQueueAction,
@@ -424,6 +425,8 @@ export const api = {
   listControlPlaneAlerts: (token: string) =>
     apiFetch<AlertCenterItem[]>('/v1/control-plane/alerts', { token }),
   listSites: (token: string) => apiFetch<Site[]>('/v1/sites', { token }),
+  getSiteMapAssetManifest: (token: string, assetKey: string) =>
+    apiFetch<SiteMapAssetManifest>(`/v1/site-map-assets/${assetKey}/manifest`, { token }),
   listIndustrialEngineJobs: (token: string) =>
     apiFetch<IndustrialEngineJob[]>('/v1/industrial-data-engine/jobs', { token }),
   getIndustrialEngineJob: (token: string, jobId: string) =>

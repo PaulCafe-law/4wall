@@ -5,7 +5,7 @@ import { AppShell } from './shell'
 import { createAuthValue, createSession, renderWithProviders } from '../test/utils'
 
 describe('AppShell', () => {
-  it('keeps the authenticated navigation in a vertical rail layout', () => {
+  it('keeps the authenticated navigation responsive', () => {
     const { container } = renderWithProviders(
       <Routes>
         <Route element={<AppShell />}>
@@ -27,10 +27,11 @@ describe('AppShell', () => {
 
     const nav = container.querySelector('nav')
     expect(nav).not.toBeNull()
-    expect(nav).toHaveClass('flex', 'flex-col', 'items-start', 'gap-2')
+    expect(nav).toHaveClass('flex', 'gap-2', 'overflow-x-auto', 'md:flex-col', 'md:items-start')
 
     expect(screen.getByRole('link', { name: '總覽' })).toBeVisible()
     expect(screen.getByRole('link', { name: '場域' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '場域地圖' })).toBeVisible()
     expect(screen.getByRole('link', { name: '任務' })).toBeVisible()
     expect(screen.getByRole('link', { name: '帳務' })).toBeVisible()
     expect(screen.getByRole('link', { name: '控制平面' })).toBeVisible()

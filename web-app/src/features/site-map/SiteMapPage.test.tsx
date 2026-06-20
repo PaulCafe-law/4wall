@@ -8,6 +8,7 @@ import { createAuthValue, createSession, renderWithProviders } from '../../test/
 
 const apiMock = vi.hoisted(() => ({
   listIncidents: vi.fn(),
+  getSiteMapAssetManifest: vi.fn(),
 }))
 
 vi.mock('../../lib/api', async () => {
@@ -17,6 +18,7 @@ vi.mock('../../lib/api', async () => {
     api: {
       ...actual.api,
       listIncidents: apiMock.listIncidents,
+      getSiteMapAssetManifest: apiMock.getSiteMapAssetManifest,
     },
   }
 })
@@ -24,7 +26,7 @@ vi.mock('../../lib/api', async () => {
 const baseIncident = {
   organizationId: 'org-1',
   siteId: 'site-1',
-  description: '現場回報需要確認。',
+  description: '設備溫度偏高，需要複核。',
   status: 'pending_review',
   severity: 'high',
   source: 'manual',
@@ -45,16 +47,16 @@ const incidents = [
   {
     ...baseIncident,
     incidentId: 'incident-a',
-    title: 'A 區空壓機壓力表疑似異常',
+    title: 'A 區壓縮機異常',
     severity: 'critical',
     location: {
       siteId: 'site-1',
-      siteName: '建研所工地',
+      siteName: '建研所',
       areaName: 'A 區',
       floor: '1F',
       equipmentId: 'compressor-a',
-      equipmentName: '空壓機',
-      description: '建研所工地 / A 區 / 空壓機',
+      equipmentName: '壓縮機',
+      description: '建研所 / A 區 / 壓縮機',
       anchorId: 'anchor-compressor-a',
       floorplanX: 0.32,
       floorplanY: 0.42,
@@ -74,7 +76,7 @@ const incidents = [
     assigneeName: null,
     location: {
       siteId: 'site-1',
-      siteName: '建研所工地',
+      siteName: '建研所',
       areaName: 'B 區',
       floor: '2F',
       equipmentId: 'motor-b',
@@ -92,9 +94,10 @@ const incidents = [
 describe('SiteMapPage', () => {
   beforeEach(() => {
     apiMock.listIncidents.mockReset()
+    apiMock.getSiteMapAssetManifest.mockReset()
   })
 
-  it('renders the 3D fallback, selected incident, and 2D view controls', async () => {
+  it('renders the BRI GLB map, selected incident, and 2D controls', async () => {
     apiMock.listIncidents.mockResolvedValue(incidents)
 
     renderWithProviders(
@@ -103,25 +106,25 @@ describe('SiteMapPage', () => {
         <LocationProbe />
       </>,
       {
-      route: '/site-map?map=bri&incidentId=incident-b',
-      auth: createAuthValue({
-        session: createSession({
-          memberships: [{ membershipId: 'm-1', organizationId: 'org-1', role: 'customer_admin', isActive: true }],
+        route: '/site-map?map=bri&incidentId=incident-b',
+        auth: createAuthValue({
+          session: createSession({
+            memberships: [{ membershipId: 'm-1', organizationId: 'org-1', role: 'customer_admin', isActive: true }],
+          }),
         }),
-      }),
-    })
+      },
+    )
 
-    expect(await screen.findByText('場域地圖')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '場域地圖' })).toBeInTheDocument()
     expect(screen.getAllByText('建研所').length).toBeGreaterThan(0)
-    expect(await screen.findByText('使用示意模型')).toBeInTheDocument()
-    expect(screen.getByText(/目前使用建研所示意場域/)).toBeInTheDocument()
-    expect(await screen.findAllByText('建研所工地 / B 區 / 2F / 馬達 異常事件')).toHaveLength(2)
-    expect(screen.getByText('尚未提供描述，請進入事件詳情查看處理紀錄。')).toBeInTheDocument()
+    expect(await screen.findByText('使用場域佔位模型')).toBeInTheDocument()
+    expect(await screen.findAllByText('建研所 / B 區 / 2F / 馬達 異常事件')).toHaveLength(2)
+    expect(screen.getByText('尚未提供事件描述。請進入事件詳情補充現場資訊、處理狀態與證據。')).toBeInTheDocument()
     expect(screen.getByText('尚未指派')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '查看事件詳情' })).toHaveAttribute('href', '/incidents/incident-b')
-    expect(screen.getByText('使用示意座標')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '開啟事件詳情' })).toHaveAttribute('href', '/incidents/incident-b')
+    expect(screen.getByText('使用 fallback 座標')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: '2D 平面' }))
+    await userEvent.click(screen.getByRole('button', { name: '2D 參考' }))
     expect(await screen.findByText('建研所 site plan')).toBeInTheDocument()
     expect(screen.getByTestId('location-probe')).toHaveTextContent('/site-map?map=bri&incidentId=incident-b')
 
@@ -131,12 +134,57 @@ describe('SiteMapPage', () => {
     })
     expect(screen.getByText('2F site plan')).toBeInTheDocument()
 
-    const compressorButtons = screen.getAllByRole('button', { name: /A 區空壓機壓力表疑似異常/ })
+    const compressorButtons = screen.getAllByRole('button', { name: /A 區壓縮機異常/ })
     await userEvent.click(compressorButtons[0])
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: '查看事件詳情' })).toHaveAttribute('href', '/incidents/incident-a')
+      expect(screen.getByRole('link', { name: '開啟事件詳情' })).toHaveAttribute('href', '/incidents/incident-a')
     })
+  })
+
+  it('shows the rent house SOG map only for internal users', async () => {
+    apiMock.listIncidents.mockResolvedValue([])
+    apiMock.getSiteMapAssetManifest.mockResolvedValue({
+      assetKey: 'rent-house',
+      label: '租屋處',
+      assetType: 'sog',
+      assetUrl: 'https://r2.example.test/rent-house.sog?signature=test',
+      expiresAt: '2026-06-20T02:00:00Z',
+    })
+
+    renderWithProviders(<SiteMapPage />, {
+      route: '/site-map?map=rent-house',
+      auth: createAuthValue({
+        session: createSession({
+          globalRoles: ['ops'],
+        }),
+      }),
+    })
+
+    expect(await screen.findByRole('option', { name: '租屋處' })).toBeInTheDocument()
+    expect(screen.getByText('SOG 場域測試模式')).toBeInTheDocument()
+    expect(await screen.findByText('SOG 場域測試模式')).toBeInTheDocument()
+    expect(screen.getByText('目前沒有事件標記')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(apiMock.getSiteMapAssetManifest).toHaveBeenCalledWith('test-token', 'rent-house')
+    })
+  })
+
+  it('hides the private rent house map from non-internal users', async () => {
+    apiMock.listIncidents.mockResolvedValue([])
+
+    renderWithProviders(<SiteMapPage />, {
+      route: '/site-map?map=rent-house',
+      auth: createAuthValue({
+        session: createSession({
+          memberships: [{ membershipId: 'm-1', organizationId: 'org-1', role: 'customer_admin', isActive: true }],
+        }),
+      }),
+    })
+
+    expect(await screen.findByRole('option', { name: '示範場域' })).toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: '租屋處' })).not.toBeInTheDocument()
+    expect(apiMock.getSiteMapAssetManifest).not.toHaveBeenCalled()
   })
 })
 
