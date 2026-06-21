@@ -19,7 +19,8 @@ from app.deps import (
     get_current_web_user,
     get_session,
 )
-from app.models import CameraDevice, CameraFrame, EquipmentWatchZone, utc_now
+from app.models import CameraDevice, CameraFrame, EquipmentWatchZone, Site, utc_now
+from app.security import create_camera_device_token, hash_camera_device_token
 from app.storage import ArtifactStorage
 from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
 
@@ -128,6 +129,28 @@ class CameraDeviceStatusDto(BaseModel):
 
 class CameraDeviceListDto(BaseModel):
     cameras: list[CameraDeviceStatusDto]
+
+
+class ProvisionCameraDeviceDto(BaseModel):
+    organizationId: str = Field(min_length=1)
+    siteId: str | None = None
+    name: str = Field(min_length=1, max_length=120)
+    status: Literal["active", "inactive"] = "active"
+    rtspConfigured: bool = False
+    samplingIntervalSeconds: int = Field(default=10, ge=1, le=3600)
+    retentionDays: int = Field(default=7, ge=1, le=365)
+    localSpoolHours: int = Field(default=24, ge=1, le=168)
+
+
+class ProvisionedCameraDeviceDto(CameraDeviceStatusDto):
+    deviceToken: str
+    deviceTokenWarning: str
+
+
+class CameraDeviceTokenDto(BaseModel):
+    cameraId: str
+    deviceToken: str
+    deviceTokenWarning: str
 
 
 class EquipmentWatchZoneInputDto(BaseModel):
@@ -361,6 +384,51 @@ def list_camera_devices(
     return CameraDeviceListDto(cameras=[_serialize_camera_status(session, camera) for camera in cameras])
 
 
+@router.post("/v1/cameras", response_model=ProvisionedCameraDeviceDto)
+def provision_camera_device(
+    request: ProvisionCameraDeviceDto,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> ProvisionedCameraDeviceDto:
+    ensure_org_write_access(session, current_user, request.organizationId, action="camera.provision_access")
+    if request.siteId is not None:
+        site = session.get(Site, request.siteId)
+        if site is None or site.organization_id != request.organizationId:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="site_not_found")
+
+    token = create_camera_device_token()
+    camera = CameraDevice(
+        organization_id=request.organizationId,
+        site_id=request.siteId,
+        name=request.name.strip(),
+        status=request.status,
+        device_token_hash=hash_camera_device_token(token),
+        rtsp_configured=request.rtspConfigured,
+        sampling_interval_seconds=request.samplingIntervalSeconds,
+        retention_days=request.retentionDays,
+        local_spool_hours=request.localSpoolHours,
+        created_by_user_id=current_user.user.id,
+    )
+    session.add(camera)
+    session.flush()
+    record_audit(
+        session,
+        action="camera.provisioned",
+        organization_id=camera.organization_id,
+        actor_user_id=current_user.user.id,
+        target_type="camera",
+        target_id=camera.id,
+        metadata={"siteId": camera.site_id, "rtspConfigured": camera.rtsp_configured},
+    )
+    session.commit()
+    session.refresh(camera)
+    return ProvisionedCameraDeviceDto(
+        **_serialize_camera_status(session, camera).model_dump(),
+        deviceToken=token,
+        deviceTokenWarning="Store this on the Pi now. The plaintext token is not recoverable.",
+    )
+
+
 @router.get("/v1/cameras/{camera_id}", response_model=CameraDeviceStatusDto)
 def get_camera_device(
     camera_id: str,
@@ -369,6 +437,34 @@ def get_camera_device(
 ) -> CameraDeviceStatusDto:
     camera = _load_camera_for_web(session, current_user, camera_id, write=False)
     return _serialize_camera_status(session, camera)
+
+
+@router.post("/v1/cameras/{camera_id}/device-token", response_model=CameraDeviceTokenDto)
+def rotate_camera_device_token(
+    camera_id: str,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> CameraDeviceTokenDto:
+    camera = _load_camera_for_web(session, current_user, camera_id, write=True)
+    token = create_camera_device_token()
+    camera.device_token_hash = hash_camera_device_token(token)
+    camera.updated_at = utc_now()
+    session.add(camera)
+    record_audit(
+        session,
+        action="camera.device_token_rotated",
+        organization_id=camera.organization_id,
+        actor_user_id=current_user.user.id,
+        target_type="camera",
+        target_id=camera.id,
+        metadata={"siteId": camera.site_id},
+    )
+    session.commit()
+    return CameraDeviceTokenDto(
+        cameraId=camera.id,
+        deviceToken=token,
+        deviceTokenWarning="Store this on the Pi now. The plaintext token is not recoverable.",
+    )
 
 
 @router.get("/v1/cameras/{camera_id}/latest-frame/image")

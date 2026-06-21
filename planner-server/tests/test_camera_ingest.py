@@ -5,7 +5,7 @@ import hashlib
 
 from app.models import CameraDevice, CameraFrame
 from app.routers.camera_ingest import MAX_FRAME_SIZE_BYTES
-from app.security import hash_camera_device_token
+from app.security import hash_camera_device_token, verify_camera_device_token
 from tests.helpers import login_web, seed_organization, seed_site, seed_user
 
 
@@ -327,6 +327,146 @@ def test_camera_health_list_is_org_scoped_and_counts_frames(client, session_fact
     other_headers, _ = login_web(client, email="admin@health-b.test", password=PASSWORD)
     blocked = client.get(f"/v1/cameras/{camera_a_id}", headers=other_headers)
     assert blocked.status_code == 403
+
+
+def test_platform_admin_can_provision_camera_device_and_receives_one_time_token(client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Provision Org")
+        site = seed_site(session, organization_id=org.id, name="Provision Site")
+        seed_user(session, email="platform@camera.test", password=PASSWORD, global_roles=["platform_admin"])
+        org_id = org.id
+        site_id = site.id
+        session.commit()
+
+    headers, _ = login_web(client, email="platform@camera.test", password=PASSWORD)
+    response = client.post(
+        "/v1/cameras",
+        headers=headers,
+        json={
+            "organizationId": org_id,
+            "siteId": site_id,
+            "name": "PoE Camera 192.168.1.10",
+            "status": "active",
+            "rtspConfigured": True,
+            "samplingIntervalSeconds": 10,
+            "retentionDays": 7,
+            "localSpoolHours": 24,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cameraId"]
+    assert body["organizationId"] == org_id
+    assert body["siteId"] == site_id
+    assert body["name"] == "PoE Camera 192.168.1.10"
+    assert body["deviceToken"].startswith("fwcam_")
+    assert body["deviceTokenWarning"]
+
+    with session_factory() as session:
+        camera = session.get(CameraDevice, body["cameraId"])
+        assert camera is not None
+        assert verify_camera_device_token(body["deviceToken"], camera.device_token_hash)
+        assert camera.created_by_user_id is not None
+
+    listed = client.get("/v1/cameras", headers=headers)
+    assert listed.status_code == 200, listed.text
+    listed_camera = next(item for item in listed.json()["cameras"] if item["cameraId"] == body["cameraId"])
+    assert "deviceToken" not in listed_camera
+
+
+def test_customer_admin_cannot_provision_camera_for_another_org(client, session_factory) -> None:
+    with session_factory() as session:
+        org_a = seed_organization(session, name="Provision A")
+        org_b = seed_organization(session, name="Provision B")
+        seed_user(session, email="admin@provision-a.test", password=PASSWORD, org_roles=[(org_a.id, "customer_admin")])
+        org_b_id = org_b.id
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@provision-a.test", password=PASSWORD)
+    response = client.post(
+        "/v1/cameras",
+        headers=headers,
+        json={
+            "organizationId": org_b_id,
+            "name": "Blocked Camera",
+            "rtspConfigured": True,
+        },
+    )
+
+    assert response.status_code == 403
+
+
+def test_camera_provision_rejects_site_from_other_organization(client, session_factory) -> None:
+    with session_factory() as session:
+        org_a = seed_organization(session, name="Provision Site A")
+        org_b = seed_organization(session, name="Provision Site B")
+        site_b = seed_site(session, organization_id=org_b.id, name="Other Org Site")
+        seed_user(session, email="platform@site-mismatch.test", password=PASSWORD, global_roles=["platform_admin"])
+        org_a_id = org_a.id
+        site_b_id = site_b.id
+        session.commit()
+
+    headers, _ = login_web(client, email="platform@site-mismatch.test", password=PASSWORD)
+    response = client.post(
+        "/v1/cameras",
+        headers=headers,
+        json={
+            "organizationId": org_a_id,
+            "siteId": site_b_id,
+            "name": "Mismatched Site Camera",
+            "rtspConfigured": True,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "site_not_found"
+
+
+def test_customer_admin_can_rotate_camera_device_token(client, session_factory) -> None:
+    old_token = "fwcam_old_rotate"
+    with session_factory() as session:
+        org = seed_organization(session, name="Rotate Org")
+        camera = _seed_camera(session, org.id, None, token=old_token)
+        camera_id = camera.id
+        seed_user(session, email="admin@rotate.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@rotate.test", password=PASSWORD)
+    response = client.post(f"/v1/cameras/{camera_id}/device-token", headers=headers)
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cameraId"] == camera_id
+    assert body["deviceToken"].startswith("fwcam_")
+    assert body["deviceToken"] != old_token
+    assert body["deviceTokenWarning"]
+
+    with session_factory() as session:
+        camera = session.get(CameraDevice, camera_id)
+        assert camera is not None
+        assert verify_camera_device_token(body["deviceToken"], camera.device_token_hash)
+        assert not verify_camera_device_token(old_token, camera.device_token_hash)
+
+    listed = client.get("/v1/cameras", headers=headers)
+    assert listed.status_code == 200, listed.text
+    listed_camera = next(item for item in listed.json()["cameras"] if item["cameraId"] == camera_id)
+    assert "deviceToken" not in listed_camera
+
+
+def test_camera_device_token_rotation_is_org_scoped(client, session_factory) -> None:
+    with session_factory() as session:
+        org_a = seed_organization(session, name="Rotate Scope A")
+        org_b = seed_organization(session, name="Rotate Scope B")
+        camera = _seed_camera(session, org_a.id, None, token="fwcam_rotate_scope")
+        camera_id = camera.id
+        seed_user(session, email="admin@rotate-other.test", password=PASSWORD, org_roles=[(org_b.id, "customer_admin")])
+        session.commit()
+
+    headers, _ = login_web(client, email="admin@rotate-other.test", password=PASSWORD)
+    response = client.post(f"/v1/cameras/{camera_id}/device-token", headers=headers)
+
+    assert response.status_code == 403
 
 
 def test_latest_frame_image_is_web_org_scoped(client, session_factory) -> None:
