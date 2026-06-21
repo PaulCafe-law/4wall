@@ -2,8 +2,9 @@ import { screen, waitFor } from '@testing-library/react'
 import { Route, Routes } from 'react-router-dom'
 import { beforeAll, beforeEach, vi } from 'vitest'
 
-import { CamerasPage } from './CamerasPage'
+import { CameraFrameImage, CamerasPage } from './CamerasPage'
 import { renderWithProviders } from '../../test/utils'
+import type { CameraDevice } from '../../lib/types'
 
 const apiMock = vi.hoisted(() => ({
   listCameras: vi.fn(),
@@ -30,7 +31,7 @@ beforeAll(() => {
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURLMock })
 })
 
-function cameraFixture(cameraId: string, name: string) {
+function cameraFixture(cameraId: string, name: string, frameId = `${cameraId}-frame`): CameraDevice {
   return {
     cameraId,
     organizationId: 'org-1',
@@ -48,7 +49,7 @@ function cameraFixture(cameraId: string, name: string) {
     queuedFrameCount: 0,
     failedFrameCount: 0,
     latestFrame: {
-      frameId: `${cameraId}-frame`,
+      frameId,
       cameraId,
       capturedAt: '2026-06-19T14:57:04Z',
       storageKey: `camera-frames/org-1/${cameraId}/${cameraId}-frame.jpg`,
@@ -124,6 +125,28 @@ describe('CamerasPage', () => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'camera-2')
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'camera-3')
     })
+  })
+
+  it('keeps the previous frame visible while the next frame image is loading', async () => {
+    createObjectURLMock.mockReturnValueOnce('blob:first-frame')
+    apiMock.fetchCameraLatestFrameBlob
+      .mockResolvedValueOnce(new Blob(['first'], { type: 'image/jpeg' }))
+      .mockImplementationOnce(() => new Promise<Blob>(() => {}))
+
+    const firstCamera = cameraFixture('camera-1', 'PoE Camera', 'frame-1')
+    const nextCamera = cameraFixture('camera-1', 'PoE Camera', 'frame-2')
+
+    const { rerender } = renderWithProviders(<CameraFrameImage camera={firstCamera} />)
+
+    expect(await screen.findByAltText('PoE Camera latest frame')).toHaveAttribute('src', 'blob:first-frame')
+
+    rerender(<CameraFrameImage camera={nextCamera} />)
+
+    await waitFor(() => {
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledTimes(2)
+    })
+    expect(screen.getByAltText('PoE Camera latest frame')).toHaveAttribute('src', 'blob:first-frame')
+    expect(screen.queryByText('正在載入最新截圖。')).not.toBeInTheDocument()
   })
 
   it('shows an empty state when no cameras are readable', async () => {

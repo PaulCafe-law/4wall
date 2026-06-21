@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DataList, EmptyState, Metric, Panel, ShellSection, formatDateTime } from '../../components/ui'
 import { api } from '../../lib/api'
@@ -53,8 +53,16 @@ function Badge({ value }: { value: string }) {
   )
 }
 
-function CameraFrameImage({ camera }: { camera: CameraDevice }) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
+type CameraFrameImageState = {
+  cameraId: string
+  frameId: string | null
+  url: string
+}
+
+export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
+  const [imageState, setImageState] = useState<CameraFrameImageState | null>(null)
+  const imageUrlRef = useRef<string | null>(null)
+  const cameraIdRef = useRef(camera.cameraId)
   const latestFrameId = camera.latestFrame?.frameId ?? null
   const frameImageQuery = useAuthedQuery({
     queryKey: ['cameras', camera.cameraId, 'latest-frame-image', latestFrameId],
@@ -65,20 +73,48 @@ function CameraFrameImage({ camera }: { camera: CameraDevice }) {
   })
 
   useEffect(() => {
-    if (!frameImageQuery.data) {
-      setImageUrl(null)
+    return () => {
+      if (imageUrlRef.current) {
+        URL.revokeObjectURL(imageUrlRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    if (cameraIdRef.current === camera.cameraId) {
       return
     }
+
+    if (imageUrlRef.current) {
+      URL.revokeObjectURL(imageUrlRef.current)
+      imageUrlRef.current = null
+    }
+    cameraIdRef.current = camera.cameraId
+    setImageState(null)
+  }, [camera.cameraId])
+
+  useEffect(() => {
+    if (!frameImageQuery.data) {
+      return
+    }
+
     const nextUrl = URL.createObjectURL(frameImageQuery.data)
-    setImageUrl(nextUrl)
-    return () => URL.revokeObjectURL(nextUrl)
-  }, [frameImageQuery.data])
+    const previousUrl = imageUrlRef.current
+    imageUrlRef.current = nextUrl
+    setImageState({ cameraId: camera.cameraId, frameId: latestFrameId, url: nextUrl })
+
+    if (previousUrl) {
+      window.setTimeout(() => URL.revokeObjectURL(previousUrl), 0)
+    }
+  }, [camera.cameraId, frameImageQuery.data, latestFrameId])
+
+  const imageUrl = imageState?.cameraId === camera.cameraId ? imageState.url : null
 
   return (
     <div className="flex aspect-video items-center justify-center bg-chrome-950">
       {imageUrl ? (
         <img
-          key={latestFrameId}
+          key={imageState?.frameId ?? latestFrameId ?? camera.cameraId}
           src={imageUrl}
           alt={`${camera.name} latest frame`}
           className="h-full w-full object-contain"
