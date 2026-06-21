@@ -53,27 +53,13 @@ function Badge({ value }: { value: string }) {
   )
 }
 
-export function CamerasPage() {
-  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
+function CameraFrameImage({ camera }: { camera: CameraDevice }) {
   const [imageUrl, setImageUrl] = useState<string | null>(null)
-
-  const camerasQuery = useAuthedQuery({
-    queryKey: ['cameras'],
-    queryFn: api.listCameras,
-    staleTime: 5_000,
-    refetchInterval: 10_000,
-  })
-
-  const cameras = camerasQuery.data?.cameras ?? []
-  const selectedCamera = useMemo(() => {
-    return cameras.find((camera) => camera.cameraId === selectedCameraId) ?? cameras[0] ?? null
-  }, [cameras, selectedCameraId])
-
-  const latestFrameId = selectedCamera?.latestFrame?.frameId ?? null
+  const latestFrameId = camera.latestFrame?.frameId ?? null
   const frameImageQuery = useAuthedQuery({
-    queryKey: ['cameras', selectedCamera?.cameraId, 'latest-frame-image', latestFrameId],
-    queryFn: (token) => api.fetchCameraLatestFrameBlob(token, selectedCamera?.cameraId ?? ''),
-    enabled: Boolean(selectedCamera?.cameraId && selectedCamera.latestFrame?.uploadStatus === 'uploaded'),
+    queryKey: ['cameras', camera.cameraId, 'latest-frame-image', latestFrameId],
+    queryFn: (token) => api.fetchCameraLatestFrameBlob(token, camera.cameraId),
+    enabled: Boolean(camera.latestFrame?.uploadStatus === 'uploaded'),
     staleTime: 0,
     refetchInterval: 10_000,
   })
@@ -87,6 +73,39 @@ export function CamerasPage() {
     setImageUrl(nextUrl)
     return () => URL.revokeObjectURL(nextUrl)
   }, [frameImageQuery.data])
+
+  return (
+    <div className="flex aspect-video items-center justify-center bg-chrome-950">
+      {imageUrl ? (
+        <img
+          key={latestFrameId}
+          src={imageUrl}
+          alt={`${camera.name} latest frame`}
+          className="h-full w-full object-contain"
+        />
+      ) : (
+        <div className="px-6 text-center text-sm text-chrome-100">
+          {frameImageQuery.isLoading ? '正在載入最新截圖。' : '尚無可顯示截圖。'}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export function CamerasPage() {
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
+
+  const camerasQuery = useAuthedQuery({
+    queryKey: ['cameras'],
+    queryFn: api.listCameras,
+    staleTime: 5_000,
+    refetchInterval: 10_000,
+  })
+
+  const cameras = camerasQuery.data?.cameras ?? []
+  const selectedCamera = useMemo(() => {
+    return cameras.find((camera) => camera.cameraId === selectedCameraId) ?? cameras[0] ?? null
+  }, [cameras, selectedCameraId])
 
   const onlineCount = cameras.filter((camera) => heartbeatLabel(camera) === '連線中').length
   const queuedCount = cameras.reduce((sum, camera) => sum + camera.queuedFrameCount, 0)
@@ -117,6 +136,46 @@ export function CamerasPage() {
         <EmptyState title="尚無攝影機" body="目前沒有可讀取的固定攝影機裝置。" />
       ) : null}
 
+      {cameras.length > 0 ? (
+        <Panel>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera Overview</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">即時截圖總覽</h2>
+            </div>
+            <p className="max-w-2xl text-sm text-chrome-600">每張卡片顯示該固定攝影機最近一次上傳的截圖。</p>
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {cameras.map((camera) => {
+              const active = selectedCamera?.cameraId === camera.cameraId
+              return (
+                <button
+                  key={camera.cameraId}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setSelectedCameraId(camera.cameraId)}
+                  className={`overflow-hidden rounded-lg border bg-white text-left transition ${
+                    active ? 'border-ember-300 shadow-sm' : 'border-chrome-200 hover:border-chrome-400'
+                  }`}
+                >
+                  <CameraFrameImage camera={camera} />
+                  <div className="space-y-3 px-4 py-3">
+                    <div className="flex flex-wrap gap-2">
+                      <Badge value={heartbeatLabel(camera)} />
+                      {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
+                    </div>
+                    <div>
+                      <p className="break-words text-sm font-semibold text-chrome-950">{camera.name}</p>
+                      <p className="mt-1 text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</p>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </Panel>
+      ) : null}
+
       {selectedCamera ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
           <div className="space-y-6">
@@ -134,20 +193,7 @@ export function CamerasPage() {
                 </div>
               </div>
               <div className="bg-chrome-950">
-                <div className="flex aspect-video items-center justify-center">
-                  {imageUrl ? (
-                    <img
-                      key={latestFrameId}
-                      src={imageUrl}
-                      alt={`${selectedCamera.name} latest frame`}
-                      className="h-full w-full object-contain"
-                    />
-                  ) : (
-                    <div className="px-6 text-center text-sm text-chrome-100">
-                      {frameImageQuery.isLoading ? '正在載入最新截圖。' : '尚無可顯示截圖。'}
-                    </div>
-                  )}
-                </div>
+                <CameraFrameImage camera={selectedCamera} />
               </div>
             </Panel>
 
