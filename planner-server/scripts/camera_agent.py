@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -22,16 +23,25 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 DEFAULT_INTERVAL_SECONDS = 10
 DEFAULT_SPOOL_HOURS = 24
 DEFAULT_HTTP_TIMEOUT_SECONDS = 30
+DEFAULT_FRAME_SOURCE = "rtsp"
 DEFAULT_TIMESTAMP_OVERLAY_ENABLED = True
 DEFAULT_TIMESTAMP_FONT_FILE = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+MAX_CAPTURE_BYTES = 5 * 1024 * 1024
+SUPPORTED_FRAME_SOURCES = {"rtsp", "http_snapshot"}
 RTSP_URL_PATTERN = re.compile(r"rtsp://\S+", flags=re.IGNORECASE)
+HTTP_USERINFO_URL_PATTERN = re.compile(r"(https?://)[^/\s:@]+:[^/\s@]+@", flags=re.IGNORECASE)
+BASIC_AUTH_PATTERN = re.compile(r"(Authorization:\s*Basic\s+)[A-Za-z0-9+/=]+", flags=re.IGNORECASE)
 
 
 @dataclass(frozen=True)
 class AgentConfig:
     api_base_url: str
     device_token: str
-    rtsp_url: str
+    frame_source: str
+    rtsp_url: str | None
+    snapshot_url: str | None
+    snapshot_username: str | None
+    snapshot_password: str | None
     spool_dir: Path
     ffmpeg_path: str
     interval_seconds: int
@@ -151,11 +161,11 @@ class CameraIngestClient:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Capture RTSP frames and upload them to camera ingest.")
+    parser = argparse.ArgumentParser(description="Capture camera frames and upload them to camera ingest.")
     parser.add_argument("--once", action="store_true", help="capture and upload one frame, then exit")
-    parser.add_argument("--doctor", action="store_true", help="check Pi camera agent deployment prerequisites and exit")
+    parser.add_argument("--doctor", action="store_true", help="check camera agent deployment prerequisites and exit")
     parser.add_argument("--skip-api", action="store_true", help="with --doctor, skip the API/device-token check")
-    parser.add_argument("--skip-rtsp", action="store_true", help="with --doctor, skip the RTSP still-frame check")
+    parser.add_argument("--skip-rtsp", action="store_true", help="with --doctor, skip the still-frame capture check")
     parser.add_argument("--json", action="store_true", help="with --doctor, print machine-readable JSON")
     args = parser.parse_args()
     if args.doctor:
@@ -219,7 +229,7 @@ def capture_frame(config: AgentConfig) -> PendingFrame:
     frame_id = f"{captured_at:%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
     image_path = config.spool_dir / "pending" / f"{frame_id}.jpg"
     metadata_path = _metadata_path(config, frame_id)
-    _capture_rtsp_image(config, image_path)
+    _capture_source_image(config, image_path)
     _apply_timestamp_overlay(config, image_path, captured_at)
     data = image_path.read_bytes()
     frame = PendingFrame(
@@ -258,7 +268,7 @@ def run_doctor(config: AgentConfig, *, check_api: bool = True, check_rtsp: bool 
     if check_api:
         checks.append(_check_api_device_config(config))
     if check_rtsp:
-        checks.append(_check_rtsp_capture(config))
+        checks.append(_check_frame_capture(config))
     return DoctorResult(ok=not any(check.status == "fail" for check in checks), checks=checks)
 
 
@@ -274,12 +284,31 @@ def _check_config_values(config: AgentConfig) -> list[DoctorCheck]:
     else:
         checks.append(DoctorCheck("config.device_token", "fail", "device token must be the issued fwcam_ token"))
 
-    if "camera-user" in config.rtsp_url or "camera-password" in config.rtsp_url:
-        checks.append(DoctorCheck("config.rtsp_url", "fail", "RTSP URL still contains placeholder credentials"))
-    elif config.rtsp_url.lower().startswith("rtsp://"):
-        checks.append(DoctorCheck("config.rtsp_url", "pass", "RTSP URL is configured"))
+    if config.frame_source in SUPPORTED_FRAME_SOURCES:
+        checks.append(DoctorCheck("config.frame_source", "pass", config.frame_source))
     else:
-        checks.append(DoctorCheck("config.rtsp_url", "fail", "RTSP URL must start with rtsp://"))
+        checks.append(DoctorCheck("config.frame_source", "fail", "must be one of: rtsp, http_snapshot"))
+
+    if config.frame_source == "rtsp":
+        rtsp_url = config.rtsp_url or ""
+        if "camera-user" in rtsp_url or "camera-password" in rtsp_url:
+            checks.append(DoctorCheck("config.rtsp_url", "fail", "RTSP URL still contains placeholder credentials"))
+        elif rtsp_url.lower().startswith("rtsp://"):
+            checks.append(DoctorCheck("config.rtsp_url", "pass", "RTSP URL is configured"))
+        else:
+            checks.append(DoctorCheck("config.rtsp_url", "fail", "RTSP URL must start with rtsp://"))
+    elif config.frame_source == "http_snapshot":
+        snapshot_url = config.snapshot_url or ""
+        if snapshot_url.lower().startswith(("http://", "https://")):
+            checks.append(DoctorCheck("config.snapshot_url", "pass", "HTTP snapshot URL is configured"))
+        else:
+            checks.append(DoctorCheck("config.snapshot_url", "fail", "snapshot URL must start with http:// or https://"))
+        if "REPLACE_WITH" in (config.snapshot_username or "") or "REPLACE_WITH" in (config.snapshot_password or ""):
+            checks.append(DoctorCheck("config.snapshot_auth", "fail", "snapshot credentials still contain placeholders"))
+        elif config.snapshot_username or config.snapshot_password:
+            checks.append(DoctorCheck("config.snapshot_auth", "pass", "basic auth configured"))
+        else:
+            checks.append(DoctorCheck("config.snapshot_auth", "warn", "no snapshot basic auth configured"))
 
     if config.interval_seconds > 0:
         checks.append(DoctorCheck("config.interval_seconds", "pass", str(config.interval_seconds)))
@@ -331,6 +360,8 @@ def _check_spool_dir(config: AgentConfig) -> DoctorCheck:
 
 
 def _check_ffmpeg_available(config: AgentConfig) -> DoctorCheck:
+    if config.frame_source == "http_snapshot" and not config.timestamp_overlay_enabled:
+        return DoctorCheck("ffmpeg.available", "warn", "not required for HTTP snapshot with timestamp overlay disabled")
     try:
         completed = subprocess.run(
             [config.ffmpeg_path, "-version"],
@@ -362,6 +393,12 @@ def _check_api_device_config(config: AgentConfig) -> DoctorCheck:
     )
 
 
+def _check_frame_capture(config: AgentConfig) -> DoctorCheck:
+    if config.frame_source == "http_snapshot":
+        return _check_http_snapshot_capture(config)
+    return _check_rtsp_capture(config)
+
+
 def _check_rtsp_capture(config: AgentConfig) -> DoctorCheck:
     image_path = config.spool_dir / "pending" / ".doctor-rtsp.jpg"
     try:
@@ -376,7 +413,33 @@ def _check_rtsp_capture(config: AgentConfig) -> DoctorCheck:
     return DoctorCheck("rtsp.capture", "pass", f"captured {size_bytes} bytes")
 
 
+def _check_http_snapshot_capture(config: AgentConfig) -> DoctorCheck:
+    image_path = config.spool_dir / "pending" / ".doctor-http-snapshot.jpg"
+    try:
+        _capture_http_snapshot_image(config, image_path, timeout_seconds=30)
+        size_bytes = image_path.stat().st_size
+        if size_bytes <= 0:
+            raise CameraAgentError("http_snapshot_capture_empty")
+    except Exception as exc:
+        image_path.unlink(missing_ok=True)
+        return DoctorCheck("http_snapshot.capture", "fail", _safe_error(exc))
+    image_path.unlink(missing_ok=True)
+    return DoctorCheck("http_snapshot.capture", "pass", f"captured {size_bytes} bytes")
+
+
+def _capture_source_image(config: AgentConfig, image_path: Path, *, timeout_seconds: int = 30) -> None:
+    if config.frame_source == "rtsp":
+        _capture_rtsp_image(config, image_path, timeout_seconds=timeout_seconds)
+        return
+    if config.frame_source == "http_snapshot":
+        _capture_http_snapshot_image(config, image_path, timeout_seconds=timeout_seconds)
+        return
+    raise CameraAgentError(f"unsupported_frame_source:{config.frame_source}")
+
+
 def _capture_rtsp_image(config: AgentConfig, image_path: Path, *, timeout_seconds: int = 30) -> None:
+    if not config.rtsp_url:
+        raise CameraAgentError("missing_env:CAMERA_AGENT_RTSP_URL")
     command = [
         config.ffmpeg_path,
         "-hide_banner",
@@ -397,6 +460,35 @@ def _capture_rtsp_image(config: AgentConfig, image_path: Path, *, timeout_second
     if completed.returncode != 0:
         image_path.unlink(missing_ok=True)
         raise CameraAgentError(f"ffmpeg_capture_failed:{_redact_sensitive(completed.stderr).strip()[:200]}")
+
+
+def _capture_http_snapshot_image(config: AgentConfig, image_path: Path, *, timeout_seconds: int = 30) -> None:
+    if not config.snapshot_url:
+        raise CameraAgentError("missing_env:CAMERA_AGENT_SNAPSHOT_URL")
+    headers = {
+        "Accept": "image/jpeg,*/*",
+        "User-Agent": "fourwall-camera-agent/1.0",
+    }
+    if config.snapshot_username or config.snapshot_password:
+        credentials = f"{config.snapshot_username or ''}:{config.snapshot_password or ''}".encode("utf-8")
+        headers["Authorization"] = "Basic " + base64.b64encode(credentials).decode("ascii")
+    request = Request(config.snapshot_url, method="GET", headers=headers)
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            status_code = getattr(response, "status", 200)
+            if status_code >= 400:
+                raise CameraAgentError(f"http_snapshot_failed:{status_code}")
+            data = response.read(MAX_CAPTURE_BYTES + 1)
+    except HTTPError as exc:
+        raise CameraAgentError(f"http_snapshot_failed:{exc.code}") from exc
+    except URLError as exc:
+        raise CameraAgentError(f"http_snapshot_failed:{_redact_sensitive(str(exc.reason))}") from exc
+
+    if len(data) > MAX_CAPTURE_BYTES:
+        raise CameraAgentError("http_snapshot_too_large")
+    if not data.startswith(b"\xff\xd8"):
+        raise CameraAgentError("http_snapshot_not_jpeg")
+    image_path.write_bytes(data)
 
 
 def _apply_timestamp_overlay(config: AgentConfig, image_path: Path, captured_at: datetime) -> None:
@@ -521,11 +613,23 @@ def _metadata_path(config: AgentConfig, frame_id: str) -> Path:
 def _config_from_env() -> AgentConfig:
     api_base_url = _required_env("CAMERA_AGENT_API_BASE_URL")
     device_token = _required_env("CAMERA_AGENT_DEVICE_TOKEN")
-    rtsp_url = _required_env("CAMERA_AGENT_RTSP_URL")
+    frame_source = os.getenv("CAMERA_AGENT_FRAME_SOURCE", DEFAULT_FRAME_SOURCE).strip().lower().replace("-", "_")
+    if frame_source not in SUPPORTED_FRAME_SOURCES:
+        raise CameraAgentError("invalid_env:CAMERA_AGENT_FRAME_SOURCE")
+    rtsp_url = os.getenv("CAMERA_AGENT_RTSP_URL", "").strip() or None
+    snapshot_url = os.getenv("CAMERA_AGENT_SNAPSHOT_URL", "").strip() or None
+    if frame_source == "rtsp" and not rtsp_url:
+        rtsp_url = _required_env("CAMERA_AGENT_RTSP_URL")
+    if frame_source == "http_snapshot" and not snapshot_url:
+        snapshot_url = _required_env("CAMERA_AGENT_SNAPSHOT_URL")
     return AgentConfig(
         api_base_url=api_base_url,
         device_token=device_token,
+        frame_source=frame_source,
         rtsp_url=rtsp_url,
+        snapshot_url=snapshot_url,
+        snapshot_username=os.getenv("CAMERA_AGENT_SNAPSHOT_USERNAME", "").strip() or None,
+        snapshot_password=os.getenv("CAMERA_AGENT_SNAPSHOT_PASSWORD", "").strip() or None,
         spool_dir=Path(os.getenv("CAMERA_AGENT_SPOOL_DIR", "./camera-agent-spool")),
         ffmpeg_path=os.getenv("CAMERA_AGENT_FFMPEG_PATH", "ffmpeg"),
         interval_seconds=_env_int("CAMERA_AGENT_INTERVAL_SECONDS", DEFAULT_INTERVAL_SECONDS),
@@ -568,7 +672,10 @@ def _safe_error(exc: Exception) -> str:
 
 
 def _redact_sensitive(text: str) -> str:
-    return RTSP_URL_PATTERN.sub("rtsp://<redacted>", text)
+    redacted = RTSP_URL_PATTERN.sub("rtsp://<redacted>", text)
+    redacted = HTTP_USERINFO_URL_PATTERN.sub(r"\1<redacted>@", redacted)
+    redacted = BASIC_AUTH_PATTERN.sub(r"\1<redacted>", redacted)
+    return redacted
 
 
 if __name__ == "__main__":
