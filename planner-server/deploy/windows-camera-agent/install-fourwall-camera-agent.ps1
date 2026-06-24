@@ -48,12 +48,12 @@ foreach ($channel in $Channels) {
     Copy-Item -LiteralPath $sourceEnv -Destination $targetEnv -Force
 
     if ($Doctor) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -AgentArgs @("--doctor", "--json")
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -Doctor -Json
         continue
     }
 
     if ($Once) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -AgentArgs @("--once")
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -Once
         continue
     }
 

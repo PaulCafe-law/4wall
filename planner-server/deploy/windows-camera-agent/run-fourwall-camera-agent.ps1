@@ -2,7 +2,10 @@ param(
     [Parameter(Mandatory = $true)]
     [string] $EnvFile,
     [string] $InstallDir = "C:\ProgramData\FourWall\camera-agent",
-    [string[]] $AgentArgs = @()
+    [string[]] $AgentArgs = @(),
+    [switch] $Doctor,
+    [switch] $Once,
+    [switch] $Json
 )
 
 $ErrorActionPreference = "Stop"
@@ -31,6 +34,16 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $agentPath = Join-Path $InstallDir "camera_agent.py"
 if (-not (Test-Path -LiteralPath $agentPath)) {
     throw "camera_agent.py not found in $InstallDir"
+}
+
+if ($Doctor) {
+    $AgentArgs += "--doctor"
+}
+if ($Once) {
+    $AgentArgs += "--once"
+}
+if ($Json) {
+    $AgentArgs += "--json"
 }
 
 $channelName = [System.IO.Path]::GetFileNameWithoutExtension($EnvFile)
