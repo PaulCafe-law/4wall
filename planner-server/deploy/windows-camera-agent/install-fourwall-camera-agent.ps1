@@ -37,7 +37,13 @@ if (-not (Test-Path -LiteralPath $runnerSource)) {
 Copy-Item -LiteralPath $agentSource -Destination (Join-Path $InstallDir "camera_agent.py") -Force
 Copy-Item -LiteralPath $runnerSource -Destination (Join-Path $InstallDir "run-fourwall-camera-agent.ps1") -Force
 
+$powershellAgentSource = Join-Path $PSScriptRoot "fourwall-camera-agent.ps1"
+if (Test-Path -LiteralPath $powershellAgentSource) {
+    Copy-Item -LiteralPath $powershellAgentSource -Destination (Join-Path $InstallDir "fourwall-camera-agent.ps1") -Force
+}
+
 $runnerPath = Join-Path $InstallDir "run-fourwall-camera-agent.ps1"
+$powershellAgentPath = Join-Path $InstallDir "fourwall-camera-agent.ps1"
 
 foreach ($channel in $Channels) {
     $sourceEnv = Join-Path $EnvDir "dental-channel$channel.env"
@@ -48,12 +54,26 @@ foreach ($channel in $Channels) {
     Copy-Item -LiteralPath $sourceEnv -Destination $targetEnv -Force
 
     if ($Doctor) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -Doctor -Json
+        if (Test-Path -LiteralPath $powershellAgentPath) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $powershellAgentPath -EnvFile $targetEnv -Doctor
+        } else {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -Doctor -Json
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "Doctor failed for channel $channel"
+        }
         continue
     }
 
     if ($Once) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -Once
+        if (Test-Path -LiteralPath $powershellAgentPath) {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $powershellAgentPath -EnvFile $targetEnv -Once
+        } else {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $runnerPath -EnvFile $targetEnv -Once
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw "One-shot upload failed for channel $channel"
+        }
         continue
     }
 
@@ -64,7 +84,11 @@ foreach ($channel in $Channels) {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
     }
 
-    $arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runnerPath`" -EnvFile `"$targetEnv`""
+    if (Test-Path -LiteralPath $powershellAgentPath) {
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$powershellAgentPath`" -EnvFile `"$targetEnv`""
+    } else {
+        $arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runnerPath`" -EnvFile `"$targetEnv`""
+    }
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arguments
     $trigger = New-ScheduledTaskTrigger -AtLogOn
     $settings = New-ScheduledTaskSettingsSet `

@@ -60,6 +60,8 @@ CAMERA_AGENT_TIMESTAMP_OVERLAY_ENABLED=false
 
 Each channel runs as its own Windows Scheduled Task. This keeps one failed channel from stopping uploads for the others.
 
+The Windows deployment uses the native PowerShell agent at `planner-server/deploy/windows-camera-agent/fourwall-camera-agent.ps1`. It does not require Python on the clinic host.
+
 ## Windows Host Install
 
 Copy a prepared bundle to the clinic Windows host and run PowerShell from the extracted folder:
@@ -74,10 +76,13 @@ Useful operations after install:
 
 ```powershell
 Get-ScheduledTask -TaskName "FourWallDentalCameraAgent-*"
+Get-ScheduledTaskInfo -TaskName "FourWallDentalCameraAgent-Ch1"
 Get-Content C:\ProgramData\FourWall\camera-agent\logs\dental-channel1.err.log -Tail 100
 Get-Content C:\ProgramData\FourWall\camera-agent\logs\dental-channel1.out.log -Tail 100
 powershell.exe -ExecutionPolicy Bypass -File .\uninstall-fourwall-camera-agent.ps1
 ```
+
+For the PowerShell-native agent, the scheduled task status is the primary health check. `LastTaskResult=267009` means Windows Task Scheduler considers the task currently running.
 
 ## Security Notes
 
