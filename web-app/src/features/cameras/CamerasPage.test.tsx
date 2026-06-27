@@ -31,11 +31,16 @@ beforeAll(() => {
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURLMock })
 })
 
-function cameraFixture(cameraId: string, name: string, frameId = `${cameraId}-frame`): CameraDevice {
+function cameraFixture(
+  cameraId: string,
+  name: string,
+  options: { frameId?: string; siteId?: string } = {},
+): CameraDevice {
+  const frameId = options.frameId ?? `${cameraId}-frame`
   return {
     cameraId,
     organizationId: 'org-1',
-    siteId: 'site-1',
+    siteId: options.siteId ?? 'site-1',
     name,
     status: 'active',
     rtspConfigured: true,
@@ -127,14 +132,49 @@ describe('CamerasPage', () => {
     })
   })
 
+  it('groups the live frame overview by field site', async () => {
+    apiMock.listCameras.mockResolvedValue({
+      cameras: [
+        ...Array.from({ length: 6 }, (_, index) =>
+          cameraFixture(`dental-${index + 1}`, `牙醫診所 AVTECH Ch${index + 1}`, {
+            siteId: 'fce8ab62e93843da961bbc751bf79176',
+          }),
+        ),
+        cameraFixture('factory-1', 'PoE Camera 192.168.1.10', {
+          siteId: 'dd6cbdd3aa744736ad96d2791d689fce',
+        }),
+        cameraFixture('factory-2', 'PoE Camera 192.168.1.28', {
+          siteId: 'dd6cbdd3aa744736ad96d2791d689fce',
+        }),
+        cameraFixture('factory-3', 'PoE Camera 192.168.1.31', {
+          siteId: 'dd6cbdd3aa744736ad96d2791d689fce',
+        }),
+      ],
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/cameras" element={<CamerasPage />} />
+      </Routes>,
+      { route: '/cameras' },
+    )
+
+    expect(await screen.findByRole('heading', { level: 3, name: '牙醫診所' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 3, name: '靚程工廠' })).toBeInTheDocument()
+    expect(screen.getByText('6 支攝影機')).toBeInTheDocument()
+    expect(screen.getByText('3 支攝影機')).toBeInTheDocument()
+    expect(screen.getAllByText('牙醫診所 AVTECH Ch6').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('PoE Camera 192.168.1.31').length).toBeGreaterThan(0)
+  })
+
   it('keeps the previous frame visible while the next frame image is loading', async () => {
     createObjectURLMock.mockReturnValueOnce('blob:first-frame')
     apiMock.fetchCameraLatestFrameBlob
       .mockResolvedValueOnce(new Blob(['first'], { type: 'image/jpeg' }))
       .mockImplementationOnce(() => new Promise<Blob>(() => {}))
 
-    const firstCamera = cameraFixture('camera-1', 'PoE Camera', 'frame-1')
-    const nextCamera = cameraFixture('camera-1', 'PoE Camera', 'frame-2')
+    const firstCamera = cameraFixture('camera-1', 'PoE Camera', { frameId: 'frame-1' })
+    const nextCamera = cameraFixture('camera-1', 'PoE Camera', { frameId: 'frame-2' })
 
     const { rerender } = renderWithProviders(<CameraFrameImage camera={firstCamera} />)
 

@@ -53,6 +53,59 @@ function Badge({ value }: { value: string }) {
   )
 }
 
+type CameraSiteGroup = {
+  key: string
+  label: string
+  cameras: CameraDevice[]
+}
+
+const KNOWN_CAMERA_SITE_LABELS: Record<string, string> = {
+  fce8ab62e93843da961bbc751bf79176: '牙醫診所',
+  dd6cbdd3aa744736ad96d2791d689fce: '靚程工廠',
+}
+
+const CAMERA_SITE_SORT_ORDER: Record<string, number> = {
+  牙醫診所: 0,
+  靚程工廠: 1,
+}
+
+function cameraSiteLabel(camera: CameraDevice): string {
+  if (camera.siteId && KNOWN_CAMERA_SITE_LABELS[camera.siteId]) return KNOWN_CAMERA_SITE_LABELS[camera.siteId]
+  if (camera.name.startsWith('牙醫診所')) return '牙醫診所'
+  if (camera.name.startsWith('PoE Camera')) return '靚程工廠'
+  return camera.siteId ? `場域 ${camera.siteId.slice(0, 8)}` : '未綁定場域'
+}
+
+function cameraSiteKey(camera: CameraDevice, label: string): string {
+  if (label === '牙醫診所' || label === '靚程工廠') return label
+  return camera.siteId ?? label
+}
+
+function compareCameraSiteGroups(a: CameraSiteGroup, b: CameraSiteGroup): number {
+  const aOrder = CAMERA_SITE_SORT_ORDER[a.label] ?? Number.MAX_SAFE_INTEGER
+  const bOrder = CAMERA_SITE_SORT_ORDER[b.label] ?? Number.MAX_SAFE_INTEGER
+  if (aOrder !== bOrder) return aOrder - bOrder
+  return a.label.localeCompare(b.label, 'zh-Hant')
+}
+
+function groupCamerasBySite(cameras: CameraDevice[]): CameraSiteGroup[] {
+  const groups = new Map<string, CameraSiteGroup>()
+
+  for (const camera of cameras) {
+    const label = cameraSiteLabel(camera)
+    const key = cameraSiteKey(camera, label)
+    const existing = groups.get(key)
+
+    if (existing) {
+      existing.cameras.push(camera)
+    } else {
+      groups.set(key, { key, label, cameras: [camera] })
+    }
+  }
+
+  return Array.from(groups.values()).sort(compareCameraSiteGroups)
+}
+
 type CameraFrameImageState = {
   cameraId: string
   frameId: string | null
@@ -142,6 +195,7 @@ export function CamerasPage() {
   const selectedCamera = useMemo(() => {
     return cameras.find((camera) => camera.cameraId === selectedCameraId) ?? cameras[0] ?? null
   }, [cameras, selectedCameraId])
+  const cameraGroups = useMemo(() => groupCamerasBySite(cameras), [cameras])
 
   const onlineCount = cameras.filter((camera) => heartbeatLabel(camera) === '連線中').length
   const queuedCount = cameras.reduce((sum, camera) => sum + camera.queuedFrameCount, 0)
@@ -181,33 +235,48 @@ export function CamerasPage() {
             </div>
             <p className="max-w-2xl text-sm text-chrome-600">每張卡片顯示該固定攝影機最近一次上傳的截圖。</p>
           </div>
-          <div className="mt-5 grid gap-4 lg:grid-cols-3">
-            {cameras.map((camera) => {
-              const active = selectedCamera?.cameraId === camera.cameraId
-              return (
-                <button
-                  key={camera.cameraId}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setSelectedCameraId(camera.cameraId)}
-                  className={`overflow-hidden rounded-lg border bg-white text-left transition ${
-                    active ? 'border-ember-300 shadow-sm' : 'border-chrome-200 hover:border-chrome-400'
-                  }`}
-                >
-                  <CameraFrameImage camera={camera} />
-                  <div className="space-y-3 px-4 py-3">
-                    <div className="flex flex-wrap gap-2">
-                      <Badge value={heartbeatLabel(camera)} />
-                      {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
-                    </div>
-                    <div>
-                      <p className="break-words text-sm font-semibold text-chrome-950">{camera.name}</p>
-                      <p className="mt-1 text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</p>
-                    </div>
+          <div className="mt-5 space-y-8">
+            {cameraGroups.map((group) => (
+              <section key={group.key} aria-labelledby={`camera-site-${group.key}`} className="space-y-3">
+                <div className="flex flex-col gap-1 border-b border-chrome-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Site</p>
+                    <h3 id={`camera-site-${group.key}`} className="font-display text-xl font-semibold text-chrome-950">
+                      {group.label}
+                    </h3>
                   </div>
-                </button>
-              )
-            })}
+                  <p className="text-sm text-chrome-600">{group.cameras.length} 支攝影機</p>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-3">
+                  {group.cameras.map((camera) => {
+                    const active = selectedCamera?.cameraId === camera.cameraId
+                    return (
+                      <button
+                        key={camera.cameraId}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setSelectedCameraId(camera.cameraId)}
+                        className={`overflow-hidden rounded-lg border bg-white text-left transition ${
+                          active ? 'border-ember-300 shadow-sm' : 'border-chrome-200 hover:border-chrome-400'
+                        }`}
+                      >
+                        <CameraFrameImage camera={camera} />
+                        <div className="space-y-3 px-4 py-3">
+                          <div className="flex flex-wrap gap-2">
+                            <Badge value={heartbeatLabel(camera)} />
+                            {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
+                          </div>
+                          <div>
+                            <p className="break-words text-sm font-semibold text-chrome-950">{camera.name}</p>
+                            <p className="mt-1 text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</p>
+                          </div>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
           </div>
         </Panel>
       ) : null}
@@ -252,29 +321,39 @@ export function CamerasPage() {
           <div className="space-y-6">
             <Panel>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera List</p>
-              <div className="mt-4 grid gap-3">
-                {cameras.map((camera) => {
-                  const active = camera.cameraId === selectedCamera.cameraId
-                  return (
-                    <button
-                      key={camera.cameraId}
-                      type="button"
-                      onClick={() => setSelectedCameraId(camera.cameraId)}
-                      className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                        active
-                          ? 'border-ember-300 bg-white'
-                          : 'border-chrome-200 bg-white/70 hover:border-chrome-400'
-                      }`}
-                    >
-                      <span className="block break-words text-sm font-medium text-chrome-950">{camera.name}</span>
-                      <span className="mt-2 flex flex-wrap gap-2">
-                        <Badge value={heartbeatLabel(camera)} />
-                        {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
-                      </span>
-                      <span className="mt-2 block text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</span>
-                    </button>
-                  )
-                })}
+              <div className="mt-4 space-y-5">
+                {cameraGroups.map((group) => (
+                  <section key={group.key} className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-chrome-950">{group.label}</p>
+                      <p className="text-xs text-chrome-500">{group.cameras.length} 支</p>
+                    </div>
+                    <div className="grid gap-3">
+                      {group.cameras.map((camera) => {
+                        const active = camera.cameraId === selectedCamera.cameraId
+                        return (
+                          <button
+                            key={camera.cameraId}
+                            type="button"
+                            onClick={() => setSelectedCameraId(camera.cameraId)}
+                            className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                              active
+                                ? 'border-ember-300 bg-white'
+                                : 'border-chrome-200 bg-white/70 hover:border-chrome-400'
+                            }`}
+                          >
+                            <span className="block break-words text-sm font-medium text-chrome-950">{camera.name}</span>
+                            <span className="mt-2 flex flex-wrap gap-2">
+                              <Badge value={heartbeatLabel(camera)} />
+                              {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
+                            </span>
+                            <span className="mt-2 block text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </section>
+                ))}
               </div>
             </Panel>
 
