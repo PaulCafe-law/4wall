@@ -34,9 +34,10 @@ beforeAll(() => {
 function cameraFixture(
   cameraId: string,
   name: string,
-  options: { frameId?: string; siteId?: string } = {},
+  options: { frameId?: string; siteId?: string; uploadStatus?: 'pending' | 'uploaded'; uploadedFrameCount?: number } = {},
 ): CameraDevice {
   const frameId = options.frameId ?? `${cameraId}-frame`
+  const uploadStatus = options.uploadStatus ?? 'uploaded'
   return {
     cameraId,
     organizationId: 'org-1',
@@ -50,7 +51,7 @@ function cameraFixture(
     lastHeartbeatAt: new Date().toISOString(),
     lastFrameAt: new Date().toISOString(),
     lastError: null,
-    uploadedFrameCount: 12,
+    uploadedFrameCount: options.uploadedFrameCount ?? 12,
     queuedFrameCount: 0,
     failedFrameCount: 0,
     latestFrame: {
@@ -63,7 +64,7 @@ function cameraFixture(
       sizeBytes: 128,
       width: 1280,
       height: 720,
-      uploadStatus: 'uploaded',
+      uploadStatus,
       analysisStatus: 'skipped',
       errorMessage: 'no_active_watch_zones',
       uploadExpiresAt: '2026-06-19T15:12:04Z',
@@ -98,6 +99,25 @@ describe('CamerasPage', () => {
     const images = await screen.findAllByAltText('PoE Camera latest frame')
     expect(images[0]).toHaveAttribute('src', 'blob:camera-frame')
     expect(screen.getAllByText('skipped').length).toBeGreaterThan(0)
+
+    await waitFor(() => {
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'camera-1')
+    })
+  })
+
+  it('loads the latest uploaded image when the newest frame is still pending', async () => {
+    const camera = cameraFixture('camera-1', 'PoE Camera 192.168.1.31', {
+      frameId: 'pending-frame',
+      uploadStatus: 'pending',
+      uploadedFrameCount: 12,
+    })
+
+    renderWithProviders(<CameraFrameImage camera={camera} />)
+
+    expect(await screen.findByAltText('PoE Camera 192.168.1.31 latest frame')).toHaveAttribute(
+      'src',
+      'blob:camera-frame',
+    )
 
     await waitFor(() => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'camera-1')

@@ -120,7 +120,7 @@ export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
   const frameImageQuery = useAuthedQuery({
     queryKey: ['cameras', camera.cameraId, 'latest-frame-image', latestFrameId],
     queryFn: (token) => api.fetchCameraLatestFrameBlob(token, camera.cameraId),
-    enabled: Boolean(camera.latestFrame?.uploadStatus === 'uploaded'),
+    enabled: camera.uploadedFrameCount > 0,
     staleTime: 0,
     refetchInterval: 10_000,
   })
