@@ -1,0 +1,6 @@
+opencv-python-headless
+numpy
+paho-mqtt
+pyyaml
+fastapi
+uvicorn

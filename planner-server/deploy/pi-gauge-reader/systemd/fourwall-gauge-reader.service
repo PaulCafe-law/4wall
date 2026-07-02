@@ -1,0 +1,16 @@
+[Unit]
+Description=Fourth Wall Pi Gauge Reader
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/fourwall/pi-gauge-reader
+ExecStart=/opt/fourwall/pi-gauge-reader/.venv/bin/python -m reader.main --config /etc/fourwall/gauge-reader/config.yaml
+Restart=always
+RestartSec=5
+User=pi
+Group=pi
+
+[Install]
+WantedBy=multi-user.target

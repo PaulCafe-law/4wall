@@ -1,0 +1,39 @@
+camera:
+  source: "rtsp://user:pass@192.168.1.10:554/stream1"
+  capture_mode: "ffmpeg_single_frame"
+  rtsp_transport: "tcp"
+  interval_sec: 15
+  capture_timeout_sec: 8
+  min_meter_crop_width_px: 180
+
+status:
+  host: "127.0.0.1"
+  port: 8091
+
+mqtt:
+  enabled: true
+  host: "192.168.1.50"
+  port: 1883
+  base_topic: "4wall/liancheng/injection/m01"
+  client_id: "fourwall-gauge-reader-pi5"
+
+gauges:
+  - id: "press_am_meter"
+    label: "PRESS AM METER"
+    unit: "A"
+    min_val: 0
+    max_val: 10
+    calibration_file: "gauges.json"
+
+  - id: "flow_am_meter"
+    label: "FLOW AM METER"
+    unit: "A"
+    min_val: 0
+    max_val: 10
+    calibration_file: "gauges.json"
+
+debug:
+  save_annotated: true
+  save_failed_frames: true
+  rolling_keep: 200
+  crops_for_training: false
