@@ -47,6 +47,9 @@ class MqttPublisher:
             self.client.disconnect()
 
     def publish_reading(self, gauge_id: str, payload: dict[str, Any]) -> None:
+        if not self.config.enabled:
+            self.state.queued = 0
+            return
         topic = f"{self.config.base_topic}/gauge/{gauge_id}"
         self._enqueue(topic, payload)
         self.flush()
