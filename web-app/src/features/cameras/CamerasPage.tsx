@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
-import { DataList, EmptyState, Metric, Panel, ShellSection, formatDateTime } from '../../components/ui'
+import { DataList, EmptyState, Field, Metric, Panel, Select, ShellSection, formatDateTime } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
 import type { CameraDevice } from '../../lib/types'
@@ -59,6 +59,8 @@ type CameraSiteGroup = {
   cameras: CameraDevice[]
 }
 
+const EMPTY_CAMERA_LIST: CameraDevice[] = []
+
 const KNOWN_CAMERA_SITE_LABELS: Record<string, string> = {
   fce8ab62e93843da961bbc751bf79176: '牙醫診所',
   dd6cbdd3aa744736ad96d2791d689fce: '靚程工廠',
@@ -106,68 +108,35 @@ function groupCamerasBySite(cameras: CameraDevice[]): CameraSiteGroup[] {
   return Array.from(groups.values()).sort(compareCameraSiteGroups)
 }
 
-type CameraFrameImageState = {
-  cameraId: string
-  frameId: string | null
-  url: string
-}
-
 export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
-  const [imageState, setImageState] = useState<CameraFrameImageState | null>(null)
-  const imageUrlRef = useRef<string | null>(null)
-  const cameraIdRef = useRef(camera.cameraId)
   const latestFrameId = camera.latestFrame?.frameId ?? null
   const frameImageQuery = useAuthedQuery({
     queryKey: ['cameras', camera.cameraId, 'latest-frame-image', latestFrameId],
     queryFn: (token) => api.fetchCameraLatestFrameBlob(token, camera.cameraId),
     enabled: camera.uploadedFrameCount > 0,
+    placeholderData: (previousData) => previousData,
     staleTime: 0,
     refetchInterval: 10_000,
   })
 
+  const imageUrl = useMemo(() => {
+    if (!frameImageQuery.data) return null
+    return URL.createObjectURL(frameImageQuery.data)
+  }, [frameImageQuery.data])
+
   useEffect(() => {
     return () => {
-      if (imageUrlRef.current) {
-        URL.revokeObjectURL(imageUrlRef.current)
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl)
       }
     }
-  }, [])
-
-  useEffect(() => {
-    if (cameraIdRef.current === camera.cameraId) {
-      return
-    }
-
-    if (imageUrlRef.current) {
-      URL.revokeObjectURL(imageUrlRef.current)
-      imageUrlRef.current = null
-    }
-    cameraIdRef.current = camera.cameraId
-    setImageState(null)
-  }, [camera.cameraId])
-
-  useEffect(() => {
-    if (!frameImageQuery.data) {
-      return
-    }
-
-    const nextUrl = URL.createObjectURL(frameImageQuery.data)
-    const previousUrl = imageUrlRef.current
-    imageUrlRef.current = nextUrl
-    setImageState({ cameraId: camera.cameraId, frameId: latestFrameId, url: nextUrl })
-
-    if (previousUrl) {
-      window.setTimeout(() => URL.revokeObjectURL(previousUrl), 0)
-    }
-  }, [camera.cameraId, frameImageQuery.data, latestFrameId])
-
-  const imageUrl = imageState?.cameraId === camera.cameraId ? imageState.url : null
+  }, [imageUrl])
 
   return (
     <div className="flex aspect-video items-center justify-center bg-chrome-950">
       {imageUrl ? (
         <img
-          key={imageState?.frameId ?? latestFrameId ?? camera.cameraId}
+          key={latestFrameId ?? camera.cameraId}
           src={imageUrl}
           alt={`${camera.name} latest frame`}
           className="h-full w-full object-contain"
@@ -183,6 +152,7 @@ export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
 
 export function CamerasPage() {
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
+  const [selectedSiteKey, setSelectedSiteKey] = useState('')
 
   const camerasQuery = useAuthedQuery({
     queryKey: ['cameras'],
@@ -191,15 +161,18 @@ export function CamerasPage() {
     refetchInterval: 10_000,
   })
 
-  const cameras = camerasQuery.data?.cameras ?? []
-  const selectedCamera = useMemo(() => {
-    return cameras.find((camera) => camera.cameraId === selectedCameraId) ?? cameras[0] ?? null
-  }, [cameras, selectedCameraId])
+  const cameras = camerasQuery.data?.cameras ?? EMPTY_CAMERA_LIST
   const cameraGroups = useMemo(() => groupCamerasBySite(cameras), [cameras])
+  const effectiveSiteKey =
+    cameraGroups.find((group) => group.key === selectedSiteKey)?.key ?? cameraGroups[0]?.key ?? ''
+  const selectedCameraGroup = cameraGroups.find((group) => group.key === effectiveSiteKey) ?? null
+  const visibleCameras = selectedCameraGroup?.cameras ?? EMPTY_CAMERA_LIST
+  const selectedCamera =
+    visibleCameras.find((camera) => camera.cameraId === selectedCameraId) ?? visibleCameras[0] ?? null
 
-  const onlineCount = cameras.filter((camera) => heartbeatLabel(camera) === '連線中').length
-  const queuedCount = cameras.reduce((sum, camera) => sum + camera.queuedFrameCount, 0)
-  const failedCount = cameras.reduce((sum, camera) => sum + camera.failedFrameCount, 0)
+  const onlineCount = visibleCameras.filter((camera) => heartbeatLabel(camera) === '連線中').length
+  const queuedCount = visibleCameras.reduce((sum, camera) => sum + camera.queuedFrameCount, 0)
+  const failedCount = visibleCameras.reduce((sum, camera) => sum + camera.failedFrameCount, 0)
 
   return (
     <div className="space-y-6">
@@ -210,7 +183,7 @@ export function CamerasPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="攝影機" value={cameras.length} />
+        <Metric label="攝影機" value={visibleCameras.length} />
         <Metric label="連線中" value={onlineCount} hint="依最近心跳判斷。" />
         <Metric label="待分析" value={queuedCount} hint="已上傳但尚未完成 worker 處理。" />
         <Metric label="異常項" value={failedCount} hint="上傳或分析失敗的 frame 數。" />
@@ -228,27 +201,49 @@ export function CamerasPage() {
 
       {cameras.length > 0 ? (
         <Panel>
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera Overview</p>
               <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">即時截圖總覽</h2>
+              <p className="mt-2 max-w-2xl text-sm text-chrome-600">
+                只載入目前選取場域的固定攝影機截圖，切換場域後才會載入另一組畫面。
+              </p>
             </div>
-            <p className="max-w-2xl text-sm text-chrome-600">每張卡片顯示該固定攝影機最近一次上傳的截圖。</p>
+            <div className="w-full max-w-sm">
+              <Field label="場域">
+                <Select
+                  value={effectiveSiteKey}
+                  onChange={(event) => {
+                    setSelectedSiteKey(event.target.value)
+                    setSelectedCameraId(null)
+                  }}
+                >
+                  {cameraGroups.map((group) => (
+                    <option key={group.key} value={group.key}>
+                      {group.label}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
           </div>
           <div className="mt-5 space-y-8">
-            {cameraGroups.map((group) => (
-              <section key={group.key} aria-labelledby={`camera-site-${group.key}`} className="space-y-3">
+            {selectedCameraGroup ? (
+              <section key={selectedCameraGroup.key} aria-labelledby={`camera-site-${selectedCameraGroup.key}`} className="space-y-3">
                 <div className="flex flex-col gap-1 border-b border-chrome-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Site</p>
-                    <h3 id={`camera-site-${group.key}`} className="font-display text-xl font-semibold text-chrome-950">
-                      {group.label}
+                    <h3
+                      id={`camera-site-${selectedCameraGroup.key}`}
+                      className="font-display text-xl font-semibold text-chrome-950"
+                    >
+                      {selectedCameraGroup.label}
                     </h3>
                   </div>
-                  <p className="text-sm text-chrome-600">{group.cameras.length} 支攝影機</p>
+                  <p className="text-sm text-chrome-600">{selectedCameraGroup.cameras.length} 支攝影機</p>
                 </div>
                 <div className="grid gap-4 lg:grid-cols-3">
-                  {group.cameras.map((camera) => {
+                  {selectedCameraGroup.cameras.map((camera) => {
                     const active = selectedCamera?.cameraId === camera.cameraId
                     return (
                       <button
@@ -276,7 +271,7 @@ export function CamerasPage() {
                   })}
                 </div>
               </section>
-            ))}
+            ) : null}
           </div>
         </Panel>
       ) : null}
@@ -322,14 +317,14 @@ export function CamerasPage() {
             <Panel>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera List</p>
               <div className="mt-4 space-y-5">
-                {cameraGroups.map((group) => (
-                  <section key={group.key} className="space-y-2">
+                {selectedCameraGroup ? (
+                  <section key={selectedCameraGroup.key} className="space-y-2">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-chrome-950">{group.label}</p>
-                      <p className="text-xs text-chrome-500">{group.cameras.length} 支</p>
+                      <p className="text-sm font-semibold text-chrome-950">{selectedCameraGroup.label}</p>
+                      <p className="text-xs text-chrome-500">{selectedCameraGroup.cameras.length} 支</p>
                     </div>
                     <div className="grid gap-3">
-                      {group.cameras.map((camera) => {
+                      {selectedCameraGroup.cameras.map((camera) => {
                         const active = camera.cameraId === selectedCamera.cameraId
                         return (
                           <button
@@ -353,7 +348,7 @@ export function CamerasPage() {
                       })}
                     </div>
                   </section>
-                ))}
+                ) : null}
               </div>
             </Panel>
 

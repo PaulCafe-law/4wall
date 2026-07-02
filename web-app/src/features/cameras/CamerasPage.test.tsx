@@ -1,4 +1,5 @@
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
 import { beforeAll, beforeEach, vi } from 'vitest'
 
@@ -152,7 +153,7 @@ describe('CamerasPage', () => {
     })
   })
 
-  it('groups the live frame overview by field site', async () => {
+  it('only renders and loads frame previews for the selected field site', async () => {
     apiMock.listCameras.mockResolvedValue({
       cameras: [
         ...Array.from({ length: 6 }, (_, index) =>
@@ -171,6 +172,7 @@ describe('CamerasPage', () => {
         }),
       ],
     })
+    const user = userEvent.setup()
 
     renderWithProviders(
       <Routes>
@@ -179,12 +181,34 @@ describe('CamerasPage', () => {
       { route: '/cameras' },
     )
 
+    const siteSelect = await screen.findByLabelText('場域')
+    expect(siteSelect).toHaveValue('牙醫診所')
     expect(await screen.findByRole('heading', { level: 3, name: '牙醫診所' })).toBeInTheDocument()
-    expect(await screen.findByRole('heading', { level: 3, name: '靚程工廠' })).toBeInTheDocument()
     expect(screen.getByText('6 支攝影機')).toBeInTheDocument()
-    expect(screen.getByText('3 支攝影機')).toBeInTheDocument()
     expect(screen.getAllByText('牙醫診所 AVTECH Ch6').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('heading', { level: 3, name: '靚程工廠' })).not.toBeInTheDocument()
+    expect(screen.queryByText('PoE Camera 192.168.1.31')).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'dental-1')
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'dental-6')
+    })
+    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'factory-1')
+    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'factory-2')
+    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'factory-3')
+
+    await user.selectOptions(siteSelect, '靚程工廠')
+
+    expect(await screen.findByRole('heading', { level: 3, name: '靚程工廠' })).toBeInTheDocument()
+    expect(screen.getByText('3 支攝影機')).toBeInTheDocument()
     expect(screen.getAllByText('PoE Camera 192.168.1.31').length).toBeGreaterThan(0)
+    expect(screen.queryByText('牙醫診所 AVTECH Ch6')).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'factory-1')
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'factory-2')
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'factory-3')
+    })
   })
 
   it('keeps the previous frame visible while the next frame image is loading', async () => {
