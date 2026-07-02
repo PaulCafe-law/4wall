@@ -9,8 +9,8 @@ WorkingDirectory=/opt/fourwall/pi-gauge-reader
 ExecStart=/opt/fourwall/pi-gauge-reader/.venv/bin/python -m reader.main --config /etc/fourwall/gauge-reader/config.yaml
 Restart=always
 RestartSec=5
-User=yahboom
-Group=yahboom
+User=pi
+Group=pi
 
 [Install]
 WantedBy=multi-user.target

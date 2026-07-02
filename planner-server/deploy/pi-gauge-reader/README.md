@@ -42,7 +42,7 @@ python -m calibrate.app --config config.yaml --host 127.0.0.1 --port 8090
 Open it through SSH tunnel or Tailscale:
 
 ```sh
-ssh -N -L 8090:127.0.0.1:8090 yahboom@fourwall-factory-pi5
+ssh -N -L 8090:127.0.0.1:8090 pi@fourwall-factory-pi5
 ```
 
 Then open:
