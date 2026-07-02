@@ -4,6 +4,7 @@ camera:
   rtsp_transport: "tcp"
   interval_sec: 15
   capture_timeout_sec: 8
+  capture_retries: 3
   min_meter_crop_width_px: 180
 
 status:

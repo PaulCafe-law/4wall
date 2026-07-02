@@ -14,6 +14,7 @@ class CameraConfig:
     rtsp_transport: str = "tcp"
     interval_sec: float = 15.0
     capture_timeout_sec: float = 8.0
+    capture_retries: int = 3
     min_meter_crop_width_px: int = 180
 
 
@@ -108,6 +109,7 @@ def load_config(path: str | Path) -> AppConfig:
             rtsp_transport=str(camera_payload.get("rtsp_transport", "tcp")),
             interval_sec=float(camera_payload.get("interval_sec", 15)),
             capture_timeout_sec=float(camera_payload.get("capture_timeout_sec", 8)),
+            capture_retries=int(camera_payload.get("capture_retries", 3)),
             min_meter_crop_width_px=int(camera_payload.get("min_meter_crop_width_px", 180)),
         ),
         mqtt=MqttConfig(

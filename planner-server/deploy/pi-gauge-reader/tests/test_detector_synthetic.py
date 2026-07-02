@@ -39,6 +39,25 @@ def test_detector_reads_synthetic_linear_meter_values() -> None:
         assert result.confidence >= 0.6
 
 
+def test_detector_reads_dark_vertical_needle_with_tick_distractors() -> None:
+    detector = ClassicalLinearMeterDetector(min_crop_width_px=180)
+    calibration = _calibration()
+    crop = make_meter(0.0)
+
+    # Simulate the factory meter feed where the red needle is compressed into a
+    # dark vertical stroke and printed tick marks create stronger dark columns.
+    cv2.line(crop, (24, 28), (24, 94), (15, 15, 15), 2)
+    for y in range(26, 95, 12):
+        cv2.line(crop, (304, y), (304, y + 5), (0, 0, 0), 3)
+
+    result, _annotated = detector.detect(crop, calibration)
+
+    assert result.status == "ok"
+    assert result.value is not None
+    assert abs(result.value - 0.0) <= 0.2
+    assert result.confidence >= 0.3
+
+
 def test_detector_marks_low_resolution_crop_degraded() -> None:
     detector = ClassicalLinearMeterDetector(min_crop_width_px=500)
     crop = make_meter(4.0)

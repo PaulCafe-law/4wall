@@ -110,9 +110,43 @@ def _detect_dark_needle(band: np.ndarray) -> tuple[tuple[float, float] | None, f
     gray = clahe.apply(gray)
     gray = cv2.GaussianBlur(gray, (3, 3), 0)
     _, mask = cv2.threshold(gray, 90, 255, cv2.THRESH_BINARY_INV)
+    vertical_point, vertical_confidence = _vertical_stroke_peak(mask)
+    if vertical_point is not None:
+        return vertical_point, vertical_confidence, "dark-vertical"
     kernel = np.ones((3, 3), dtype=np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     return _column_peak(mask, "dark")
+
+
+def _vertical_stroke_peak(mask: np.ndarray) -> tuple[tuple[float, float] | None, float]:
+    if mask.size == 0:
+        return None, 0.0
+
+    height, width = mask.shape[:2]
+    vertical = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 1), dtype=np.uint8))
+    count, _labels, stats, centroids = cv2.connectedComponentsWithStats(vertical, connectivity=8)
+    candidates: list[tuple[float, float, float, int, int]] = []
+
+    for index in range(1, count):
+        x, _y, w, h, area = stats[index]
+        if h < max(8, int(height * 0.35)):
+            continue
+        if w > max(8, int(width * 0.12)):
+            continue
+        density = area / max(1, w * h)
+        score = (h / max(1, height)) * 0.65 + density * 0.35
+        score /= 1.0 + (w - 1) * 0.08
+        center_x, center_y = centroids[index]
+        candidates.append((float(score), float(center_x), float(center_y), int(h), int(w)))
+
+    if not candidates:
+        return None, 0.0
+
+    score, center_x, center_y, stroke_height, stroke_width = max(candidates, key=lambda item: item[0])
+    confidence = min(0.85, max(0.0, score))
+    if stroke_height >= height * 0.55 and stroke_width <= 3:
+        confidence = min(0.9, confidence + 0.1)
+    return (center_x, center_y), float(confidence)
 
 
 def _column_peak(mask: np.ndarray, method: str) -> tuple[tuple[float, float] | None, float, str]:
