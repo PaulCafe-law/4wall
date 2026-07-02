@@ -27,6 +27,14 @@ class MqttConfig:
 
 
 @dataclass(frozen=True)
+class PlatformConfig:
+    enabled: bool = False
+    api_base_url: str = ""
+    device_token: str = ""
+    timeout_sec: float = 8.0
+
+
+@dataclass(frozen=True)
 class StatusConfig:
     host: str = "127.0.0.1"
     port: int = 8091
@@ -55,6 +63,7 @@ class AppConfig:
     root_dir: Path
     camera: CameraConfig
     mqtt: MqttConfig
+    platform: PlatformConfig
     status: StatusConfig
     gauges: list[GaugeConfig]
     debug: DebugConfig
@@ -67,6 +76,7 @@ def load_config(path: str | Path) -> AppConfig:
 
     camera_payload = payload.get("camera") or {}
     mqtt_payload = payload.get("mqtt") or {}
+    platform_payload = payload.get("platform") or {}
     status_payload = payload.get("status") or {}
     debug_payload = payload.get("debug") or {}
 
@@ -102,6 +112,12 @@ def load_config(path: str | Path) -> AppConfig:
             port=int(mqtt_payload.get("port", 1883)),
             base_topic=str(mqtt_payload.get("base_topic", "4wall/liancheng/injection/m01")),
             client_id=str(mqtt_payload.get("client_id", "fourwall-gauge-reader")),
+        ),
+        platform=PlatformConfig(
+            enabled=bool(platform_payload.get("enabled", False)),
+            api_base_url=str(platform_payload.get("api_base_url", "")).rstrip("/"),
+            device_token=str(platform_payload.get("device_token", "")),
+            timeout_sec=float(platform_payload.get("timeout_sec", 8)),
         ),
         status=StatusConfig(
             host=str(status_payload.get("host", "127.0.0.1")),

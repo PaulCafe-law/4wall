@@ -11,11 +11,17 @@ status:
   port: 8091
 
 mqtt:
-  enabled: true
+  enabled: false
   host: "192.168.1.50"
   port: 1883
   base_topic: "4wall/liancheng/injection/m01"
   client_id: "fourwall-gauge-reader-pi5"
+
+platform:
+  enabled: true
+  api_base_url: "https://four-wall-api.onrender.com"
+  device_token: "REPLACE_WITH_CAMERA_DEVICE_TOKEN"
+  timeout_sec: 8
 
 gauges:
   - id: "press_am_meter"

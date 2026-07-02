@@ -534,6 +534,23 @@ export interface CameraFrame {
   completedAt: string | null
 }
 
+export interface CameraGaugeReading {
+  readingId: string
+  cameraId: string
+  frameId: string | null
+  gaugeId: string
+  label: string
+  value: number | null
+  unit: string
+  confidence: number
+  rawPosition: number | null
+  status: string
+  source: string
+  capturedAt: string
+  receivedAt: string
+  metadata: Record<string, unknown>
+}
+
 export interface CameraDevice {
   cameraId: string
   organizationId: string
@@ -551,6 +568,7 @@ export interface CameraDevice {
   queuedFrameCount: number
   failedFrameCount: number
   latestFrame: CameraFrame | null
+  latestGaugeReadings: CameraGaugeReading[]
 }
 
 export interface CameraDeviceList {

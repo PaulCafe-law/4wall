@@ -14,6 +14,7 @@ from .capture import CaptureError, capture_frame, read_frame_file
 from .config import AppConfig, GaugeConfig, load_calibration, load_config
 from .detector import ClassicalLinearMeterDetector, DetectionResult
 from .geometry import GaugeCalibration, crop_roi, parse_gauge_calibration
+from .platform_sink import PlatformSink
 from .publish import MqttPublisher
 from .smoothing import GaugeSmoother
 from .status_server import RuntimeStatus, start_status_server
@@ -45,6 +46,7 @@ class GaugeReaderRunner:
         self.detector = ClassicalLinearMeterDetector(min_crop_width_px=config.camera.min_meter_crop_width_px)
         self.runtime_status = RuntimeStatus()
         self.publisher = MqttPublisher(config.mqtt)
+        self.platform_sink = PlatformSink(config.platform)
         self.publish_enabled = publish
         self.smoothers = {
             gauge.id: GaugeSmoother(min_val=gauge.min_val, max_val=gauge.max_val)
@@ -69,6 +71,7 @@ class GaugeReaderRunner:
 
     def run_live(self, *, once: bool) -> None:
         start_status_server(self.runtime_status, self.config.status.host, self.config.status.port)
+        self.runtime_status.platform["enabled"] = self.config.platform.enabled
         if self.publish_enabled:
             self.publisher.start()
 
@@ -127,6 +130,14 @@ class GaugeReaderRunner:
             if self.publish_enabled:
                 self.publisher.publish_reading(gauge.id, payload)
 
+        if self.publish_enabled:
+            self.platform_sink.submit_readings(readings)
+            self.runtime_status.platform = {
+                "enabled": self.platform_sink.state.enabled,
+                "submitted_count": self.platform_sink.state.submitted_count,
+                "last_submitted_at": self.platform_sink.state.last_submitted_at,
+                "last_error": self.platform_sink.state.last_error,
+            }
         self.runtime_status.mqtt = {
             "connected": self.publisher.state.connected,
             "queued": self.publisher.state.queued,
@@ -155,6 +166,8 @@ def _payload_for(
         status = "degraded"
 
     return {
+        "gauge_id": gauge.id,
+        "label": gauge.label,
         "value": None if smoothed_value is None else round(float(smoothed_value), 3),
         "unit": gauge.unit,
         "confidence": round(float(result.confidence), 3),
@@ -162,6 +175,8 @@ def _payload_for(
         "ts": _now_iso(),
         "source": "live",
         "status": status,
+        "message": result.message,
+        "accepted": accepted,
     }
 
 

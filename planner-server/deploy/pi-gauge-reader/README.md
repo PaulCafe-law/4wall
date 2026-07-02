@@ -3,9 +3,10 @@
 Pi-local reader for the two rectangular analog amp meters on the Liancheng
 injection machine panel camera (`192.168.1.10`).
 
-This module is intentionally separate from the web app and API. It runs on the Pi,
-reads frames from the local camera, publishes numeric readings over MQTT, and keeps
-images on the Pi.
+This module is intentionally separate from the web app build. It runs on the Pi,
+reads frames from the local camera, and posts numeric readings to the Fourth Wall
+camera-ingest API. The full camera image still returns to the management platform
+through the existing camera agent.
 
 ## What It Reads
 
@@ -26,7 +27,8 @@ cp config.example.yaml config.yaml
 cp gauges.example.json gauges.json
 ```
 
-Edit `config.yaml` and set the real RTSP URL. Do not commit this file.
+Edit `config.yaml` and set the real RTSP URL plus the real camera device token.
+Do not commit this file.
 
 ## Calibration UI
 
@@ -89,6 +91,24 @@ Health check:
 curl http://127.0.0.1:8091/status
 ```
 
+Platform API sink:
+
+```yaml
+platform:
+  enabled: true
+  api_base_url: "https://four-wall-api.onrender.com"
+  device_token: "REPLACE_WITH_CAMERA_DEVICE_TOKEN"
+```
+
+The reader posts to:
+
+```text
+POST /v1/camera-ingest/gauge-readings
+```
+
+The management platform then exposes the latest values through `/v1/cameras` as
+`latestGaugeReadings`, beside the latest camera frame uploaded by the camera agent.
+
 MQTT topic:
 
 ```text
@@ -130,5 +150,6 @@ refocus the camera, or adjust camera angle before expecting <= 2% full-scale err
 
 ## Privacy Boundary
 
-Images do not leave the Pi. Debug crops stay in `runtime/debug/`, and only numeric
-JSON leaves the device.
+The management platform receives full-frame camera snapshots from the existing
+camera agent. The gauge reader itself sends small JSON readings and keeps its debug
+crops in `runtime/debug/`.

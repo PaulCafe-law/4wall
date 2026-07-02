@@ -14,6 +14,9 @@ class RuntimeStatus:
     camera: dict[str, Any] = field(default_factory=lambda: {"last_capture_at": None, "last_error": None})
     gauges: dict[str, dict[str, Any]] = field(default_factory=dict)
     mqtt: dict[str, Any] = field(default_factory=lambda: {"connected": False, "queued": 0, "last_error": None})
+    platform: dict[str, Any] = field(
+        default_factory=lambda: {"enabled": False, "submitted_count": 0, "last_submitted_at": None, "last_error": None}
+    )
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -21,6 +24,7 @@ class RuntimeStatus:
             "camera": dict(self.camera),
             "gauges": {key: dict(value) for key, value in self.gauges.items()},
             "mqtt": dict(self.mqtt),
+            "platform": dict(self.platform),
         }
 
 

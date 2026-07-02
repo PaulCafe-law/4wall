@@ -3,9 +3,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 
-from app.models import CameraDevice, CameraFrame
+from app.models import CameraDevice, CameraFrame, CameraGaugeReading
 from app.routers.camera_ingest import MAX_FRAME_SIZE_BYTES
 from app.security import hash_camera_device_token, verify_camera_device_token
+from sqlmodel import select
 from tests.helpers import login_web, seed_organization, seed_site, seed_user
 
 
@@ -327,6 +328,126 @@ def test_camera_health_list_is_org_scoped_and_counts_frames(client, session_fact
     other_headers, _ = login_web(client, email="admin@health-b.test", password=PASSWORD)
     blocked = client.get(f"/v1/cameras/{camera_a_id}", headers=other_headers)
     assert blocked.status_code == 403
+
+
+def test_camera_device_submits_gauge_readings_and_web_list_shows_latest_per_gauge(client, session_factory) -> None:
+    token = "fwcam_gauge_reader"
+    with session_factory() as session:
+        org = seed_organization(session, name="Gauge Org")
+        site = seed_site(session, organization_id=org.id, name="Gauge Site")
+        camera = _seed_camera(session, org.id, site.id, token=token)
+        camera.name = "PoE Camera 192.168.1.10"
+        org_id = org.id
+        site_id = site.id
+        camera_id = camera.id
+        seed_user(session, email="admin@gauge.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        session.commit()
+
+    response = client.post(
+        "/v1/camera-ingest/gauge-readings",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "readings": [
+                {
+                    "gaugeId": "press_am_meter",
+                    "label": "PRESS AM METER",
+                    "value": 3.9,
+                    "unit": "A",
+                    "confidence": 0.91,
+                    "rawPosition": 0.39,
+                    "status": "ok",
+                    "source": "live",
+                    "capturedAt": "2026-07-03T01:00:00+08:00",
+                    "metadata": {"method": "red"},
+                },
+                {
+                    "gaugeId": "flow_am_meter",
+                    "label": "FLOW AM METER",
+                    "value": None,
+                    "unit": "A",
+                    "confidence": 0.2,
+                    "rawPosition": None,
+                    "status": "degraded",
+                    "source": "live",
+                    "capturedAt": "2026-07-03T01:00:00+08:00",
+                    "metadata": {"reason": "meter_crop_too_small"},
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cameraId"] == camera_id
+    assert [reading["gaugeId"] for reading in body["readings"]] == ["press_am_meter", "flow_am_meter"]
+    assert body["readings"][0]["value"] == 3.9
+
+    with session_factory() as session:
+        stored = session.exec(select(CameraGaugeReading).where(CameraGaugeReading.camera_id == camera_id)).all()
+        assert len(stored) == 2
+        assert {reading.organization_id for reading in stored} == {org_id}
+        assert {reading.site_id for reading in stored} == {site_id}
+
+    admin_headers, _ = login_web(client, email="admin@gauge.test", password=PASSWORD)
+    listed = client.get("/v1/cameras", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    listed_camera = listed.json()["cameras"][0]
+    assert listed_camera["cameraId"] == camera_id
+    assert [reading["gaugeId"] for reading in listed_camera["latestGaugeReadings"]] == [
+        "press_am_meter",
+        "flow_am_meter",
+    ]
+    assert listed_camera["latestGaugeReadings"][1]["status"] == "degraded"
+
+
+def test_gauge_reading_frame_id_must_belong_to_authenticated_camera(client, session_factory) -> None:
+    token_a = "fwcam_gauge_a"
+    token_b = "fwcam_gauge_b"
+    captured_at = datetime(2026, 7, 3, 1, 0, tzinfo=timezone.utc)
+    with session_factory() as session:
+        org = seed_organization(session, name="Gauge Scope Org")
+        camera_a = _seed_camera(session, org.id, None, token=token_a)
+        camera_b = _seed_camera(session, org.id, None, token=token_b)
+        session.add(
+            CameraFrame(
+                id="camera-a-frame",
+                camera_id=camera_a.id,
+                organization_id=org.id,
+                site_id=None,
+                captured_at=captured_at,
+                storage_key=f"camera-frames/{org.id}/{camera_a.id}/camera-a-frame.jpg",
+                content_type="image/jpeg",
+                checksum_sha256=hashlib.sha256(b"frame").hexdigest(),
+                size_bytes=5,
+                upload_status="uploaded",
+                analysis_status="queued",
+                upload_expires_at=captured_at + timedelta(minutes=15),
+                completed_at=captured_at,
+            )
+        )
+        session.commit()
+
+    blocked = client.post(
+        "/v1/camera-ingest/gauge-readings",
+        headers={"Authorization": f"Bearer {token_b}"},
+        json={
+            "readings": [
+                {
+                    "gaugeId": "press_am_meter",
+                    "value": 1.0,
+                    "unit": "A",
+                    "confidence": 0.9,
+                    "status": "ok",
+                    "source": "live",
+                    "capturedAt": "2026-07-03T01:00:00Z",
+                    "frameId": "camera-a-frame",
+                }
+            ]
+        },
+    )
+
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "camera_frame_scope_mismatch"
 
 
 def test_platform_admin_can_provision_camera_device_and_receives_one_time_token(client, session_factory) -> None:

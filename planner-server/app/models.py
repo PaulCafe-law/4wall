@@ -142,6 +142,27 @@ class CameraFrame(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class CameraGaugeReading(SQLModel, table=True):
+    __tablename__ = "camera_gauge_readings"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    camera_id: str = Field(foreign_key="camera_devices.id", index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    frame_id: str | None = Field(default=None, foreign_key="camera_frames.id", index=True)
+    gauge_id: str = Field(index=True)
+    label: str
+    value: float | None = None
+    unit: str
+    confidence: float
+    raw_position: float | None = None
+    status: str = Field(default="ok", index=True)
+    source: str = Field(default="live", index=True)
+    captured_at: datetime = Field(index=True)
+    metadata_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class EquipmentWatchZone(SQLModel, table=True):
     __tablename__ = "equipment_watch_zones"
 

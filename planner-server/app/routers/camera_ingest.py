@@ -19,7 +19,7 @@ from app.deps import (
     get_current_web_user,
     get_session,
 )
-from app.models import CameraDevice, CameraFrame, EquipmentWatchZone, Site, utc_now
+from app.models import CameraDevice, CameraFrame, CameraGaugeReading, EquipmentWatchZone, Site, utc_now
 from app.security import create_camera_device_token, hash_camera_device_token
 from app.storage import ArtifactStorage
 from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
@@ -33,6 +33,7 @@ FRAME_CACHE_CONTROL = "private, max-age=300"
 MAX_FRAME_SIZE_BYTES = 5 * 1024 * 1024
 SUPPORTED_CONTENT_TYPES = {"image/jpeg": "jpg", "image/png": "png"}
 ALLOWED_SEVERITIES = {"low", "medium", "high", "critical"}
+GAUGE_SORT_ORDER = {"press_am_meter": 0, "flow_am_meter": 1}
 
 
 class CreateCameraFrameUploadIntentDto(BaseModel):
@@ -82,6 +83,46 @@ class CameraFrameDto(BaseModel):
     completedAt: datetime | None = None
 
 
+class CameraGaugeReadingInputDto(BaseModel):
+    gaugeId: str = Field(min_length=1, max_length=80)
+    label: str | None = Field(default=None, max_length=120)
+    value: float | None = None
+    unit: str = Field(default="", max_length=40)
+    confidence: float = Field(ge=0, le=1)
+    rawPosition: float | None = Field(default=None, ge=0, le=1)
+    status: Literal["ok", "degraded", "failed"] = "ok"
+    source: Literal["live"] = "live"
+    capturedAt: datetime
+    frameId: str | None = Field(default=None, max_length=120)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SubmitCameraGaugeReadingsDto(BaseModel):
+    readings: list[CameraGaugeReadingInputDto] = Field(min_length=1, max_length=20)
+
+
+class CameraGaugeReadingDto(BaseModel):
+    readingId: str
+    cameraId: str
+    frameId: str | None = None
+    gaugeId: str
+    label: str
+    value: float | None = None
+    unit: str
+    confidence: float
+    rawPosition: float | None = None
+    status: str
+    source: str
+    capturedAt: datetime
+    receivedAt: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class CameraGaugeReadingsResponseDto(BaseModel):
+    cameraId: str
+    readings: list[CameraGaugeReadingDto]
+
+
 class CameraHeartbeatRequestDto(BaseModel):
     localSpoolCount: int = Field(default=0, ge=0)
     lastCapturedAt: datetime | None = None
@@ -125,6 +166,7 @@ class CameraDeviceStatusDto(BaseModel):
     queuedFrameCount: int
     failedFrameCount: int
     latestFrame: CameraFrameDto | None = None
+    latestGaugeReadings: list[CameraGaugeReadingDto] = Field(default_factory=list)
 
 
 class CameraDeviceListDto(BaseModel):
@@ -337,6 +379,57 @@ def get_camera_frame_status(
 ) -> CameraFrameDto:
     frame = _load_frame_for_device(session, camera, frame_id)
     return _serialize_frame(frame)
+
+
+@router.post("/v1/camera-ingest/gauge-readings", response_model=CameraGaugeReadingsResponseDto)
+def submit_camera_gauge_readings(
+    request: SubmitCameraGaugeReadingsDto,
+    camera: CameraDevice = Depends(get_current_camera_device),
+    session: Session = Depends(get_session),
+) -> CameraGaugeReadingsResponseDto:
+    created: list[CameraGaugeReading] = []
+    for item in request.readings:
+        frame_id = item.frameId.strip() if item.frameId else None
+        if frame_id:
+            frame = _load_frame_for_device(session, camera, frame_id)
+            frame_id = frame.id
+
+        reading = CameraGaugeReading(
+            camera_id=camera.id,
+            organization_id=camera.organization_id,
+            site_id=camera.site_id,
+            frame_id=frame_id,
+            gauge_id=item.gaugeId.strip(),
+            label=(item.label or item.gaugeId).strip(),
+            value=item.value,
+            unit=item.unit.strip(),
+            confidence=item.confidence,
+            raw_position=item.rawPosition,
+            status=item.status,
+            source=item.source,
+            captured_at=_as_utc(item.capturedAt),
+            metadata_json=item.metadata,
+        )
+        session.add(reading)
+        created.append(reading)
+
+    camera.updated_at = _now()
+    session.add(camera)
+    record_audit(
+        session,
+        action="camera.gauge_readings.submitted",
+        organization_id=camera.organization_id,
+        target_type="camera_device",
+        target_id=camera.id,
+        metadata={"readingCount": len(created), "gaugeIds": [reading.gauge_id for reading in created]},
+    )
+    session.commit()
+    for reading in created:
+        session.refresh(reading)
+    return CameraGaugeReadingsResponseDto(
+        cameraId=camera.id,
+        readings=[_serialize_gauge_reading(reading) for reading in created],
+    )
 
 
 @router.post("/v1/camera-ingest/heartbeat", response_model=CameraHeartbeatResponseDto)
@@ -629,6 +722,25 @@ def _serialize_frame(frame: CameraFrame) -> CameraFrameDto:
     )
 
 
+def _serialize_gauge_reading(reading: CameraGaugeReading) -> CameraGaugeReadingDto:
+    return CameraGaugeReadingDto(
+        readingId=reading.id,
+        cameraId=reading.camera_id,
+        frameId=reading.frame_id,
+        gaugeId=reading.gauge_id,
+        label=reading.label,
+        value=reading.value,
+        unit=reading.unit,
+        confidence=reading.confidence,
+        rawPosition=reading.raw_position,
+        status=reading.status,
+        source=reading.source,
+        capturedAt=reading.captured_at,
+        receivedAt=reading.created_at,
+        metadata=reading.metadata_json,
+    )
+
+
 def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDeviceStatusDto:
     latest_frame = _latest_frame_for_camera(session, camera)
     return CameraDeviceStatusDto(
@@ -649,6 +761,9 @@ def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDe
         failedFrameCount=_count_camera_frames(session, camera, upload_status="failed")
         + _count_camera_frames(session, camera, analysis_status="failed"),
         latestFrame=_serialize_frame(latest_frame) if latest_frame is not None else None,
+        latestGaugeReadings=[
+            _serialize_gauge_reading(reading) for reading in _latest_gauge_readings_for_camera(session, camera)
+        ],
     )
 
 
@@ -666,6 +781,23 @@ def _latest_uploaded_frame_for_camera(session: Session, camera: CameraDevice) ->
         .where(CameraFrame.camera_id == camera.id, CameraFrame.upload_status == "uploaded")
         .order_by(CameraFrame.captured_at.desc(), CameraFrame.created_at.desc())
     ).first()
+
+
+def _latest_gauge_readings_for_camera(session: Session, camera: CameraDevice) -> list[CameraGaugeReading]:
+    readings = session.exec(
+        select(CameraGaugeReading)
+        .where(CameraGaugeReading.camera_id == camera.id)
+        .order_by(CameraGaugeReading.captured_at.desc(), CameraGaugeReading.created_at.desc())
+        .limit(50)
+    ).all()
+    latest_by_gauge: dict[str, CameraGaugeReading] = {}
+    for reading in readings:
+        if reading.gauge_id not in latest_by_gauge:
+            latest_by_gauge[reading.gauge_id] = reading
+    return sorted(
+        latest_by_gauge.values(),
+        key=lambda reading: (GAUGE_SORT_ORDER.get(reading.gauge_id, 100), reading.gauge_id),
+    )
 
 
 def _serialize_zone(zone: EquipmentWatchZone) -> EquipmentWatchZoneDto:

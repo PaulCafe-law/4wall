@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DataList, EmptyState, Field, Metric, Panel, Select, ShellSection, formatDateTime } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
-import type { CameraDevice } from '../../lib/types'
+import type { CameraDevice, CameraGaugeReading } from '../../lib/types'
 
 function secondsSince(value: string | null): number | null {
   if (!value) return null
@@ -14,7 +14,7 @@ function secondsSince(value: string | null): number | null {
 
 function formatAge(value: string | null): string {
   const seconds = secondsSince(value)
-  if (seconds === null) return '無資料'
+  if (seconds === null) return '尚無'
   if (seconds < 60) return `${seconds}s`
   const minutes = Math.round(seconds / 60)
   if (minutes < 60) return `${minutes}m`
@@ -22,24 +22,24 @@ function formatAge(value: string | null): string {
 }
 
 function formatNullableDateTime(value: string | null): string {
-  return value ? formatDateTime(value) : '無資料'
+  return value ? formatDateTime(value) : '尚無'
 }
 
 function heartbeatLabel(camera: CameraDevice): string {
   const age = secondsSince(camera.lastHeartbeatAt)
   if (camera.lastError) return '異常'
-  if (age === null) return '無心跳'
+  if (age === null) return '未知'
   return age <= 90 ? '連線中' : '逾時'
 }
 
 function badgeClass(value: string): string {
-  if (value === '連線中' || value === 'uploaded' || value === 'skipped' || value === 'succeeded') {
+  if (value === '連線中' || value === 'uploaded' || value === 'skipped' || value === 'succeeded' || value === 'ok') {
     return 'bg-moss-300/40 text-moss-500'
   }
   if (value === '異常' || value === 'failed') {
     return 'bg-red-100 text-red-700'
   }
-  if (value === 'queued' || value === 'pending' || value === '逾時') {
+  if (value === 'queued' || value === 'pending' || value === '逾時' || value === 'degraded') {
     return 'bg-amber-100 text-amber-800'
   }
   return 'bg-chrome-100 text-chrome-700'
@@ -67,13 +67,13 @@ const KNOWN_CAMERA_SITE_LABELS: Record<string, string> = {
 }
 
 const CAMERA_SITE_SORT_ORDER: Record<string, number> = {
-  牙醫診所: 0,
-  靚程工廠: 1,
+  靚程工廠: 0,
+  牙醫診所: 1,
 }
 
 function cameraSiteLabel(camera: CameraDevice): string {
   if (camera.siteId && KNOWN_CAMERA_SITE_LABELS[camera.siteId]) return KNOWN_CAMERA_SITE_LABELS[camera.siteId]
-  if (camera.name.startsWith('牙醫診所')) return '牙醫診所'
+  if (camera.name.includes('牙醫診所') || camera.name.includes('AVTECH')) return '牙醫診所'
   if (camera.name.startsWith('PoE Camera')) return '靚程工廠'
   return camera.siteId ? `場域 ${camera.siteId.slice(0, 8)}` : '未綁定場域'
 }
@@ -97,7 +97,6 @@ function groupCamerasBySite(cameras: CameraDevice[]): CameraSiteGroup[] {
     const label = cameraSiteLabel(camera)
     const key = cameraSiteKey(camera, label)
     const existing = groups.get(key)
-
     if (existing) {
       existing.cameras.push(camera)
     } else {
@@ -126,9 +125,7 @@ export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
 
   useEffect(() => {
     return () => {
-      if (imageUrl) {
-        URL.revokeObjectURL(imageUrl)
-      }
+      if (imageUrl) URL.revokeObjectURL(imageUrl)
     }
   }, [imageUrl])
 
@@ -143,9 +140,36 @@ export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
         />
       ) : (
         <div className="px-6 text-center text-sm text-chrome-100">
-          {frameImageQuery.isLoading ? '正在載入最新截圖。' : '尚無可顯示截圖。'}
+          {frameImageQuery.isLoading ? '載入最新截圖中' : '尚無可顯示截圖。'}
         </div>
       )}
+    </div>
+  )
+}
+
+function GaugeReadingList({ readings }: { readings: CameraGaugeReading[] }) {
+  if (readings.length === 0) {
+    return <p className="text-sm text-chrome-600">尚無儀表讀值。</p>
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {readings.map((reading) => (
+        <div key={reading.gaugeId} className="rounded-2xl border border-chrome-200 bg-white/75 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="break-words text-sm font-semibold text-chrome-950">{reading.label || reading.gaugeId}</p>
+              <p className="mt-1 text-xs text-chrome-500">{formatNullableDateTime(reading.capturedAt)}</p>
+            </div>
+            <Badge value={reading.status} />
+          </div>
+          <p className="mt-4 font-display text-3xl font-semibold tracking-[-0.035em] text-chrome-950">
+            {reading.value === null ? 'N/A' : reading.value.toFixed(2)}
+            <span className="ml-2 text-base font-medium text-chrome-500">{reading.unit}</span>
+          </p>
+          <p className="mt-2 text-xs text-chrome-500">confidence {(reading.confidence * 100).toFixed(0)}%</p>
+        </div>
+      ))}
     </div>
   )
 }
@@ -178,25 +202,25 @@ export function CamerasPage() {
     <div className="space-y-6">
       <ShellSection
         eyebrow="Factory Camera"
-        title="固定攝影機"
-        subtitle="工廠固定攝影機的最新截圖與健康狀態。"
+        title="即時截圖總覽"
+        subtitle="依場域切換固定攝影機，只載入目前場域的最新截圖與儀表讀值。"
       />
 
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="攝影機" value={visibleCameras.length} />
-        <Metric label="連線中" value={onlineCount} hint="依最近心跳判斷。" />
-        <Metric label="待分析" value={queuedCount} hint="已上傳但尚未完成 worker 處理。" />
-        <Metric label="異常項" value={failedCount} hint="上傳或分析失敗的 frame 數。" />
+        <Metric label="連線中" value={onlineCount} hint="最近 90 秒內有 heartbeat" />
+        <Metric label="待分析" value={queuedCount} hint="已上傳、等待 worker 消化" />
+        <Metric label="異常" value={failedCount} hint="上傳或分析失敗的 frame" />
       </div>
 
       {camerasQuery.isLoading ? (
         <Panel>
-          <p className="text-sm text-chrome-700">正在讀取攝影機狀態。</p>
+          <p className="text-sm text-chrome-700">載入攝影機清單中。</p>
         </Panel>
       ) : null}
 
       {!camerasQuery.isLoading && cameras.length === 0 ? (
-        <EmptyState title="尚無攝影機" body="目前沒有可讀取的固定攝影機裝置。" />
+        <EmptyState title="尚無攝影機" body="目前帳號沒有可讀取的固定攝影機。" />
       ) : null}
 
       {cameras.length > 0 ? (
@@ -204,9 +228,9 @@ export function CamerasPage() {
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera Overview</p>
-              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">即時截圖總覽</h2>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">場域攝影機</h2>
               <p className="mt-2 max-w-2xl text-sm text-chrome-600">
-                只載入目前選取場域的固定攝影機截圖，切換場域後才會載入另一組畫面。
+                每次只載入選中場域的攝影機畫面，避免牙醫診所與工廠畫面一起刷新造成頁面變慢。
               </p>
             </div>
             <div className="w-full max-w-sm">
@@ -227,6 +251,7 @@ export function CamerasPage() {
               </Field>
             </div>
           </div>
+
           <div className="mt-5 space-y-8">
             {selectedCameraGroup ? (
               <section key={selectedCameraGroup.key} aria-labelledby={`camera-site-${selectedCameraGroup.key}`} className="space-y-3">
@@ -265,6 +290,18 @@ export function CamerasPage() {
                             <p className="break-words text-sm font-semibold text-chrome-950">{camera.name}</p>
                             <p className="mt-1 text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</p>
                           </div>
+                          {camera.latestGaugeReadings.length > 0 ? (
+                            <div className="grid gap-2 text-xs text-chrome-700">
+                              {camera.latestGaugeReadings.map((reading) => (
+                                <div key={reading.gaugeId} className="flex items-center justify-between gap-2">
+                                  <span className="truncate">{reading.label || reading.gaugeId}</span>
+                                  <span className="font-mono">
+                                    {reading.value === null ? 'N/A' : reading.value.toFixed(2)} {reading.unit}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       </button>
                     )
@@ -298,14 +335,22 @@ export function CamerasPage() {
             </Panel>
 
             <Panel>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Gauge Readings</p>
+              <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">機台儀表讀值</h2>
+              <div className="mt-4">
+                <GaugeReadingList readings={selectedCamera.latestGaugeReadings} />
+              </div>
+            </Panel>
+
+            <Panel>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Frame Metadata</p>
               <div className="mt-4">
                 <DataList
                   rows={[
-                    { label: 'Frame', value: selectedCamera.latestFrame?.frameId ?? '無資料' },
+                    { label: 'Frame', value: selectedCamera.latestFrame?.frameId ?? '尚無' },
                     { label: '擷取時間', value: formatNullableDateTime(selectedCamera.latestFrame?.capturedAt ?? null) },
-                    { label: '上傳狀態', value: selectedCamera.latestFrame?.uploadStatus ?? '無資料' },
-                    { label: '分析狀態', value: selectedCamera.latestFrame?.analysisStatus ?? '無資料' },
+                    { label: '上傳狀態', value: selectedCamera.latestFrame?.uploadStatus ?? '尚無' },
+                    { label: '分析狀態', value: selectedCamera.latestFrame?.analysisStatus ?? '尚無' },
                     { label: '錯誤', value: selectedCamera.latestFrame?.errorMessage ?? selectedCamera.lastError ?? '無' },
                   ]}
                 />
@@ -359,10 +404,10 @@ export function CamerasPage() {
                   rows={[
                     { label: 'Camera', value: selectedCamera.cameraId },
                     { label: 'Site', value: selectedCamera.siteId ?? '未綁定' },
-                    { label: '心跳', value: formatNullableDateTime(selectedCamera.lastHeartbeatAt) },
+                    { label: 'Heartbeat', value: formatNullableDateTime(selectedCamera.lastHeartbeatAt) },
                     { label: '最新畫面', value: formatNullableDateTime(selectedCamera.lastFrameAt) },
                     { label: '間隔', value: `${selectedCamera.samplingIntervalSeconds}s` },
-                    { label: '保留', value: `${selectedCamera.retentionDays}d` },
+                    { label: '保存', value: `${selectedCamera.retentionDays}d` },
                   ]}
                 />
               </div>

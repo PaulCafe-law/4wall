@@ -1,11 +1,11 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Route, Routes } from 'react-router-dom'
-import { beforeAll, beforeEach, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CameraFrameImage, CamerasPage } from './CamerasPage'
 import { renderWithProviders } from '../../test/utils'
-import type { CameraDevice } from '../../lib/types'
+import type { CameraDevice, CameraGaugeReading } from '../../lib/types'
 
 const apiMock = vi.hoisted(() => ({
   listCameras: vi.fn(),
@@ -32,10 +32,36 @@ beforeAll(() => {
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURLMock })
 })
 
+function gaugeReadingFixture(overrides: Partial<CameraGaugeReading> = {}): CameraGaugeReading {
+  return {
+    readingId: 'reading-1',
+    cameraId: 'camera-1',
+    frameId: null,
+    gaugeId: 'press_am_meter',
+    label: 'PRESS AM METER',
+    value: 3.9,
+    unit: 'A',
+    confidence: 0.91,
+    rawPosition: 0.39,
+    status: 'ok',
+    source: 'live',
+    capturedAt: '2026-07-03T01:00:00+08:00',
+    receivedAt: '2026-07-03T01:00:01+08:00',
+    metadata: {},
+    ...overrides,
+  }
+}
+
 function cameraFixture(
   cameraId: string,
   name: string,
-  options: { frameId?: string; siteId?: string; uploadStatus?: 'pending' | 'uploaded'; uploadedFrameCount?: number } = {},
+  options: {
+    frameId?: string
+    siteId?: string
+    uploadStatus?: 'pending' | 'uploaded'
+    uploadedFrameCount?: number
+    latestGaugeReadings?: CameraGaugeReading[]
+  } = {},
 ): CameraDevice {
   const frameId = options.frameId ?? `${cameraId}-frame`
   const uploadStatus = options.uploadStatus ?? 'uploaded'
@@ -71,6 +97,7 @@ function cameraFixture(
       uploadExpiresAt: '2026-06-19T15:12:04Z',
       completedAt: '2026-06-19T14:57:05Z',
     },
+    latestGaugeReadings: options.latestGaugeReadings ?? [],
   }
 }
 
@@ -95,7 +122,7 @@ describe('CamerasPage', () => {
       { route: '/cameras' },
     )
 
-    expect(await screen.findByRole('heading', { level: 1, name: '固定攝影機' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '即時截圖總覽' })).toBeInTheDocument()
     expect((await screen.findAllByText('PoE Camera')).length).toBeGreaterThan(0)
     const images = await screen.findAllByAltText('PoE Camera latest frame')
     expect(images[0]).toHaveAttribute('src', 'blob:camera-frame')
@@ -125,7 +152,7 @@ describe('CamerasPage', () => {
     })
   })
 
-  it('shows latest frame previews for every readable camera', async () => {
+  it('shows latest frame previews for every readable camera in the selected site', async () => {
     apiMock.listCameras.mockResolvedValue({
       cameras: [
         cameraFixture('camera-1', 'PoE Camera 192.168.1.10'),
@@ -141,7 +168,7 @@ describe('CamerasPage', () => {
       { route: '/cameras' },
     )
 
-    expect(await screen.findByText('即時截圖總覽')).toBeInTheDocument()
+    expect(await screen.findByText('場域攝影機')).toBeInTheDocument()
     expect(await screen.findAllByAltText('PoE Camera 192.168.1.10 latest frame')).not.toHaveLength(0)
     expect(await screen.findByAltText('PoE Camera 192.168.1.28 latest frame')).toBeInTheDocument()
     expect(await screen.findByAltText('PoE Camera 192.168.1.31 latest frame')).toBeInTheDocument()
@@ -182,26 +209,11 @@ describe('CamerasPage', () => {
     )
 
     const siteSelect = await screen.findByLabelText('場域')
-    expect(siteSelect).toHaveValue('牙醫診所')
-    expect(await screen.findByRole('heading', { level: 3, name: '牙醫診所' })).toBeInTheDocument()
-    expect(screen.getByText('6 支攝影機')).toBeInTheDocument()
-    expect(screen.getAllByText('牙醫診所 AVTECH Ch6').length).toBeGreaterThan(0)
-    expect(screen.queryByRole('heading', { level: 3, name: '靚程工廠' })).not.toBeInTheDocument()
-    expect(screen.queryByText('PoE Camera 192.168.1.31')).not.toBeInTheDocument()
-
-    await waitFor(() => {
-      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'dental-1')
-      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'dental-6')
-    })
-    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'factory-1')
-    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'factory-2')
-    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'factory-3')
-
-    await user.selectOptions(siteSelect, '靚程工廠')
-
+    expect(siteSelect).toHaveValue('靚程工廠')
     expect(await screen.findByRole('heading', { level: 3, name: '靚程工廠' })).toBeInTheDocument()
     expect(screen.getByText('3 支攝影機')).toBeInTheDocument()
     expect(screen.getAllByText('PoE Camera 192.168.1.31').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('heading', { level: 3, name: '牙醫診所' })).not.toBeInTheDocument()
     expect(screen.queryByText('牙醫診所 AVTECH Ch6')).not.toBeInTheDocument()
 
     await waitFor(() => {
@@ -209,6 +221,51 @@ describe('CamerasPage', () => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'factory-2')
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'factory-3')
     })
+    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'dental-1')
+    expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalledWith('test-token', 'dental-6')
+
+    await user.selectOptions(siteSelect, '牙醫診所')
+
+    expect(await screen.findByRole('heading', { level: 3, name: '牙醫診所' })).toBeInTheDocument()
+    expect(screen.getByText('6 支攝影機')).toBeInTheDocument()
+    expect(screen.getAllByText('牙醫診所 AVTECH Ch6').length).toBeGreaterThan(0)
+    expect(screen.queryByText('PoE Camera 192.168.1.31')).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'dental-1')
+      expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'dental-6')
+    })
+  })
+
+  it('shows gauge readings beside the selected camera frame', async () => {
+    apiMock.listCameras.mockResolvedValue({
+      cameras: [
+        cameraFixture('camera-1', 'PoE Camera 192.168.1.10', {
+          latestGaugeReadings: [
+            gaugeReadingFixture({ gaugeId: 'press_am_meter', label: 'PRESS AM METER', value: 3.9 }),
+            gaugeReadingFixture({
+              readingId: 'reading-2',
+              gaugeId: 'flow_am_meter',
+              label: 'FLOW AM METER',
+              value: 4.2,
+            }),
+          ],
+        }),
+      ],
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/cameras" element={<CamerasPage />} />
+      </Routes>,
+      { route: '/cameras' },
+    )
+
+    expect(await screen.findByText('機台儀表讀值')).toBeInTheDocument()
+    expect(screen.getAllByText('PRESS AM METER').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('FLOW AM METER').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('3.90 A').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('4.20 A').length).toBeGreaterThan(0)
   })
 
   it('keeps the previous frame visible while the next frame image is loading', async () => {
@@ -230,7 +287,7 @@ describe('CamerasPage', () => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledTimes(2)
     })
     expect(screen.getByAltText('PoE Camera latest frame')).toHaveAttribute('src', 'blob:first-frame')
-    expect(screen.queryByText('正在載入最新截圖。')).not.toBeInTheDocument()
+    expect(screen.queryByText('載入最新截圖中')).not.toBeInTheDocument()
   })
 
   it('shows an empty state when no cameras are readable', async () => {

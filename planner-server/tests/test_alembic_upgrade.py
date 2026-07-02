@@ -30,6 +30,7 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "inspectionreport" in table_names
     assert "camera_devices" in table_names
     assert "camera_frames" in table_names
+    assert "camera_gauge_readings" in table_names
     assert "equipment_watch_zones" in table_names
     assert "equipment_state_observations" in table_names
 
@@ -60,3 +61,8 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     frame_columns = {column["name"] for column in inspector.get_columns("camera_frames")}
     assert "storage_key" in frame_columns
     assert "analysis_status" in frame_columns
+
+    gauge_columns = {column["name"] for column in inspector.get_columns("camera_gauge_readings")}
+    assert "gauge_id" in gauge_columns
+    assert "value" in gauge_columns
+    assert "confidence" in gauge_columns
