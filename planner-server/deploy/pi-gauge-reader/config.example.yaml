@@ -39,6 +39,7 @@ gauges:
     calibration_file: "gauges.json"
 
 debug:
+  runtime_dir: "runtime"
   save_annotated: true
   save_failed_frames: true
   rolling_keep: 200

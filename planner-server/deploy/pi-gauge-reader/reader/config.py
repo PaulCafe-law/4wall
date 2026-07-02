@@ -56,6 +56,7 @@ class DebugConfig:
     save_failed_frames: bool = True
     rolling_keep: int = 200
     crops_for_training: bool = False
+    runtime_dir: Path = Path("runtime")
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,9 @@ def load_config(path: str | Path) -> AppConfig:
     platform_payload = payload.get("platform") or {}
     status_payload = payload.get("status") or {}
     debug_payload = payload.get("debug") or {}
+    runtime_dir = Path(str(debug_payload.get("runtime_dir", "runtime")))
+    if not runtime_dir.is_absolute():
+        runtime_dir = root_dir / runtime_dir
 
     gauges = []
     for gauge_payload in payload.get("gauges") or []:
@@ -129,6 +133,7 @@ def load_config(path: str | Path) -> AppConfig:
             save_failed_frames=bool(debug_payload.get("save_failed_frames", True)),
             rolling_keep=int(debug_payload.get("rolling_keep", 200)),
             crops_for_training=bool(debug_payload.get("crops_for_training", False)),
+            runtime_dir=runtime_dir,
         ),
     )
 

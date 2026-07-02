@@ -152,4 +152,5 @@ refocus the camera, or adjust camera angle before expecting <= 2% full-scale err
 
 The management platform receives full-frame camera snapshots from the existing
 camera agent. The gauge reader itself sends small JSON readings and keeps its debug
-crops in `runtime/debug/`.
+crops under `debug.runtime_dir`. When `config.yaml` is stored under `/etc`, set
+`debug.runtime_dir` to a writable directory such as `/var/lib/fourwall-gauge-reader`.

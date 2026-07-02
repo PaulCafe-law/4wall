@@ -52,9 +52,9 @@ class GaugeReaderRunner:
             gauge.id: GaugeSmoother(min_val=gauge.min_val, max_val=gauge.max_val)
             for gauge in self.config.gauges
         }
-        self.debug_dir = config.root_dir / "runtime" / "debug"
+        self.debug_dir = config.debug.runtime_dir / "debug"
         self.debug_dir.mkdir(parents=True, exist_ok=True)
-        self.training_dir = config.root_dir / "runtime" / "training-crops"
+        self.training_dir = config.debug.runtime_dir / "training-crops"
         if self.config.debug.crops_for_training:
             self.training_dir.mkdir(parents=True, exist_ok=True)
 
