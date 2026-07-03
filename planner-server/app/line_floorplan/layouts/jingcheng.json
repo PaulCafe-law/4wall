@@ -1,0 +1,37 @@
+{
+  "_meta": {
+    "source": "web-app/src/features/factory-twin/mirror/domain/{mockData.ts,spatialZones.ts,machineCameras.ts}",
+    "projection": "Manual x/z to 1040x700 floorplan projection. Factory twin simulated status, OEE, alarms, and people are intentionally excluded.",
+    "timezone": "Asia/Taipei",
+    "updatedAt": "2026-07-03"
+  },
+  "siteSlug": "jingcheng",
+  "siteId": "dd6cbdd3aa744736ad96d2791d689fce",
+  "canvas": { "width": 1040, "height": 700 },
+  "zones": [
+    { "id": "zone-a", "label": "倉儲 A 區", "asciiLabel": "Warehouse A", "rect": [625, 78, 260, 100] },
+    { "id": "zone-mold", "label": "模具倉", "asciiLabel": "Mold Storage", "rect": [435, 180, 170, 100] },
+    { "id": "zone-stage", "label": "半成品暫存", "asciiLabel": "WIP Stage", "rect": [435, 315, 170, 220] },
+    { "id": "zone-dock", "label": "出入貨口", "asciiLabel": "Dock", "rect": [465, 565, 110, 80] }
+  ],
+  "machines": [
+    {
+      "id": "m-hc600",
+      "label": "HC600-01",
+      "rect": [465, 430, 110, 72],
+      "gaugeIds": ["press_am_meter", "flow_am_meter"],
+      "cameraMatches": ["192.168.1.10"]
+    },
+    { "id": "m-hc600-002", "label": "HC600-02", "rect": [300, 430, 110, 72], "gaugeIds": [] },
+    { "id": "m-hc600-003", "label": "HC600-03", "rect": [630, 430, 110, 72], "gaugeIds": [] },
+    { "id": "m-hc600-004", "label": "HC600-04", "rect": [135, 430, 110, 72], "gaugeIds": [] },
+    { "id": "m-hc600-005", "label": "HC600-05", "rect": [795, 430, 110, 72], "gaugeIds": [] },
+    { "id": "m-hc600-006", "label": "HC600-06", "rect": [70, 350, 110, 72], "gaugeIds": [] },
+    { "id": "m-hc600-007", "label": "HC600-07", "rect": [860, 350, 110, 72], "gaugeIds": [] }
+  ],
+  "cameras": [
+    { "nameContains": "192.168.1.10", "label": "儀表板", "asciiLabel": "Gauge", "point": [545, 402], "machineId": "m-hc600" },
+    { "nameContains": "192.168.1.31", "label": "機台周遭", "asciiLabel": "Overview", "point": [505, 352], "machineId": "m-hc600" },
+    { "nameContains": "192.168.1.28", "label": "桌面分類", "asciiLabel": "Table", "point": [650, 255] }
+  ]
+}

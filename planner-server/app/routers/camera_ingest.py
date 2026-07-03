@@ -381,6 +381,15 @@ def get_camera_frame_status(
     return _serialize_frame(frame)
 
 
+@router.get("/v1/camera-ingest/latest-frame/image")
+def get_camera_device_latest_frame_image(
+    camera: CameraDevice = Depends(get_current_camera_device),
+    session: Session = Depends(get_session),
+    storage: ArtifactStorage = Depends(get_artifact_storage),
+) -> Response:
+    return _latest_frame_image_response(session, camera, storage)
+
+
 @router.post("/v1/camera-ingest/gauge-readings", response_model=CameraGaugeReadingsResponseDto)
 def submit_camera_gauge_readings(
     request: SubmitCameraGaugeReadingsDto,
@@ -568,6 +577,10 @@ def get_camera_latest_frame_image(
     storage: ArtifactStorage = Depends(get_artifact_storage),
 ) -> Response:
     camera = _load_camera_for_web(session, current_user, camera_id, write=False)
+    return _latest_frame_image_response(session, camera, storage)
+
+
+def _latest_frame_image_response(session: Session, camera: CameraDevice, storage: ArtifactStorage) -> Response:
     frame = _latest_uploaded_frame_for_camera(session, camera)
     if frame is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="camera_latest_frame_not_found")

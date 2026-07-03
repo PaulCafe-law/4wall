@@ -201,7 +201,7 @@ export function CamerasPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Factory Camera"
+        eyebrow="固定攝影機"
         title="即時截圖總覽"
         subtitle="依場域切換固定攝影機，只載入目前場域的最新截圖與儀表讀值。"
       />
@@ -209,8 +209,8 @@ export function CamerasPage() {
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="攝影機" value={visibleCameras.length} />
         <Metric label="連線中" value={onlineCount} hint="最近 90 秒內有 heartbeat" />
-        <Metric label="待分析" value={queuedCount} hint="已上傳、等待 worker 消化" />
-        <Metric label="異常" value={failedCount} hint="上傳或分析失敗的 frame" />
+        <Metric label="待分析" value={queuedCount} hint="已上傳，等待系統分析" />
+        <Metric label="異常" value={failedCount} hint="上傳或分析失敗的截圖" />
       </div>
 
       {camerasQuery.isLoading ? (
@@ -220,7 +220,15 @@ export function CamerasPage() {
       ) : null}
 
       {!camerasQuery.isLoading && cameras.length === 0 ? (
-        <EmptyState title="尚無攝影機" body="目前帳號沒有可讀取的固定攝影機。" />
+        <EmptyState
+          title="尚無攝影機"
+          body="目前帳號尚未綁定固定攝影機。請聯絡第四面牆團隊安排安裝與綁定，完成後最新截圖會自動出現在這裡。"
+          action={
+            <a className="text-sm text-ember-500 underline" href="mailto:4walltech@gmail.com">
+              聯絡第四面牆團隊
+            </a>
+          }
+        />
       ) : null}
 
       {cameras.length > 0 ? (

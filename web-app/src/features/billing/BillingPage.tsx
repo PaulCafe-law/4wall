@@ -108,7 +108,7 @@ export function BillingPage() {
       <ShellSection
         eyebrow="帳務"
         title="帳單"
-        subtitle="測試版以人工開立帳單與匯款流程為主，託管式結帳不列入本輪上線門檻。"
+        subtitle="測試版以人工開立帳單與匯款流程為主，線上信用卡結帳將於正式版提供。"
         action={
           auth.isInternal ? (
             <Modal

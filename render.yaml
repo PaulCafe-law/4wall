@@ -45,6 +45,8 @@ services:
         sync: false
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
+      - key: LINE_PUBLIC_BASE_URL
+        sync: false
       - key: CODEX_CLI_PATH
         sync: false
       - key: CODEX_TEXT_MODEL
@@ -125,6 +127,8 @@ services:
         sync: false
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
+      - key: LINE_PUBLIC_BASE_URL
+        sync: false
       - key: CODEX_CLI_PATH
         sync: false
       - key: CODEX_TEXT_MODEL

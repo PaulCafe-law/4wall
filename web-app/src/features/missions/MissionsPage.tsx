@@ -31,7 +31,7 @@ export function MissionsPage() {
         title="任務"
         subtitle="集中檢視巡邏航線、執行 profile、任務包版本與航線摘要。"
         action={
-          <Link to="/missions/new" className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
+          <Link to="/missions/new" className="inline-flex rounded-full bg-moss-500 px-4 py-2 text-sm text-white transition hover:bg-moss-400">
             建立任務
           </Link>
         }
@@ -41,7 +41,7 @@ export function MissionsPage() {
         <Metric label="任務總數" value={missions.length} />
         <Metric label="規劃中" value={planningCount} hint="等待 bundle 與 artifact 產出" />
         <Metric label="已就緒" value={readyCount} hint="任務已可交由 Android 下載" />
-        <Metric label="失敗" value={failedCount} hint="請回到 Support / Live Ops 追蹤" />
+        <Metric label="失敗" value={failedCount} hint="需要協助時請聯絡第四面牆支援" />
       </div>
 
       {missionsQuery.isLoading ? (
@@ -55,7 +55,7 @@ export function MissionsPage() {
           title="目前沒有任務"
           body="建立第一筆巡邏任務後，這裡會顯示 DJI Home Point 起降來源、航點數量與執行 profile。"
           action={
-            <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
+            <Link to="/missions/new" className="rounded-full bg-moss-500 px-4 py-2 text-sm text-white transition hover:bg-moss-400">
               建立任務
             </Link>
           }

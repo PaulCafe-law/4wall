@@ -42,11 +42,11 @@ def test_line_webhook_postback_updates_incident_and_is_idempotent(test_settings,
     app = build_app(settings=settings)
     replies: list[str] = []
 
-    def fake_reply_line_message(_settings, _reply_token, message):
-        replies.append(message["text"])
+    def fake_reply_line_messages(_settings, _reply_token, messages):
+        replies.extend(message["text"] for message in messages)
         return {"status": "ok"}
 
-    monkeypatch.setattr("app.routers.line.reply_line_message", fake_reply_line_message)
+    monkeypatch.setattr("app.routers.line.reply_line_messages", fake_reply_line_messages)
 
     with TestClient(app) as client:
         with app.state.session_factory() as session:

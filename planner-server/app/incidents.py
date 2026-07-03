@@ -25,6 +25,7 @@ from app.line_bot import (
     build_line_incident_text,
     push_line_message,
 )
+from app.line_floorplan.links import liveview_url_for_incident
 from app.models import (
     IncidentCommentRecord,
     IncidentEvidenceRecord,
@@ -38,7 +39,7 @@ from app.models import (
 
 INCIDENT_STATUSES = {"pending_review", "confirmed", "in_progress", "resolved", "false_positive"}
 INCIDENT_SEVERITIES = {"low", "medium", "high", "critical"}
-INCIDENT_SOURCES = {"ai_detection", "manual", "pocket_lens", "camera", "drone", "vehicle"}
+INCIDENT_SOURCES = {"ai_detection", "manual", "pocket_lens", "camera", "drone", "vehicle", "line"}
 TERMINAL_STATUSES = {"resolved", "false_positive"}
 SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 STATUS_TRANSITIONS = {
@@ -420,6 +421,9 @@ def record_incident_line_notification(
     action: str,
 ) -> IncidentLineNotificationRecord:
     message = build_line_incident_text(incident, action)
+    liveview_url = liveview_url_for_incident(session, settings, incident)
+    if liveview_url:
+        message = f"{message}\n即時圖：{liveview_url}"
     notification = IncidentLineNotificationRecord(
         incident_id=incident.id,
         action=action,
@@ -441,6 +445,8 @@ def record_incident_line_notification(
         return notification
     try:
         line_message = build_line_incident_message(incident, action)
+        if liveview_url:
+            line_message["text"] = message
         notification.request_payload_json = {"to": settings.line_default_group_id, "messages": [line_message]}
         notification.response_payload_json = push_line_message(settings, settings.line_default_group_id, line_message)
         notification.status = "sent"

@@ -123,7 +123,7 @@ export function ActionButton({
   variant?: 'primary' | 'secondary' | 'ghost'
 }>) {
   const variants = {
-    primary: 'bg-chrome-950 text-white hover:bg-chrome-900',
+    primary: 'bg-moss-500 text-white hover:bg-moss-400',
     secondary: 'border border-chrome-300 bg-white text-chrome-950 hover:border-chrome-500',
     ghost: 'bg-transparent text-chrome-800 hover:bg-white/70',
   }

@@ -39,12 +39,38 @@ function isInternalRole(role: Role): boolean {
   return role === 'platform_admin' || role === 'ops'
 }
 
+// Refresh cookies are HttpOnly, so this flag is the only client-side signal that a
+// session may exist; it gates the boot-time refresh so anonymous visitors do not
+// fire a guaranteed-401 request on every page load.
+const HAS_SESSION_STORAGE_KEY = 'fw.has-session'
+
+function readHasSessionFlag(): boolean {
+  try {
+    return window.localStorage.getItem(HAS_SESSION_STORAGE_KEY) === '1'
+  } catch {
+    return true
+  }
+}
+
+function writeHasSessionFlag(present: boolean) {
+  try {
+    if (present) {
+      window.localStorage.setItem(HAS_SESSION_STORAGE_KEY, '1')
+    } else {
+      window.localStorage.removeItem(HAS_SESSION_STORAGE_KEY)
+    }
+  } catch {
+    // Storage unavailable (private mode / prerender) — refresh gating is skipped.
+  }
+}
+
 export function AuthProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<AuthStatus>('restoring')
   const [session, setSession] = useState<WebSession | null>(null)
   const refreshInFlight = useRef<Promise<WebSession> | null>(null)
 
   const applySession = useCallback((nextSession: WebSession) => {
+    writeHasSessionFlag(true)
     startTransition(() => {
       setSession(nextSession)
       setStatus('authenticated')
@@ -52,6 +78,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [])
 
   const clearSession = useCallback((nextStatus: AuthStatus) => {
+    writeHasSessionFlag(false)
     startTransition(() => {
       setSession(null)
       setStatus(nextStatus)
@@ -75,6 +102,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [applySession])
 
   const restoreSession = useEffectEvent(async () => {
+    if (!readHasSessionFlag()) {
+      clearSession('anonymous')
+      return
+    }
     try {
       await refreshSession()
     } catch {

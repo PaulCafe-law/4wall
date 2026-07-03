@@ -10,8 +10,24 @@ Desktop-first beta console for internal ops and invited customers.
 - artifact visibility through mission detail
 - manual invoice visibility
 - internal organization and audit views
+- native `/factory-twin` page for the Mirror Factory / 靚程工廠 demo
 
 This app is never flight-critical. Android remains the runtime that owns preflight, execution, and failsafe behavior.
+
+## Factory Twin Integration
+
+`/factory-twin` is a native Fourth Wall platform page, not an iframe and not a separate Render service. It ports the Mirror Factory core frontend into `src/features/factory-twin` and uses the existing web login, app shell, and camera API client.
+
+Production scope for this first version:
+
+- Loads `public/factory-twin-assets/assets/factory.glb` and `public/factory-twin-assets/assets/amr.glb` from the web app.
+- Runs chat commands through a local rule-based provider for the demo commands: person lookup, HC600 status, dispatch, and clear overlays.
+- Runs the P3 simulation and agent notifications in the browser, without a Fastify sidecar or WebSocket supervisor.
+- Maps the existing Fourth Wall fixed-camera metadata to the HC600-01 detail panel.
+- Includes P2 warehouse simulation as an independent mode.
+- Excludes the knowledge graph UI/API and offline demo-render route from the production page.
+
+If always-on agent behavior, live LINE push, or LLM reasoning is needed later, move that logic into the existing planner/API service instead of adding a new Mirror Factory Render service.
 
 ## Local Run
 

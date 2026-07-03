@@ -56,6 +56,15 @@ Reference these docs before shipping any `live-ops` or `support` change:
 5. Wait for `/healthz` to return `200` with `"database": {"status": "ok"}`.
 6. Deploy `four-wall-web-staging`.
 7. Run `.github/workflows/smoke-beta.yml` against staging.
+8. If LINE floorplan is enabled for the release, run:
+
+   ```bash
+   cd planner-server
+   BUILDING_ROUTE_AUTH_SECRET_KEY=<same-secret-as-staging-api> \
+   python scripts/line_floorplan_smoke.py \
+     --base-url https://<staging-api-origin> \
+     --group-id <bound-line-group-id>
+   ```
 
 If Render cannot access GitHub, stop using Git-backed deploys for recovery and
 follow `docs/render-image-deploy-recovery.md`. Do not repeatedly retry failed
@@ -68,6 +77,15 @@ Git deploys after Render reports repository access failure.
 3. Wait for production `/healthz` to return `200`.
 4. Promote the same revision to `four-wall-web`.
 5. Re-run `.github/workflows/smoke-beta.yml` against production values.
+6. If LINE floorplan is enabled for the release, run:
+
+   ```bash
+   cd planner-server
+   BUILDING_ROUTE_AUTH_SECRET_KEY=<same-secret-as-prod-api> \
+   python scripts/line_floorplan_smoke.py \
+     --base-url https://<prod-api-origin> \
+     --group-id <bound-line-group-id>
+   ```
 
 ## Live Ops Guardrail
 

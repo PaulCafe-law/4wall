@@ -9,9 +9,11 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { BillingPage } from '../features/billing/BillingPage'
 import { CamerasPage } from '../features/cameras/CamerasPage'
 import { ControlPlanePage } from '../features/controlplane/ControlPlanePage'
+import { FactoryTwinPage } from '../features/factory-twin/FactoryTwinPage'
 import { IncidentCenterPage } from '../features/incidents/IncidentCenterPage'
 import { IncidentDetailPage } from '../features/incidents/IncidentDetailPage'
 import { IndustrialDataEnginePage } from '../features/industrial-data-engine/IndustrialDataEnginePage'
+import { LineFloorplanMobilePage } from '../features/line-floorplan-mobile/LineFloorplanMobilePage'
 import { LiveOpsPage } from '../features/liveops/LiveOpsPage'
 import { MissionDetailPage } from '../features/missions/MissionDetailPage'
 import { MissionsPage } from '../features/missions/MissionsPage'
@@ -35,6 +37,7 @@ export function AppRoutes() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/invite" element={<InvitePage />} />
             <Route path="/official" element={<OfficialSitePage />} />
+            <Route path="/m/floorplan/:siteSlug" element={<LineFloorplanMobilePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>
                 <Route index element={<Navigate to="/overview" replace />} />
@@ -42,6 +45,7 @@ export function AppRoutes() {
                 <Route path="/sites" element={<SitesPage />} />
                 <Route path="/sites/:siteId" element={<SitesPage />} />
                 <Route path="/cameras" element={<CamerasPage />} />
+                <Route path="/factory-twin" element={<FactoryTwinPage />} />
                 <Route path="/site-map" element={<SiteMapPage />} />
                 <Route path="/missions" element={<MissionsPage />} />
                 <Route path="/missions/new" element={<PlannerPage />} />

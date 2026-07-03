@@ -106,7 +106,7 @@ function eventEmptyCopy(mission: MissionDetail) {
   if (mission.reportStatus === 'failed') {
     return {
       title: '判讀失敗',
-      body: mission.delivery.failureReason ?? '分析流程沒有成功產生事件，請到 Support / Live Ops 追蹤原因。',
+      body: mission.delivery.failureReason ?? '分析流程沒有成功產生事件，請聯絡第四面牆支援協助排查。',
     }
   }
 

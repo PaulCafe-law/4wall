@@ -455,6 +455,19 @@ class LineWebhookEventRecord(SQLModel, table=True):
     processed_at: datetime | None = None
 
 
+class LineGroupBinding(SQLModel, table=True):
+    __tablename__ = "line_group_bindings"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    group_id: str = Field(index=True, unique=True)
+    source_type: str = Field(default="group", index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    site_slug: str = Field(index=True)
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
 class InspectionReport(SQLModel, table=True):
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     organization_id: str = Field(foreign_key="organization.id", index=True)
