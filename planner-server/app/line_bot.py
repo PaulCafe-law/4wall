@@ -95,9 +95,13 @@ def push_line_message(settings, target_id: str, message: dict[str, Any]) -> dict
 
 
 def reply_line_message(settings, reply_token: str, message: dict[str, Any]) -> dict[str, Any]:
+    return reply_line_messages(settings, reply_token, [message])
+
+
+def reply_line_messages(settings, reply_token: str, messages: list[dict[str, Any]]) -> dict[str, Any]:
     if not settings.line_channel_access_token:
         raise LineBotConfigurationError("missing_line_channel_access_token")
-    payload = {"replyToken": reply_token, "messages": [message]}
+    payload = {"replyToken": reply_token, "messages": messages[:5]}
     return _post_line(settings.line_channel_access_token, LINE_REPLY_URL, payload)
 
 
@@ -118,6 +122,8 @@ def line_event_key(event: dict[str, Any]) -> str:
             str(source.get("type") or ""),
             str(source.get("userId") or source.get("groupId") or source.get("roomId") or ""),
             str((event.get("postback") or {}).get("data") or ""),
+            str((event.get("message") or {}).get("id") or ""),
+            str((event.get("message") or {}).get("text") or ""),
         ]
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()

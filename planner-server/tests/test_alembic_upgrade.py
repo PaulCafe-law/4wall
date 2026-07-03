@@ -33,6 +33,7 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "camera_gauge_readings" in table_names
     assert "equipment_watch_zones" in table_names
     assert "equipment_state_observations" in table_names
+    assert "line_group_bindings" in table_names
 
     site_columns = {column["name"] for column in inspector.get_columns("site")}
     assert "map_config_json" in site_columns
@@ -66,3 +67,11 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "gauge_id" in gauge_columns
     assert "value" in gauge_columns
     assert "confidence" in gauge_columns
+
+    binding_columns = {column["name"] for column in inspector.get_columns("line_group_bindings")}
+    assert "group_id" in binding_columns
+    assert "source_type" in binding_columns
+    assert "organization_id" in binding_columns
+    assert "site_id" in binding_columns
+    assert "site_slug" in binding_columns
+    assert "is_active" in binding_columns

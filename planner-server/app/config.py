@@ -56,6 +56,7 @@ class Settings:
     line_webhook_enabled: bool
     line_default_group_id: str | None
     line_incident_notify_enabled: bool
+    line_public_base_url: str | None
     web_signup_rate_limit_attempts: int = 5
     web_signup_rate_limit_window_seconds: int = 300
     codex_cli_path: str = "codex"
@@ -133,6 +134,7 @@ class Settings:
             line_webhook_enabled=_env_bool("LINE_WEBHOOK_ENABLED", False),
             line_default_group_id=_env_str("LINE_DEFAULT_GROUP_ID"),
             line_incident_notify_enabled=_env_bool("LINE_INCIDENT_NOTIFY_ENABLED", False),
+            line_public_base_url=_env_str("LINE_PUBLIC_BASE_URL"),
             codex_cli_path=_env_str("CODEX_CLI_PATH", "codex") or "codex",
             codex_text_model=_env_str("CODEX_TEXT_MODEL", "gpt-5.5") or "gpt-5.5",
             codex_text_timeout_seconds=_env_int("CODEX_TEXT_TIMEOUT_SECONDS", 600),

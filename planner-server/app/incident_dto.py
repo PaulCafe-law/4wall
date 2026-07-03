@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 IncidentStatusLiteral = Literal["pending_review", "confirmed", "in_progress", "resolved", "false_positive"]
 IncidentSeverityLiteral = Literal["low", "medium", "high", "critical"]
-IncidentSourceLiteral = Literal["ai_detection", "manual", "pocket_lens", "camera", "drone", "vehicle"]
+IncidentSourceLiteral = Literal["ai_detection", "manual", "pocket_lens", "camera", "drone", "vehicle", "line"]
 IncidentEvidenceTypeLiteral = Literal["image", "video", "text", "link"]
 
 

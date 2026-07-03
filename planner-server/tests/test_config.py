@@ -20,6 +20,7 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     monkeypatch.setenv("LINE_WEBHOOK_ENABLED", " true ")
     monkeypatch.setenv("LINE_DEFAULT_GROUP_ID", " group-1 ")
     monkeypatch.setenv("LINE_INCIDENT_NOTIFY_ENABLED", " true ")
+    monkeypatch.setenv("LINE_PUBLIC_BASE_URL", " https://four-wall-api-staging.onrender.com/ ")
     monkeypatch.setenv("CODEX_CLI_PATH", " /usr/local/bin/codex ")
     monkeypatch.setenv("CODEX_TEXT_MODEL", " gpt-test ")
     monkeypatch.setenv("CODEX_TEXT_TIMEOUT_SECONDS", " 321 ")
@@ -71,6 +72,7 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.line_webhook_enabled is True
     assert settings.line_default_group_id == "group-1"
     assert settings.line_incident_notify_enabled is True
+    assert settings.line_public_base_url == "https://four-wall-api-staging.onrender.com/"
     assert settings.codex_cli_path == "/usr/local/bin/codex"
     assert settings.codex_text_model == "gpt-test"
     assert settings.codex_text_timeout_seconds == 321

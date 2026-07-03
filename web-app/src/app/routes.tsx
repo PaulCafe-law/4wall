@@ -13,6 +13,7 @@ import { FactoryTwinPage } from '../features/factory-twin/FactoryTwinPage'
 import { IncidentCenterPage } from '../features/incidents/IncidentCenterPage'
 import { IncidentDetailPage } from '../features/incidents/IncidentDetailPage'
 import { IndustrialDataEnginePage } from '../features/industrial-data-engine/IndustrialDataEnginePage'
+import { LineFloorplanMobilePage } from '../features/line-floorplan-mobile/LineFloorplanMobilePage'
 import { LiveOpsPage } from '../features/liveops/LiveOpsPage'
 import { MissionDetailPage } from '../features/missions/MissionDetailPage'
 import { MissionsPage } from '../features/missions/MissionsPage'
@@ -36,6 +37,7 @@ export function AppRoutes() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/invite" element={<InvitePage />} />
             <Route path="/official" element={<OfficialSitePage />} />
+            <Route path="/m/floorplan/:siteSlug" element={<LineFloorplanMobilePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>
                 <Route index element={<Navigate to="/overview" replace />} />

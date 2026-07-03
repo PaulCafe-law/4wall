@@ -31,10 +31,12 @@ class RateLimiter:
             attempts.append(now)
 
 
-def client_identity(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for")
-    if forwarded_for:
-        return forwarded_for.split(",", 1)[0].strip() or "unknown"
+def client_identity(request: Request, settings=None) -> str:
+    environment = str(getattr(settings, "environment", "development") or "development").lower()
+    if environment not in {"development", "dev", "test"}:
+        forwarded_for = request.headers.get("x-forwarded-for")
+        if forwarded_for:
+            return forwarded_for.split(",", 1)[0].strip() or "unknown"
     if request.client is not None and request.client.host:
         return request.client.host
     return "unknown"

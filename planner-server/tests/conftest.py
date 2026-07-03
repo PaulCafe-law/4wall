@@ -41,6 +41,7 @@ def test_settings(tmp_path: Path) -> Settings:
         line_webhook_enabled=False,
         line_default_group_id=None,
         line_incident_notify_enabled=False,
+        line_public_base_url=None,
         industrial_storage_base_path=str(tmp_path / "industrial-engine"),
     )
 

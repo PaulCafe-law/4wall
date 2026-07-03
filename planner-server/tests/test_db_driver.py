@@ -36,6 +36,7 @@ def test_postgres_driver_is_available_for_engine_creation():
         line_webhook_enabled=False,
         line_default_group_id=None,
         line_incident_notify_enabled=False,
+        line_public_base_url=None,
     )
 
     engine = create_engine_for_settings(settings)
