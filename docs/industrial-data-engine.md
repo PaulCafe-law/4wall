@@ -15,12 +15,13 @@ The production runtime does not use the OpenAI Platform API, does not require `O
 - Drone path planning is optional. With `ENABLE_EGO_PLANNER=false`, only the drone path planning sub-result is skipped.
 - Text-to-world quality was limited by pure text prompting. The revised flow follows the FlyMirage product pattern: structured scene JSON, reference-image prompt, generated reference image, then image-plus-text World Labs generation.
 - Real factory photo mode already has image grounding from user uploads and should not spend GPT Image OAuth budget on another synthetic reference image.
+- World Labs multi-image reconstruction accepts a bounded set of views. For `real_factory_photos_to_world`, the worker uses up to 8 evenly spaced uploaded photos and sets `reconstruct_images=true`; larger uploads remain stored as inputs but are not all sent to the world generation request.
 
 ## Providers
 
 - `CodexOAuthTextProvider`: scene JSON, reference prompts, incidents, inspection tasks, Evidence Cards, and SiteState JSON through `codex exec` with ChatGPT OAuth.
 - `GPTImageOAuthReferenceProvider`: text-to-world reference image generation through a worker-local OAuth command bridge. It is required only for `text_to_world` jobs.
-- `WorldLabsMarbleProvider`: image-plus-text or photo-plus-text world generation, operation polling, `.spz` download, panorama, and world metadata.
+- `WorldLabsMarbleProvider`: image-plus-text or bounded multi-photo reconstruction world generation, operation polling, `.spz` download, panorama, and world metadata.
 - `OllamaQwenVLMQualityJudgeProvider`: calls `OLLAMA_BASE_URL/api/chat` with `OLLAMA_QWEN_VLM_MODEL` and structured JSON output.
 - `GSplatRendererWorker`: calls `planner-server/scripts/industrial_engine/render_gsplat.py` to render RGB/depth outputs from `.spz`.
 - `BoxerAnnotationWorker`: calls `planner-server/scripts/industrial_engine/run_boxer_annotation.py` for 2D and 3D annotations.

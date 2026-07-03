@@ -379,6 +379,79 @@ def test_worldlabs_upload_accepts_media_asset_id_response(
     assert captured["content"] == image_path.read_bytes()
 
 
+def test_worldlabs_photo_mode_caps_multi_image_reconstruction_payload(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, test_settings: Settings
+) -> None:
+    image_paths = []
+    for index in range(14):
+        image_path = tmp_path / f"factory-{index:02d}.jpg"
+        image_path.write_bytes(b"image")
+        image_paths.append(image_path)
+    provider = WorldLabsMarbleProvider(replace(test_settings, worldlabs_api_key="worldlabs-key"))
+
+    captured_payload: dict[str, object] = {}
+    monkeypatch.setattr(provider, "_upload_image", lambda path: f"media-{path.stem}")
+
+    def fake_post_json(path: str, payload: dict) -> dict:
+        assert path == "/worlds:generate"
+        captured_payload.update(payload)
+        return {"operation_id": "operation-123"}
+
+    monkeypatch.setattr(provider, "_post_json", fake_post_json)
+    monkeypatch.setattr(
+        provider,
+        "_poll_operation",
+        lambda operation_id: {
+            "response": {
+                "id": "world-123",
+                "assets": {"splats": {"spz_urls": {"full_res": "https://example.test/world.spz"}}},
+            }
+        },
+    )
+    monkeypatch.setattr(
+        "app.industrial_data_engine.providers.httpx.get",
+        lambda url, **kwargs: httpx.Response(200, content=b"spz", request=httpx.Request("GET", url)),
+    )
+
+    provider.create_world(
+        mode="real_factory_photos_to_world",
+        display_name="Jingcheng blue machine",
+        scene_description={"sceneName": "Jingcheng blue machine"},
+        reference_prompt={"referenceImagePrompt": "factory aisle"},
+        input_image_paths=image_paths,
+    )
+
+    world_prompt = captured_payload["world_prompt"]
+    assert world_prompt["type"] == "multi-image"
+    assert world_prompt["reconstruct_images"] is True
+    assert len(world_prompt["multi_image_prompt"]) == 8
+    assert world_prompt["multi_image_prompt"][0]["content"]["media_asset_id"] == "media-factory-00"
+    assert world_prompt["multi_image_prompt"][-1]["content"]["media_asset_id"] == "media-factory-13"
+    assert [item["azimuth"] for item in world_prompt["multi_image_prompt"]] == [0, 45, 90, 135, 180, 225, 270, 315]
+
+
+def test_worldlabs_post_json_error_includes_response_body(
+    monkeypatch: pytest.MonkeyPatch, test_settings: Settings
+) -> None:
+    provider = WorldLabsMarbleProvider(replace(test_settings, worldlabs_api_key="worldlabs-key"))
+
+    def fake_post(url: str, **kwargs):
+        return httpx.Response(
+            400,
+            content=b'{"detail":"multi_image_prompt must contain at most 8 images"}',
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("app.industrial_data_engine.providers.httpx.post", fake_post)
+
+    with pytest.raises(IndustrialProviderError) as excinfo:
+        provider._post_json("/worlds:generate", {"world_prompt": {"type": "multi-image"}})
+
+    message = str(excinfo.value)
+    assert "worldlabs_http_error:400" in message
+    assert "multi_image_prompt must contain at most 8 images" in message
+
+
 def test_scene_schema_bounds_generated_arrays() -> None:
     schema = _scene_schema()
 

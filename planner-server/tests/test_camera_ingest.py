@@ -638,6 +638,55 @@ def test_latest_frame_image_is_web_org_scoped(client, session_factory) -> None:
     assert blocked.status_code == 403
 
 
+def test_latest_frame_image_is_available_to_same_camera_device_token(client, session_factory) -> None:
+    token_a = "fwcam_latest_frame_device_a"
+    token_b = "fwcam_latest_frame_device_b"
+    frame_bytes = b"\xff\xd8device-latest-frame\xff\xd9"
+    checksum = hashlib.sha256(frame_bytes).hexdigest()
+    with session_factory() as session:
+        org = seed_organization(session, name="Latest Frame Device")
+        camera = _seed_camera(session, org.id, None, token=token_a)
+        camera_id = camera.id
+        _seed_camera(session, org.id, None, token=token_b)
+        session.commit()
+
+    headers_a = {"Authorization": f"Bearer {token_a}"}
+    intent = client.post(
+        "/v1/camera-ingest/upload-intents",
+        headers=headers_a,
+        json={
+            "frameId": "device-latest-frame",
+            "capturedAt": "2026-06-19T03:10:00Z",
+            "contentType": "image/jpeg",
+            "checksumSha256": checksum,
+            "sizeBytes": len(frame_bytes),
+        },
+    )
+    assert intent.status_code == 200, intent.text
+    assert client.put(intent.json()["uploadUrl"], headers=headers_a, content=frame_bytes).status_code == 204
+    complete = client.post(
+        "/v1/camera-ingest/frames/device-latest-frame/complete",
+        headers=headers_a,
+        json={"checksumSha256": checksum, "sizeBytes": len(frame_bytes)},
+    )
+    assert complete.status_code == 200, complete.text
+
+    image = client.get("/v1/camera-ingest/latest-frame/image", headers=headers_a)
+    assert image.status_code == 200, image.text
+    assert image.content == frame_bytes
+    assert image.headers["content-type"] == "image/jpeg"
+    assert image.headers["x-camera-frame-id"] == "device-latest-frame"
+    assert image.headers["x-camera-captured-at"] == "2026-06-19T03:10:00Z"
+
+    other_image = client.get("/v1/camera-ingest/latest-frame/image", headers={"Authorization": f"Bearer {token_b}"})
+    assert other_image.status_code == 404
+    assert other_image.json()["detail"] == "camera_latest_frame_not_found"
+
+    with session_factory() as session:
+        stored_camera = session.get(CameraDevice, camera_id)
+        assert stored_camera is not None
+
+
 def test_latest_frame_image_returns_404_without_uploaded_frame(client, session_factory) -> None:
     token = "fwcam_no_latest"
     with session_factory() as session:

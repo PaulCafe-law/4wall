@@ -21,6 +21,9 @@ class IndustrialProviderError(RuntimeError):
     pass
 
 
+WORLDLABS_RECONSTRUCTION_MAX_IMAGES = 8
+
+
 class TextProvider(Protocol):
     def generate_json(self, *, purpose: str, prompt: str, schema: dict[str, Any]) -> dict[str, Any]: ...
 
@@ -313,7 +316,11 @@ class WorldLabsMarbleProvider:
                 "text_prompt": text_prompt,
             }
         else:
-            media_assets = [self._upload_image(path) for path in input_image_paths]
+            selected_paths = _select_evenly_spaced_paths(
+                input_image_paths,
+                max_count=WORLDLABS_RECONSTRUCTION_MAX_IMAGES,
+            )
+            media_assets = [self._upload_image(path) for path in selected_paths]
             if len(media_assets) == 1:
                 world_prompt = {
                     "type": "image",
@@ -331,6 +338,7 @@ class WorldLabsMarbleProvider:
                         }
                         for index, media_id in enumerate(media_assets)
                     ],
+                    "reconstruct_images": True,
                     "text_prompt": text_prompt,
                 }
 
@@ -400,7 +408,7 @@ class WorldLabsMarbleProvider:
             json=payload,
             timeout=self.timeout,
         )
-        response.raise_for_status()
+        _raise_for_status(response, "worldlabs_http_error")
         return response.json()
 
     def _get_world(self, world_id: str | None) -> dict[str, Any]:
@@ -423,7 +431,7 @@ class WorldLabsMarbleProvider:
                 headers={"WLT-Api-Key": self.api_key},
                 timeout=self.timeout,
             )
-            response.raise_for_status()
+            _raise_for_status(response, "worldlabs_http_error")
             operation = response.json()
             if operation.get("error"):
                 raise IndustrialProviderError(f"worldlabs_operation_failed:{operation['error']}")
@@ -626,6 +634,36 @@ def _loads_json_object(value: str) -> dict[str, Any]:
 
 def _error_excerpt(response: httpx.Response) -> str:
     return response.text.strip().replace("\n", " ")[:500]
+
+
+def _raise_for_status(response: httpx.Response, failure_prefix: str) -> None:
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        detail = _error_excerpt(response) or exc.response.reason_phrase
+        raise IndustrialProviderError(f"{failure_prefix}:{response.status_code}:{detail}") from exc
+
+
+def _select_evenly_spaced_paths(paths: list[Path], *, max_count: int) -> list[Path]:
+    if len(paths) <= max_count:
+        return list(paths)
+    if max_count <= 1:
+        return paths[:max_count]
+
+    last_index = len(paths) - 1
+    indexes = [round(index * last_index / (max_count - 1)) for index in range(max_count)]
+    deduped: list[int] = []
+    for index in indexes:
+        if index not in deduped:
+            deduped.append(index)
+
+    candidate = 0
+    while len(deduped) < max_count and candidate <= last_index:
+        if candidate not in deduped:
+            deduped.append(candidate)
+        candidate += 1
+
+    return [paths[index] for index in sorted(deduped[:max_count])]
 
 
 def _world_text_prompt(scene_description: dict[str, Any], reference_prompt: dict[str, Any]) -> str:
