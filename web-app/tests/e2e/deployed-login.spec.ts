@@ -11,7 +11,7 @@ test('deployed beta login reaches the authenticated shell', async ({ page }) => 
   await page.locator('form input[type="password"]').fill(smokePassword!)
   await page.locator('form button[type="submit"]').click()
 
-  await page.waitForFunction(() => window.location.pathname === '/missions', undefined, {
+  await page.waitForFunction(() => window.location.pathname === '/overview', undefined, {
     timeout: 15_000,
   })
   await expect(page.locator('a[href="/sites"]').first()).toBeVisible({ timeout: 15_000 })
