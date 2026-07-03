@@ -109,7 +109,7 @@ export function IncidentCenterPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Incident Center"
+        eyebrow="異常事件"
         title="異常事件中心"
         subtitle="把 AI 與人工回報收斂成可確認、可指派、可追蹤、可結案的現場管理流程。"
         action={

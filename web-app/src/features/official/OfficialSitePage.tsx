@@ -203,7 +203,7 @@ export function OfficialSitePage() {
       <main id="top">
         <section className="mx-auto max-w-7xl px-4 pb-6 pt-12 md:pt-20">
           <div className="mx-auto max-w-5xl text-center">
-            <h1 className="font-display text-5xl font-semibold leading-[0.98] tracking-[-0.07em] text-chrome-950 md:text-7xl lg:text-8xl">
+            <h1 className="text-balance font-display text-5xl font-semibold leading-[0.98] tracking-[-0.07em] text-chrome-950 md:text-7xl lg:text-8xl">
               第四面牆 AI｜重塑現場管理：讓真實空間具備感知、追蹤與協作能力
             </h1>
             <p className="mx-auto mt-6 max-w-4xl text-xl leading-9 tracking-[-0.02em] text-chrome-700 md:text-2xl">

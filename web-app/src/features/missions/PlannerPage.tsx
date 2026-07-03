@@ -213,6 +213,7 @@ export function PlannerPage() {
             <p>戶外 GPS 巡邏會以起降點與排序航點產生 mission.kmz。</p>
             <p>系統會自動啟用隱式返航，因此不需要顯式新增最後一點回到起降點。</p>
             <p>室內 profile 只保留保守模式，不承諾航點自動巡邏。</p>
+            <p>座標可先在 Google Maps 上點選位置，右鍵複製經緯度後貼入左側欄位。</p>
           </div>
         </Panel>
       </div>

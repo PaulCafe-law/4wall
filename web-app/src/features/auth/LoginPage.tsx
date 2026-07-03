@@ -33,7 +33,7 @@ export function LoginPage() {
   })
 
   if (auth.status === 'authenticated') {
-    return <Navigate to="/missions" replace />
+    return <Navigate to="/overview" replace />
   }
 
   const expired = searchParams.get('expired') === '1' || auth.status === 'expired'
@@ -41,7 +41,7 @@ export function LoginPage() {
   const onSubmit = handleSubmit(async (values) => {
     try {
       await auth.login(values)
-      navigate('/missions', { replace: true })
+      navigate('/overview', { replace: true })
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
       setError('root', { message: formatApiError(detail, '登入失敗，請稍後再試。') })
@@ -49,9 +49,9 @@ export function LoginPage() {
   })
 
   return (
-    <div className="min-h-screen bg-grain px-6 py-10">
-      <div className="mx-auto grid max-w-6xl gap-6 md:grid-cols-[minmax(0,1fr)_24rem]">
-        <Panel className="flex flex-col justify-between overflow-hidden bg-chrome-950 text-white">
+    <div className="flex min-h-screen items-center bg-grain px-6 py-10">
+      <div className="mx-auto grid w-full max-w-6xl gap-6 md:grid-cols-[minmax(0,1fr)_24rem]">
+        <Panel className="flex flex-col justify-between overflow-hidden !border-chrome-900 !bg-chrome-950 text-white">
           <div>
             <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-ember-300">僅限受邀測試</p>
             <h1 className="mt-4 font-display text-5xl font-semibold tracking-[-0.05em]">

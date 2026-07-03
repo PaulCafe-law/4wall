@@ -105,7 +105,7 @@ export function SiteMapPage() {
   return (
     <div className="space-y-6">
       <ShellSection
-        eyebrow="Site Map"
+        eyebrow="場域地圖"
         title="場域地圖"
         subtitle={`${siteMapConfig.label}，用於檢視場域模型、事件位置與 2D / 3D 對照。`}
         action={
@@ -219,7 +219,7 @@ export function SiteMapPage() {
 
         <div className="space-y-6">
           <Panel>
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Selected Incident</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">選取的事件</p>
             {selectedMarker ? (
               <div className="mt-4 space-y-4">
                 <div>
@@ -256,7 +256,7 @@ export function SiteMapPage() {
                 />
                 <div className="flex flex-wrap gap-3">
                   <Link
-                    className="inline-flex rounded-full bg-chrome-950 px-4 py-2 text-sm font-medium text-white"
+                    className="inline-flex rounded-full bg-moss-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-moss-400"
                     to={`/incidents/${selectedMarker.incident.incidentId}`}
                   >
                     開啟事件詳情

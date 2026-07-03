@@ -181,8 +181,8 @@ export function IndustrialDataEnginePage() {
 
       <div className="grid gap-4 md:grid-cols-3">
         <Metric label="任務總數" value={jobs.length} hint="此工作區建立過的資料生成任務。" />
-        <Metric label="執行中" value={runningCount} hint="正在排隊或由 worker 處理中的任務。" />
-        <Metric label="失敗" value={failedCount} hint="正式 provider 發生問題時會立即停止，並保留失敗階段紀錄。" />
+        <Metric label="執行中" value={runningCount} hint="正在排隊或處理中的任務。" />
+        <Metric label="失敗" value={failedCount} hint="生成過程發生問題時會立即停止，並保留失敗階段紀錄。" />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(28rem,1.05fr)]">
@@ -236,7 +236,7 @@ export function IndustrialDataEnginePage() {
                 </Field>
               </div>
 
-              <Field label="異常事件類型" hint="可用逗號分隔多個項目，送出時會自動轉成 JSON。">
+              <Field label="異常事件類型" hint="可用逗號分隔多個項目，例如：通道阻塞, 未配戴防護具。">
                 <Input value={incidentTypes} onChange={(event) => setIncidentTypes(event.target.value)} />
               </Field>
 

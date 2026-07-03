@@ -53,7 +53,7 @@ export function OverviewPage() {
       <ShellSection
         eyebrow="總覽"
         title="營運總覽"
-        subtitle="檢視任務覆蓋、執行 profile 分布與 Sprint 4 的即時執行狀態。"
+        subtitle="檢視任務覆蓋、執行 profile 分布與現場即時執行狀態。"
       />
 
       <div className="grid gap-4 md:grid-cols-4">
@@ -72,9 +72,9 @@ export function OverviewPage() {
       {!missionsQuery.isLoading && missions.length === 0 ? (
         <EmptyState
           title="目前沒有任務"
-          body="建立第一筆巡邏任務後，這裡會顯示任務覆蓋、profile 分布與 Live Ops 狀態。"
+          body="建立第一筆巡邏任務後，這裡會顯示任務覆蓋、profile 分布與即時執行狀態。"
           action={
-            <Link to="/missions/new" className="rounded-full bg-chrome-950 px-4 py-2 text-sm text-white">
+            <Link to="/missions/new" className="rounded-full bg-moss-500 px-4 py-2 text-sm text-white transition hover:bg-moss-400">
               建立任務
             </Link>
           }
