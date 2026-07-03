@@ -221,7 +221,7 @@ def test_rich_menu_floorplan_postback_replies_imagemap(test_settings, monkeypatc
     first_action = message["actions"][0]
     assert first_action["type"] == "message"
     assert first_action["text"] == "機台 m-hc600"
-    assert first_action["area"] == {"x": 465, "y": 430, "width": 110, "height": 72}
+    assert first_action["area"] == {"x": 686, "y": 317, "width": 104, "height": 48}
     assert liveview["type"] == "flex"
     assert "https://app.example.test/m/floorplan/jingcheng?token=" in json.dumps(liveview)
 
