@@ -8,6 +8,7 @@ const customerLinks = [
   { to: '/overview', label: '總覽' },
   { to: '/sites', label: '場域' },
   { to: '/cameras', label: '固定攝影機' },
+  { to: '/factory-twin', label: '工廠數位分身' },
   { to: '/site-map', label: '場域地圖' },
   { to: '/missions', label: '任務' },
   { to: '/incidents', label: '異常事件' },
@@ -109,7 +110,7 @@ export function AppShell() {
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-20 flex flex-col items-start gap-3 border-b border-white/60 bg-chrome-50/70 px-4 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <header className="sticky top-0 z-30 flex flex-col items-start gap-3 border-b border-chrome-200/80 bg-chrome-50/95 px-4 py-4 backdrop-blur lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="min-w-0">
             <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-chrome-500">
               目前頁面範圍
