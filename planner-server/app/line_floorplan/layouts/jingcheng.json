@@ -1,37 +1,40 @@
 {
   "_meta": {
-    "source": "web-app/src/features/factory-twin/mirror/domain/{mockData.ts,spatialZones.ts,machineCameras.ts}",
-    "projection": "Manual x/z to 1040x700 floorplan projection. Factory twin simulated status, OEE, alarms, and people are intentionally excluded.",
+    "source": "web-app/public/factory-twin-assets/assets/factory.glb + web-app/src/features/factory-twin/mirror/domain/{spatialZones.ts,meshBindings.ts,machineCameras.ts}",
+    "projection": "GLB top-down crop. Roof is hidden and the view is rotated so the GLB z-axis maps horizontally. Machine rectangles are derived from bound GLB nodes C600001-C600007; status data is not taken from factory twin mocks.",
+    "sourceAsset": "planner-server/app/line_floorplan/assets/jingcheng_glb_topdown_crop.png",
+    "sourceCrop": { "x": 30, "y": 120, "width": 700, "height": 310 },
+    "mapRect": { "x": 32, "y": 112, "width": 976, "height": 432 },
     "timezone": "Asia/Taipei",
-    "updatedAt": "2026-07-03"
+    "updatedAt": "2026-07-04"
   },
   "siteSlug": "jingcheng",
   "siteId": "dd6cbdd3aa744736ad96d2791d689fce",
   "canvas": { "width": 1040, "height": 700 },
   "zones": [
-    { "id": "zone-a", "label": "倉儲 A 區", "asciiLabel": "Warehouse A", "rect": [625, 78, 260, 100] },
-    { "id": "zone-mold", "label": "模具倉", "asciiLabel": "Mold Storage", "rect": [435, 180, 170, 100] },
-    { "id": "zone-stage", "label": "半成品暫存", "asciiLabel": "WIP Stage", "rect": [435, 315, 170, 220] },
-    { "id": "zone-dock", "label": "出入貨口", "asciiLabel": "Dock", "rect": [465, 565, 110, 80] }
+    { "id": "zone-a", "label": "倉儲 A 區", "asciiLabel": "Warehouse A", "rect": [35, 151, 99, 237] },
+    { "id": "zone-mold", "label": "模具倉", "asciiLabel": "Mold Storage", "rect": [210, 379, 123, 112] },
+    { "id": "zone-stage", "label": "半成品暫存", "asciiLabel": "WIP Stage", "rect": [365, 421, 489, 76] },
+    { "id": "zone-dock", "label": "出入貨口", "asciiLabel": "Dock", "rect": [858, 357, 87, 64] }
   ],
   "machines": [
     {
       "id": "m-hc600",
       "label": "HC600-01",
-      "rect": [465, 430, 110, 72],
+      "rect": [686, 317, 104, 48],
       "gaugeIds": ["press_am_meter", "flow_am_meter"],
       "cameraMatches": ["192.168.1.10"]
     },
-    { "id": "m-hc600-002", "label": "HC600-02", "rect": [300, 430, 110, 72], "gaugeIds": [] },
-    { "id": "m-hc600-003", "label": "HC600-03", "rect": [630, 430, 110, 72], "gaugeIds": [] },
-    { "id": "m-hc600-004", "label": "HC600-04", "rect": [135, 430, 110, 72], "gaugeIds": [] },
-    { "id": "m-hc600-005", "label": "HC600-05", "rect": [795, 430, 110, 72], "gaugeIds": [] },
-    { "id": "m-hc600-006", "label": "HC600-06", "rect": [70, 350, 110, 72], "gaugeIds": [] },
-    { "id": "m-hc600-007", "label": "HC600-07", "rect": [860, 350, 110, 72], "gaugeIds": [] }
+    { "id": "m-hc600-002", "label": "HC600-02", "rect": [436, 317, 104, 48], "gaugeIds": [] },
+    { "id": "m-hc600-003", "label": "HC600-03", "rect": [295, 317, 104, 48], "gaugeIds": [] },
+    { "id": "m-hc600-004", "label": "HC600-04", "rect": [668, 153, 104, 48], "gaugeIds": [] },
+    { "id": "m-hc600-005", "label": "HC600-05", "rect": [576, 317, 104, 48], "gaugeIds": [] },
+    { "id": "m-hc600-006", "label": "HC600-06", "rect": [556, 153, 104, 48], "gaugeIds": [] },
+    { "id": "m-hc600-007", "label": "HC600-07", "rect": [193, 262, 104, 48], "gaugeIds": [] }
   ],
   "cameras": [
-    { "nameContains": "192.168.1.10", "label": "儀表板", "asciiLabel": "Gauge", "point": [545, 402], "machineId": "m-hc600" },
-    { "nameContains": "192.168.1.31", "label": "機台周遭", "asciiLabel": "Overview", "point": [505, 352], "machineId": "m-hc600" },
-    { "nameContains": "192.168.1.28", "label": "桌面分類", "asciiLabel": "Table", "point": [650, 255] }
+    { "nameContains": "192.168.1.10", "label": "儀表板", "asciiLabel": "Gauge", "point": [616, 421], "machineId": "m-hc600" },
+    { "nameContains": "192.168.1.31", "label": "機台周邊", "asciiLabel": "Overview", "point": [598, 453], "machineId": "m-hc600" },
+    { "nameContains": "192.168.1.28", "label": "桌面分類", "asciiLabel": "Table", "point": [336, 382] }
   ]
 }
