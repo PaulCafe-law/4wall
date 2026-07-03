@@ -457,6 +457,7 @@ function MachineSheet({
         <img
           alt={`${detail.label} 最新截圖`}
           className="mb-4 aspect-video w-full rounded-md object-cover"
+          referrerPolicy="no-referrer"
           src={detail.thumbnailUrl}
         />
       ) : (

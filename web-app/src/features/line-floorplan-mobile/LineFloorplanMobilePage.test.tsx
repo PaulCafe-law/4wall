@@ -53,6 +53,8 @@ describe('LineFloorplanMobilePage', () => {
 
     expect(await screen.findByText('今日異常 2 件')).toBeInTheDocument()
     expect(screen.getByText('PRESS')).toBeInTheDocument()
+    const thumbnail = screen.getByRole('img', { name: /HC600-01/ })
+    expect(thumbnail).toHaveAttribute('referrerpolicy', 'no-referrer')
     expect(screen.getByAltText('HC600-01 最新截圖')).toHaveAttribute(
       'src',
       'https://signed.example.test/thumb.jpg',
