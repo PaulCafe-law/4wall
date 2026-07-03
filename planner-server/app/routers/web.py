@@ -115,6 +115,7 @@ def web_login(
     _check_rate_limit(
         rate_limiter,
         http_request,
+        settings,
         scope="web_login",
         subject=email,
         rule=RateLimitRule(
@@ -155,6 +156,7 @@ def web_signup(
     _check_rate_limit(
         rate_limiter,
         http_request,
+        settings,
         scope="web_signup",
         subject=f"{email}:{slug}",
         rule=RateLimitRule(
@@ -651,6 +653,7 @@ def accept_invite(
     _check_rate_limit(
         rate_limiter,
         http_request,
+        settings,
         scope="invite_accept",
         subject=hash_invite_token(request.inviteToken),
         rule=RateLimitRule(
@@ -1335,13 +1338,14 @@ def _as_utc(value: datetime) -> datetime:
 def _check_rate_limit(
     rate_limiter: RateLimiter,
     request: Request,
+    settings,
     *,
     scope: str,
     subject: str,
     rule: RateLimitRule,
 ) -> None:
     normalized_subject = subject.strip().lower() or "anonymous"
-    bucket = f"{scope}:{client_identity(request)}:{normalized_subject}"
+    bucket = f"{scope}:{client_identity(request, settings)}:{normalized_subject}"
     rate_limiter.check(bucket, rule)
 
 
