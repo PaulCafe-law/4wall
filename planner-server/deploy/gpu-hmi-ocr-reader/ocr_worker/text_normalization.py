@@ -8,6 +8,7 @@ _OPENCC_LOAD_ATTEMPTED = False
 
 _PHRASE_FALLBACKS = (
     ("生产", "生產"),
+    ("生産", "生產"),
     ("预计", "預計"),
     ("预估", "預估"),
     ("总数", "總數"),
@@ -26,6 +27,7 @@ _PHRASE_FALLBACKS = (
 _CHAR_FALLBACKS = str.maketrans(
     {
         "产": "產",
+        "産": "產",
         "预": "預",
         "计": "計",
         "总": "總",

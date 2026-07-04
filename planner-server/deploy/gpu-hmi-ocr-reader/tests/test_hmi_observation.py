@@ -96,6 +96,17 @@ def test_ocr_observation_payload_normalizes_human_text_to_traditional_chinese() 
     assert payload["structuredFields"]["operationMode"]["value"] == "手動生產"
     assert payload["workOrderRawText"] == "HC600 生產日期 預計總數 後處理"
 
+    variant_payload = build_ocr_observation(
+        captured_at="2026-07-04T10:00:00+08:00",
+        mode="machine_monitor",
+        mode_confidence=0.86,
+        raw_lines=[{"text": "生産日期", "confidence": 0.9, "box": None, "region": "work_order"}],
+        structured_fields={},
+        work_order_raw_text="HC600 生産日期",
+    )
+
+    assert variant_payload["workOrderRawText"] == "HC600 生產日期"
+
 
 def test_recognize_scaled_maps_boxes_back_to_original_coordinates() -> None:
     class FakeEngine:
