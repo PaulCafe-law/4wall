@@ -1,7 +1,7 @@
 {
   "_meta": {
     "source": "web-app/public/factory-twin-assets/assets/factory.glb + web-app/src/features/factory-twin/mirror/domain/{spatialZones.ts,meshBindings.ts,machineCameras.ts}",
-    "projection": "GLB top-down crop. Roof is hidden and the view is rotated so the GLB z-axis maps horizontally. Machine rectangles are derived from bound GLB nodes C600001-C600007; status data is not taken from factory twin mocks.",
+    "projection": "GLB top-down crop. Roof is hidden, roof-support artifacts are masked from the LINE base map, and the view is rotated so the GLB z-axis maps horizontally. Machine rectangles are derived from bound GLB nodes C600001-C600007; status data is not taken from factory twin mocks.",
     "sourceAsset": "planner-server/app/line_floorplan/assets/jingcheng_glb_topdown_crop.png",
     "sourceCrop": { "x": 30, "y": 120, "width": 700, "height": 310 },
     "mapRect": { "x": 32, "y": 112, "width": 976, "height": 432 },
@@ -30,7 +30,7 @@
     { "id": "m-hc600-004", "label": "HC600-04", "rect": [668, 153, 104, 48], "gaugeIds": [] },
     { "id": "m-hc600-005", "label": "HC600-05", "rect": [576, 317, 104, 48], "gaugeIds": [] },
     { "id": "m-hc600-006", "label": "HC600-06", "rect": [556, 153, 104, 48], "gaugeIds": [] },
-    { "id": "m-hc600-007", "label": "HC600-07", "rect": [193, 262, 104, 48], "gaugeIds": [] }
+    { "id": "m-hc600-007", "label": "HC600-07", "rect": [221, 234, 48, 104], "gaugeIds": [] }
   ],
   "cameras": [
     { "nameContains": "192.168.1.10", "label": "儀表板", "asciiLabel": "Gauge", "point": [616, 421], "machineId": "m-hc600" },

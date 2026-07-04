@@ -24,6 +24,12 @@ MACHINE_STROKE = "#171B1F"
 CAMERA_FILL = "#2F8F5B"
 MAP_RECT = (32, 112, 976, 432)
 GLB_TOPDOWN_SOURCE = PLANNER_ROOT / "app" / "line_floorplan" / "assets" / "jingcheng_glb_topdown_crop.png"
+ROOF_SUPPORT_FILL = (248, 244, 234, 245)
+ROOF_SUPPORT_MASKS = (
+    (136, 153, 384, 202),
+    (520, 153, 282, 202),
+    (803, 153, 142, 202),
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,6 +73,7 @@ def _render_base(layout: FloorplanLayout, *, font_path: Path | None) -> Image.Im
         Image.Resampling.LANCZOS,
     )
     image.alpha_composite(topdown, dest=(map_x, map_y))
+    _erase_roof_support_artifacts(image)
 
     draw.rectangle((24, 24, BASE_WIDTH - 24, BASE_HEIGHT - 24), outline=INK, width=4)
     draw.text((44, 42), "靚程工廠 2D 即時廠區圖" if use_cjk else "Jingcheng Factory Live Floorplan", fill=INK, font=title_font)
@@ -105,7 +112,7 @@ def _render_base(layout: FloorplanLayout, *, font_path: Path | None) -> Image.Im
             outline=MACHINE_STROKE,
             width=2,
         )
-        _draw_centered_text(draw, machine.label, rect, label_font, INK)
+        _draw_machine_label(image, draw, machine.label, rect, label_font, INK)
 
     for camera in layout.cameras:
         point = camera.point
@@ -114,6 +121,37 @@ def _render_base(layout: FloorplanLayout, *, font_path: Path | None) -> Image.Im
     legend = "圓點：機台狀態  方塊：相機心跳  紅 未結異常  黃 儀表異常  綠 正常  灰 無資料" if use_cjk else "Circle: machine status  Square: camera heartbeat  Red open incident  Yellow gauge issue  Green normal  Gray no data"
     draw.text((46, BASE_HEIGHT - 66), legend, fill="#555B61", font=small_font)
     return image.convert("RGB")
+
+
+def _erase_roof_support_artifacts(image: Image.Image) -> None:
+    draw = ImageDraw.Draw(image)
+    for x, y, width, height in ROOF_SUPPORT_MASKS:
+        draw.rectangle((x, y, x + width, y + height), fill=ROOF_SUPPORT_FILL)
+
+
+def _draw_machine_label(
+    image: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    rect,
+    font: ImageFont.ImageFont,
+    fill: str,
+) -> None:
+    if rect.height <= rect.width:
+        _draw_centered_text(draw, text, rect, font, fill)
+        return
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    padding = 6
+    label_image = Image.new("RGBA", (text_width + padding * 2, text_height + padding * 2), (0, 0, 0, 0))
+    label_draw = ImageDraw.Draw(label_image)
+    label_draw.text((padding - bbox[0], padding - bbox[1]), text, fill=fill, font=font)
+    rotated = label_image.rotate(90, expand=True, resample=Image.Resampling.BICUBIC)
+    x = rect.x + max(0, rect.width - rotated.width) / 2
+    y = rect.y + max(0, rect.height - rotated.height) / 2
+    image.alpha_composite(rotated, dest=(round(x), round(y)))
 
 
 def _draw_centered_text(
