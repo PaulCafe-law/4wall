@@ -1,0 +1,17 @@
+[Unit]
+Description=Fourth Wall GPU person presence worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/fourwall/person-presence
+EnvironmentFile=/etc/fourwall/person-presence.env
+ExecStart=/opt/fourwall/person-presence/.venv/bin/python -m presence_worker.main --config /opt/fourwall/person-presence/config.yaml --publish
+Restart=always
+RestartSec=10
+User=fourwall
+Group=fourwall
+
+[Install]
+WantedBy=multi-user.target

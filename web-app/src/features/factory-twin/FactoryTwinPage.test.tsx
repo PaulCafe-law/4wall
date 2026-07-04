@@ -4,7 +4,7 @@ import { beforeEach, vi } from 'vitest';
 
 import { AppShell } from '../../app/shell';
 import { RequireAuthenticated } from '../../app/routes';
-import type { CameraDevice } from '../../lib/types';
+import type { CameraDevice, CameraPersonObservation } from '../../lib/types';
 import { createAuthValue, renderWithProviders } from '../../test/utils';
 import { FactoryTwinPage } from './FactoryTwinPage';
 
@@ -26,19 +26,27 @@ vi.mock('../../lib/api', async () => {
 vi.mock('./FactoryTwinWorkspace', () => ({
   FactoryTwinWorkspace: ({
     platformCameras,
+    livePersons,
   }: {
-    platformCameras: Array<{ name: string; attrs?: { latestGaugeReadings?: unknown[] } }>;
+    platformCameras: Array<{ name: string; attrs?: { latestGaugeReadings?: unknown[]; latestOcrObservation?: unknown } }>;
+    livePersons: Array<{ id: string; name: string }>;
   }) => {
     const gaugeCount = platformCameras.reduce(
       (total, camera) => total + (camera.attrs?.latestGaugeReadings?.length ?? 0),
       0,
     );
+    const ocrCount = platformCameras.filter((camera) => Boolean(camera.attrs?.latestOcrObservation)).length;
     return (
       <div data-testid="factory-twin-workspace">
         platform cameras: {platformCameras.length}
         gauge readings: {gaugeCount}
+        ocr observations: {ocrCount}
+        live persons: {livePersons.length}
         {platformCameras.map((camera) => (
           <span key={camera.name}>{camera.name}</span>
+        ))}
+        {livePersons.map((person) => (
+          <span key={person.id}>{person.name}</span>
         ))}
       </div>
     );
@@ -69,6 +77,7 @@ function cameraFixture(
   name: string,
   siteId: string | null,
   latestGaugeReadings: CameraDevice['latestGaugeReadings'] = [],
+  latestPersonObservation: CameraDevice['latestPersonObservation'] = null,
 ): CameraDevice {
   return {
     cameraId,
@@ -87,6 +96,8 @@ function cameraFixture(
     queuedFrameCount: 0,
     failedFrameCount: 0,
     latestGaugeReadings,
+    latestOcrObservation: null,
+    latestPersonObservation,
     latestFrame: {
       frameId: `${cameraId}-frame`,
       cameraId,
@@ -103,6 +114,40 @@ function cameraFixture(
       uploadExpiresAt: '2026-06-19T15:12:04Z',
       completedAt: '2026-06-19T14:57:05Z',
     },
+  };
+}
+
+function personObservation(
+  cameraId: string,
+  overrides: Partial<CameraPersonObservation> = {},
+): CameraPersonObservation {
+  return {
+    observationId: `${cameraId}-person-observation`,
+    cameraId,
+    frameId: `${cameraId}-frame`,
+    source: 'live',
+    capturedAt: new Date().toISOString(),
+    receivedAt: new Date().toISOString(),
+    imageWidth: 1280,
+    imageHeight: 720,
+    calibrationId: 'factory-homography-1',
+    detectorName: 'fake-person',
+    personCount: 2,
+    detections: [
+      {
+        bbox: [100, 120, 40, 160],
+        confidence: 0.92,
+        footPoint: [120, 280],
+        floorPosition: { x: 1.25, z: -3.5 },
+      },
+      {
+        bbox: [200, 150, 42, 180],
+        confidence: 0.81,
+        footPoint: [221, 330],
+        floorPosition: { x: 4.25, z: -8.5 },
+      },
+    ],
+    ...overrides,
   };
 }
 
@@ -146,6 +191,7 @@ describe('FactoryTwinPage', () => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('platform cameras: 3');
     });
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('gauge readings: 2');
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('機台周遭');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('桌面分類');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('儀表板');
@@ -168,5 +214,71 @@ describe('FactoryTwinPage', () => {
 
     expect(await screen.findByText('login page')).toBeInTheDocument();
     expect(screen.queryByText('靚程工廠 Digital Twin')).not.toBeInTheDocument();
+  });
+
+  it('projects fresh valid person observations into live person entities', async () => {
+    apiMock.listCameras.mockResolvedValueOnce({
+      cameras: [
+        cameraFixture(
+          'factory-1',
+          'PoE Camera 192.168.1.10',
+          'dd6cbdd3aa744736ad96d2791d689fce',
+          [],
+          personObservation('factory-1'),
+        ),
+      ],
+    });
+
+    renderFactoryRoute();
+
+    expect(await screen.findByText('現場人數')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 2');
+    });
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員 3-1');
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員 3-2');
+  });
+
+  it('drops expired, null, and out-of-bounds live person projections', async () => {
+    apiMock.listCameras.mockResolvedValueOnce({
+      cameras: [
+        cameraFixture(
+          'expired',
+          'PoE Camera 192.168.1.10',
+          'dd6cbdd3aa744736ad96d2791d689fce',
+          [],
+          personObservation('expired', { capturedAt: '2020-01-01T00:00:00Z' }),
+        ),
+        cameraFixture(
+          'bad-projection',
+          'PoE Camera 192.168.1.28',
+          'dd6cbdd3aa744736ad96d2791d689fce',
+          [],
+          personObservation('bad-projection', {
+            personCount: 2,
+            detections: [
+              {
+                bbox: [100, 120, 40, 160],
+                confidence: 0.92,
+                footPoint: [120, 280],
+                floorPosition: null,
+              },
+              {
+                bbox: [200, 150, 42, 180],
+                confidence: 0.81,
+                footPoint: [221, 330],
+                floorPosition: { x: 999, z: 999 },
+              },
+            ],
+          }),
+        ),
+      ],
+    });
+
+    renderFactoryRoute();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
+    });
   });
 });

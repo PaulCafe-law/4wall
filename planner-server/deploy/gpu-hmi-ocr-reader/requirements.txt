@@ -1,0 +1,4 @@
+opencv-python-headless
+numpy
+pyyaml
+paddleocr==3.7.0

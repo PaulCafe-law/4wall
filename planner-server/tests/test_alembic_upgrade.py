@@ -31,6 +31,8 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "camera_devices" in table_names
     assert "camera_frames" in table_names
     assert "camera_gauge_readings" in table_names
+    assert "camera_ocr_observations" in table_names
+    assert "camera_person_observations" in table_names
     assert "equipment_watch_zones" in table_names
     assert "equipment_state_observations" in table_names
     assert "line_group_bindings" in table_names
@@ -67,6 +69,17 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "gauge_id" in gauge_columns
     assert "value" in gauge_columns
     assert "confidence" in gauge_columns
+
+    ocr_columns = {column["name"] for column in inspector.get_columns("camera_ocr_observations")}
+    assert "mode" in ocr_columns
+    assert "raw_ocr_lines_json" in ocr_columns
+    assert "structured_fields_json" in ocr_columns
+    assert "summary_status" in ocr_columns
+
+    person_columns = {column["name"] for column in inspector.get_columns("camera_person_observations")}
+    assert "person_count" in person_columns
+    assert "detections_json" in person_columns
+    assert "calibration_id" in person_columns
 
     binding_columns = {column["name"] for column in inspector.get_columns("line_group_bindings")}
     assert "group_id" in binding_columns

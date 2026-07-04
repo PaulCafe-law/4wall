@@ -36,3 +36,5 @@ tmp/
 
 # Project-local automation outputs
 .gstack/
+.codex-tmp/
+.codex-remote-attachments/

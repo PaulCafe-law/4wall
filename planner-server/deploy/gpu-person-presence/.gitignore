@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+config.yaml
+runtime/
+samples/*.jpg
+samples/*.jpeg
+samples/*.png
+samples/*.bmp

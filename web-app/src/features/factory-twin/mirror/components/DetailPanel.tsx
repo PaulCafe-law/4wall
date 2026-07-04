@@ -5,6 +5,7 @@ import { WarehouseDetail } from './panels/WarehouseDetail';
 import { AmrDetail } from './panels/AmrDetail';
 import { DroneDetail } from './panels/DroneDetail';
 import { PersonLineChat } from './panels/PersonLineChat';
+import { LivePersonDetail } from './panels/LivePersonDetail';
 
 export function DetailPanel() {
   const id = useFactoryStore((s) => s.selectedId);
@@ -23,6 +24,7 @@ export function DetailPanel() {
 
   switch (entity.type) {
     case 'person':
+      if (entity.source === 'live') return <LivePersonDetail entity={entity} />;
       return <PersonLineChat entity={entity} />;
     case 'machine':
       return <MachineDetail entity={entity} />;

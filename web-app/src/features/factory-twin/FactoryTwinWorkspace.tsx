@@ -7,7 +7,7 @@ import { SimControlPanel } from './mirror/components/SimControlPanel';
 import { WarehouseSimulator } from './mirror/components/warehouse/WarehouseSimulator';
 import { buildMockEntities } from './mirror/domain/mockData';
 import { SPATIAL_ZONES } from './mirror/domain/spatialZones';
-import type { CameraEntity } from './mirror/domain/entities';
+import type { CameraEntity, PersonEntity } from './mirror/domain/entities';
 import { useLocalAgent } from './mirror/hooks/useLocalAgent';
 import { useSimEngine } from './mirror/sim/simEngine';
 import { useFactoryStore, uid } from './mirror/store/factoryStore';
@@ -67,12 +67,19 @@ function FactoryDemo() {
   );
 }
 
-export function FactoryTwinWorkspace({ platformCameras }: { platformCameras: CameraEntity[] }) {
+export function FactoryTwinWorkspace({
+  platformCameras,
+  livePersons,
+}: {
+  platformCameras: CameraEntity[];
+  livePersons: PersonEntity[];
+}) {
   const [mode, setMode] = useState<FactoryMode>('factory');
   const seeded = useRef(false);
   const setEntities = useFactoryStore((s) => s.setEntities);
   const addMessage = useFactoryStore((s) => s.addMessage);
   const setPlatformCameras = useFactoryStore((s) => s.setPlatformCameras);
+  const setLivePersons = useFactoryStore((s) => s.setLivePersons);
 
   useEffect(() => {
     if (seeded.current) return;
@@ -90,6 +97,10 @@ export function FactoryTwinWorkspace({ platformCameras }: { platformCameras: Cam
   useEffect(() => {
     setPlatformCameras(platformCameras);
   }, [platformCameras, setPlatformCameras]);
+
+  useEffect(() => {
+    setLivePersons(livePersons);
+  }, [livePersons, setLivePersons]);
 
   return (
     <div className="factory-twin-shell">

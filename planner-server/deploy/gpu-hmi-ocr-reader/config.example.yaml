@@ -1,0 +1,57 @@
+frame_source:
+  mode: "url" # file | url
+  path: "samples/hc600.jpg"
+  url: "https://four-wall-api.onrender.com/v1/camera-ingest/latest-frame/image"
+  interval_sec: 30
+  timeout_sec: 12
+  headers:
+    Authorization: "Bearer ${HMI_OCR_DEVICE_TOKEN}"
+
+platform:
+  enabled: true
+  api_base_url: "https://four-wall-api.onrender.com"
+  device_token: "REPLACE_WITH_CAMERA_DEVICE_TOKEN"
+  timeout_sec: 10
+  submit_gauge_readings: true
+  submit_ocr_observations: true
+
+ocr:
+  engine: "paddle"
+  lang: "ch"
+  ocr_version: "PP-OCRv5"
+  device: "gpu:0"
+  min_confidence: 0.55
+  constructor_options: {}
+
+hmi:
+  camera_label: "PoE Camera 192.168.1.10"
+  detector_name: "paddleocr_ppocrv5_hmi"
+  # Coordinates measured from 2560x1440 PoE Camera 192.168.1.10 frames on 2026-07-04.
+  roi: [925, 550, 450, 325] # x,y,w,h in full frame; [0,0,0,0] means whole frame
+  fields: []
+
+work_order:
+  enabled: true
+  roi: [900, 120, 550, 335] # x,y,w,h in full frame; ruler currently occludes part of this region
+
+gpt:
+  enabled: true
+  auth_mode: "account_oauth_dev"
+  summary_model: "latest"
+  auth_cache_dir: "" # optional: local nckusoc-only account auth cache directory
+  # Command bridge for nckusoc's locally logged-in Codex/OpenAI OAuth account.
+  # It receives JSON on stdin and prints JSON on stdout.
+  command:
+    - "./.venv/bin/python"
+    - "scripts/codex_summary_bridge.py"
+    - "--model"
+    - "{model}"
+    - "--timeout-sec"
+    - "120"
+  timeout_sec: 150
+  min_interval_sec: 300
+
+debug:
+  runtime_dir: "runtime"
+  save_crops: true
+  rolling_keep: 200

@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/react';
 import { beforeEach, vi } from 'vitest';
 
-import type { CameraGaugeReading } from '../../../../../lib/types';
+import type { CameraGaugeReading, CameraOcrObservation } from '../../../../../lib/types';
 import type { CameraEntity, MachineEntity } from '../../domain/entities';
 import { useFactoryStore } from '../../store/factoryStore';
 import { MachineDetail } from './MachineDetail';
@@ -33,6 +33,28 @@ function gaugeReading(cameraId: string, gaugeId: string): CameraGaugeReading {
   };
 }
 
+function ocrObservation(cameraId: string): CameraOcrObservation {
+  return {
+    observationId: `${cameraId}-ocr-observation`,
+    cameraId,
+    frameId: `${cameraId}-frame`,
+    mode: 'machine_monitor',
+    modeConfidence: 0.88,
+    source: 'live',
+    capturedAt: '2026-07-04T10:00:00+08:00',
+    receivedAt: '2026-07-04T10:00:02+08:00',
+    rawOcrLines: [
+      { text: '機器監視', confidence: 0.91, box: null, region: 'hmi' },
+      { text: 'HC600 FLJ2R02', confidence: 0.86, box: null, region: 'work_order' },
+    ],
+    structuredFields: { screen: { kind: 'machine_monitor' } },
+    workOrderRawText: 'HC600 FLJ2R02',
+    gptSummary: { summary: 'HC600 目前為手動模式，派工單為 FLJ2R02。' },
+    summaryStatus: 'ok',
+    summaryError: null,
+  };
+}
+
 const hc600: MachineEntity = {
   id: 'm-hc600',
   type: 'machine',
@@ -52,7 +74,7 @@ beforeEach(() => {
   useFactoryStore.setState({ platformCameras: [] });
 });
 
-it('shows live gauge readings for HC600-01 when platform camera data contains them', () => {
+it('shows live gauge readings and HMI OCR for HC600-01 when platform camera data contains them', () => {
   useFactoryStore.setState({
     platformCameras: [
       {
@@ -71,6 +93,7 @@ it('shows live gauge readings for HC600-01 when platform camera data contains th
             gaugeReading('factory-1', 'PRESS AM METER'),
             gaugeReading('factory-1', 'FLOW AM METER'),
           ],
+          latestOcrObservation: ocrObservation('factory-1'),
         },
       },
     ],
@@ -82,4 +105,7 @@ it('shows live gauge readings for HC600-01 when platform camera data contains th
   expect(screen.getByText('PRESS AM METER')).toBeInTheDocument();
   expect(screen.getByText('FLOW AM METER')).toBeInTheDocument();
   expect(screen.getAllByText('0.0 A')).toHaveLength(2);
+  expect(screen.getByText('HMI OCR / 派工單')).toBeInTheDocument();
+  expect(screen.getByText('機器監視頁')).toBeInTheDocument();
+  expect(screen.getByText('HC600 目前為手動模式，派工單為 FLJ2R02。')).toBeInTheDocument();
 });

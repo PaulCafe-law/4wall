@@ -5,7 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { CameraFrameImage, CamerasPage } from './CamerasPage'
 import { renderWithProviders } from '../../test/utils'
-import type { CameraDevice, CameraGaugeReading } from '../../lib/types'
+import type { CameraDevice, CameraGaugeReading, CameraOcrObservation } from '../../lib/types'
 
 const apiMock = vi.hoisted(() => ({
   listCameras: vi.fn(),
@@ -52,6 +52,26 @@ function gaugeReadingFixture(overrides: Partial<CameraGaugeReading> = {}): Camer
   }
 }
 
+function ocrObservationFixture(overrides: Partial<CameraOcrObservation> = {}): CameraOcrObservation {
+  return {
+    observationId: 'ocr-1',
+    cameraId: 'camera-1',
+    frameId: 'camera-1-frame',
+    mode: 'machine_monitor',
+    modeConfidence: 0.88,
+    source: 'live',
+    capturedAt: '2026-07-04T10:00:00+08:00',
+    receivedAt: '2026-07-04T10:00:02+08:00',
+    rawOcrLines: [{ text: '機器監視', confidence: 0.91, box: null, region: 'hmi' }],
+    structuredFields: { screen: { kind: 'machine_monitor' } },
+    workOrderRawText: 'HC600 FLJ2R02',
+    gptSummary: { summary: 'HC600 目前為手動模式。' },
+    summaryStatus: 'ok',
+    summaryError: null,
+    ...overrides,
+  }
+}
+
 function cameraFixture(
   cameraId: string,
   name: string,
@@ -61,6 +81,7 @@ function cameraFixture(
     uploadStatus?: 'pending' | 'uploaded'
     uploadedFrameCount?: number
     latestGaugeReadings?: CameraGaugeReading[]
+    latestOcrObservation?: CameraOcrObservation | null
   } = {},
 ): CameraDevice {
   const frameId = options.frameId ?? `${cameraId}-frame`
@@ -98,6 +119,8 @@ function cameraFixture(
       completedAt: '2026-06-19T14:57:05Z',
     },
     latestGaugeReadings: options.latestGaugeReadings ?? [],
+    latestOcrObservation: options.latestOcrObservation ?? null,
+    latestPersonObservation: null,
   }
 }
 
@@ -266,6 +289,28 @@ describe('CamerasPage', () => {
     expect(screen.getAllByText('FLOW AM METER').length).toBeGreaterThan(0)
     expect(screen.getAllByText('3.90 A').length).toBeGreaterThan(0)
     expect(screen.getAllByText('4.20 A').length).toBeGreaterThan(0)
+  })
+
+  it('shows HMI OCR observation beside the selected camera frame', async () => {
+    apiMock.listCameras.mockResolvedValue({
+      cameras: [
+        cameraFixture('camera-1', 'PoE Camera 192.168.1.10', {
+          latestOcrObservation: ocrObservationFixture(),
+        }),
+      ],
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/cameras" element={<CamerasPage />} />
+      </Routes>,
+      { route: '/cameras' },
+    )
+
+    expect(await screen.findByText('機器監視頁')).toBeInTheDocument()
+    expect(screen.getByText('摘要完成')).toBeInTheDocument()
+    expect(screen.getByText('HC600 目前為手動模式。')).toBeInTheDocument()
+    expect(screen.getByText('HC600 FLJ2R02')).toBeInTheDocument()
   })
 
   it('keeps the previous frame visible while the next frame image is loading', async () => {

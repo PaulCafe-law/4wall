@@ -58,6 +58,7 @@ Device-authenticated endpoints:
 - `GET /v1/camera-ingest/frames/{frameId}`
 - `POST /v1/camera-ingest/frames/{frameId}/complete`
 - `POST /v1/camera-ingest/heartbeat`
+- `POST /v1/camera-ingest/person-observations`
 
 Web-authenticated endpoints:
 
@@ -109,6 +110,9 @@ The doctor checks env, spool write access, ffmpeg, API device-token access, and 
 - `CameraFrame`: one captured image, storage key, checksum, upload expiry, dimensions, and analysis status.
 - `EquipmentWatchZone`: ROI and expected state policy for one piece of equipment in a camera view.
 - `EquipmentStateObservation`: provider result for one frame/zone, optional linked incident.
+- `CameraPersonObservation`: anonymous per-frame person detections, optional frame association, detector metadata, image-space bbox/foot point, optional Factory Twin floor projection, and server-computed `personCount`.
+
+`CameraPersonObservation` is exposed only through existing device-token ingest and org-scoped camera read APIs. It is not exposed through LINE floorplan endpoints and is not used for control, alerts, identity, or tracking.
 
 ## Cost Controls
 

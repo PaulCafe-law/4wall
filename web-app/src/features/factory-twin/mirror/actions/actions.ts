@@ -107,6 +107,9 @@ export function assign_task({
   const w = s.entities[worker];
   const t = s.entities[target];
   if (!w || !t) return { ok: false, message: '人員或目標不存在' };
+  if (w.type === 'person' && w.source === 'live') {
+    return { ok: false, message: '現場匿名人員不可派工；請改派已識別的模擬或正式人員' };
+  }
   const job = task ?? '處理告警';
   const walkPath =
     w.type === 'person'

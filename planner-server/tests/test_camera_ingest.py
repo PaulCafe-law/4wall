@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 
-from app.models import CameraDevice, CameraFrame, CameraGaugeReading
+from app.models import CameraDevice, CameraFrame, CameraGaugeReading, CameraOcrObservation, CameraPersonObservation
 from app.routers.camera_ingest import MAX_FRAME_SIZE_BYTES
 from app.security import hash_camera_device_token, verify_camera_device_token
 from sqlmodel import select
@@ -400,6 +400,174 @@ def test_camera_device_submits_gauge_readings_and_web_list_shows_latest_per_gaug
     assert listed_camera["latestGaugeReadings"][1]["status"] == "degraded"
 
 
+def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client, session_factory) -> None:
+    token = "fwcam_hmi_ocr"
+    with session_factory() as session:
+        org = seed_organization(session, name="OCR Org")
+        site = seed_site(session, organization_id=org.id, name="OCR Site")
+        camera = _seed_camera(session, org.id, site.id, token=token)
+        camera.name = "PoE Camera 192.168.1.10"
+        org_id = org.id
+        site_id = site.id
+        camera_id = camera.id
+        seed_user(session, email="admin@ocr.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        session.commit()
+
+    response = client.post(
+        "/v1/camera-ingest/ocr-observations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "mode": "machine_monitor",
+            "modeConfidence": 0.86,
+            "source": "live",
+            "capturedAt": "2026-07-04T10:00:00+08:00",
+            "rawOcrLines": [
+                {"text": "機器監視", "confidence": 0.91, "box": [[0, 0], [10, 0], [10, 10], [0, 10]], "region": "hmi"},
+                {"text": "射出四段", "confidence": 0.88, "region": "hmi"},
+            ],
+            "structuredFields": {
+                "operationMode": {"value": "手動", "confidence": 0.78},
+                "pressureBar": {"value": 0, "unit": "Bar", "confidence": 0.83},
+            },
+            "workOrderRawText": "HC600 FLJ2R02",
+            "gptSummary": {"summary": "HC600 is in manual mode.", "machine": "HC600"},
+            "summaryStatus": "ok",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cameraId"] == camera_id
+    assert body["mode"] == "machine_monitor"
+    assert body["summaryStatus"] == "ok"
+    assert body["rawOcrLines"][0]["text"] == "機器監視"
+
+    with session_factory() as session:
+        stored = session.exec(select(CameraOcrObservation).where(CameraOcrObservation.camera_id == camera_id)).all()
+        assert len(stored) == 1
+        assert stored[0].organization_id == org_id
+        assert stored[0].site_id == site_id
+        assert stored[0].structured_fields_json["pressureBar"]["value"] == 0
+
+    admin_headers, _ = login_web(client, email="admin@ocr.test", password=PASSWORD)
+    listed = client.get("/v1/cameras", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    latest = listed.json()["cameras"][0]["latestOcrObservation"]
+    assert latest["mode"] == "machine_monitor"
+    assert latest["workOrderRawText"] == "HC600 FLJ2R02"
+    assert latest["gptSummary"]["machine"] == "HC600"
+
+
+def test_camera_device_submits_person_observation_and_web_list_shows_latest(client, session_factory) -> None:
+    token = "fwcam_person_presence"
+    with session_factory() as session:
+        org = seed_organization(session, name="Person Presence Org")
+        site = seed_site(session, organization_id=org.id, name="Person Presence Site")
+        camera = _seed_camera(session, org.id, site.id, token=token)
+        camera.name = "PoE Camera 192.168.1.31"
+        org_id = org.id
+        site_id = site.id
+        camera_id = camera.id
+        seed_user(session, email="admin@presence.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        session.commit()
+
+    response = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers={"Authorization": f"Bearer {token}"},
+        json=_person_observation_payload(),
+    )
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["cameraId"] == camera_id
+    assert body["personCount"] == 2
+    assert body["detections"][0]["bbox"] == [100, 120, 40, 160]
+    assert body["detections"][0]["floorPosition"] == {"x": 1.25, "z": -3.5}
+
+    with session_factory() as session:
+        stored = session.exec(
+            select(CameraPersonObservation).where(CameraPersonObservation.camera_id == camera_id)
+        ).all()
+        assert len(stored) == 1
+        assert stored[0].organization_id == org_id
+        assert stored[0].site_id == site_id
+        assert stored[0].person_count == 2
+        assert stored[0].detections_json[1]["floorPosition"] is None
+
+    admin_headers, _ = login_web(client, email="admin@presence.test", password=PASSWORD)
+    listed = client.get("/v1/cameras", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    latest = listed.json()["cameras"][0]["latestPersonObservation"]
+    assert latest["cameraId"] == camera_id
+    assert latest["personCount"] == 2
+    assert latest["calibrationId"] == "overview-h-20260704"
+    assert latest["detectorName"] == "paddledet_ppyoloe_plus_person"
+
+
+def test_camera_device_submits_empty_person_observation_as_zero_people(client, session_factory) -> None:
+    token = "fwcam_zero_people"
+    with session_factory() as session:
+        org = seed_organization(session, name="No People Org")
+        camera = _seed_camera(session, org.id, None, token=token)
+        camera_id = camera.id
+        session.commit()
+
+    response = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers={"Authorization": f"Bearer {token}"},
+        json=_person_observation_payload(detections=[]),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["personCount"] == 0
+    with session_factory() as session:
+        stored = session.exec(
+            select(CameraPersonObservation).where(CameraPersonObservation.camera_id == camera_id)
+        ).one()
+        assert stored.person_count == 0
+        assert stored.detections_json == []
+
+
+def test_person_observation_rejects_invalid_geometry(client, session_factory) -> None:
+    token = "fwcam_bad_presence"
+    with session_factory() as session:
+        org = seed_organization(session, name="Bad Presence Org")
+        _seed_camera(session, org.id, None, token=token)
+        session.commit()
+
+    invalid_payloads = [
+        _person_observation_payload(detections=[{"bbox": [100, 120, -1, 160], "confidence": 0.8, "footPoint": [120, 280]}]),
+        _person_observation_payload(detections=[{"bbox": [2500, 120, 80, 160], "confidence": 0.8, "footPoint": [2540, 280]}]),
+        _person_observation_payload(detections=[{"bbox": [100, 120, 40, 160], "confidence": 1.2, "footPoint": [120, 280]}]),
+        _person_observation_payload(detections=[{"bbox": [100, 120, 40, 160], "confidence": 0.8, "footPoint": [3000, 280]}]),
+    ]
+
+    for payload in invalid_payloads:
+        response = client.post(
+            "/v1/camera-ingest/person-observations",
+            headers={"Authorization": f"Bearer {token}"},
+            json=payload,
+        )
+        assert response.status_code == 422, response.text
+
+
+def test_person_observation_rejects_more_than_fifty_detections(client, session_factory) -> None:
+    token = "fwcam_too_many_people"
+    with session_factory() as session:
+        org = seed_organization(session, name="Too Many People Org")
+        _seed_camera(session, org.id, None, token=token)
+        session.commit()
+
+    detection = {"bbox": [100, 120, 40, 160], "confidence": 0.8, "footPoint": [120, 280], "floorPosition": None}
+    response = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers={"Authorization": f"Bearer {token}"},
+        json=_person_observation_payload(detections=[detection for _ in range(51)]),
+    )
+
+    assert response.status_code == 422, response.text
+
+
 def test_gauge_reading_frame_id_must_belong_to_authenticated_camera(client, session_factory) -> None:
     token_a = "fwcam_gauge_a"
     token_b = "fwcam_gauge_b"
@@ -448,6 +616,96 @@ def test_gauge_reading_frame_id_must_belong_to_authenticated_camera(client, sess
 
     assert blocked.status_code == 403
     assert blocked.json()["detail"] == "camera_frame_scope_mismatch"
+
+
+def test_ocr_observation_frame_id_must_belong_to_authenticated_camera(client, session_factory) -> None:
+    token_a = "fwcam_ocr_a"
+    token_b = "fwcam_ocr_b"
+    captured_at = datetime(2026, 7, 4, 2, 0, tzinfo=timezone.utc)
+    with session_factory() as session:
+        org = seed_organization(session, name="OCR Scope Org")
+        camera_a = _seed_camera(session, org.id, None, token=token_a)
+        camera_b = _seed_camera(session, org.id, None, token=token_b)
+        session.add(
+            CameraFrame(
+                id="ocr-camera-a-frame",
+                camera_id=camera_a.id,
+                organization_id=org.id,
+                site_id=None,
+                captured_at=captured_at,
+                storage_key=f"camera-frames/{org.id}/{camera_a.id}/ocr-camera-a-frame.jpg",
+                content_type="image/jpeg",
+                checksum_sha256=hashlib.sha256(b"frame").hexdigest(),
+                size_bytes=5,
+                upload_status="uploaded",
+                analysis_status="queued",
+                upload_expires_at=captured_at + timedelta(minutes=15),
+                completed_at=captured_at,
+            )
+        )
+        session.commit()
+
+    blocked = client.post(
+        "/v1/camera-ingest/ocr-observations",
+        headers={"Authorization": f"Bearer {token_b}"},
+        json={
+            "mode": "unknown",
+            "modeConfidence": 0,
+            "source": "live",
+            "capturedAt": "2026-07-04T02:00:00Z",
+            "frameId": "ocr-camera-a-frame",
+            "rawOcrLines": [],
+            "structuredFields": {},
+            "summaryStatus": "unknown",
+        },
+    )
+
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "camera_frame_scope_mismatch"
+
+
+def test_person_observation_frame_id_must_belong_to_authenticated_camera(client, session_factory) -> None:
+    token_a = "fwcam_person_a"
+    token_b = "fwcam_person_b"
+    captured_at = datetime(2026, 7, 4, 3, 0, tzinfo=timezone.utc)
+    with session_factory() as session:
+        org = seed_organization(session, name="Person Scope Org")
+        camera_a = _seed_camera(session, org.id, None, token=token_a)
+        _seed_camera(session, org.id, None, token=token_b)
+        session.add(
+            CameraFrame(
+                id="person-camera-a-frame",
+                camera_id=camera_a.id,
+                organization_id=org.id,
+                site_id=None,
+                captured_at=captured_at,
+                storage_key=f"camera-frames/{org.id}/{camera_a.id}/person-camera-a-frame.jpg",
+                content_type="image/jpeg",
+                checksum_sha256=hashlib.sha256(b"frame").hexdigest(),
+                size_bytes=5,
+                upload_status="uploaded",
+                analysis_status="queued",
+                upload_expires_at=captured_at + timedelta(minutes=15),
+                completed_at=captured_at,
+            )
+        )
+        session.commit()
+
+    blocked = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers={"Authorization": f"Bearer {token_b}"},
+        json=_person_observation_payload(frameId="person-camera-a-frame"),
+    )
+    missing = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers={"Authorization": f"Bearer {token_b}"},
+        json=_person_observation_payload(frameId="missing-person-frame"),
+    )
+
+    assert blocked.status_code == 403
+    assert blocked.json()["detail"] == "camera_frame_scope_mismatch"
+    assert missing.status_code == 404
+    assert missing.json()["detail"] == "camera_frame_not_found"
 
 
 def test_platform_admin_can_provision_camera_device_and_receives_one_time_token(client, session_factory) -> None:
@@ -701,6 +959,33 @@ def test_latest_frame_image_returns_404_without_uploaded_frame(client, session_f
 
     assert response.status_code == 404
     assert response.json()["detail"] == "camera_latest_frame_not_found"
+
+
+def _person_observation_payload(**overrides) -> dict:
+    payload = {
+        "source": "live",
+        "capturedAt": "2026-07-04T10:00:00+08:00",
+        "imageWidth": 2560,
+        "imageHeight": 1440,
+        "calibrationId": "overview-h-20260704",
+        "detectorName": "paddledet_ppyoloe_plus_person",
+        "detections": [
+            {
+                "bbox": [100, 120, 40, 160],
+                "confidence": 0.92,
+                "footPoint": [120, 280],
+                "floorPosition": {"x": 1.25, "z": -3.5},
+            },
+            {
+                "bbox": [200, 150, 42, 180],
+                "confidence": 0.81,
+                "footPoint": [221, 330],
+                "floorPosition": None,
+            },
+        ],
+    }
+    payload.update(overrides)
+    return payload
 
 
 def _seed_camera(session, organization_id: str, site_id: str | None, *, token: str) -> CameraDevice:

@@ -1,0 +1,18 @@
+[Unit]
+Description=Four Wall GPU HMI OCR Reader
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/fourwall/gpu-hmi-ocr-reader
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/fourwall/hmi-ocr-reader/env
+ExecStart=/opt/fourwall/gpu-hmi-ocr-reader/.venv/bin/python -m ocr_worker.main --config /etc/fourwall/hmi-ocr-reader/config.yaml
+Restart=always
+RestartSec=10
+User=fourwall
+Group=fourwall
+
+[Install]
+WantedBy=multi-user.target

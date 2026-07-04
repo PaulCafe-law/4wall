@@ -1,7 +1,7 @@
 // Central app state (Zustand). Both the React UI and the R3F 3D scene subscribe here,
 // so a single store drives chat, panels, highlights, links and camera focus together.
 import { create } from 'zustand';
-import type { CameraEntity, Entity } from '../domain/entities';
+import type { CameraEntity, Entity, PersonEntity } from '../domain/entities';
 
 export interface Highlight {
   color: string;
@@ -112,6 +112,7 @@ export interface FactoryState {
   agentConnected: boolean;
   agentNotifications: AgentNotification[];
   platformCameras: CameraEntity[];
+  livePersons: PersonEntity[];
 
   // GLB binding info (for debug panel + marker/sim awareness)
   glbLoadState: 'loading' | 'ready' | 'failed';
@@ -146,6 +147,7 @@ export interface FactoryState {
   addAgentNotification: (notification: AgentNotification) => void;
   dismissAgentNotification: (id: string) => void;
   setPlatformCameras: (cameras: CameraEntity[]) => void;
+  setLivePersons: (people: PersonEntity[]) => void;
   clearOverlays: () => void;
   setGlbLoadState: (state: FactoryState['glbLoadState']) => void;
   setGlbInfo: (meshNames: string[], boundIds: string[], boundMap: Record<string, string>) => void;
@@ -171,6 +173,7 @@ export const useFactoryStore = create<FactoryState>((set) => ({
   agentConnected: false,
   agentNotifications: [],
   platformCameras: [],
+  livePersons: [],
   glbLoadState: 'loading',
   glbMeshNames: [],
   boundEntityIds: [],
@@ -187,7 +190,11 @@ export const useFactoryStore = create<FactoryState>((set) => ({
       if (!cur) return {};
       return { entities: { ...s.entities, [id]: { ...cur, ...patch } as Entity } };
     }),
-  select: (id) => set({ selectedId: id }),
+  select: (id) =>
+    set((s) => ({
+      selectedId: id,
+      rightOpen: id ? true : s.rightOpen,
+    })),
   setHighlight: (id, h) =>
     set((s) => {
       const next = { ...s.highlights };
@@ -239,6 +246,28 @@ export const useFactoryStore = create<FactoryState>((set) => ({
   dismissAgentNotification: (id) =>
     set((s) => ({ agentNotifications: s.agentNotifications.filter((item) => item.id !== id) })),
   setPlatformCameras: (cameras) => set({ platformCameras: cameras }),
+  setLivePersons: (people) =>
+    set((s) => {
+      const nextEntities = { ...s.entities };
+      const liveIds = new Set(people.map((person) => person.id));
+      for (const [id, entity] of Object.entries(nextEntities)) {
+        if (entity.type === 'person' && entity.source === 'live') {
+          delete nextEntities[id];
+        }
+      }
+      for (const person of people) {
+        nextEntities[person.id] = person;
+      }
+      const selected = s.selectedId ? s.entities[s.selectedId] : null;
+      return {
+        entities: nextEntities,
+        livePersons: people,
+        selectedId:
+          selected?.type === 'person' && selected.source === 'live' && !liveIds.has(selected.id)
+            ? null
+            : s.selectedId,
+      };
+    }),
   clearOverlays: () => set({ highlights: {}, links: [], selectedId: null }),
   setGlbLoadState: (state) => set({ glbLoadState: state }),
   setGlbInfo: (meshNames, boundIds, boundMap) =>

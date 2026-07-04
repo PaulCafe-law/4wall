@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { DataList, EmptyState, Field, Metric, Panel, Select, ShellSection, formatDateTime } from '../../components/ui'
 import { api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
-import type { CameraDevice, CameraGaugeReading } from '../../lib/types'
+import type { CameraDevice, CameraGaugeReading, CameraOcrObservation } from '../../lib/types'
 
 function secondsSince(value: string | null): number | null {
   if (!value) return null
@@ -171,6 +171,100 @@ function GaugeReadingList({ readings }: { readings: CameraGaugeReading[] }) {
         </div>
       ))}
     </div>
+  )
+}
+
+function ocrModeLabel(mode: CameraOcrObservation['mode']): string {
+  if (mode === 'temperature_monitor') return '溫度監控頁'
+  if (mode === 'machine_monitor') return '機器監視頁'
+  return '未知畫面'
+}
+
+function summaryStatusLabel(status: CameraOcrObservation['summaryStatus']): string {
+  if (status === 'ok') return '摘要完成'
+  if (status === 'auth_required') return '需要登入 GPT'
+  if (status === 'failed') return '摘要失敗'
+  return '尚未摘要'
+}
+
+function summaryText(observation: CameraOcrObservation): string | null {
+  const value = observation.gptSummary.summary
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function HmiOcrPanel({ observation }: { observation: CameraOcrObservation | null }) {
+  if (!observation) {
+    return (
+      <Panel>
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">HMI OCR</p>
+        <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">尚無 HMI OCR</h2>
+        <p className="mt-3 text-sm text-chrome-600">nckusoc 尚未送回這支攝影機的 HMI raw OCR 或 GPT 摘要。</p>
+      </Panel>
+    )
+  }
+
+  const screen = observation.structuredFields.screen as { kind?: string } | undefined
+  const text = summaryText(observation)
+
+  return (
+    <Panel>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">HMI OCR</p>
+          <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
+            {ocrModeLabel(observation.mode)}
+          </h2>
+          <p className="mt-1 text-sm text-chrome-500">{formatNullableDateTime(observation.capturedAt)}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge value={observation.mode} />
+          <Badge value={observation.summaryStatus} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-2xl border border-chrome-200 bg-white/75 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">畫面信心</p>
+          <p className="mt-2 text-2xl font-semibold text-chrome-950">
+            {(observation.modeConfidence * 100).toFixed(0)}%
+          </p>
+        </div>
+        <div className="rounded-2xl border border-chrome-200 bg-white/75 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">摘要狀態</p>
+          <p className="mt-2 text-sm font-semibold text-chrome-950">{summaryStatusLabel(observation.summaryStatus)}</p>
+        </div>
+        <div className="rounded-2xl border border-chrome-200 bg-white/75 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">Raw OCR</p>
+          <p className="mt-2 text-sm font-semibold text-chrome-950">{observation.rawOcrLines.length} 行</p>
+        </div>
+      </div>
+
+      {text ? (
+        <div className="mt-4 rounded-2xl border border-moss-200 bg-moss-50/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss-600">GPT 摘要</p>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-chrome-900">{text}</p>
+        </div>
+      ) : null}
+
+      {observation.workOrderRawText ? (
+        <div className="mt-4 rounded-2xl border border-chrome-200 bg-white/75 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">派工單 OCR</p>
+          <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-chrome-800">
+            {observation.workOrderRawText}
+          </p>
+        </div>
+      ) : null}
+
+      <div className="mt-4">
+        <DataList
+          rows={[
+            { label: 'Observation', value: observation.observationId },
+            { label: 'Screen schema', value: screen?.kind ?? observation.mode },
+            { label: 'Summary error', value: observation.summaryError ?? '無' },
+          ]}
+        />
+      </div>
+    </Panel>
   )
 }
 
@@ -349,6 +443,8 @@ export function CamerasPage() {
                 <GaugeReadingList readings={selectedCamera.latestGaugeReadings} />
               </div>
             </Panel>
+
+            <HmiOcrPanel observation={selectedCamera.latestOcrObservation} />
 
             <Panel>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Frame Metadata</p>

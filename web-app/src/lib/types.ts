@@ -551,6 +551,60 @@ export interface CameraGaugeReading {
   metadata: Record<string, unknown>
 }
 
+export interface CameraOcrLine {
+  text: string
+  confidence: number
+  box: number[][] | null
+  region: string | null
+}
+
+export type CameraOcrMode = 'temperature_monitor' | 'machine_monitor' | 'unknown'
+export type CameraOcrSummaryStatus = 'ok' | 'unknown' | 'failed' | 'auth_required'
+
+export interface CameraOcrObservation {
+  observationId: string
+  cameraId: string
+  frameId: string | null
+  mode: CameraOcrMode
+  modeConfidence: number
+  source: string
+  capturedAt: string
+  receivedAt: string
+  rawOcrLines: CameraOcrLine[]
+  structuredFields: Record<string, unknown>
+  workOrderRawText: string | null
+  gptSummary: Record<string, unknown>
+  summaryStatus: CameraOcrSummaryStatus
+  summaryError: string | null
+}
+
+export interface CameraPersonFloorPosition {
+  x: number
+  z: number
+}
+
+export interface CameraPersonDetection {
+  bbox: [number, number, number, number]
+  confidence: number
+  footPoint: [number, number]
+  floorPosition: CameraPersonFloorPosition | null
+}
+
+export interface CameraPersonObservation {
+  observationId: string
+  cameraId: string
+  frameId: string | null
+  source: 'live'
+  capturedAt: string
+  receivedAt: string
+  imageWidth: number
+  imageHeight: number
+  calibrationId: string | null
+  detectorName: string | null
+  personCount: number
+  detections: CameraPersonDetection[]
+}
+
 export interface CameraDevice {
   cameraId: string
   organizationId: string
@@ -569,6 +623,8 @@ export interface CameraDevice {
   failedFrameCount: number
   latestFrame: CameraFrame | null
   latestGaugeReadings: CameraGaugeReading[]
+  latestOcrObservation: CameraOcrObservation | null
+  latestPersonObservation: CameraPersonObservation | null
 }
 
 export interface CameraDeviceList {
