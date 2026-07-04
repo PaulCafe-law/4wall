@@ -37,6 +37,10 @@ import type {
   SupportQueueAction,
   CameraDeviceList,
   TelemetryBatchRecord,
+  TwinAgentMessagePayload,
+  TwinAgentMessageResponse,
+  TwinAgentSnapshotPayload,
+  TwinAgentUpdates,
   WebSession,
 } from './types'
 
@@ -690,6 +694,23 @@ export const api = {
     const response = await artifactFetch(`/v1/cameras/${cameraId}/latest-frame/image`, token)
     return response.blob()
   },
+  postTwinAgentSnapshot: (token: string, payload: TwinAgentSnapshotPayload) =>
+    apiFetch<void>('/v1/twin-agent/snapshot', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  postTwinAgentMessage: (token: string, payload: TwinAgentMessagePayload) =>
+    apiFetch<TwinAgentMessageResponse>('/v1/twin-agent/messages', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  getTwinAgentUpdates: (token: string, sessionId: string, cursor: number | null) =>
+    apiFetch<TwinAgentUpdates>(
+      `/v1/twin-agent/updates?sessionId=${encodeURIComponent(sessionId)}${cursor == null ? '' : `&cursor=${cursor}`}`,
+      { token },
+    ),
 }
 
 export function absoluteArtifactUrl(path: string): string {

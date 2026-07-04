@@ -57,6 +57,7 @@ from app.line_floorplan.links import liveview_url_for_binding
 from app.models import IncidentRecord, LineGroupBinding, LineWebhookEventRecord, utc_now
 from app.rate_limit import RateLimitRule, RateLimiter, client_identity
 from app.storage import ArtifactStorage
+from app.twin_agent import count_pending_line_jobs, enqueue_twin_agent_job, sweep_twin_agent_jobs
 
 
 router = APIRouter(tags=["line"])
@@ -65,6 +66,9 @@ logger = logging.getLogger(__name__)
 FLOORPLAN_RENDER_RATE_LIMIT = RateLimitRule(max_attempts=120, window_seconds=60)
 FLOORPLAN_LIVEVIEW_RATE_LIMIT = RateLimitRule(max_attempts=120, window_seconds=60)
 FLOORPLAN_STATE_CACHE_SECONDS = 5
+TWIN_AGENT_LINE_RATE_LIMIT = RateLimitRule(max_attempts=6, window_seconds=60)
+TWIN_AGENT_LINE_PENDING_MAX = 3
+TWIN_AGENT_LINE_BUSY_TEXT = "訊息較多，AI 助理稍後回覆，請稍等再問一次。"
 RICH_MENU_ACTIONS = {"floorplan", "machines", "gauges", "daily_incidents"}
 INCIDENT_POSTBACK_ACTIONS = {
     "confirm_incident",
@@ -196,6 +200,7 @@ async def line_webhook(
     session: Session = Depends(get_session),
     settings=Depends(get_settings),
     storage: ArtifactStorage = Depends(get_artifact_storage),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> LineWebhookResponseDto:
     if not settings.line_webhook_enabled:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="line_webhook_disabled")
@@ -232,7 +237,7 @@ async def line_webhook(
         session.add(record)
         session.flush()
         try:
-            _handle_line_event(session, storage, settings, event)
+            _handle_line_event(session, storage, settings, rate_limiter, event)
             record.processed_status = "processed"
             record.processed_at = utc_now()
             processed += 1
@@ -246,13 +251,13 @@ async def line_webhook(
     return LineWebhookResponseDto(processed=processed, skipped=skipped)
 
 
-def _handle_line_event(session: Session, storage: ArtifactStorage, settings, event: dict) -> None:
+def _handle_line_event(session: Session, storage: ArtifactStorage, settings, rate_limiter: RateLimiter, event: dict) -> None:
     event_type = event.get("type")
     if event_type == "postback":
         _handle_postback_event(session, settings, event)
         return
     if event_type == "message":
-        _handle_message_event(session, storage, settings, event)
+        _handle_message_event(session, storage, settings, rate_limiter, event)
 
 
 def _handle_postback_event(session: Session, settings, event: dict) -> None:
@@ -277,7 +282,7 @@ def _handle_postback_event(session: Session, settings, event: dict) -> None:
     _reply_messages_if_possible(settings, event, [build_text_message(f"不支援的 LINE 動作：{action or 'unknown'}")])
 
 
-def _handle_message_event(session: Session, storage: ArtifactStorage, settings, event: dict) -> None:
+def _handle_message_event(session: Session, storage: ArtifactStorage, settings, rate_limiter: RateLimiter, event: dict) -> None:
     message = event.get("message") or {}
     if message.get("type") != "text":
         _reply_messages_if_possible(settings, event, [build_help_message()])
@@ -311,7 +316,35 @@ def _handle_message_event(session: Session, storage: ArtifactStorage, settings, 
     if action is not None:
         _reply_rich_menu_action(session, settings, event, binding, action)
         return
+    if settings.twin_agent_enabled:
+        _handle_twin_agent_message(settings, rate_limiter, event, binding, text)
+        return
     _reply_messages_if_possible(settings, event, [build_help_message()])
+
+
+def _handle_twin_agent_message(
+    settings,
+    rate_limiter: RateLimiter,
+    event: dict,
+    binding: LineGroupBinding,
+    text: str,
+) -> None:
+    sweep_twin_agent_jobs(settings)
+    if count_pending_line_jobs(binding.group_id) >= TWIN_AGENT_LINE_PENDING_MAX:
+        _reply_messages_if_possible(settings, event, [build_text_message(TWIN_AGENT_LINE_BUSY_TEXT)])
+        return
+    try:
+        rate_limiter.check(f"twin-agent-line:{binding.group_id}", TWIN_AGENT_LINE_RATE_LIMIT)
+    except HTTPException:
+        _reply_messages_if_possible(settings, event, [build_text_message(TWIN_AGENT_LINE_BUSY_TEXT)])
+        return
+    enqueue_twin_agent_job(
+        source="line",
+        text=text,
+        group_id=binding.group_id,
+        reply_token=event.get("replyToken"),
+        site_slug=binding.site_slug,
+    )
 
 
 def _reply_rich_menu_action(

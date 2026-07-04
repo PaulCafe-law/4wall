@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { useFactoryStore, type SimSpeed } from '../store/factoryStore';
+import { buildMockEntities } from '../domain/mockData';
+import { SPATIAL_ZONES } from '../domain/spatialZones';
+import { useFactoryStore, uid, type SimSpeed } from '../store/factoryStore';
 import { formatSimTime } from '../sim/simClock';
 
 const SPEEDS: SimSpeed[] = [1, 2, 4];
@@ -20,6 +22,16 @@ export function SimControlPanel() {
 
   const machines = Object.values(entities).filter((entity) => entity.type === 'machine' && entity.source === 'sim');
   const preferredMachine = machines.find((machine) => machine.status === 'running') ?? machines[0];
+
+  const resetDemo = () => {
+    const s = useFactoryStore.getState();
+    const seeded = buildMockEntities();
+    for (const zone of SPATIAL_ZONES) seeded[zone.id] = zone;
+    for (const person of s.livePersons) seeded[person.id] = person;
+    s.setEntities(seeded);
+    s.clearOverlays();
+    s.addMessage({ id: uid('msg'), role: 'system', text: '演示已重置' });
+  };
 
   const triggerCoverageScenario = async () => {
     setScenarioBusy(true);
@@ -120,6 +132,9 @@ export function SimControlPanel() {
         </button>
         <button className="sim-trigger wide" onClick={triggerCoverageScenario} type="button" disabled={scenarioBusy}>
           覆蓋缺口 → 良率下降
+        </button>
+        <button className="sim-trigger ghost" onClick={resetDemo} type="button">
+          重置演示
         </button>
       </div>
 

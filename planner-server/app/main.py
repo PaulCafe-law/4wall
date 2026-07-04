@@ -24,6 +24,7 @@ from app.routers import (
     line_router,
     live_ops_router,
     missions_router,
+    twin_agent_router,
     web_router,
 )
 from app.security import hash_password
@@ -112,6 +113,7 @@ def build_app(
     app.include_router(line_router)
     app.include_router(missions_router)
     app.include_router(live_ops_router)
+    app.include_router(twin_agent_router)
     app.include_router(web_router)
 
     return app

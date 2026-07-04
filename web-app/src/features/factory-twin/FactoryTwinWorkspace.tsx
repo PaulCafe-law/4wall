@@ -9,6 +9,7 @@ import { buildMockEntities } from './mirror/domain/mockData';
 import { SPATIAL_ZONES } from './mirror/domain/spatialZones';
 import type { CameraEntity, PersonEntity } from './mirror/domain/entities';
 import { useLocalAgent } from './mirror/hooks/useLocalAgent';
+import { useTwinAgentBridge } from './mirror/hooks/useTwinAgentBridge';
 import { useSimEngine } from './mirror/sim/simEngine';
 import { useFactoryStore, uid } from './mirror/store/factoryStore';
 import { FactoryScene } from './mirror/three/FactoryScene';
@@ -24,6 +25,7 @@ function FactoryDemo() {
 
   useSimEngine(true);
   useLocalAgent();
+  useTwinAgentBridge();
 
   const gridCols = `${leftOpen ? '340px' : ''} 1fr ${rightOpen ? '348px' : ''}`.trim();
 

@@ -1,0 +1,27 @@
+platform:
+  enabled: false # TWIN_AGENT_ENABLED env var takes precedence; live polling refuses to start unless true
+  api_base_url: "" # TWIN_AGENT_API_BASE_URL env var takes precedence
+  worker_token: "" # TWIN_AGENT_WORKER_TOKEN env var takes precedence
+  timeout_sec: 10
+  poll_interval_sec: 1.0
+
+agent:
+  model: "latest"
+  auth_cache_dir: "" # optional: local Codex OAuth cache directory, e.g. ~/.codex
+  # Command bridge for the operator's locally logged-in Codex/OpenAI OAuth account.
+  # It receives {"model", "prompt"} JSON on stdin and prints {"text", "toolCalls"} JSON on stdout.
+  # Windows laptop: use [".\\.venv\\Scripts\\python.exe", "scripts/openai_oauth_bridge.py", ...]
+  command:
+    - "./.venv/bin/python"
+    - "scripts/openai_oauth_bridge.py"
+    - "--model"
+    - "{model}"
+    - "--timeout-sec"
+    - "40"
+  # Must stay under the backend job claim TTL (JOB_CLAIMED_TTL = 60s): slower answers are
+  # reclaimed server-side and every result submit dies as HTTP 409.
+  timeout_sec: 45
+  max_output_chars: 4000
+
+debug:
+  runtime_dir: runtime

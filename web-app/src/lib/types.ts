@@ -933,3 +933,38 @@ export interface IndustrialEngineJob {
   startedAt: string | null
   completedAt: string | null
 }
+
+export interface TwinAgentToolCall {
+  name: string
+  arguments: Record<string, unknown>
+}
+
+export interface TwinAgentFeedEvent {
+  seq: number
+  kind: 'reply' | 'commands'
+  jobId: string
+  source: 'web' | 'line'
+  text?: string
+  toolCalls?: TwinAgentToolCall[]
+}
+
+export interface TwinAgentUpdates {
+  workerOnline: boolean
+  events: TwinAgentFeedEvent[]
+  cursor: number
+}
+
+export interface TwinAgentSnapshotPayload {
+  sessionId: string
+  capturedAt: string
+  world: Record<string, unknown>
+}
+
+export interface TwinAgentMessagePayload {
+  sessionId: string
+  text: string
+}
+
+export interface TwinAgentMessageResponse {
+  jobId: string
+}

@@ -1,0 +1,46 @@
+{
+  "job": {
+    "jobId": "job-sample-001",
+    "source": "line",
+    "text": "Send an AMR to the dock",
+    "groupId": "Cdemo-group",
+    "siteSlug": "jingcheng",
+    "createdAt": "2026-07-05T10:00:00+08:00"
+  },
+  "world": {
+    "entities": [
+      {
+        "id": "m-hc600",
+        "type": "machine",
+        "name": "HC600-01",
+        "status": "running",
+        "position": { "x": 0, "y": 0, "z": -3 },
+        "machine": { "model": "HC600", "oee": 87, "temperature": 71, "todayCount": 412, "alarms": 0 }
+      },
+      {
+        "id": "amr-01",
+        "type": "amr",
+        "name": "AMR-01",
+        "status": "idle",
+        "position": { "x": -8, "y": 0, "z": 8 },
+        "amr": { "battery": 82, "task": null }
+      },
+      {
+        "id": "zone-dock",
+        "type": "zone",
+        "name": "出入貨口",
+        "status": "normal",
+        "position": { "x": 1.5, "y": 0.05, "z": 6.4 },
+        "zone": { "capacity": 40, "used": 18 }
+      }
+    ],
+    "recentEvents": [
+      { "atMs": 128000, "type": "amr", "message": "[02:08] AMR-01 完成搬運任務" }
+    ],
+    "cameraSummary": [
+      { "name": "機台周遭", "online": true },
+      { "name": "儀表板", "online": true }
+    ]
+  },
+  "worldAgeSeconds": 2.4
+}

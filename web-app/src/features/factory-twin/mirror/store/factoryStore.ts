@@ -111,6 +111,8 @@ export interface FactoryState {
   manualAlarmNonce: number;
   agentConnected: boolean;
   agentNotifications: AgentNotification[];
+  cloudAgentOnline: boolean;
+  pendingAgentReplies: number;
   platformCameras: CameraEntity[];
   livePersons: PersonEntity[];
 
@@ -146,6 +148,9 @@ export interface FactoryState {
   setAgentConnected: (connected: boolean) => void;
   addAgentNotification: (notification: AgentNotification) => void;
   dismissAgentNotification: (id: string) => void;
+  setCloudAgentOnline: (online: boolean) => void;
+  incPendingAgentReplies: () => void;
+  decPendingAgentReplies: () => void;
   setPlatformCameras: (cameras: CameraEntity[]) => void;
   setLivePersons: (people: PersonEntity[]) => void;
   clearOverlays: () => void;
@@ -172,6 +177,8 @@ export const useFactoryStore = create<FactoryState>((set) => ({
   manualAlarmNonce: 0,
   agentConnected: false,
   agentNotifications: [],
+  cloudAgentOnline: false,
+  pendingAgentReplies: 0,
   platformCameras: [],
   livePersons: [],
   glbLoadState: 'loading',
@@ -245,6 +252,10 @@ export const useFactoryStore = create<FactoryState>((set) => ({
     })),
   dismissAgentNotification: (id) =>
     set((s) => ({ agentNotifications: s.agentNotifications.filter((item) => item.id !== id) })),
+  setCloudAgentOnline: (online) => set({ cloudAgentOnline: online }),
+  incPendingAgentReplies: () => set((s) => ({ pendingAgentReplies: s.pendingAgentReplies + 1 })),
+  decPendingAgentReplies: () =>
+    set((s) => ({ pendingAgentReplies: Math.max(0, s.pendingAgentReplies - 1) })),
   setPlatformCameras: (cameras) => set({ platformCameras: cameras }),
   setLivePersons: (people) =>
     set((s) => {

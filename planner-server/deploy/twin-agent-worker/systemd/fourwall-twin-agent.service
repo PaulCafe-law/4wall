@@ -1,0 +1,17 @@
+[Unit]
+Description=Fourth Wall factory twin agent worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/fourwall/twin-agent
+EnvironmentFile=/etc/fourwall/twin-agent.env
+ExecStart=/opt/fourwall/twin-agent/.venv/bin/python -m agent_worker.main --config /opt/fourwall/twin-agent/config.yaml
+Restart=always
+RestartSec=10
+User=fourwall
+Group=fourwall
+
+[Install]
+WantedBy=multi-user.target

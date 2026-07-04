@@ -82,3 +82,22 @@ it('opens the right detail panel when an entity is selected', () => {
   expect(useFactoryStore.getState().selectedId).toBe(machine.id);
   expect(useFactoryStore.getState().rightOpen).toBe(true);
 });
+
+it('tracks cloud agent presence and pending reply counters', () => {
+  expect(useFactoryStore.getState().cloudAgentOnline).toBe(false);
+  expect(useFactoryStore.getState().pendingAgentReplies).toBe(0);
+
+  useFactoryStore.getState().setCloudAgentOnline(true);
+  expect(useFactoryStore.getState().cloudAgentOnline).toBe(true);
+
+  useFactoryStore.getState().incPendingAgentReplies();
+  useFactoryStore.getState().incPendingAgentReplies();
+  expect(useFactoryStore.getState().pendingAgentReplies).toBe(2);
+
+  useFactoryStore.getState().decPendingAgentReplies();
+  expect(useFactoryStore.getState().pendingAgentReplies).toBe(1);
+
+  useFactoryStore.getState().decPendingAgentReplies();
+  useFactoryStore.getState().decPendingAgentReplies();
+  expect(useFactoryStore.getState().pendingAgentReplies).toBe(0);
+});

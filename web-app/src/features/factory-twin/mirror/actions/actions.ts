@@ -5,11 +5,13 @@
 //  UI interactions and agent tool calls. One verb set, two front doors.
 // ============================================================================
 import { useFactoryStore, uid } from '../store/factoryStore';
-import type { Entity } from '../domain/entities';
+import type { AmrEntity, Entity, MachineEntity, MachineStatus } from '../domain/entities';
 import { statusLabel } from '../domain/entities';
 import { OVERLAY } from '../domain/colors';
 import { movementAreaFromAttrs } from '../domain/movementArea';
 import { findWalkPath } from '../domain/pathfinding';
+import { formatSimTime } from '../sim/simClock';
+import { pathBetween } from '../sim/simHelpers';
 
 export interface ActionResult {
   ok: boolean;
@@ -136,10 +138,137 @@ export function assign_task({
   return { ok: true, message: `已指派 ${w.name} → ${t.name}（${job}）` };
 }
 
+/** Send an AMR to a zone or machine: build the route and start the transport task. */
+export function dispatch_amr({ amrId, target }: { amrId?: string; target: string }): ActionResult {
+  const s = store();
+  const ents = Object.values(s.entities);
+  const amrs = ents.filter((e): e is AmrEntity => e.type === 'amr' && e.source === 'sim');
+  const amr = amrId
+    ? resolveEntityRef(amrId, amrs)
+    : amrs.find((a) => a.status === 'idle') ?? amrs[0] ?? null;
+  if (!amr) {
+    return { ok: false, message: amrId ? `找不到 AMR「${amrId}」` : '目前沒有可派遣的 AMR' };
+  }
+  const dest = resolveEntityRef(
+    target,
+    ents.filter((e) => e.type === 'zone' || e.type === 'machine'),
+  );
+  if (!dest) return { ok: false, message: `找不到目的地「${target}」` };
+  const route = pathBetween(amr.position, dest.position, amr);
+  const label = `前往 ${dest.name}`;
+  s.patchEntity(amr.id, {
+    status: 'moving',
+    task: label,
+    route,
+    attrs: {
+      ...(amr.attrs ?? {}),
+      simState: 'moving',
+      simTaskLabel: label,
+      simTaskToId: dest.id,
+      routeIdx: 1,
+      simNextTaskAt: s.simTimeMs + 120_000,
+    },
+  });
+  s.pushSimEvent({
+    atMs: s.simTimeMs,
+    type: 'amr',
+    entityId: amr.id,
+    important: true,
+    message: `[${formatSimTime(s.simTimeMs)}] ${amr.name} 接任務：${label}`,
+  });
+  s.setHighlight(amr.id, { color: OVERLAY.assign });
+  s.setHighlight(dest.id, { color: OVERLAY.highlight });
+  s.addLink({ id: uid('amr-dispatch'), from: amr.id, to: dest.id, label, color: OVERLAY.assign });
+  s.focus(dest.id);
+  return { ok: true, message: `已派遣 ${amr.name} ${label}` };
+}
+
+/** Force a sim machine into a lifecycle state (running / idle / maintenance / alarm). */
+export function set_machine_state({
+  machineId,
+  state,
+}: {
+  machineId: string;
+  state: MachineStatus;
+}): ActionResult {
+  const s = store();
+  const machines = Object.values(s.entities).filter(
+    (e): e is MachineEntity => e.type === 'machine',
+  );
+  const m = resolveEntityRef(machineId, machines);
+  if (!m) return { ok: false, message: `找不到機台「${machineId}」` };
+  if (m.source === 'live') {
+    return { ok: false, message: `${m.name} 為現場機台，僅能操作模擬機台` };
+  }
+  if (state === 'alarm') {
+    s.triggerMachineAlarm(m.id);
+  } else if (state === 'maintenance') {
+    s.patchEntity(m.id, {
+      status: 'maintenance',
+      attrs: { ...(m.attrs ?? {}), repairState: 'repairing', repairDoneAt: s.simTimeMs + 15_000 },
+    });
+  } else if (state === 'running') {
+    s.patchEntity(m.id, {
+      status: 'running',
+      temperature: Math.min(m.temperature, 74),
+      attrs: { ...(m.attrs ?? {}), repairState: undefined, simNextAlarmAt: s.simTimeMs + 60_000 },
+    });
+    s.setHighlight(m.id, null);
+  } else if (state === 'idle') {
+    s.patchEntity(m.id, { status: 'idle' });
+  } else {
+    return { ok: false, message: `不支援的狀態「${state}」` };
+  }
+  s.pushSimEvent({
+    atMs: s.simTimeMs,
+    type: 'machine',
+    entityId: m.id,
+    important: true,
+    message: `[${formatSimTime(s.simTimeMs)}] ${m.name} 狀態切換為 ${statusLabel(state)}`,
+  });
+  return { ok: true, message: `已將 ${m.name} 設為 ${statusLabel(state)}` };
+}
+
+/** Fire a demo alarm: the sim engine picks the machine and auto repair dispatch follows. */
+export function trigger_demo_incident({ machineId }: { machineId?: string }): ActionResult {
+  const s = store();
+  const machines = Object.values(s.entities).filter(
+    (e): e is MachineEntity => e.type === 'machine' && e.source === 'sim',
+  );
+  const m = machineId ? resolveEntityRef(machineId, machines) : null;
+  if (machineId && !m) return { ok: false, message: `找不到機台「${machineId}」` };
+  s.triggerMachineAlarm(m?.id ?? null);
+  return { ok: true, message: '已觸發演示告警，維修派工將自動啟動' };
+}
+
 /** Clear all highlights, links and selection. */
 export function clear_overlays(): ActionResult {
   store().clearOverlays();
   return { ok: true, message: '已清除所有標記、連線與選取' };
+}
+
+function normalizedKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, '');
+}
+
+/** Resolve an entity reference by id / name / alias (case- and whitespace-insensitive). */
+function resolveEntityRef<T extends Entity>(ref: string, candidates: T[]): T | null {
+  const key = normalizedKey(String(ref ?? ''));
+  if (!key) return null;
+  const exact = candidates.find(
+    (e) =>
+      normalizedKey(e.id) === key ||
+      normalizedKey(e.name) === key ||
+      (e.aliases ?? []).some((a) => normalizedKey(a) === key),
+  );
+  if (exact) return exact;
+  return (
+    candidates.find(
+      (e) =>
+        normalizedKey(e.name).includes(key) ||
+        (e.aliases ?? []).some((a) => normalizedKey(a).includes(key)),
+    ) ?? null
+  );
 }
 
 function describe(e: Entity): string {
@@ -168,6 +297,9 @@ export const ACTIONS = {
   get_status,
   draw_link,
   assign_task,
+  dispatch_amr,
+  set_machine_state,
+  trigger_demo_incident,
   clear_overlays,
 };
 export type ActionName = keyof typeof ACTIONS;

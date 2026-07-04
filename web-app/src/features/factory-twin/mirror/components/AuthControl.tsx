@@ -1,3 +1,10 @@
+import { useFactoryStore } from '../store/factoryStore';
+
 export function AuthControl() {
-  return <span className="auth-chip ok">Fourth Wall session</span>;
+  const cloudAgentOnline = useFactoryStore((s) => s.cloudAgentOnline);
+  return (
+    <span className={`auth-chip ${cloudAgentOnline ? 'online' : 'offline'}`}>
+      {cloudAgentOnline ? 'AI 代理在線' : '本機規則模式'}
+    </span>
+  );
 }

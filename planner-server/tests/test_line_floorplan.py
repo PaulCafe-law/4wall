@@ -557,3 +557,176 @@ def _message_event(
         "timestamp": 1770000000000,
         "message": {"type": "text", "id": event_id.replace("evt", "msg"), "text": text},
     }
+
+
+from app import twin_agent  # noqa: E402
+from app.routers.line import TWIN_AGENT_LINE_BUSY_TEXT, TWIN_AGENT_LINE_RATE_LIMIT  # noqa: E402
+from app.twin_agent import TWIN_AGENT_OFFLINE_TEXT, clear_twin_agent_state, count_pending_line_jobs  # noqa: E402
+
+
+def _capture_twin_agent_pushes(monkeypatch) -> list[dict]:
+    pushes: list[dict] = []
+
+    def fake_push_line_message(_settings, target_id, message):
+        pushes.append({"target": target_id, "message": message})
+        return {"status": "ok"}
+
+    monkeypatch.setattr("app.twin_agent.push_line_message", fake_push_line_message)
+    return pushes
+
+
+def test_twin_agent_fallthrough_enqueues_job_without_sync_reply(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    settings = _line_settings(test_settings, twin_agent_enabled=True)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        response = _post_line_events(
+            client,
+            settings,
+            [_message_event("HC600 現在狀態如何？", event_id="evt-twin-nl", reply_token="reply-twin-nl")],
+        )
+
+    assert response.status_code == 200, response.text
+    assert replies == []
+    assert count_pending_line_jobs(BOUND_GROUP_ID) == 1
+    job = twin_agent._STATE.jobs[0]
+    assert job.source == "line"
+    assert job.text == "HC600 現在狀態如何？"
+    assert job.group_id == BOUND_GROUP_ID
+    assert job.reply_token == "reply-twin-nl"
+    assert job.site_slug == "jingcheng"
+
+
+def test_twin_agent_disabled_falls_back_to_help_reply(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    settings = _line_settings(test_settings)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        response = _post_line_events(client, settings, [_message_event("HC600 現在狀態如何？", event_id="evt-twin-off")])
+
+    assert response.status_code == 200, response.text
+    assert replies[0]["messages"][0]["type"] == "flex"
+    assert replies[0]["messages"][0]["altText"] == "LINE 廠區圖使用說明"
+    assert twin_agent._STATE.jobs == []
+
+
+def test_twin_agent_enabled_keeps_existing_command_replies(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    settings = _line_settings(test_settings, twin_agent_enabled=True)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        response = _post_line_events(
+            client,
+            settings,
+            [_message_event("機台", event_id="evt-twin-machines", reply_token="reply-twin-machines")],
+        )
+
+    assert response.status_code == 200, response.text
+    assert replies[0]["messages"][0]["type"] == "flex"
+    assert replies[0]["messages"][0]["contents"]["type"] == "carousel"
+    assert twin_agent._STATE.jobs == []
+
+
+def test_twin_agent_pending_cap_replies_busy(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    settings = _line_settings(test_settings, twin_agent_enabled=True)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        events = [
+            _message_event(f"問題 {index}", event_id=f"evt-twin-cap-{index}", reply_token=f"reply-twin-cap-{index}")
+            for index in range(4)
+        ]
+        response = _post_line_events(client, settings, events)
+
+    assert response.status_code == 200, response.text
+    assert count_pending_line_jobs(BOUND_GROUP_ID) == 3
+    assert replies == [
+        {"replyToken": "reply-twin-cap-3", "messages": [{"type": "text", "text": TWIN_AGENT_LINE_BUSY_TEXT}]}
+    ]
+
+
+def test_twin_agent_rate_limited_replies_busy(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    settings = _line_settings(test_settings, twin_agent_enabled=True)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        for _ in range(TWIN_AGENT_LINE_RATE_LIMIT.max_attempts):
+            app.state.rate_limiter.check(f"twin-agent-line:{BOUND_GROUP_ID}", TWIN_AGENT_LINE_RATE_LIMIT)
+        response = _post_line_events(
+            client,
+            settings,
+            [_message_event("被限流的問題", event_id="evt-twin-rate", reply_token="reply-twin-rate")],
+        )
+
+    assert response.status_code == 200, response.text
+    assert count_pending_line_jobs(BOUND_GROUP_ID) == 0
+    assert replies == [
+        {"replyToken": "reply-twin-rate", "messages": [{"type": "text", "text": TWIN_AGENT_LINE_BUSY_TEXT}]}
+    ]
+
+
+def test_twin_agent_expired_line_job_pushes_canned_reply(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    settings = _line_settings(test_settings, twin_agent_enabled=True)
+    replies = _capture_replies(monkeypatch)
+    pushes = _capture_twin_agent_pushes(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _post_line_events(
+            client,
+            settings,
+            [_message_event("第一個問題", event_id="evt-twin-exp-1", reply_token="reply-twin-exp-1")],
+        )
+        twin_agent._STATE.jobs[0].created_monotonic -= twin_agent.JOB_PENDING_TTL + twin_agent.REPLY_TOKEN_MAX_AGE + 1
+        _post_line_events(
+            client,
+            settings,
+            [_message_event("第二個問題", event_id="evt-twin-exp-2", reply_token="reply-twin-exp-2")],
+        )
+
+    assert replies == []
+    assert twin_agent._STATE.jobs[0].status == "expired"
+    assert twin_agent._STATE.jobs[1].status == "pending"
+    assert pushes == [{"target": BOUND_GROUP_ID, "message": {"type": "text", "text": TWIN_AGENT_OFFLINE_TEXT}}]
+
+
+def test_twin_agent_line_result_with_stale_token_pushes_to_group(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    settings = _line_settings(test_settings, twin_agent_enabled=True, twin_agent_worker_token="twin-worker-secret")
+    pushes = _capture_twin_agent_pushes(monkeypatch)
+
+    def fail_reply(*_args, **_kwargs):
+        raise AssertionError("stale reply token must not be used")
+
+    monkeypatch.setattr("app.twin_agent.reply_line_messages", fail_reply)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _post_line_events(
+            client,
+            settings,
+            [_message_event("HC600 狀態？", event_id="evt-twin-stale", reply_token="reply-twin-stale")],
+        )
+        worker_headers = {"Authorization": "Bearer twin-worker-secret"}
+        claimed = client.get("/v1/twin-agent/jobs", headers=worker_headers).json()
+        job_id = claimed["job"]["jobId"]
+        twin_agent._STATE.jobs[0].created_monotonic -= twin_agent.REPLY_TOKEN_MAX_AGE + 1
+        result = client.post(
+            f"/v1/twin-agent/jobs/{job_id}/result",
+            json={"text": "HC600 正常運轉"},
+            headers=worker_headers,
+        )
+
+    assert result.status_code == 204, result.text
+    assert pushes == [{"target": BOUND_GROUP_ID, "message": {"type": "text", "text": "HC600 正常運轉"}}]
