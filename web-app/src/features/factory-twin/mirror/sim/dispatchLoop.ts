@@ -7,10 +7,10 @@ import { clamp, formatSimTime, round1, type SimTick } from './simClock';
 import { distance2d, pathBetween, str } from './simHelpers';
 
 const ARRIVAL_DISTANCE = 1.2;
-const REPAIR_DURATION_MS = 10000;
+const REPAIR_DURATION_MS = 10_000;
 
 function isRepairWorker(person: PersonEntity): boolean {
-  return /維修|技師|repair|tech|蝬凋耨/i.test(`${person.id} ${person.name} ${person.role}`);
+  return /維修|技師|repair|tech/i.test(`${person.id} ${person.name} ${person.role}`);
 }
 
 function isAvailableWorker(person: PersonEntity): boolean {
@@ -62,7 +62,7 @@ function dispatchWorker(state: FactoryState, machine: MachineEntity, worker: Per
   assign_task({
     worker: worker.id,
     target: machine.id,
-    task: '自動維修派工',
+    task: '安排維修檢查',
     dispatchId,
     selectTarget: false,
     focusTarget: false,
@@ -82,7 +82,7 @@ function dispatchWorker(state: FactoryState, machine: MachineEntity, worker: Per
     type: 'dispatch',
     entityId: machine.id,
     important: true,
-    message: `[${formatSimTime(tick.nowMs)}] 已自動派工 ${worker.name} → ${machine.name}`,
+    message: `[${formatSimTime(tick.nowMs)}] 已派工 ${worker.name} 前往 ${machine.name}`,
   });
 }
 
@@ -134,7 +134,7 @@ function finishRepair(state: FactoryState, machine: MachineEntity, worker: Perso
       repairWorkerId: undefined,
       repairDueAt: undefined,
       simDispatchId: undefined,
-      simNextAlarmAt: tick.nowMs + 45000 + Math.random() * 45000,
+      simNextAlarmAt: tick.nowMs + 45_000 + Math.random() * 45_000,
     },
   });
   state.patchEntity(worker.id, {
@@ -148,7 +148,7 @@ function finishRepair(state: FactoryState, machine: MachineEntity, worker: Perso
       simDispatchId: undefined,
       walkPath: returnPath.length > 1 ? returnPath : undefined,
       walkPathIdx: returnPath.length > 1 ? 1 : undefined,
-      walkTargetName: '待命區',
+      walkTargetName: '返回駐點',
       home: baseHome,
     },
   });
@@ -160,7 +160,7 @@ function finishRepair(state: FactoryState, machine: MachineEntity, worker: Perso
     type: 'repair',
     entityId: machine.id,
     important: true,
-    message: `[${formatSimTime(tick.nowMs)}] ${machine.name} 修復完成，${worker.name} 返回待命`,
+    message: `[${formatSimTime(tick.nowMs)}] ${machine.name} 維修完成，${worker.name} 返回駐點`,
   });
 }
 

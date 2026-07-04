@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+import math
 from pathlib import Path
 import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlmodel import Session, select
 
@@ -19,7 +20,16 @@ from app.deps import (
     get_current_web_user,
     get_session,
 )
-from app.models import CameraDevice, CameraFrame, CameraGaugeReading, EquipmentWatchZone, Site, utc_now
+from app.models import (
+    CameraDevice,
+    CameraFrame,
+    CameraGaugeReading,
+    CameraOcrObservation,
+    CameraPersonObservation,
+    EquipmentWatchZone,
+    Site,
+    utc_now,
+)
 from app.security import create_camera_device_token, hash_camera_device_token
 from app.storage import ArtifactStorage
 from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
@@ -123,6 +133,106 @@ class CameraGaugeReadingsResponseDto(BaseModel):
     readings: list[CameraGaugeReadingDto]
 
 
+class CameraOcrTextLineDto(BaseModel):
+    text: str = Field(max_length=1000)
+    confidence: float = Field(ge=0, le=1)
+    box: list[list[float]] | None = Field(default=None, max_length=8)
+    region: str | None = Field(default=None, max_length=80)
+
+
+class SubmitCameraOcrObservationDto(BaseModel):
+    mode: Literal["temperature_monitor", "machine_monitor", "unknown"]
+    modeConfidence: float = Field(ge=0, le=1)
+    source: Literal["live"] = "live"
+    capturedAt: datetime
+    frameId: str | None = Field(default=None, max_length=120)
+    rawOcrLines: list[CameraOcrTextLineDto] = Field(default_factory=list, max_length=1000)
+    structuredFields: dict[str, Any] = Field(default_factory=dict)
+    workOrderRawText: str | None = Field(default=None, max_length=20000)
+    gptSummary: dict[str, Any] = Field(default_factory=dict)
+    summaryStatus: Literal["ok", "unknown", "failed", "auth_required"] = "unknown"
+    summaryError: str | None = Field(default=None, max_length=1000)
+
+
+class CameraOcrObservationDto(BaseModel):
+    observationId: str
+    cameraId: str
+    frameId: str | None = None
+    mode: str
+    modeConfidence: float
+    source: str
+    capturedAt: datetime
+    receivedAt: datetime
+    rawOcrLines: list[dict[str, Any]] = Field(default_factory=list)
+    structuredFields: dict[str, Any] = Field(default_factory=dict)
+    workOrderRawText: str | None = None
+    gptSummary: dict[str, Any] = Field(default_factory=dict)
+    summaryStatus: str
+    summaryError: str | None = None
+
+
+class CameraPersonFloorPositionDto(BaseModel):
+    x: float
+    z: float
+
+    @field_validator("x", "z")
+    @classmethod
+    def finite_coordinate(cls, value: float) -> float:
+        if not math.isfinite(value):
+            raise ValueError("coordinate_must_be_finite")
+        return value
+
+
+class CameraPersonDetectionDto(BaseModel):
+    bbox: list[float] = Field(min_length=4, max_length=4)
+    confidence: float = Field(ge=0, le=1)
+    footPoint: list[float] = Field(min_length=2, max_length=2)
+    floorPosition: CameraPersonFloorPositionDto | None = None
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def finite_confidence(cls, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(float(value)):
+            raise ValueError("confidence_must_be_finite")
+        return value
+
+    @field_validator("bbox", "footPoint", mode="before")
+    @classmethod
+    def finite_number_list(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            raise ValueError("must_be_number_list")
+        for item in value:
+            if isinstance(item, bool) or not isinstance(item, int | float) or not math.isfinite(float(item)):
+                raise ValueError("number_must_be_finite")
+        return value
+
+
+class SubmitCameraPersonObservationDto(BaseModel):
+    source: Literal["live"] = "live"
+    capturedAt: datetime
+    frameId: str | None = Field(default=None, max_length=120)
+    imageWidth: int = Field(ge=1)
+    imageHeight: int = Field(ge=1)
+    calibrationId: str | None = Field(default=None, max_length=80)
+    detectorName: str | None = Field(default=None, max_length=80)
+    detections: list[CameraPersonDetectionDto] = Field(default_factory=list, max_length=50)
+
+
+class CameraPersonObservationDto(BaseModel):
+    observationId: str
+    cameraId: str
+    frameId: str | None = None
+    source: str
+    capturedAt: datetime
+    receivedAt: datetime
+    imageWidth: int
+    imageHeight: int
+    calibrationId: str | None = None
+    detectorName: str | None = None
+    personCount: int
+    detections: list[CameraPersonDetectionDto] = Field(default_factory=list)
+
+
 class CameraHeartbeatRequestDto(BaseModel):
     localSpoolCount: int = Field(default=0, ge=0)
     lastCapturedAt: datetime | None = None
@@ -167,6 +277,8 @@ class CameraDeviceStatusDto(BaseModel):
     failedFrameCount: int
     latestFrame: CameraFrameDto | None = None
     latestGaugeReadings: list[CameraGaugeReadingDto] = Field(default_factory=list)
+    latestOcrObservation: CameraOcrObservationDto | None = None
+    latestPersonObservation: CameraPersonObservationDto | None = None
 
 
 class CameraDeviceListDto(BaseModel):
@@ -439,6 +551,104 @@ def submit_camera_gauge_readings(
         cameraId=camera.id,
         readings=[_serialize_gauge_reading(reading) for reading in created],
     )
+
+
+@router.post("/v1/camera-ingest/ocr-observations", response_model=CameraOcrObservationDto)
+def submit_camera_ocr_observation(
+    request: SubmitCameraOcrObservationDto,
+    camera: CameraDevice = Depends(get_current_camera_device),
+    session: Session = Depends(get_session),
+) -> CameraOcrObservationDto:
+    frame_id = request.frameId.strip() if request.frameId else None
+    if frame_id:
+        frame = _load_frame_for_device(session, camera, frame_id)
+        frame_id = frame.id
+
+    observation = CameraOcrObservation(
+        camera_id=camera.id,
+        organization_id=camera.organization_id,
+        site_id=camera.site_id,
+        frame_id=frame_id,
+        mode=request.mode,
+        mode_confidence=request.modeConfidence,
+        source=request.source,
+        captured_at=_as_utc(request.capturedAt),
+        raw_ocr_lines_json=[line.model_dump() for line in request.rawOcrLines],
+        structured_fields_json=request.structuredFields,
+        work_order_raw_text=request.workOrderRawText,
+        gpt_summary_json=request.gptSummary,
+        summary_status=request.summaryStatus,
+        summary_error=request.summaryError,
+    )
+    camera.updated_at = _now()
+    session.add(observation)
+    session.add(camera)
+    record_audit(
+        session,
+        action="camera.ocr_observation.submitted",
+        organization_id=camera.organization_id,
+        target_type="camera_device",
+        target_id=camera.id,
+        metadata={
+            "mode": observation.mode,
+            "modeConfidence": observation.mode_confidence,
+            "summaryStatus": observation.summary_status,
+            "rawOcrLineCount": len(observation.raw_ocr_lines_json),
+        },
+    )
+    session.commit()
+    session.refresh(observation)
+    return _serialize_ocr_observation(observation)
+
+
+@router.post("/v1/camera-ingest/person-observations", response_model=CameraPersonObservationDto)
+def submit_camera_person_observation(
+    request: SubmitCameraPersonObservationDto,
+    camera: CameraDevice = Depends(get_current_camera_device),
+    session: Session = Depends(get_session),
+) -> CameraPersonObservationDto:
+    _validate_person_observation_request(request)
+    frame_id = request.frameId.strip() if request.frameId else None
+    if frame_id:
+        frame = _load_frame_for_device(session, camera, frame_id)
+        frame_id = frame.id
+
+    detection_payload = [detection.model_dump() for detection in request.detections]
+    calibration_id = request.calibrationId.strip() if request.calibrationId else None
+    detector_name = request.detectorName.strip() if request.detectorName else None
+    observation = CameraPersonObservation(
+        camera_id=camera.id,
+        organization_id=camera.organization_id,
+        site_id=camera.site_id,
+        frame_id=frame_id,
+        source=request.source,
+        captured_at=_as_utc(request.capturedAt),
+        image_width=request.imageWidth,
+        image_height=request.imageHeight,
+        calibration_id=calibration_id,
+        detector_name=detector_name,
+        person_count=len(detection_payload),
+        detections_json=detection_payload,
+    )
+    camera.updated_at = _now()
+    session.add(observation)
+    session.add(camera)
+    record_audit(
+        session,
+        action="camera.person_observation.submitted",
+        organization_id=camera.organization_id,
+        target_type="camera_device",
+        target_id=camera.id,
+        metadata={
+            "personCount": observation.person_count,
+            "frameId": frame_id,
+            "calibrationId": calibration_id,
+            "detectorName": detector_name,
+        },
+    )
+    session.commit()
+    session.refresh(observation)
+    return _serialize_person_observation(observation)
 
 
 @router.post("/v1/camera-ingest/heartbeat", response_model=CameraHeartbeatResponseDto)
@@ -754,8 +964,46 @@ def _serialize_gauge_reading(reading: CameraGaugeReading) -> CameraGaugeReadingD
     )
 
 
+def _serialize_ocr_observation(observation: CameraOcrObservation) -> CameraOcrObservationDto:
+    return CameraOcrObservationDto(
+        observationId=observation.id,
+        cameraId=observation.camera_id,
+        frameId=observation.frame_id,
+        mode=observation.mode,
+        modeConfidence=observation.mode_confidence,
+        source=observation.source,
+        capturedAt=observation.captured_at,
+        receivedAt=observation.created_at,
+        rawOcrLines=observation.raw_ocr_lines_json,
+        structuredFields=observation.structured_fields_json,
+        workOrderRawText=observation.work_order_raw_text,
+        gptSummary=observation.gpt_summary_json,
+        summaryStatus=observation.summary_status,
+        summaryError=observation.summary_error,
+    )
+
+
+def _serialize_person_observation(observation: CameraPersonObservation) -> CameraPersonObservationDto:
+    return CameraPersonObservationDto(
+        observationId=observation.id,
+        cameraId=observation.camera_id,
+        frameId=observation.frame_id,
+        source=observation.source,
+        capturedAt=observation.captured_at,
+        receivedAt=observation.created_at,
+        imageWidth=observation.image_width,
+        imageHeight=observation.image_height,
+        calibrationId=observation.calibration_id,
+        detectorName=observation.detector_name,
+        personCount=observation.person_count,
+        detections=observation.detections_json,
+    )
+
+
 def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDeviceStatusDto:
     latest_frame = _latest_frame_for_camera(session, camera)
+    latest_ocr = _latest_ocr_observation_for_camera(session, camera)
+    latest_person = _latest_person_observation_for_camera(session, camera)
     return CameraDeviceStatusDto(
         cameraId=camera.id,
         organizationId=camera.organization_id,
@@ -777,6 +1025,8 @@ def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDe
         latestGaugeReadings=[
             _serialize_gauge_reading(reading) for reading in _latest_gauge_readings_for_camera(session, camera)
         ],
+        latestOcrObservation=_serialize_ocr_observation(latest_ocr) if latest_ocr is not None else None,
+        latestPersonObservation=_serialize_person_observation(latest_person) if latest_person is not None else None,
     )
 
 
@@ -811,6 +1061,22 @@ def _latest_gauge_readings_for_camera(session: Session, camera: CameraDevice) ->
         latest_by_gauge.values(),
         key=lambda reading: (GAUGE_SORT_ORDER.get(reading.gauge_id, 100), reading.gauge_id),
     )
+
+
+def _latest_ocr_observation_for_camera(session: Session, camera: CameraDevice) -> CameraOcrObservation | None:
+    return session.exec(
+        select(CameraOcrObservation)
+        .where(CameraOcrObservation.camera_id == camera.id)
+        .order_by(CameraOcrObservation.captured_at.desc(), CameraOcrObservation.created_at.desc())
+    ).first()
+
+
+def _latest_person_observation_for_camera(session: Session, camera: CameraDevice) -> CameraPersonObservation | None:
+    return session.exec(
+        select(CameraPersonObservation)
+        .where(CameraPersonObservation.camera_id == camera.id)
+        .order_by(CameraPersonObservation.captured_at.desc(), CameraPersonObservation.created_at.desc())
+    ).first()
 
 
 def _serialize_zone(zone: EquipmentWatchZone) -> EquipmentWatchZoneDto:
@@ -898,6 +1164,19 @@ def _validate_zone(zone: EquipmentWatchZoneInputDto) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_watch_zone_severity")
     if not _is_valid_box_roi(zone.roi):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_watch_zone_roi")
+
+
+def _validate_person_observation_request(request: SubmitCameraPersonObservationDto) -> None:
+    for detection in request.detections:
+        x, y, width, height = detection.bbox
+        if x < 0 or y < 0 or width <= 0 or height <= 0:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_person_bbox")
+        if x + width > request.imageWidth or y + height > request.imageHeight:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="person_bbox_outside_image")
+
+        foot_x, foot_y = detection.footPoint
+        if foot_x < 0 or foot_y < 0 or foot_x > request.imageWidth or foot_y > request.imageHeight:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="person_foot_point_outside_image")
 
 
 def _is_valid_box_roi(roi: dict[str, Any]) -> bool:

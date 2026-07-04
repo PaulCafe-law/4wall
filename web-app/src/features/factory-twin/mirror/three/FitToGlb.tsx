@@ -185,7 +185,8 @@ export function FitToGlb() {
     const bound = new Set(boundIds);
     for (const e of Object.values(store.entities)) {
       if (bound.has(e.id)) continue; // already snapped to its real mesh
-      if (e.attrs?.fixedWorld) continue; // zones placed in real-world coords — leave as-is
+      if (e.source === 'live') continue;
+      if (e.attrs?.fixedWorld) continue; // zones placed in real-world coords - leave as-is
       const movementArea = movementAreaFor(e.type);
       const realPosition = useRealWalkableArea ? REAL_ENTITY_POSITIONS[e.id] : undefined;
       const patch: Record<string, unknown> = {

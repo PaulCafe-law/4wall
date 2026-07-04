@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Column
+from sqlalchemy import JSON, Column, Index
 from sqlmodel import Field, SQLModel
 
 
@@ -160,6 +160,47 @@ class CameraGaugeReading(SQLModel, table=True):
     source: str = Field(default="live", index=True)
     captured_at: datetime = Field(index=True)
     metadata_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class CameraOcrObservation(SQLModel, table=True):
+    __tablename__ = "camera_ocr_observations"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    camera_id: str = Field(foreign_key="camera_devices.id", index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    frame_id: str | None = Field(default=None, foreign_key="camera_frames.id", index=True)
+    mode: str = Field(index=True)
+    mode_confidence: float
+    source: str = Field(default="live", index=True)
+    captured_at: datetime = Field(index=True)
+    raw_ocr_lines_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    structured_fields_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    work_order_raw_text: str | None = None
+    gpt_summary_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    summary_status: str = Field(default="unknown", index=True)
+    summary_error: str | None = None
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class CameraPersonObservation(SQLModel, table=True):
+    __tablename__ = "camera_person_observations"
+    __table_args__ = (Index("ix_camera_person_observations_camera_captured_at", "camera_id", "captured_at"),)
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    camera_id: str = Field(foreign_key="camera_devices.id", index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    frame_id: str | None = Field(default=None, foreign_key="camera_frames.id", index=True)
+    source: str = Field(default="live", index=True)
+    captured_at: datetime = Field(index=True)
+    image_width: int
+    image_height: int
+    calibration_id: str | None = Field(default=None, index=True)
+    detector_name: str | None = Field(default=None, index=True)
+    person_count: int = Field(default=0, index=True)
+    detections_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     created_at: datetime = Field(default_factory=utc_now, index=True)
 
 

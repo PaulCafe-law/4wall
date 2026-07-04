@@ -46,6 +46,8 @@ Core data sources:
 
 The layout JSON stores fixed machine and camera positions. It is not a simulator and must not read mock status, OEE, alarms, or person data from the web app. Live status must come only from planner-server production records.
 
+The Jingcheng base map is derived from `web-app/public/factory-twin-assets/assets/factory.glb`, with the roof hidden and the GLB z-axis rotated horizontally for the LINE 1040x700 imagemap ratio. `jingcheng_glb_topdown_crop.png` is the checked-in source crop used by `scripts/render_line_floorplan_base.py`; `jingcheng_base_1040.png` is the regenerated LINE asset. Machine tap areas are aligned to the bound GLB nodes `C600001` through `C600007`, not to the old hand-drawn placeholder layout.
+
 ## Public Endpoint
 
 LINE imagemap images are served by:

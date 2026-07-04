@@ -1,8 +1,6 @@
 import { useState } from 'react';
 
-import type { CameraGaugeReading } from '../../../../../lib/types';
-import { assign_task, highlight_entity } from '../../actions/actions';
-import { OVERLAY } from '../../domain/colors';
+import type { CameraGaugeReading, CameraOcrObservation } from '../../../../../lib/types';
 import type { CameraEntity, MachineEntity } from '../../domain/entities';
 import { statusLabel } from '../../domain/entities';
 import { camerasForMachine } from '../../domain/machineCameras';
@@ -15,9 +13,20 @@ function isGaugeReading(value: unknown): value is CameraGaugeReading {
   return typeof candidate.gaugeId === 'string' && typeof candidate.label === 'string';
 }
 
+function isOcrObservation(value: unknown): value is CameraOcrObservation {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<CameraOcrObservation>;
+  return typeof candidate.mode === 'string' && typeof candidate.summaryStatus === 'string';
+}
+
 function gaugeReadingsFor(camera: CameraEntity | undefined): CameraGaugeReading[] {
   const readings = camera?.attrs?.latestGaugeReadings;
   return Array.isArray(readings) ? readings.filter(isGaugeReading) : [];
+}
+
+function ocrObservationFor(camera: CameraEntity | undefined): CameraOcrObservation | null {
+  const observation = camera?.attrs?.latestOcrObservation;
+  return isOcrObservation(observation) ? observation : null;
 }
 
 function formatGaugeValue(reading: CameraGaugeReading): string {
@@ -25,7 +34,7 @@ function formatGaugeValue(reading: CameraGaugeReading): string {
   return `${reading.value.toFixed(1)} ${reading.unit}`.trim();
 }
 
-function formatGaugeTime(value: string): string {
+function formatTime(value: string): string {
   const timestamp = new Date(value);
   if (Number.isNaN(timestamp.getTime())) return value;
   return new Intl.DateTimeFormat('zh-TW', {
@@ -42,6 +51,24 @@ function confidenceLabel(value: number): string {
   return `${Math.round(Math.max(0, Math.min(value, 1)) * 100)}%`;
 }
 
+function ocrModeLabel(mode: CameraOcrObservation['mode']): string {
+  if (mode === 'temperature_monitor') return '溫度監控頁';
+  if (mode === 'machine_monitor') return '機器監視頁';
+  return '未知畫面';
+}
+
+function summaryStatusLabel(status: CameraOcrObservation['summaryStatus']): string {
+  if (status === 'ok') return '摘要完成';
+  if (status === 'auth_required') return '需要登入 GPT';
+  if (status === 'failed') return '摘要失敗';
+  return '尚未摘要';
+}
+
+function summaryText(observation: CameraOcrObservation): string | null {
+  const value = observation.gptSummary.summary;
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
 export function MachineDetail({ entity }: { entity: MachineEntity }) {
   const platformCameras = useFactoryStore((s) => s.platformCameras);
   const cameras =
@@ -55,6 +82,8 @@ export function MachineDetail({ entity }: { entity: MachineEntity }) {
   const selectedCamera = cameras.find((camera) => camera.id === activeCameraId);
   const gaugeCamera = cameras.find((camera) => gaugeReadingsFor(camera).length > 0);
   const gaugeReadings = gaugeReadingsFor(gaugeCamera);
+  const ocrCamera = cameras.find((camera) => ocrObservationFor(camera));
+  const ocrObservation = ocrObservationFor(ocrCamera);
 
   return (
     <div className="detail">
@@ -72,48 +101,71 @@ export function MachineDetail({ entity }: { entity: MachineEntity }) {
         <div><dt>資料來源</dt><dd>{entity.source === 'sim' ? '模擬' : '即時'}</dd></div>
       </dl>
 
-      <div className="machine-gauges" aria-label={`${entity.name} 實際讀表`}>
+      <div className="machine-gauges" aria-label={`${entity.name} live gauge readings`}>
         <div className="panel-title">實際讀表</div>
         {gaugeReadings.length > 0 ? (
           <>
-            <div className="gauge-source">
-              來源：{gaugeCamera?.name ?? 'Pi gauge reader'}
-            </div>
+            <div className="gauge-source">來源：{gaugeCamera?.name ?? 'Pi gauge reader'}</div>
             <div className="gauge-list">
               {gaugeReadings.map((reading) => (
                 <div className="gauge-card" key={reading.gaugeId}>
                   <div>
                     <div className="gauge-name">{reading.label || reading.gaugeId}</div>
                     <div className="gauge-meta">
-                      {reading.status} · 信心 {confidenceLabel(reading.confidence)}
+                      {reading.status} / 信心 {confidenceLabel(reading.confidence)}
                     </div>
                   </div>
                   <div className="gauge-reading">
                     <strong>{formatGaugeValue(reading)}</strong>
-                    <span>{formatGaugeTime(reading.capturedAt)}</span>
+                    <span>{formatTime(reading.capturedAt)}</span>
                   </div>
                 </div>
               ))}
             </div>
           </>
         ) : (
-          <div className="detail-note">尚未收到現場儀表讀值，讀表裝置連線後會即時顯示在這裡。</div>
+          <div className="detail-note">尚無實際讀表資料。請確認 Pi gauge reader 或 GPU OCR worker 是否已上傳。</div>
         )}
       </div>
 
-      <div className="detail-actions">
-        <button className="btn" onClick={() => highlight_entity({ ids: [entity.id], color: OVERLAY.alarm })}>
-          標記警報
-        </button>
-        <button className="btn" onClick={() => assign_task({ worker: 'p-zhiqiang', target: entity.id, task: '檢查 HC600-01' })}>
-          派工檢查
-        </button>
+      <div className="machine-gauges" aria-label={`${entity.name} HMI OCR`}>
+        <div className="panel-title">HMI OCR / 派工單</div>
+        {ocrObservation ? (
+          <>
+            <div className="gauge-source">來源：{ocrCamera?.name ?? 'GPU HMI OCR worker'}</div>
+            <div className="gauge-list">
+              <div className="gauge-card">
+                <div>
+                  <div className="gauge-name">{ocrModeLabel(ocrObservation.mode)}</div>
+                  <div className="gauge-meta">
+                    畫面信心 {confidenceLabel(ocrObservation.modeConfidence)} / {summaryStatusLabel(ocrObservation.summaryStatus)}
+                  </div>
+                </div>
+                <div className="gauge-reading">
+                  <strong>{ocrObservation.rawOcrLines.length} 行</strong>
+                  <span>{formatTime(ocrObservation.capturedAt)}</span>
+                </div>
+              </div>
+            </div>
+            {summaryText(ocrObservation) ? (
+              <div className="detail-note">{summaryText(ocrObservation)}</div>
+            ) : null}
+            {ocrObservation.workOrderRawText ? (
+              <div className="detail-note">派工單：{ocrObservation.workOrderRawText}</div>
+            ) : null}
+            {ocrObservation.summaryError ? (
+              <div className="detail-note">GPT 狀態：{ocrObservation.summaryError}</div>
+            ) : null}
+          </>
+        ) : (
+          <div className="detail-note">尚無 HMI OCR。nckusoc worker 送回 observation 後會顯示在這裡。</div>
+        )}
       </div>
 
       {cameras.length > 0 ? (
         <div className="machine-cameras">
           <div className="panel-title">監視器選單</div>
-          <div className="cam-switcher" role="tablist" aria-label={`${entity.name} 監視器`}>
+          <div className="cam-switcher" role="tablist" aria-label={`${entity.name} cameras`}>
             {cameras.map((camera) => (
               <button
                 key={camera.id}

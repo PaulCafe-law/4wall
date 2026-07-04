@@ -1,0 +1,39 @@
+frame_source:
+  mode: url
+  url: "${PERSON_PRESENCE_API_BASE_URL}/v1/camera-ingest/latest-frame/image"
+  interval_sec: 10
+  timeout_sec: 12
+  headers:
+    Authorization: "Bearer ${PERSON_PRESENCE_DEVICE_TOKEN}"
+
+platform:
+  enabled: false
+  api_base_url: "${PERSON_PRESENCE_API_BASE_URL}"
+  device_token: "${PERSON_PRESENCE_DEVICE_TOKEN}"
+  timeout_sec: 10
+  retry_queue_size: 20
+
+detector:
+  backend: paddledet
+  detector_name: paddledet_ppyoloe_plus_person
+  model_dir: "/opt/fourwall/person-presence/models/ppyoloe_plus_crn_l_80e_coco"
+  device: gpu
+  run_mode: paddle
+  confidence_threshold: 0.55
+  min_bbox_height_px: 48
+  # Optional image-space polygon, in [u, v] pixel coordinates. Empty means full image.
+  valid_region_polygon: []
+  constructor_options: {}
+
+projection:
+  calibration_id: null
+  # Optional 3x3 homography from image foot point [u, v, 1] to Factory Twin {x, z}.
+  # homography:
+  #   - [0.01, 0.0, -6.0]
+  #   - [0.0, 0.01, -12.0]
+  #   - [0.0, 0.0, 1.0]
+
+debug:
+  runtime_dir: runtime
+  save_debug_frames: false
+  rolling_keep: 100

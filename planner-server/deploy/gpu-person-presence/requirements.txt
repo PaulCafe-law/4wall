@@ -1,0 +1,7 @@
+numpy>=1.26
+opencv-python-headless>=4.9
+PyYAML>=6.0
+pytest>=8.0
+
+# Runtime detector installation is host-specific. Install PaddlePaddle/PaddleDetection
+# separately on the 3090 host and put PaddleDetection's deploy/python modules on PYTHONPATH.
