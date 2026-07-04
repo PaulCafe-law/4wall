@@ -19,6 +19,7 @@ from .ocr_engine import OcrEngine, OcrTextLine, PaddleOcrEngine
 from .publish import PlatformSink
 from .roi import FieldReading, crop_roi, detect_screen_visibility, lines_inside_roi, preprocess_for_ocr, read_field
 from .summarizer import GptSummarizer
+from .text_normalization import normalize_traditional_chinese
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -162,9 +163,9 @@ class HmiOcrRunner:
             work_order_raw_text=raw_text(work_order_lines) or None,
         )
         summary_result = self.summarizer.summarize(observation)
-        observation["gptSummary"] = summary_result.summary
+        observation["gptSummary"] = normalize_traditional_chinese(summary_result.summary)
         observation["summaryStatus"] = summary_result.status
-        observation["summaryError"] = summary_result.error
+        observation["summaryError"] = normalize_traditional_chinese(summary_result.error)
         if self.publish_enabled:
             self.platform_sink.submit_readings(readings)
             self.platform_sink.submit_ocr_observation(observation)
@@ -177,7 +178,7 @@ class HmiOcrRunner:
 
 
 def build_platform_reading(reading: FieldReading, captured_at: str, detector_name: str) -> dict[str, Any]:
-    return {
+    return normalize_traditional_chinese({
         "gaugeId": reading.field.id,
         "label": reading.field.label,
         "value": reading.value,
@@ -193,7 +194,7 @@ def build_platform_reading(reading: FieldReading, captured_at: str, detector_nam
             "message": reading.message,
             "roi": list(reading.field.roi),
         },
-    }
+    })
 
 
 def recognize_scaled(engine: OcrEngine, image, *, scale: float) -> list[OcrTextLine]:
@@ -219,7 +220,7 @@ def build_ocr_observation(
     structured_fields: dict[str, Any],
     work_order_raw_text: str | None,
 ) -> dict[str, Any]:
-    return {
+    return normalize_traditional_chinese({
         "mode": mode,
         "modeConfidence": round(float(mode_confidence), 3),
         "source": "live",
@@ -230,7 +231,7 @@ def build_ocr_observation(
         "gptSummary": {},
         "summaryStatus": "unknown",
         "summaryError": None,
-    }
+    })
 
 
 def _now_iso() -> str:

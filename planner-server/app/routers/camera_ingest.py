@@ -32,6 +32,7 @@ from app.models import (
 )
 from app.security import create_camera_device_token, hash_camera_device_token
 from app.storage import ArtifactStorage
+from app.text_normalization import normalize_traditional_chinese
 from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_org_write_access
 
 
@@ -564,6 +565,12 @@ def submit_camera_ocr_observation(
         frame = _load_frame_for_device(session, camera, frame_id)
         frame_id = frame.id
 
+    raw_ocr_lines = normalize_traditional_chinese([line.model_dump() for line in request.rawOcrLines])
+    structured_fields = normalize_traditional_chinese(request.structuredFields)
+    work_order_raw_text = normalize_traditional_chinese(request.workOrderRawText)
+    gpt_summary = normalize_traditional_chinese(request.gptSummary)
+    summary_error = normalize_traditional_chinese(request.summaryError)
+
     observation = CameraOcrObservation(
         camera_id=camera.id,
         organization_id=camera.organization_id,
@@ -573,12 +580,12 @@ def submit_camera_ocr_observation(
         mode_confidence=request.modeConfidence,
         source=request.source,
         captured_at=_as_utc(request.capturedAt),
-        raw_ocr_lines_json=[line.model_dump() for line in request.rawOcrLines],
-        structured_fields_json=request.structuredFields,
-        work_order_raw_text=request.workOrderRawText,
-        gpt_summary_json=request.gptSummary,
+        raw_ocr_lines_json=raw_ocr_lines,
+        structured_fields_json=structured_fields,
+        work_order_raw_text=work_order_raw_text,
+        gpt_summary_json=gpt_summary,
         summary_status=request.summaryStatus,
-        summary_error=request.summaryError,
+        summary_error=summary_error,
     )
     camera.updated_at = _now()
     session.add(observation)

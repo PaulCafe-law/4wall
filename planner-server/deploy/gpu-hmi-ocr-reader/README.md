@@ -6,7 +6,7 @@ This worker runs on the Fourth Wall 3090 machine (`nckusoc`). It reads the HC600
 Latest camera frame
   -> fixed HMI ROI crop
   -> screen-lit detector
-  -> PaddleOCR / PP-OCRv5 on 3090
+  -> PaddleOCR / PP-OCRv5 Traditional Chinese model on 3090
   -> mode classifier: temperature_monitor | machine_monitor | unknown
   -> optional Codex OAuth GPT summary for work-order OCR
   -> POST /v1/camera-ingest/ocr-observations
@@ -51,6 +51,7 @@ Set these values in `config.yaml` or environment variables:
 - `hmi.roi`: full-frame ROI around the HC600 HMI screen. Current 2560x1440 baseline is `[925, 550, 450, 325]`
 - `hmi.fields`: optional fixed numeric ROI fields
 - `work_order.roi`: full-frame ROI around the paper work order. Current 2560x1440 baseline is `[900, 120, 550, 335]`
+- `ocr.lang`: keep this as `chinese_cht` for Traditional Chinese OCR. Using `ch` loads the Simplified Chinese model and can return Simplified Chinese text.
 
 Never commit `config.yaml`, device tokens, GPT auth cache, or screenshots containing sensitive customer data.
 

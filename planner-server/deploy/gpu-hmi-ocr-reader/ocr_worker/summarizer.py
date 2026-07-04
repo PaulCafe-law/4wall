@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .config import GptConfig
+from .text_normalization import normalize_traditional_chinese
 
 
 @dataclass(frozen=True)
@@ -66,7 +67,7 @@ class GptSummarizer:
             return SummaryResult(status=_error_status(stderr), error=(stderr or f"gpt_summary_exit_{completed.returncode}")[:1000])
         if not stdout:
             return SummaryResult(status="failed", error="gpt_summary_empty_output")
-        summary = _parse_summary(stdout)
+        summary = normalize_traditional_chinese(_parse_summary(stdout))
         self._last_summary_at = time.monotonic()
         self._last_summary = summary
         self._last_observation_signature = observation_signature
@@ -89,6 +90,7 @@ def _prompt_payload(observation: dict[str, Any], *, model: str) -> dict[str, Any
             "Do not overwrite or invent numeric readings from structuredFields.",
             "Use unknown for uncertain facts.",
             "Keep the summary short and operational.",
+            "Write every human-facing Chinese field in Traditional Chinese for Taiwan (zh-Hant-TW). Never output Simplified Chinese.",
         ],
         "expected_schema": {
             "summary": "string",

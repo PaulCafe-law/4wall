@@ -80,6 +80,23 @@ def test_builds_ocr_observation_payload_with_unknown_summary() -> None:
     assert payload["structuredFields"]["screen"]["kind"] == "machine_monitor"
 
 
+def test_ocr_observation_payload_normalizes_human_text_to_traditional_chinese() -> None:
+    payload = build_ocr_observation(
+        captured_at="2026-07-04T10:00:00+08:00",
+        mode="machine_monitor",
+        mode_confidence=0.86,
+        raw_lines=[
+            {"text": "生产日期 预计总数 后处理", "confidence": 0.9, "box": None, "region": "work_order"}
+        ],
+        structured_fields={"operationMode": {"value": "手动生产"}},
+        work_order_raw_text="HC600 生产日期 预计总数 后处理",
+    )
+
+    assert payload["rawOcrLines"][0]["text"] == "生產日期 預計總數 後處理"
+    assert payload["structuredFields"]["operationMode"]["value"] == "手動生產"
+    assert payload["workOrderRawText"] == "HC600 生產日期 預計總數 後處理"
+
+
 def test_recognize_scaled_maps_boxes_back_to_original_coordinates() -> None:
     class FakeEngine:
         def recognize(self, image):
@@ -110,6 +127,19 @@ def test_gpt_summarizer_accepts_json_from_command_bridge() -> None:
     assert result.status == "ok"
     assert result.summary["summary"] == "ok"
     assert result.summary["screenMode"] == "machine_monitor"
+
+
+def test_gpt_summarizer_normalizes_summary_to_traditional_chinese() -> None:
+    command = [
+        sys.executable,
+        "-c",
+        "import json,sys; json.load(sys.stdin); print(json.dumps({'summary':'HC600 生产中，预计后处理'}))",
+    ]
+
+    result = GptSummarizer(GptConfig(enabled=True, command=command)).summarize({"mode": "machine_monitor"})
+
+    assert result.status == "ok"
+    assert result.summary["summary"] == "HC600 生產中，預計後處理"
 
 
 def test_gpt_summarizer_reuses_cached_summary_inside_min_interval() -> None:

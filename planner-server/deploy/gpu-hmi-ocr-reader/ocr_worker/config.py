@@ -32,7 +32,7 @@ class PlatformConfig:
 @dataclass(frozen=True)
 class OcrConfig:
     engine: str = "paddle"
-    lang: str = "ch"
+    lang: str = "chinese_cht"
     ocr_version: str = "PP-OCRv5"
     device: str = "gpu:0"
     min_confidence: float = 0.55
@@ -146,7 +146,7 @@ def load_config(path: str | Path) -> AppConfig:
         ),
         ocr=OcrConfig(
             engine=str(ocr_payload.get("engine", "paddle")),
-            lang=str(ocr_payload.get("lang", "ch")),
+            lang=str(ocr_payload.get("lang", "chinese_cht")),
             ocr_version=str(ocr_payload.get("ocr_version", "PP-OCRv5")),
             device=str(ocr_payload.get("device", "gpu:0")),
             min_confidence=float(ocr_payload.get("min_confidence", 0.55)),

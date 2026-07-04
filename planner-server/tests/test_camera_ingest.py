@@ -429,8 +429,8 @@ def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client,
                 "operationMode": {"value": "手動", "confidence": 0.78},
                 "pressureBar": {"value": 0, "unit": "Bar", "confidence": 0.83},
             },
-            "workOrderRawText": "HC600 FLJ2R02",
-            "gptSummary": {"summary": "HC600 is in manual mode.", "machine": "HC600"},
+            "workOrderRawText": "HC600 生产日期 预计总数 后处理",
+            "gptSummary": {"summary": "HC600 生产中，预计后处理。", "machine": "HC600"},
             "summaryStatus": "ok",
         },
     )
@@ -441,6 +441,8 @@ def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client,
     assert body["mode"] == "machine_monitor"
     assert body["summaryStatus"] == "ok"
     assert body["rawOcrLines"][0]["text"] == "機器監視"
+    assert body["workOrderRawText"] == "HC600 生產日期 預計總數 後處理"
+    assert body["gptSummary"]["summary"] == "HC600 生產中，預計後處理。"
 
     with session_factory() as session:
         stored = session.exec(select(CameraOcrObservation).where(CameraOcrObservation.camera_id == camera_id)).all()
@@ -454,7 +456,7 @@ def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client,
     assert listed.status_code == 200, listed.text
     latest = listed.json()["cameras"][0]["latestOcrObservation"]
     assert latest["mode"] == "machine_monitor"
-    assert latest["workOrderRawText"] == "HC600 FLJ2R02"
+    assert latest["workOrderRawText"] == "HC600 生產日期 預計總數 後處理"
     assert latest["gptSummary"]["machine"] == "HC600"
 
 

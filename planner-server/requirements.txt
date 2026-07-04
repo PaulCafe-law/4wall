@@ -10,4 +10,5 @@ psycopg2-binary>=2.9,<3.0
 pytest>=8.2,<9.0
 Pillow>=10.4,<12.0
 PyYAML>=6.0,<7.0
+opencc-python-reimplemented==0.1.7
 tzdata>=2025.2
