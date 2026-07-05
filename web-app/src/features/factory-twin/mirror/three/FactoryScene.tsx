@@ -74,7 +74,7 @@ export function FactoryScene() {
         enablePan
         enableZoom
         maxZoom={220}
-        zoomSpeed={1.45}
+        zoomSpeed={0.55}
         minPolarAngle={0.7}
         maxPolarAngle={1.28}
       />
