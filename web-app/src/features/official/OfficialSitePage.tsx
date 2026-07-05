@@ -35,102 +35,13 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle?: string 
   )
 }
 
-function WarRoom({ t }: { t: Content['warRoom'] }) {
-  return (
-    <figure className="mt-12">
-      <div className="overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#161d27] via-chrome-950 to-black p-5 shadow-[0_30px_100px_rgba(18,24,33,0.28)] md:p-8">
-        <div className="grid gap-4 lg:grid-cols-[1fr_0.92fr]">
-          {/* Agent chat */}
-          <div className="flex flex-col rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-300">{t.chatTitle}</span>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-moss-300/15 px-3 py-1 text-[11px] font-medium text-moss-300">
-                <span className="h-1.5 w-1.5 rounded-full bg-moss-300" />
-                {t.chatState}
-              </span>
-            </div>
-            <div className="mt-6 flex flex-1 flex-col justify-end gap-3">
-              <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#0071e3] px-4 py-2.5 text-sm leading-6 text-white">
-                {t.userMsg}
-              </div>
-              <div className="mr-auto max-w-[92%] rounded-2xl rounded-bl-md bg-white/95 px-4 py-2.5 text-sm leading-6 text-chrome-950">
-                {t.agentMsg}
-              </div>
-            </div>
-          </div>
-
-          {/* Live machine status + gauge reads */}
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-ember-300">{t.badge}</span>
-              <span className="rounded-full bg-moss-300/15 px-3 py-1 text-[11px] font-medium text-moss-300">{t.statusLabel}</span>
-            </div>
-            <h3 className="mt-3 font-display text-2xl font-semibold tracking-[-0.01em] text-white">{t.machineName}</h3>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              {t.metrics.map((m) => (
-                <div key={m.k} className="rounded-xl bg-black/30 px-3 py-2.5">
-                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-chrome-400">{m.k}</p>
-                  <p className="mt-0.5 font-display text-xl font-semibold text-white">{m.v}</p>
-                </div>
-              ))}
-            </div>
-            <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-chrome-400">{t.gaugesTitle}</p>
-            <div className="mt-2 space-y-1.5">
-              {t.gauges.map((g) => (
-                <div key={g.label} className="flex items-baseline justify-between gap-3 border-b border-white/5 pb-1.5">
-                  <span className="text-xs text-chrome-300">{g.label}</span>
-                  <span className="flex items-baseline gap-2">
-                    <span className="font-display text-base font-semibold text-white">{g.value}</span>
-                    <span className="text-[10px] text-ember-300">{g.note}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-      <figcaption className="mt-3 text-center text-xs text-chrome-500">{t.caption}</figcaption>
-    </figure>
-  )
-}
-
-function ChatAvatar() {
-  return (
-    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-chrome-950 font-display text-[11px] font-semibold text-white">
-      4W
-    </span>
-  )
-}
-
-function LineQaMock({ t }: { t: Content['lineQa'] }) {
-  return (
-    <div className="flex h-full flex-col bg-[#8aa6c2]/25 p-5 md:p-6">
-      <div className="flex items-center gap-2">
-        <ChatAvatar />
-        <span className="text-xs font-medium text-chrome-700">{t.botName}</span>
-      </div>
-      <div className="mt-4 flex flex-1 flex-col justify-center gap-3">
-        {t.messages.map((m, i) =>
-          m.from === 'user' ? (
-            <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#06c755] px-4 py-2.5 text-sm leading-6 text-white shadow-sm">
-              {m.text}
-            </div>
-          ) : (
-            <div key={i} className="mr-auto max-w-[90%] rounded-2xl rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-chrome-900 shadow-sm">
-              {m.text}
-            </div>
-          ),
-        )}
-      </div>
-    </div>
-  )
-}
-
 function ProactiveAlertMock({ t }: { t: Content['proactiveAlert'] }) {
   return (
     <div className="flex h-full flex-col bg-[#8aa6c2]/25 p-5 md:p-6">
       <div className="flex items-center gap-2">
-        <ChatAvatar />
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-chrome-950 font-display text-[11px] font-semibold text-white">
+          4W
+        </span>
         <span className="text-xs font-medium text-chrome-700">{t.botName}</span>
       </div>
       <div className="mt-4 flex flex-1 flex-col justify-center">
@@ -150,7 +61,18 @@ function ProactiveAlertMock({ t }: { t: Content['proactiveAlert'] }) {
   )
 }
 
-function ServiceCard({ card, t }: { card: Content['services']['cards'][number]; t: Content }) {
+type ServiceCardData = {
+  title: string
+  body: string
+  mock?: 'alert'
+  image?: string
+  alt?: string
+  width?: number
+  height?: number
+  contain?: boolean
+}
+
+function ServiceCard({ card, t }: { card: ServiceCardData; t: Content }) {
   return (
     <article className="flex flex-col overflow-hidden rounded-[2rem] bg-white text-chrome-950 shadow-[0_18px_70px_rgba(18,24,33,0.1)]">
       <div className="px-6 pt-7 text-center md:px-10 md:pt-10">
@@ -158,13 +80,20 @@ function ServiceCard({ card, t }: { card: Content['services']['cards'][number]; 
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-chrome-700 md:text-base">{card.body}</p>
       </div>
       <div className="mt-6 flex min-h-[20rem] flex-1 overflow-hidden">
-        {card.mock === 'lineQa' ? (
-          <div className="flex-1">
-            <LineQaMock t={t.lineQa} />
-          </div>
-        ) : card.mock === 'alert' ? (
+        {card.mock === 'alert' ? (
           <div className="flex-1">
             <ProactiveAlertMock t={t.proactiveAlert} />
+          </div>
+        ) : card.image && card.contain ? (
+          <div className="flex flex-1 items-center justify-center bg-[#8aa6c2]/20 px-6 py-8">
+            <img
+              className="max-h-[22rem] w-auto max-w-full rounded-2xl shadow-[0_10px_40px_rgba(18,24,33,0.18)]"
+              src={card.image}
+              alt={card.alt}
+              width={card.width}
+              height={card.height}
+              loading="lazy"
+            />
           </div>
         ) : card.image ? (
           <img
@@ -227,7 +156,19 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
             </div>
           </div>
 
-          <WarRoom t={t.warRoom} />
+          <figure className="mt-12">
+            <div className="overflow-hidden rounded-[2.5rem] bg-chrome-950 shadow-[0_30px_100px_rgba(18,24,33,0.28)]">
+              <img
+                className="w-full"
+                src="/official-assets/warroom-live.webp"
+                alt={t.warRoom.imageAlt}
+                width={1563}
+                height={713}
+                fetchPriority="high"
+              />
+            </div>
+            <figcaption className="mt-3 text-center text-xs text-chrome-500">{t.warRoom.caption}</figcaption>
+          </figure>
 
           <div className="mt-5 grid gap-4 rounded-[2rem] bg-white px-6 py-6 shadow-[0_18px_70px_rgba(18,24,33,0.08)] sm:grid-cols-2 md:px-8 lg:grid-cols-4">
             {t.stats.map((stat) => (
@@ -255,7 +196,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
           <SectionHeading title={t.services.title} subtitle={t.services.subtitle} />
           <div className="mx-auto mt-10 grid max-w-7xl gap-5 lg:grid-cols-2">
             {t.services.cards.map((card) => (
-              <ServiceCard key={card.title} card={card} t={t} />
+              <ServiceCard key={card.title} card={card as ServiceCardData} t={t} />
             ))}
           </div>
           <div className="mx-auto mt-5 max-w-7xl rounded-[2rem] bg-white px-6 py-6 text-center shadow-[0_18px_70px_rgba(18,24,33,0.08)] md:px-8">

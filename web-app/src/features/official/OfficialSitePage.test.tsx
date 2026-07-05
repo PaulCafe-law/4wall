@@ -20,11 +20,11 @@ describe('OfficialSitePage', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: '會回答你的工廠。' })).toBeInTheDocument()
 
-    // War-room hero: real dispatch chat + live gauge readings from the platform.
-    expect(screen.getByText('派小明去處理 HC600-01')).toBeInTheDocument()
-    expect(screen.getByText(/已指派 小明 → HC600-01 成型機/)).toBeInTheDocument()
-    expect(screen.getByText('PRESS AM METER')).toBeInTheDocument()
-    expect(screen.getByText('9.7 A')).toBeInTheDocument()
+    // War-room hero: real platform screenshot + caption.
+    const hero = screen.getByRole('img', { name: /3D 鏡像工廠戰情室/ })
+    expect(hero).toHaveAttribute('src', '/official-assets/warroom-live.webp')
+    expect(hero).toHaveAttribute('width', '1563')
+    expect(hero).toHaveAttribute('height', '713')
     expect(screen.getByText(/內容取自營運中系統/)).toBeInTheDocument()
 
     // Service card titles render as visible text (imageOnly regression guard).
@@ -32,11 +32,14 @@ describe('OfficialSitePage', () => {
     expect(screen.getByRole('heading', { name: '沒人問，它主動通報' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '儀表、派工單，AI 自動讀' })).toBeInTheDocument()
 
-    // LINE Q&A recreation carries the real conversation text (replaces the
-    // off-topic construction card).
-    expect(screen.getByText('給我現在機台狀況以及對應的維修人員')).toBeInTheDocument()
-    expect(screen.getByText(/志強（維護技師）站點 HC600-06/)).toBeInTheDocument()
+    // Real LINE Q&A screenshot in the "ask it" card (replaces the off-topic
+    // construction card); proactive-alert recreation in the "it reports" card.
+    expect(screen.getByRole('img', { name: /LINE 中文問答實錄/ })).toHaveAttribute(
+      'src',
+      '/official-assets/line-qa-live.webp',
+    )
     expect(screen.getByText(/HC600-01 成型機・溫度異常/)).toBeInTheDocument()
+    expect(screen.getByText(/已派工 志強 前往處理/)).toBeInTheDocument()
 
     // Day-on-duty timeline, stats, case study, pricing, onboarding, security.
     expect(screen.getByRole('heading', { name: '它的一天，替你值的班。' })).toBeInTheDocument()
@@ -78,9 +81,12 @@ describe('OfficialSitePage', () => {
     renderOfficial('/official/en')
 
     expect(screen.getByRole('heading', { level: 1, name: 'A factory that answers.' })).toBeInTheDocument()
-    expect(screen.getByText('PRESS AM METER')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /3D mirror-factory war room/ })).toHaveAttribute(
+      'src',
+      '/official-assets/warroom-live.webp',
+    )
     expect(screen.getByRole('heading', { name: 'Ask, and it answers' })).toBeInTheDocument()
-    expect(screen.getByText(/Give me current machine status/)).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Real LINE chat/ })).toHaveAttribute('src', '/official-assets/line-qa-live.webp')
     expect(screen.getByText('From NT$8,000 / month')).toBeInTheDocument()
     for (const link of screen.getAllByRole('link', { name: '中文' })) {
       expect(link).toHaveAttribute('href', '/official')

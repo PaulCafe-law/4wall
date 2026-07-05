@@ -45,6 +45,8 @@ const zh = {
       { label: 'HC600 料管一段', value: '205.0°C', note: '讀表信心 70%' },
     ],
     caption: '內容取自營運中系統・台南靚程 7 機台實裝場域',
+    imageAlt:
+      '第四面牆 3D 鏡像工廠戰情室：左側 AI 對話派工、中間即時 3D 工廠、右側 HC600-01 機台儀表與電表判讀值',
   },
   lineQa: {
     botName: '第四面牆 AI・工廠助手',
@@ -85,7 +87,11 @@ const zh = {
       {
         title: '問它，它就回答',
         body: '「現在機台狀況？誰在維修？」——在 LINE 或平台問一句話，AI 讀取現場即時數據回答你，還會在 3D 畫面標給你看。',
-        mock: 'lineQa' as const,
+        image: '/official-assets/line-qa-live.webp',
+        alt: 'LINE 中文問答實錄：主管問機台狀況，AI 回覆各機台運轉狀態與對應維修人員',
+        width: 483,
+        height: 512,
+        contain: true,
       },
       {
         title: '沒人問，它主動通報',
@@ -248,6 +254,8 @@ const en: typeof zh = {
       { label: 'HC600 barrel zone 1', value: '205.0°C', note: 'read confidence 70%' },
     ],
     caption: 'Content from the live production system · Jing-Cheng 7-machine plant, Tainan',
+    imageAlt:
+      '4WALL 3D mirror-factory war room: AI dispatch chat on the left, live 3D factory in the center, HC600-01 machine gauges and meter reads on the right',
   },
   lineQa: {
     botName: '4WALL AI · Factory assistant',
@@ -288,7 +296,11 @@ const en: typeof zh = {
       {
         title: 'Ask, and it answers',
         body: '“What’s the machine status? Who’s on repair?” — ask in chat and the AI answers from live plant data, highlighting the answer in 3D.',
-        mock: 'lineQa' as const,
+        image: '/official-assets/line-qa-live.webp',
+        alt: 'Real LINE chat: a supervisor asks machine status, the AI replies with each machine’s state and the assigned technicians',
+        width: 483,
+        height: 512,
+        contain: true,
       },
       {
         title: 'Nobody asks — it reports anyway',
