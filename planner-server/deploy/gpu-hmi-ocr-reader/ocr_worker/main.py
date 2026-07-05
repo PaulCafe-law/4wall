@@ -16,7 +16,7 @@ from .config import AppConfig, load_config
 from .frame_source import FrameSourceError, capture_configured_frame, load_frame_file
 from .hmi_analysis import build_structured_fields, classify_hmi_mode, raw_ocr_lines_payload, raw_text
 from .hmi_temperature import apply_temperature_grid_readings, read_temperature_grid, stabilize_temperature_readings
-from .work_order import build_work_order_fields
+from .work_order import build_work_order_fields, stabilize_work_order
 from .ocr_engine import OcrEngine, OcrTextLine, PaddleOcrEngine
 from .publish import PlatformSink
 from .roi import (
@@ -62,6 +62,7 @@ class HmiOcrRunner:
         self.crop_dir = config.debug.runtime_dir / "crops"
         self.lit_sample_dir = config.debug.runtime_dir / "lit-samples"
         self.temperature_history = {}
+        self.work_order_history = {}
         self._last_frame_size: tuple[int, int] | None = None
         if config.debug.save_crops:
             self.crop_dir.mkdir(parents=True, exist_ok=True)
@@ -176,7 +177,9 @@ class HmiOcrRunner:
             "screenGate": "run_hmi_ocr_when_screen_visibility_is_lit",
         }
         if self.config.work_order.enabled:
-            structured_fields["workOrder"] = build_work_order_fields(work_order_lines)
+            structured_fields["workOrder"] = stabilize_work_order(
+                build_work_order_fields(work_order_lines), self.work_order_history
+            )
         observation = build_ocr_observation(
             captured_at=captured_at,
             mode=mode_result.mode,

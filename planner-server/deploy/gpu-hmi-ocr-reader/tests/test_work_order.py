@@ -288,10 +288,13 @@ def test_runner_attaches_structured_work_order_to_published_observation(tmp_path
     config = load_config(config_path)
     runner = HmiOcrRunner(config, publish=False, engine=_SheetOnlyEngine())
 
-    result = runner.process_frame(np.zeros((377, 619, 3), dtype=np.uint8), frame_name="test")
+    frame = np.zeros((377, 619, 3), dtype=np.uint8)
+    first = runner.process_frame(frame, frame_name="test")["ocrObservation"]["structuredFields"]["workOrder"]
+    # First sighting is consensus-pending — published on the second agreeing frame.
+    assert first["template"] == "hc600_dispatch_sheet_v1"
+    assert first["fields"]["machineNo"]["value"] == "unknown"
 
-    sheet = result["ocrObservation"]["structuredFields"]["workOrder"]
-    assert sheet["template"] == "hc600_dispatch_sheet_v1"
+    sheet = runner.process_frame(frame, frame_name="test")["ocrObservation"]["structuredFields"]["workOrder"]
     assert sheet["fields"]["machineNo"]["value"] == "HC600"
     assert sheet["quantities"]["total"]["left"]["value"] == 210
     assert sheet["quantities"]["total"]["right"]["value"] == 210
@@ -335,3 +338,128 @@ def test_runner_omits_work_order_key_when_disabled(tmp_path: Path) -> None:
     result = runner.process_frame(np.zeros((377, 619, 3), dtype=np.uint8), frame_name="test")
 
     assert "workOrder" not in result["ocrObservation"]["structuredFields"]
+
+
+# ---------------------------------------------------------------------------
+# Cross-frame consensus stabilizer
+# ---------------------------------------------------------------------------
+
+from ocr_worker.work_order import stabilize_work_order  # noqa: E402
+
+
+def _stabilized(frames: list[list[OcrTextLine]]) -> dict:
+    history: dict = {}
+    result: dict = {}
+    for lines in frames:
+        result = stabilize_work_order(build_work_order_fields(lines), history)
+    return result
+
+
+def test_stabilizer_publishes_after_two_agreeing_frames() -> None:
+    first = stabilize_work_order(build_work_order_fields(REAL_LINES), history := {})
+    assert first["fields"]["machineNo"]["value"] == "unknown"
+    assert first["fields"]["machineNo"]["consensusPending"] is True
+    second = stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+    assert second["fields"]["machineNo"]["value"] == "HC600"
+    assert second["quantities"]["total"]["left"]["value"] == 210
+    assert second["stabilized"] is True
+    # Published/locked cells carry neither pending nor held markers.
+    assert "consensusPending" not in second["fields"]["machineNo"]
+    assert "held" not in second["fields"]["machineNo"]
+
+
+def test_stabilizer_blocks_alternating_flicker() -> None:
+    gm = REAL_LINES
+    gh = [_line("GH096LC", 0.78, 464, 118) if line.text == "GM096LC" else line for line in REAL_LINES]
+    result = _stabilized([gm, gh, gm, gh, gm])
+    # Strict alternation never yields two consecutive agreeing frames.
+    assert result["fields"]["moldNo"]["value"] == "unknown"
+
+
+def test_stabilizer_blocks_single_frame_phantom_value() -> None:
+    phantom = _quantity_grid({1: [_line("2", 0.29, 220, 220)]})
+    clean = _quantity_grid({})
+    result = _stabilized([phantom, clean, clean])
+    assert result["quantities"]["plannedScheduledNoHanger"]["left"]["value"] == "unknown"
+
+
+def test_stabilizer_holds_locked_value_through_bad_frames() -> None:
+    history: dict = {}
+    stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+    stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+    # A completely garbled frame (no lines) must not clear locked values.
+    held = stabilize_work_order(build_work_order_fields([]), history)
+    assert held["fields"]["machineNo"]["value"] == "HC600"
+    assert held["fields"]["machineNo"]["held"] is True
+    assert held["quantities"]["total"]["right"]["value"] == 210
+
+
+def test_stabilizer_resets_other_cells_when_sheet_identity_changes() -> None:
+    history: dict = {}
+    stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+    stabilize_work_order(build_work_order_fields(REAL_LINES), history)  # locks GM096LC + total 210
+
+    # New sheet for the next job: same machine, new mold code, totals not yet
+    # written — the old totals must not survive the paper swap. Replacing a
+    # locked identity value carries hysteresis (4 consecutive frames).
+    new_sheet = [
+        _line("XY123AB", 0.9, 464, 118) if line.text == "GM096LC" else line
+        for line in REAL_LINES
+        if line.text != "210"
+    ]
+    swapped: dict = {}
+    for _ in range(4):
+        swapped = stabilize_work_order(build_work_order_fields(new_sheet), history)
+    assert swapped["fields"]["moldNo"]["value"] == "XY123AB"
+    assert swapped["fields"]["machineNo"]["value"] == "HC600"
+    assert swapped["quantities"]["total"]["left"]["value"] == "unknown"
+    assert swapped["quantities"]["total"]["right"]["value"] == "unknown"
+
+
+def test_sustained_identity_misread_does_not_wipe_locked_cells() -> None:
+    # A glare band can fake GM->GH for a couple of frames; that must NOT count
+    # as a paper swap (which would wipe and re-pend every published cell).
+    gm = REAL_LINES
+    gh = [_line("GH096LC", 0.78, 464, 118) if line.text == "GM096LC" else line for line in REAL_LINES]
+    history: dict = {}
+    for frames in (gm, gm, gh, gh, gm, gm):
+        result = stabilize_work_order(build_work_order_fields(frames), history)
+    assert result["fields"]["moldNo"]["value"] == "GM096LC"
+    assert result["quantities"]["total"]["left"]["value"] == 210
+    # And during the glare frames the totals never flapped to unknown.
+    history2: dict = {}
+    outputs = [stabilize_work_order(build_work_order_fields(f), history2) for f in (gm, gm, gh, gh)]
+    assert outputs[-1]["quantities"]["total"]["left"]["value"] == 210
+    assert outputs[-1]["fields"]["moldNo"]["value"] == "GM096LC"
+
+
+def test_value_unknown_value_does_not_lock() -> None:
+    # The consecutive-frames contract: an unknown frame resets the streak, so
+    # a phantom read recurring across a garbled frame must not publish.
+    phantom = _quantity_grid({1: [_line("2", 0.29, 220, 220)]})
+    clean = _quantity_grid({})
+    result = _stabilized([phantom, clean, phantom])
+    assert result["quantities"]["plannedScheduledNoHanger"]["left"]["value"] == "unknown"
+
+
+def test_quantity_cell_relocks_on_two_consecutive_new_values() -> None:
+    # Operator corrects the total on the SAME sheet: 210,210 then 220,220 must
+    # switch to 220 (no identity change involved).
+    row = 3  # total row in _quantity_grid
+    old = _quantity_grid({row: [_line("210", 0.9, 220, 295), _line("210", 0.9, 440, 295)]})
+    new = _quantity_grid({row: [_line("220", 0.92, 220, 295), _line("220", 0.92, 440, 295)]})
+    result = _stabilized([old, old, new, new])
+    assert result["quantities"]["total"]["left"]["value"] == 220
+    assert result["quantities"]["total"]["right"]["value"] == 220
+
+
+def test_lock_refresh_keeps_latest_confidence() -> None:
+    row = 3
+    frames = [
+        _quantity_grid({row: [_line("210", conf, 220, 295)]})
+        for conf in (0.90, 0.95, 0.97)
+    ]
+    result = _stabilized(frames)
+    leaf = result["quantities"]["total"]["left"]
+    assert leaf["value"] == 210
+    assert leaf["confidence"] == 0.97

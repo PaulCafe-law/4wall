@@ -241,3 +241,98 @@ def _leaf(value: Any, confidence: float, raw_text: str, *, label: str | None = N
     if label is not None:
         leaf["label"] = label
     return leaf
+
+
+# ---------------------------------------------------------------------------
+# Cross-frame consensus stabilizer.
+#
+# Per-frame OCR of the sheet is noisy: pencil annotations drift between row
+# clusters (a phantom "2" in a blank cell), handwriting drops characters
+# (HC600 -> HC60) and M/H flip on the mold code. A cell therefore publishes a
+# value only after TWO CONSECUTIVE frames read the same value; once locked, the
+# value survives bad frames (held) until a different value earns its own
+# two-frame consensus. A confirmed change of the sheet identity (machineNo or
+# moldNo lock switching to a new value) means the paper was swapped, so every
+# other cell's history is reset to avoid stale carry-over.
+# ---------------------------------------------------------------------------
+
+WorkOrderHistory = dict[str, dict[str, Any]]
+
+_IDENTITY_CELLS = ("fields.machineNo", "fields.moldNo")
+# Replacing an ALREADY-LOCKED identity value needs a longer streak than the
+# initial lock: a glare band can fake GM<->GH for a couple of frames, and a
+# spurious "swap" wipes every cell. Real paper swaps persist indefinitely, so
+# they clear this bar within ~2 minutes at the default capture interval.
+_IDENTITY_REPLACE_STREAK = 4
+
+
+def stabilize_work_order(sheet: dict[str, Any], history: WorkOrderHistory) -> dict[str, Any]:
+    cells = list(_sheet_cells(sheet))
+
+    swapped = False
+    for path, leaf in cells:
+        if path in _IDENTITY_CELLS and _update_cell_history(
+            path, leaf, history, replace_streak=_IDENTITY_REPLACE_STREAK
+        ):
+            swapped = True
+    if swapped:
+        for key in list(history):
+            if key not in _IDENTITY_CELLS:
+                del history[key]
+    for path, leaf in cells:
+        if path not in _IDENTITY_CELLS:
+            _update_cell_history(path, leaf, history)
+
+    for path, leaf in cells:
+        locked = history.get(path, {}).get("locked")
+        if locked is not None:
+            if leaf["value"] != locked["value"]:
+                leaf["held"] = True
+            leaf["value"] = locked["value"]
+            leaf["confidence"] = locked["confidence"]
+            leaf["rawText"] = locked["rawText"]
+        elif leaf["value"] != UNKNOWN:
+            # First sighting: keep the raw read visible but do not publish yet.
+            leaf["consensusPending"] = True
+            leaf["value"] = UNKNOWN
+            leaf["confidence"] = 0.0
+    sheet["stabilized"] = True
+    return sheet
+
+
+def _sheet_cells(sheet: dict[str, Any]):
+    for key, leaf in sheet["fields"].items():
+        yield f"fields.{key}", leaf
+    for key, row in sheet["quantities"].items():
+        yield f"quantities.{key}.left", row["left"]
+        yield f"quantities.{key}.right", row["right"]
+
+
+def _update_cell_history(
+    path: str, leaf: dict[str, Any], history: WorkOrderHistory, *, replace_streak: int = 2
+) -> bool:
+    """Feed one frame's read into the cell history; True when a lock REPLACED a
+    different previously locked value (used for sheet-swap detection).
+
+    An UNKNOWN frame resets the streak: only strictly CONSECUTIVE agreeing
+    frames may lock. Replacing an existing different lock requires
+    ``replace_streak`` consecutive frames; the initial lock always needs 2.
+    """
+    entry = history.setdefault(path, {"last": None, "streak": 0, "locked": None})
+    value = leaf["value"]
+    if value == UNKNOWN:
+        entry["last"] = None
+        entry["streak"] = 0
+        return False
+    if value == entry["last"]:
+        entry["streak"] += 1
+    else:
+        entry["last"] = value
+        entry["streak"] = 1
+    previous = entry["locked"]
+    replacing = previous is not None and previous["value"] != value
+    required = replace_streak if replacing else 2
+    if entry["streak"] < required:
+        return False
+    entry["locked"] = {"value": value, "confidence": leaf["confidence"], "rawText": leaf["rawText"]}
+    return replacing
