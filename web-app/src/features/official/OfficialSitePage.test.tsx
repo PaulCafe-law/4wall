@@ -16,53 +16,75 @@ describe('OfficialSitePage', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: '第四面牆 AI｜重塑現場管理：讓真實空間具備感知、追蹤與協作能力',
+        name: '整座工廠，看得見、問得到。',
       }),
     ).toBeInTheDocument()
     expect(
       screen.getByText(
-        '透過無人機、固定攝影機與 AI Agent 的無縫整合，為工廠與工地打造專屬的 Digital Twin，實現即時通報、精準追蹤與歷史回放的智慧大腦。',
+        /第四面牆把機台狀態、儀表讀值、人員位置與異常事件，即時收進同一座 3D 鏡像工廠/,
       ),
     ).toBeInTheDocument()
-    expect(document.querySelector('img[src="/official-assets/construction-plan.png"]')).toBeInTheDocument()
-    expect(document.querySelector('img[src="/official-assets/dashboard-bim.png"]')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'AI 資料引擎' })).toHaveAttribute('href', '#industrial-data-engine')
-    expect(screen.getByRole('link', { name: '了解 Industrial Data Engine' })).toHaveAttribute(
-      'href',
-      '#industrial-data-engine',
-    )
-    expect(document.querySelector('#industrial-data-engine')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '4WALL Industrial Data Engine' })).toBeInTheDocument()
-    expect(screen.getByText('讓現場管理平台從「看見現場」進一步走向「理解現場」。')).toBeInTheDocument()
-    expect(screen.getByText('平台底層 AI 能力建置中')).toBeInTheDocument()
-    expect(screen.getByText('資料引擎如何支撐現場事件辨識')).toBeInTheDocument()
-    expect(screen.getByText('底層資料能力，回到現場管理價值。')).toBeInTheDocument()
-    expect(screen.getByText('Industrial Data Engine')).toBeInTheDocument()
-    expect(
-      screen.getByRole('img', {
-        name: '台灣工業現場工程師正在討論監控影像中異常事件資料不足的問題。',
-      }),
-    ).toHaveAttribute('src', '/official-assets/industrial-data-engine-control-room.png')
-    expect(screen.getByRole('heading', { name: '合作機構' })).toBeInTheDocument()
-    expect(screen.getByText('4wall AI 在建立下一代工廠及工地 AI native 系統。')).toBeInTheDocument()
+
+    // Service card titles must render as visible text (regression guard: the old
+    // imageOnly mode silently dropped title/body for the flagship service cards).
+    expect(screen.getByRole('heading', { name: '鏡像工廠：整座廠，一個畫面' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '儀表、派工單，AI 自動讀' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '事件有頭有尾，不再淹沒在群組裡' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'LINE 主動通知，把消息送到人' })).toBeInTheDocument()
+
+    // Operational facts strip replaces the old "under construction" banner.
+    expect(screen.getByText('7 台機台')).toBeInTheDocument()
+    expect(screen.getByText('3 天 → 3 小時')).toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('建置中')
+
+    // Case study and partners.
+    expect(screen.getByRole('heading', { name: '靚程企業｜台南・射出成型' })).toBeInTheDocument()
     expect(screen.getByText('成大建築系')).toBeInTheDocument()
-    expect(screen.getByText('靚程企業有限公司')).toBeInTheDocument()
-    expect(screen.getAllByText('合作機構')).toHaveLength(4)
-    expect(screen.getByText('歡迎寄信洽詢。')).toBeInTheDocument()
-    expect(
-      screen.getByRole('img', {
-        name: '第四面牆 AI 將無人機巡檢、現場影像與 AI 辨識疊合在工廠場域上',
-      }),
-    ).toHaveAttribute('src', '/official-assets/hero-field-ai.jpg')
-    expect(screen.getByRole('img', { name: '工地分期規劃與動線管理示意圖' })).toHaveAttribute(
-      'src',
-      '/official-assets/construction-plan.png',
-    )
-    expect(screen.getByRole('link', { name: '4wallaitech@gmail.com' })).toHaveAttribute(
-      'href',
-      'mailto:4wallaitech@gmail.com',
-    )
-    expect(screen.getByRole('link', { name: '進入管理平台' })).toHaveAttribute('href', '/login')
+    expect(screen.getByText('安格科技')).toBeInTheDocument()
+
+    // Pricing anchors.
+    expect(screen.getByRole('heading', { name: '方案與費用' })).toBeInTheDocument()
+    expect(screen.getByText('月費 NT$8,000 起')).toBeInTheDocument()
+
+    // Onboarding and security sections.
+    expect(screen.getByRole('heading', { name: '導入只要三步，以週為單位。' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '你的工廠資料，只屬於你。' })).toBeInTheDocument()
+    expect(screen.getByText('人員偵測全程匿名')).toBeInTheDocument()
+
+    // Compressed image assets with explicit dimensions.
+    const hero = screen.getByRole('img', {
+      name: '第四面牆 AI 把現場影像、AI 辨識與 3D 鏡像工廠疊合在真實工廠場域上',
+    })
+    expect(hero).toHaveAttribute('src', '/official-assets/hero-field-ai.webp')
+    expect(hero).toHaveAttribute('width', '1800')
+    expect(hero).toHaveAttribute('height', '1350')
+    expect(document.querySelector('img[src="/official-assets/dashboard-bim.webp"]')).toBeInTheDocument()
+    for (const img of Array.from(document.querySelectorAll('img'))) {
+      expect(img).toHaveAttribute('width')
+      expect(img).toHaveAttribute('height')
+    }
+
+    // Contact and footer.
+    const mailLinks = screen.getAllByRole('link', { name: '4wallaitech@gmail.com' })
+    expect(mailLinks.length).toBeGreaterThanOrEqual(1)
+    for (const link of mailLinks) {
+      expect(link.getAttribute('href')).toMatch(/^mailto:4wallaitech@gmail\.com/)
+    }
+    expect(document.querySelector('footer')).toBeInTheDocument()
+    expect(screen.getByText('© 2026 第四面牆 4WALL AI. All rights reserved.')).toBeInTheDocument()
+    const loginLinks = screen.getAllByRole('link', { name: '進入管理平台' })
+    expect(loginLinks.length).toBeGreaterThanOrEqual(1)
+    for (const link of loginLinks) {
+      expect(link).toHaveAttribute('href', '/login')
+    }
+
+    // The header must expose a contact CTA that works on mobile widths too.
+    expect(screen.getByRole('link', { name: '聯絡我們' })).toHaveAttribute('href', '#contact')
+
+    // Engineering-internal vocabulary must not leak onto the marketing page.
+    expect(document.body).not.toHaveTextContent('bounding box')
+    expect(document.body).not.toHaveTextContent('mask')
+    expect(document.body).not.toHaveTextContent('metadata')
     expect(document.body).not.toHaveTextContent('新服務線')
     expect(document.body).not.toHaveTextContent('pivot')
     expect(document.body).not.toHaveTextContent(['閉', '環'].join(''))
@@ -77,18 +99,18 @@ describe('OfficialSitePage', () => {
       { route: '/official' },
     )
 
-    expect(document.title).toBe('第四面牆 AI｜工地與工廠現場管理、Digital Twin 與 AI 資料引擎')
+    expect(document.title).toBe('第四面牆 AI｜3D 鏡像工廠與 AI 現場管理平台')
     expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
       'content',
-      '第四面牆 AI 整合工地與工廠影像、巡檢紀錄、Digital Twin、事件追蹤與 LINE 通報，並建置 Industrial Data Engine 作為現場事件辨識模型的底層 AI 訓練資料與驗證能力。',
+      '第四面牆 AI 把機台狀態、儀表讀值與異常事件收進 3D 鏡像工廠（Digital Twin）：AI 自動判讀儀表、HMI 與派工單，異常主動推進 LINE 群組，一句話查詢現場。已於台南射出成型工廠實裝運作。',
     )
     expect(document.head.querySelector('meta[property="og:title"]')).toHaveAttribute(
       'content',
-      '第四面牆 AI｜工地與工廠現場管理、Digital Twin 與 AI 資料引擎',
+      '第四面牆 AI｜3D 鏡像工廠與 AI 現場管理平台',
     )
     expect(document.head.querySelector('meta[property="og:description"]')).toHaveAttribute(
       'content',
-      '第四面牆 AI 整合工地與工廠影像、巡檢紀錄、Digital Twin、事件追蹤與 LINE 通報，並建置 Industrial Data Engine 作為現場事件辨識模型的底層 AI 訓練資料與驗證能力。',
+      '第四面牆 AI 把機台狀態、儀表讀值與異常事件收進 3D 鏡像工廠（Digital Twin）：AI 自動判讀儀表、HMI 與派工單，異常主動推進 LINE 群組，一句話查詢現場。已於台南射出成型工廠實裝運作。',
     )
   })
 })

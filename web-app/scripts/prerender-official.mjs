@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
 const distDir = path.join(rootDir, 'dist')
 const officialDir = path.join(distDir, 'official')
-const siteOrigin = process.env.VITE_PUBLIC_SITE_ORIGIN || 'https://four-wall-web.onrender.com'
+const siteOrigin = process.env.VITE_PUBLIC_SITE_ORIGIN || 'https://4wall.io'
 const officialUrl = `${siteOrigin}/official`
 
 const structuredData = {
@@ -18,11 +18,16 @@ const structuredData = {
   '@graph': [
     {
       '@type': 'Organization',
-      name: '第四面牆 AI',
+      name: '第四面牆 4WALL AI',
       url: officialUrl,
       email: '4wallaitech@gmail.com',
       description:
-        '第四面牆 AI 是面向工地與工廠的現場智慧管理平台，整合 AI 影像理解、Digital Twin、事件追蹤與 LINE / Web 通報。',
+        '第四面牆 AI 是工廠與工地的空間智慧平台：3D 鏡像工廠（Digital Twin）、AI 儀表與派工單判讀、異常事件追蹤與 LINE 通報。',
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: '台南市',
+        addressCountry: 'TW',
+      },
     },
     {
       '@type': 'WebSite',
@@ -32,9 +37,9 @@ const structuredData = {
     },
     {
       '@type': 'Service',
-      name: '第四面牆 AI 現場智慧管理平台',
-      provider: { '@type': 'Organization', name: '第四面牆 AI' },
-      serviceType: '工地與工廠 Digital Twin 現場管理、影像事件追蹤、LINE / Web 通報',
+      name: '第四面牆 AI 空間智慧平台',
+      provider: { '@type': 'Organization', name: '第四面牆 4WALL AI' },
+      serviceType: '工廠 3D 鏡像（Digital Twin）現場管理、AI 儀表與派工單判讀、異常事件追蹤、LINE 通報',
       areaServed: 'Taiwan',
     },
   ],
@@ -50,6 +55,14 @@ function ensureCanonical(html) {
     return html.replace(/<link rel="canonical" href="[^"]*" \/>/, canonical)
   }
   return html.replace('</head>', `    ${canonical}\n  </head>`)
+}
+
+function ensureHeroPreload(html) {
+  const preload = '<link rel="preload" as="image" href="/official-assets/hero-field-ai.webp" fetchpriority="high" />'
+  if (html.includes(preload)) {
+    return html
+  }
+  return html.replace('</head>', `    ${preload}\n  </head>`)
 }
 
 function ensureStructuredData(html) {
@@ -95,6 +108,7 @@ let officialHtml = template.replace('<div id="root"></div>', `<div id="root">${r
 officialHtml = officialHtml.replace('<html lang="en">', '<html lang="zh-Hant-TW">')
 officialHtml = ensureCanonical(officialHtml)
 officialHtml = ensureStructuredData(officialHtml)
+officialHtml = ensureHeroPreload(officialHtml)
 
 await mkdir(officialDir, { recursive: true })
 await writeFile(path.join(officialDir, 'index.html'), officialHtml, 'utf8')

@@ -12,13 +12,13 @@ describe('official crawler files', () => {
     expect(robots).toContain('Allow: /llms.txt')
     expect(robots).toContain('Allow: /official.md')
     expect(robots).toContain('Disallow: /')
-    expect(robots).toContain('Sitemap: https://four-wall-web.onrender.com/sitemap.xml')
+    expect(robots).toContain('Sitemap: https://4wall.io/sitemap.xml')
   })
 
   it('does not list management routes in the public sitemap', () => {
-    expect(sitemap).toContain('https://four-wall-web.onrender.com/official')
-    expect(sitemap).toContain('https://four-wall-web.onrender.com/official.md')
-    expect(sitemap).toContain('https://four-wall-web.onrender.com/llms.txt')
+    expect(sitemap).toContain('https://4wall.io/official')
+    expect(sitemap).toContain('https://4wall.io/official.md')
+    expect(sitemap).toContain('https://4wall.io/llms.txt')
     expect(sitemap).not.toContain('/login')
     expect(sitemap).not.toContain('/missions')
     expect(sitemap).not.toContain('/incidents')
