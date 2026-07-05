@@ -55,6 +55,43 @@ export function compactEntities(entities: Record<string, Entity>): Record<string
   return Object.values(entities).slice(0, MAX_SNAPSHOT_ENTITIES).map(compactEntity);
 }
 
+// Real platform data (gauge readings / HMI OCR / 派工單) rides along with each
+// camera so the agent can answer 實際讀表 questions instead of only sim state.
+function compactCameraRealData(camera: Entity): Record<string, unknown> {
+  const attrs = (camera as { attrs?: Record<string, unknown> }).attrs ?? {};
+  const summary: Record<string, unknown> = { name: camera.name, online: (camera as { online?: boolean }).online ?? false };
+
+  const readings = attrs.latestGaugeReadings;
+  if (Array.isArray(readings) && readings.length > 0) {
+    summary.actualGaugeReadings = readings
+      .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null)
+      .slice(0, 30)
+      .map((r) => ({
+        label: r.label,
+        value: r.value,
+        unit: r.unit,
+        status: r.status,
+        capturedAt: r.capturedAt,
+      }));
+  }
+
+  const observation = attrs.latestOcrObservation;
+  if (typeof observation === 'object' && observation !== null) {
+    const obs = observation as Record<string, unknown>;
+    const structured = (typeof obs.structuredFields === 'object' && obs.structuredFields !== null
+      ? obs.structuredFields
+      : {}) as Record<string, unknown>;
+    const gpt = (typeof obs.gptSummary === 'object' && obs.gptSummary !== null ? obs.gptSummary : {}) as Record<string, unknown>;
+    summary.hmiOcr = {
+      mode: obs.mode,
+      capturedAt: obs.capturedAt,
+      summary: typeof gpt.summary === 'string' ? gpt.summary : null,
+      workOrder: structured.workOrder ?? null,
+    };
+  }
+  return summary;
+}
+
 function buildWorldSnapshot(): Record<string, unknown> {
   const s = useFactoryStore.getState();
   return {
@@ -62,7 +99,7 @@ function buildWorldSnapshot(): Record<string, unknown> {
     recentEvents: s.simEvents
       .slice(0, 20)
       .map((event) => ({ atMs: event.atMs, type: event.type, message: event.message })),
-    cameraSummary: s.platformCameras.map((camera) => ({ name: camera.name, online: camera.online })),
+    cameraSummary: s.platformCameras.map(compactCameraRealData),
   };
 }
 

@@ -245,6 +245,75 @@ it('pushes a compact world snapshot every 3 seconds', () => {
   }
 });
 
+it('includes real gauge readings and the 派工單 sheet in the camera summary', () => {
+  vi.useFakeTimers();
+  try {
+    apiMock.getTwinAgentUpdates.mockResolvedValue({ workerOnline: false, events: [], cursor: 0 });
+    apiMock.postTwinAgentSnapshot.mockResolvedValue(undefined);
+    const workOrder = {
+      template: 'hc600_dispatch_sheet_v1',
+      unit: 'PCS',
+      sourceLineCount: 56,
+      fields: { machineNo: { label: '機台編號', value: 'HC600', confidence: 0.82, rawText: 'HC600' } },
+      quantities: {
+        total: {
+          label: '總計',
+          left: { value: 210, confidence: 0.95, rawText: '210' },
+          right: { value: 210, confidence: 0.97, rawText: '210' },
+        },
+      },
+    };
+    useFactoryStore.getState().setPlatformCameras([
+      {
+        id: 'fw-camera-panel',
+        type: 'camera',
+        name: 'PoE Camera 192.168.1.10',
+        position: { x: 0, y: 0, z: 0 },
+        status: 'active',
+        source: 'live',
+        siteLabel: '靚程工廠 / HC600-01',
+        online: true,
+        samplingIntervalSeconds: 10,
+        feedMode: 'snapshot',
+        attrs: {
+          latestGaugeReadings: [
+            {
+              gaugeId: 'press_am_meter',
+              label: 'PRESS AM METER',
+              value: 0,
+              unit: 'A',
+              status: 'ok',
+              capturedAt: '2026-07-05T19:35:59+08:00',
+            },
+          ],
+          latestOcrObservation: {
+            mode: 'temperature_monitor',
+            capturedAt: '2026-07-05T19:40:00+08:00',
+            gptSummary: { summary: 'HC600 保溫中。' },
+            structuredFields: { workOrder },
+          },
+        },
+      } as never,
+    ]);
+
+    renderWithProviders(<Harness />);
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    const [, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
+    const camera = payload.world.cameraSummary[0];
+    expect(camera.name).toBe('PoE Camera 192.168.1.10');
+    expect(camera.actualGaugeReadings).toEqual([
+      { label: 'PRESS AM METER', value: 0, unit: 'A', status: 'ok', capturedAt: '2026-07-05T19:35:59+08:00' },
+    ]);
+    expect(camera.hmiOcr.summary).toBe('HC600 保溫中。');
+    expect(camera.hmiOcr.workOrder).toEqual(workOrder);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it('caps snapshot entities at 150 and relabels live persons', () => {
   const entities: Record<string, MachineEntity | PersonEntity> = { [livePerson.id]: livePerson };
   for (let i = 0; i < 160; i += 1) {
