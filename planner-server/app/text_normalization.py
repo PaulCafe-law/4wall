@@ -86,7 +86,7 @@ def to_traditional_chinese(text: str) -> str:
     converter = _get_opencc_converter()
     if converter is None:
         return _fallback_to_traditional(text)
-    return converter.convert(text)
+    return _fallback_to_traditional(converter.convert(text))
 
 
 def _get_opencc_converter() -> Any | None:
