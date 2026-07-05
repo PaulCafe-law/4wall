@@ -77,7 +77,7 @@ function ensureStructuredData(html) {
   return html.replace('</head>', `${script}\n  </head>`)
 }
 
-async function renderOfficialPage() {
+async function renderOfficialPages() {
   const vite = await createViteServer({
     root: rootDir,
     logLevel: 'error',
@@ -95,22 +95,60 @@ async function renderOfficialPage() {
 
   try {
     const { OfficialSitePage } = await vite.ssrLoadModule('/src/features/official/OfficialSitePage.tsx')
+    const { officialContent } = await vite.ssrLoadModule('/src/features/official/officialContent.ts')
 
-    return renderToString(React.createElement(OfficialSitePage))
+    return {
+      zh: renderToString(React.createElement(OfficialSitePage, { locale: 'zh' })),
+      en: renderToString(React.createElement(OfficialSitePage, { locale: 'en' })),
+      content: officialContent,
+    }
   } finally {
     await vite.close()
   }
 }
 
+function ensureHreflang(html, canonicalUrl) {
+  const links = [
+    `<link rel="alternate" hreflang="zh-Hant-TW" href="${officialUrl}" />`,
+    `<link rel="alternate" hreflang="en" href="${officialUrl}/en" />`,
+    `<link rel="alternate" hreflang="x-default" href="${officialUrl}" />`,
+  ].join('\n    ')
+  let out = html.replace(/<link rel="canonical" href="[^"]*" \/>/, `<link rel="canonical" href="${canonicalUrl}" />`)
+  if (!out.includes('hreflang')) {
+    out = out.replace('</head>', `    ${links}\n  </head>`)
+  }
+  return out
+}
+
+function applyLocaleMeta(html, meta) {
+  return html
+    .replace(/<title>[^<]*<\/title>/, `<title>${meta.title}</title>`)
+    .replace(/(<meta\s+name="description"\s+content=")[^"]*(")/, `$1${meta.description}$2`)
+    .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${meta.title}$2`)
+    .replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/s, `$1${meta.description}$2`)
+}
+
 const template = await readFile(path.join(distDir, 'index.html'), 'utf8')
-const rendered = await renderOfficialPage()
-let officialHtml = template.replace('<div id="root"></div>', `<div id="root">${rendered}</div>`)
-officialHtml = officialHtml.replace('<html lang="en">', '<html lang="zh-Hant-TW">')
-officialHtml = ensureCanonical(officialHtml)
-officialHtml = ensureStructuredData(officialHtml)
-officialHtml = ensureHeroPreload(officialHtml)
+const { zh, en, content } = await renderOfficialPages()
 
-await mkdir(officialDir, { recursive: true })
-await writeFile(path.join(officialDir, 'index.html'), officialHtml, 'utf8')
+let zhHtml = template.replace('<div id="root"></div>', `<div id="root">${zh}</div>`)
+zhHtml = zhHtml.replace('<html lang="en">', '<html lang="zh-Hant-TW">')
+zhHtml = applyLocaleMeta(zhHtml, content.zh.meta)
+zhHtml = ensureCanonical(zhHtml)
+zhHtml = ensureStructuredData(zhHtml)
+zhHtml = ensureHeroPreload(zhHtml)
+zhHtml = ensureHreflang(zhHtml, officialUrl)
 
-console.log(`Prerendered ${officialUrl} to dist/official/index.html`)
+let enHtml = template.replace('<div id="root"></div>', `<div id="root">${en}</div>`)
+enHtml = enHtml.replace('<html lang="zh-Hant-TW">', '<html lang="en">')
+enHtml = applyLocaleMeta(enHtml, content.en.meta)
+enHtml = enHtml.replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${officialUrl}/en$2`)
+enHtml = ensureStructuredData(enHtml)
+enHtml = ensureHeroPreload(enHtml)
+enHtml = ensureHreflang(enHtml, `${officialUrl}/en`)
+
+await mkdir(path.join(officialDir, 'en'), { recursive: true })
+await writeFile(path.join(officialDir, 'index.html'), zhHtml, 'utf8')
+await writeFile(path.join(officialDir, 'en', 'index.html'), enHtml, 'utf8')
+
+console.log(`Prerendered ${officialUrl} and ${officialUrl}/en`)

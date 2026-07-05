@@ -1,8 +1,6 @@
 import { useEffect } from 'react'
 
-const OFFICIAL_TITLE = '第四面牆 AI｜3D 鏡像工廠與 AI 現場管理平台'
-const OFFICIAL_DESCRIPTION =
-  '第四面牆 AI 把機台狀態、儀表讀值與異常事件收進 3D 鏡像工廠（Digital Twin）：AI 自動判讀儀表、HMI 與派工單，異常主動推進 LINE 群組，一句話查詢現場。已於台南射出成型工廠實裝運作。'
+import { officialContent, type OfficialLocale } from './officialContent'
 
 function ensureMeta(selector: string, create: () => HTMLMetaElement) {
   const existing = document.head.querySelector<HTMLMetaElement>(selector)
@@ -15,8 +13,9 @@ function ensureMeta(selector: string, create: () => HTMLMetaElement) {
   return element
 }
 
-export function useOfficialSiteMeta() {
+export function useOfficialSiteMeta(locale: OfficialLocale = 'zh') {
   useEffect(() => {
+    const meta = officialContent[locale].meta
     const previousTitle = document.title
     const description = ensureMeta('meta[name="description"]', () => {
       const element = document.createElement('meta')
@@ -38,10 +37,10 @@ export function useOfficialSiteMeta() {
     const previousOgTitle = ogTitle.content
     const previousOgDescription = ogDescription.content
 
-    document.title = OFFICIAL_TITLE
-    description.content = OFFICIAL_DESCRIPTION
-    ogTitle.content = OFFICIAL_TITLE
-    ogDescription.content = OFFICIAL_DESCRIPTION
+    document.title = meta.title
+    description.content = meta.description
+    ogTitle.content = meta.title
+    ogDescription.content = meta.description
 
     return () => {
       document.title = previousTitle
@@ -49,5 +48,5 @@ export function useOfficialSiteMeta() {
       ogTitle.content = previousOgTitle
       ogDescription.content = previousOgDescription
     }
-  }, [])
+  }, [locale])
 }

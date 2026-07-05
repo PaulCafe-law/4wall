@@ -37,6 +37,7 @@ export function AppRoutes() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/invite" element={<InvitePage />} />
             <Route path="/official" element={<OfficialSitePage />} />
+            <Route path="/official/en" element={<OfficialSitePage locale="en" />} />
             <Route path="/m/floorplan/:siteSlug" element={<LineFloorplanMobilePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>

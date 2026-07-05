@@ -47,6 +47,16 @@ server {
         add_header Cache-Control "no-store";
     }
 
+    location = /official/en {
+        try_files /official/en/index.html =404;
+        add_header Cache-Control "no-store";
+    }
+
+    location = /official/en/ {
+        try_files /official/en/index.html =404;
+        add_header Cache-Control "no-store";
+    }
+
     location /official-assets/ {
         try_files $uri =404;
         add_header Cache-Control "public, max-age=86400";
