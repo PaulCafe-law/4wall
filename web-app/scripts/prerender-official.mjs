@@ -57,14 +57,6 @@ function ensureCanonical(html) {
   return html.replace('</head>', `    ${canonical}\n  </head>`)
 }
 
-function ensureHeroPreload(html) {
-  const preload = '<link rel="preload" as="image" href="/official-assets/hero-field-ai.webp" fetchpriority="high" />'
-  if (html.includes(preload)) {
-    return html
-  }
-  return html.replace('</head>', `    ${preload}\n  </head>`)
-}
-
 function ensureStructuredData(html) {
   const marker = '<script type="application/ld+json">'
   const script = `    <script type="application/ld+json">${escapeScriptJson(structuredData)}</script>`
@@ -136,7 +128,6 @@ zhHtml = zhHtml.replace('<html lang="en">', '<html lang="zh-Hant-TW">')
 zhHtml = applyLocaleMeta(zhHtml, content.zh.meta)
 zhHtml = ensureCanonical(zhHtml)
 zhHtml = ensureStructuredData(zhHtml)
-zhHtml = ensureHeroPreload(zhHtml)
 zhHtml = ensureHreflang(zhHtml, officialUrl)
 
 let enHtml = template.replace('<div id="root"></div>', `<div id="root">${en}</div>`)
@@ -144,7 +135,6 @@ enHtml = enHtml.replace('<html lang="zh-Hant-TW">', '<html lang="en">')
 enHtml = applyLocaleMeta(enHtml, content.en.meta)
 enHtml = enHtml.replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${officialUrl}/en$2`)
 enHtml = ensureStructuredData(enHtml)
-enHtml = ensureHeroPreload(enHtml)
 enHtml = ensureHreflang(enHtml, `${officialUrl}/en`)
 
 await mkdir(path.join(officialDir, 'en'), { recursive: true })

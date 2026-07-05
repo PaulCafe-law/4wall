@@ -26,13 +26,43 @@ const zh = {
   },
   warRoom: {
     badge: 'SUPERVISOR AGENT・值班中',
-    userMsg: 'HC600-01 今天狀況？',
-    agentMsg: '運轉中：OEE 0.87、模溫 68°C。今日 1 件溫度告警，已派志強處理完成。',
-    notif1Tag: '主動通知',
-    notif1: '08:01 HC600-01 成型機 告警：溫度異常，已推播 LINE 群組',
-    notif2Tag: '自動派工',
-    notif2: '08:02 已派工 志強 前往 HC600-01，維修完成返回駐點',
-    caption: '介面重現自營運中系統（台南・射出成型場域）',
+    chatTitle: '工廠對話',
+    chatState: 'AI 代理在線',
+    userMsg: '派小明去處理 HC600-01',
+    agentMsg: '已指派 小明 → HC600-01 成型機，開始維修。已在大螢幕標出位置。',
+    machineName: 'HC600-01 成型機',
+    statusLabel: '運轉中',
+    metrics: [
+      { k: 'OEE', v: '86%' },
+      { k: '今日產量', v: '414' },
+      { k: '週期', v: '32s' },
+      { k: '今日告警', v: '2' },
+    ],
+    gaugesTitle: '實際讀表・現場攝影機判讀',
+    gauges: [
+      { label: 'PRESS AM METER', value: '9.7 A', note: '讀表信心 38%' },
+      { label: 'FLOW AM METER', value: '4.1 A', note: '讀表信心 26%' },
+      { label: 'HC600 料管一段', value: '205.0°C', note: '讀表信心 70%' },
+    ],
+    caption: '內容取自營運中系統・台南靚程 7 機台實裝場域',
+  },
+  lineQa: {
+    botName: '第四面牆 AI・工廠助手',
+    messages: [
+      { from: 'user', text: '給我現在機台狀況以及對應的維修人員' },
+      {
+        from: 'bot',
+        text: '目前機台：HC600-01、03、04、06 運轉中；HC600-02、07 閒置；HC600-05 維護中。維修人員：志強（維護技師）站點 HC600-06；阿華（成型技師）站點 HC600-03。',
+      },
+    ],
+  },
+  proactiveAlert: {
+    botName: '第四面牆 AI・主動通知',
+    tag: '機台告警',
+    title: 'HC600-01 成型機・溫度異常',
+    body: '偵測到模溫連續 2 次超標，已自動推播 LINE 群組。',
+    dispatch: '已派工 志強 前往處理',
+    time: '08:01',
   },
   stats: [
     { value: '7 台機台', label: '台南射出成型工廠實裝' },
@@ -54,21 +84,13 @@ const zh = {
     cards: [
       {
         title: '問它，它就回答',
-        body: '「3 號機今天狀況？」「小明在哪？」——在 LINE 或平台問一句話，AI 讀取現場即時數據回答你，還會在 3D 畫面標給你看。',
-        image: '/official-assets/dashboard-bim.webp',
-        alt: '管理平台中實景影像與 3D 鏡像工廠對照的操作畫面',
-        width: 1254,
-        height: 1254,
-        dark: true,
+        body: '「現在機台狀況？誰在維修？」——在 LINE 或平台問一句話，AI 讀取現場即時數據回答你，還會在 3D 畫面標給你看。',
+        mock: 'lineQa' as const,
       },
       {
         title: '沒人問，它主動通報',
         body: '溫度異常、儀表超標、機台停機——AI 全天值班，異常一發生就推進 LINE 群組，連夜班也有人「看著」。',
-        image: '/official-assets/line-agent-card.jpg',
-        alt: 'LINE AI 助手推送異常警示與處理建議的卡片',
-        width: 409,
-        height: 800,
-        dark: false,
+        mock: 'alert' as const,
       },
       {
         title: '儀表、派工單，AI 自動讀',
@@ -77,7 +99,6 @@ const zh = {
         alt: 'AI 自動辨識現場物料與設備狀態的畫面',
         width: 1200,
         height: 896,
-        dark: false,
       },
       {
         title: '事件有頭有尾，可回查',
@@ -86,7 +107,6 @@ const zh = {
         alt: 'AI 在工廠場域中偵測人員位置與安全狀態',
         width: 1195,
         height: 896,
-        dark: false,
       },
     ],
     engineNote:
@@ -209,13 +229,43 @@ const en: typeof zh = {
   },
   warRoom: {
     badge: 'SUPERVISOR AGENT · ON DUTY',
-    userMsg: 'How is HC600-01 doing today?',
-    agentMsg: 'Running. OEE 0.87, mold temp 68°C. One temperature alert today — dispatched and resolved.',
-    notif1Tag: 'Proactive alert',
-    notif1: '08:01 HC600-01 molding machine: temperature anomaly — pushed to the LINE group',
-    notif2Tag: 'Auto dispatch',
-    notif2: '08:02 Technician dispatched to HC600-01; repair completed and logged',
-    caption: 'Interface recreated from the live production system (Tainan, Taiwan)',
+    chatTitle: 'Factory chat',
+    chatState: 'AI agent online',
+    userMsg: 'Send a technician to HC600-01',
+    agentMsg: 'Assigned technician → HC600-01 molding machine; repair started. Position marked on the big screen.',
+    machineName: 'HC600-01 molding machine',
+    statusLabel: 'Running',
+    metrics: [
+      { k: 'OEE', v: '86%' },
+      { k: 'Output today', v: '414' },
+      { k: 'Cycle', v: '32s' },
+      { k: 'Alerts today', v: '2' },
+    ],
+    gaugesTitle: 'Live gauge reads · from on-site cameras',
+    gauges: [
+      { label: 'PRESS AM METER', value: '9.7 A', note: 'read confidence 38%' },
+      { label: 'FLOW AM METER', value: '4.1 A', note: 'read confidence 26%' },
+      { label: 'HC600 barrel zone 1', value: '205.0°C', note: 'read confidence 70%' },
+    ],
+    caption: 'Content from the live production system · Jing-Cheng 7-machine plant, Tainan',
+  },
+  lineQa: {
+    botName: '4WALL AI · Factory assistant',
+    messages: [
+      { from: 'user', text: 'Give me current machine status and the assigned technicians' },
+      {
+        from: 'bot',
+        text: 'Running: HC600-01, 03, 04, 06. Idle: HC600-02, 07. Maintenance: HC600-05. Technicians — Zhi-Qiang (maintenance) at HC600-06; A-Hua (molding) at HC600-03.',
+      },
+    ],
+  },
+  proactiveAlert: {
+    botName: '4WALL AI · Proactive alert',
+    tag: 'Machine alert',
+    title: 'HC600-01 molding machine · temperature anomaly',
+    body: 'Mold temperature exceeded the limit twice in a row — pushed to the LINE group automatically.',
+    dispatch: 'Technician Zhi-Qiang dispatched',
+    time: '08:01',
   },
   stats: [
     { value: '7 machines', label: 'Injection-molding plant, Tainan' },
@@ -237,21 +287,13 @@ const en: typeof zh = {
     cards: [
       {
         title: 'Ask, and it answers',
-        body: '“How is machine 3 today?” “Where is the technician?” — ask in chat, and the AI answers from live plant data, highlighting the answer in 3D.',
-        image: '/official-assets/dashboard-bim.webp',
-        alt: 'Platform view comparing live camera footage with the 3D mirror factory',
-        width: 1254,
-        height: 1254,
-        dark: true,
+        body: '“What’s the machine status? Who’s on repair?” — ask in chat and the AI answers from live plant data, highlighting the answer in 3D.',
+        mock: 'lineQa' as const,
       },
       {
         title: 'Nobody asks — it reports anyway',
         body: 'Temperature anomalies, gauge excursions, machine stoppages: the AI is on duty all day and pushes alerts to your chat group, night shift included.',
-        image: '/official-assets/line-agent-card.jpg',
-        alt: 'AI assistant pushing an anomaly alert card with suggested actions',
-        width: 409,
-        height: 800,
-        dark: false,
+        mock: 'alert' as const,
       },
       {
         title: 'Gauges and paper forms, read by AI',
@@ -260,7 +302,6 @@ const en: typeof zh = {
         alt: 'AI recognizing on-site materials and equipment status',
         width: 1200,
         height: 896,
-        dark: false,
       },
       {
         title: 'Every incident, start to finish',
@@ -269,7 +310,6 @@ const en: typeof zh = {
         alt: 'AI detecting personnel position and safety status on the factory floor',
         width: 1195,
         height: 896,
-        dark: false,
       },
     ],
     engineNote:

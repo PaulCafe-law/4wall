@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom'
 import { officialContent, type OfficialLocale } from './officialContent'
 import { useOfficialSiteMeta } from './useOfficialSiteMeta'
 
+type Content = (typeof officialContent)['zh']
+
 function CtaLink({
   href,
   children,
@@ -33,78 +35,149 @@ function SectionHeading({ title, subtitle }: { title: string; subtitle?: string 
   )
 }
 
-function ImageCard({
-  title,
-  body,
-  image,
-  alt,
-  width,
-  height,
-  dark = false,
-}: {
-  title: string
-  body: string
-  image: string
-  alt: string
-  width: number
-  height: number
-  dark?: boolean
-}) {
-  return (
-    <article
-      className={`overflow-hidden rounded-[2rem] ${dark ? 'bg-chrome-950 text-white' : 'bg-white text-chrome-950'} shadow-[0_18px_70px_rgba(18,24,33,0.12)]`}
-    >
-      <div className="px-6 pt-7 text-center md:px-10 md:pt-10">
-        <h3 className="font-display text-3xl font-semibold tracking-[-0.01em] md:text-4xl">{title}</h3>
-        <p className={`mx-auto mt-3 max-w-2xl text-sm leading-6 md:text-base ${dark ? 'text-chrome-200' : 'text-chrome-700'}`}>{body}</p>
-      </div>
-      <div className="mt-6 overflow-hidden">
-        <img className="h-[22rem] w-full object-cover md:h-[26rem]" src={image} alt={alt} width={width} height={height} loading="lazy" />
-      </div>
-    </article>
-  )
-}
-
-function WarRoom({ t }: { t: (typeof officialContent)['zh']['warRoom'] }) {
+function WarRoom({ t }: { t: Content['warRoom'] }) {
   return (
     <figure className="mt-12">
-      <div className="relative overflow-hidden rounded-[2.5rem] bg-chrome-950 shadow-[0_30px_100px_rgba(18,24,33,0.24)]">
-        <img
-          className="absolute inset-0 h-full w-full object-cover opacity-35"
-          src="/official-assets/dashboard-bim.webp"
-          alt=""
-          width={1254}
-          height={1254}
-          fetchPriority="high"
-        />
-        <div className="absolute inset-0 bg-gradient-to-tr from-chrome-950/90 via-chrome-950/60 to-chrome-950/30" />
-        <div className="relative grid gap-6 px-6 py-10 md:grid-cols-[1.1fr_0.9fr] md:px-12 md:py-14">
-          <div className="flex flex-col justify-end gap-3">
-            <span className="inline-flex w-fit items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.18em] text-moss-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-moss-300" />
-              {t.badge}
-            </span>
-            <div className="mt-3 ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#0071e3] px-5 py-3 text-sm leading-6 text-white md:text-base">
-              {t.userMsg}
+      <div className="overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-[#161d27] via-chrome-950 to-black p-5 shadow-[0_30px_100px_rgba(18,24,33,0.28)] md:p-8">
+        <div className="grid gap-4 lg:grid-cols-[1fr_0.92fr]">
+          {/* Agent chat */}
+          <div className="flex flex-col rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-300">{t.chatTitle}</span>
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-moss-300/15 px-3 py-1 text-[11px] font-medium text-moss-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-moss-300" />
+                {t.chatState}
+              </span>
             </div>
-            <div className="mr-auto max-w-[90%] rounded-2xl rounded-bl-md bg-white/95 px-5 py-3 text-sm leading-6 text-chrome-950 md:text-base">
-              {t.agentMsg}
+            <div className="mt-6 flex flex-1 flex-col justify-end gap-3">
+              <div className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#0071e3] px-4 py-2.5 text-sm leading-6 text-white">
+                {t.userMsg}
+              </div>
+              <div className="mr-auto max-w-[92%] rounded-2xl rounded-bl-md bg-white/95 px-4 py-2.5 text-sm leading-6 text-chrome-950">
+                {t.agentMsg}
+              </div>
             </div>
           </div>
-          <div className="flex flex-col justify-end gap-3">
-            <div className="rounded-2xl border border-white/10 bg-black/55 px-5 py-4 backdrop-blur-sm">
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-ember-300">{t.notif1Tag}</p>
-              <p className="mt-1.5 text-sm leading-6 text-chrome-100">{t.notif1}</p>
+
+          {/* Live machine status + gauge reads */}
+          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.04] p-5 md:p-6">
+            <div className="flex items-center justify-between">
+              <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-ember-300">{t.badge}</span>
+              <span className="rounded-full bg-moss-300/15 px-3 py-1 text-[11px] font-medium text-moss-300">{t.statusLabel}</span>
             </div>
-            <div className="rounded-2xl border border-white/10 bg-black/55 px-5 py-4 backdrop-blur-sm">
-              <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-moss-300">{t.notif2Tag}</p>
-              <p className="mt-1.5 text-sm leading-6 text-chrome-100">{t.notif2}</p>
+            <h3 className="mt-3 font-display text-2xl font-semibold tracking-[-0.01em] text-white">{t.machineName}</h3>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              {t.metrics.map((m) => (
+                <div key={m.k} className="rounded-xl bg-black/30 px-3 py-2.5">
+                  <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-chrome-400">{m.k}</p>
+                  <p className="mt-0.5 font-display text-xl font-semibold text-white">{m.v}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 font-mono text-[10px] uppercase tracking-[0.14em] text-chrome-400">{t.gaugesTitle}</p>
+            <div className="mt-2 space-y-1.5">
+              {t.gauges.map((g) => (
+                <div key={g.label} className="flex items-baseline justify-between gap-3 border-b border-white/5 pb-1.5">
+                  <span className="text-xs text-chrome-300">{g.label}</span>
+                  <span className="flex items-baseline gap-2">
+                    <span className="font-display text-base font-semibold text-white">{g.value}</span>
+                    <span className="text-[10px] text-ember-300">{g.note}</span>
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </div>
       <figcaption className="mt-3 text-center text-xs text-chrome-500">{t.caption}</figcaption>
     </figure>
+  )
+}
+
+function ChatAvatar() {
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-chrome-950 font-display text-[11px] font-semibold text-white">
+      4W
+    </span>
+  )
+}
+
+function LineQaMock({ t }: { t: Content['lineQa'] }) {
+  return (
+    <div className="flex h-full flex-col bg-[#8aa6c2]/25 p-5 md:p-6">
+      <div className="flex items-center gap-2">
+        <ChatAvatar />
+        <span className="text-xs font-medium text-chrome-700">{t.botName}</span>
+      </div>
+      <div className="mt-4 flex flex-1 flex-col justify-center gap-3">
+        {t.messages.map((m, i) =>
+          m.from === 'user' ? (
+            <div key={i} className="ml-auto max-w-[85%] rounded-2xl rounded-br-md bg-[#06c755] px-4 py-2.5 text-sm leading-6 text-white shadow-sm">
+              {m.text}
+            </div>
+          ) : (
+            <div key={i} className="mr-auto max-w-[90%] rounded-2xl rounded-bl-md bg-white px-4 py-2.5 text-sm leading-6 text-chrome-900 shadow-sm">
+              {m.text}
+            </div>
+          ),
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ProactiveAlertMock({ t }: { t: Content['proactiveAlert'] }) {
+  return (
+    <div className="flex h-full flex-col bg-[#8aa6c2]/25 p-5 md:p-6">
+      <div className="flex items-center gap-2">
+        <ChatAvatar />
+        <span className="text-xs font-medium text-chrome-700">{t.botName}</span>
+      </div>
+      <div className="mt-4 flex flex-1 flex-col justify-center">
+        <div className="mr-auto w-full max-w-[92%] overflow-hidden rounded-2xl rounded-bl-md bg-chrome-950 text-white shadow-sm">
+          <div className="flex items-center justify-between px-4 pt-3">
+            <span className="rounded-full bg-ember-500/20 px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ember-300">
+              {t.tag}
+            </span>
+            <span className="font-mono text-[10px] text-chrome-400">{t.time}</span>
+          </div>
+          <p className="mt-2 px-4 font-display text-base font-semibold leading-6">{t.title}</p>
+          <p className="mt-1 px-4 pb-3 text-sm leading-6 text-chrome-300">{t.body}</p>
+          <div className="border-t border-white/10 px-4 py-2.5 text-xs text-moss-300">✓ {t.dispatch}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ServiceCard({ card, t }: { card: Content['services']['cards'][number]; t: Content }) {
+  return (
+    <article className="flex flex-col overflow-hidden rounded-[2rem] bg-white text-chrome-950 shadow-[0_18px_70px_rgba(18,24,33,0.1)]">
+      <div className="px-6 pt-7 text-center md:px-10 md:pt-10">
+        <h3 className="font-display text-3xl font-semibold tracking-[-0.01em] md:text-4xl">{card.title}</h3>
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-chrome-700 md:text-base">{card.body}</p>
+      </div>
+      <div className="mt-6 flex min-h-[20rem] flex-1 overflow-hidden">
+        {card.mock === 'lineQa' ? (
+          <div className="flex-1">
+            <LineQaMock t={t.lineQa} />
+          </div>
+        ) : card.mock === 'alert' ? (
+          <div className="flex-1">
+            <ProactiveAlertMock t={t.proactiveAlert} />
+          </div>
+        ) : card.image ? (
+          <img
+            className="h-[22rem] w-full object-cover md:h-[26rem]"
+            src={card.image}
+            alt={card.alt}
+            width={card.width}
+            height={card.height}
+            loading="lazy"
+          />
+        ) : null}
+      </div>
+    </article>
   )
 }
 
@@ -182,7 +255,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
           <SectionHeading title={t.services.title} subtitle={t.services.subtitle} />
           <div className="mx-auto mt-10 grid max-w-7xl gap-5 lg:grid-cols-2">
             {t.services.cards.map((card) => (
-              <ImageCard key={card.title} {...card} />
+              <ServiceCard key={card.title} card={card} t={t} />
             ))}
           </div>
           <div className="mx-auto mt-5 max-w-7xl rounded-[2rem] bg-white px-6 py-6 text-center shadow-[0_18px_70px_rgba(18,24,33,0.08)] md:px-8">
