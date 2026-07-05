@@ -44,7 +44,8 @@ class HmiFieldConfig:
     id: str
     label: str
     unit: str
-    roi: tuple[int, int, int, int]
+    # Absolute pixels (ints) or fractions of the containing crop (floats in 0..1).
+    roi: tuple[float, float, float, float]
     min_value: float | None = None
     max_value: float | None = None
     decimal_places: int | None = 1
@@ -54,14 +55,15 @@ class HmiFieldConfig:
 class HmiConfig:
     camera_label: str
     detector_name: str
-    roi: tuple[int, int, int, int]
+    # Absolute pixels measured at reference_resolution, or fractions of the frame.
+    roi: tuple[float, float, float, float]
     fields: list[HmiFieldConfig]
 
 
 @dataclass(frozen=True)
 class WorkOrderConfig:
     enabled: bool = False
-    roi: tuple[int, int, int, int] = (0, 0, 0, 0)
+    roi: tuple[float, float, float, float] = (0, 0, 0, 0)
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,9 @@ class DebugConfig:
 @dataclass(frozen=True)
 class AppConfig:
     root_dir: Path
+    # Frame size (width, height) the absolute-pixel ROIs were measured at.
+    # None keeps legacy behavior: pixel ROIs are applied to the frame unscaled.
+    reference_resolution: tuple[int, int] | None
     frame_source: FrameSourceConfig
     platform: PlatformConfig
     ocr: OcrConfig
@@ -128,6 +133,7 @@ def load_config(path: str | Path) -> AppConfig:
 
     return AppConfig(
         root_dir=root_dir,
+        reference_resolution=_parse_resolution(payload.get("reference_resolution")),
         frame_source=FrameSourceConfig(
             mode=str(source_payload.get("mode", "file")),
             path=str(source_payload.get("path", "")),
@@ -186,10 +192,27 @@ def resolve_config_path(root_dir: Path, configured_path: str) -> Path:
     return root_dir / path
 
 
-def _parse_roi(value: Any) -> tuple[int, int, int, int]:
+def _parse_roi(value: Any) -> tuple[float, float, float, float]:
     if not isinstance(value, (list, tuple)) or len(value) != 4:
         raise ValueError(f"ROI must be [x, y, w, h], got {value!r}")
-    return tuple(int(part) for part in value)  # type: ignore[return-value]
+    parts: list[float] = []
+    for part in value:
+        number = float(part)
+        # Keep integral values as ints so pixel ROIs round-trip unchanged
+        # into published metadata; fractions (0..1) stay floats.
+        parts.append(int(number) if number.is_integer() else number)
+    return tuple(parts)  # type: ignore[return-value]
+
+
+def _parse_resolution(value: Any) -> tuple[int, int] | None:
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ValueError(f"reference_resolution must be [width, height], got {value!r}")
+    width, height = (int(part) for part in value)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"reference_resolution must be positive, got {value!r}")
+    return (width, height)
 
 
 def _optional_float(value: Any) -> float | None:

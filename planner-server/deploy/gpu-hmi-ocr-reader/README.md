@@ -48,10 +48,15 @@ Set these values in `config.yaml` or environment variables:
 - `platform.api_base_url`: `https://four-wall-api.onrender.com`
 - `platform.device_token`: the `fwcam_...` token for `PoE Camera 192.168.1.10`
 - `frame_source`: production default is `url` mode against `/v1/camera-ingest/latest-frame/image`
-- `hmi.roi`: full-frame ROI around the HC600 HMI screen. Current 2560x1440 baseline is `[925, 550, 450, 325]`
-- `hmi.fields`: optional fixed numeric ROI fields
-- `work_order.roi`: full-frame ROI around the paper work order. Current 2560x1440 baseline is `[900, 120, 550, 335]`
+- `reference_resolution`: frame size `[width, height]` the pixel ROIs were measured at. Baseline is `[2560, 1440]`. When the camera outputs another size (the 192.168.1.10 main stream now delivers 2880x1620), all pixel ROIs are scaled proportionally at runtime; without this key, pixel ROIs are applied unscaled (legacy behavior).
+- `hmi.roi`: full-frame ROI around the HC600 HMI screen. Baseline is `[925, 550, 450, 325]` in pixels at `reference_resolution` 2560x1440. Alternatively use fractional values (all in 0..1) of the actual frame.
+- `hmi.fields`: optional fixed numeric ROI fields. Their ROIs live inside the HMI crop, measured at the crop size `hmi.roi` yields at `reference_resolution`; fractional values are relative to the actual crop.
+- `work_order.roi`: full-frame ROI around the paper work order. Baseline is `[900, 120, 550, 335]` at the same reference; same coordinate rules as `hmi.roi`.
 - `ocr.lang`: keep this as `chinese_cht` for Traditional Chinese OCR. Using `ch` loads the Simplified Chinese model and can return Simplified Chinese text.
+
+The fixed HC600 temperature-grid cell ROIs in `ocr_worker/hmi_temperature.py` are measured in the baseline 450x325 HMI crop (`TEMPERATURE_REFERENCE_CROP_SIZE`) and are rescaled to the actual crop size automatically.
+
+The worker logs a `frame_resolution_differs_from_reference` warning on stderr when the first frame does not match `reference_resolution`, and a `frame_resolution_changed` warning whenever the incoming frame size changes between polls. When the frame matches `reference_resolution`, ROI behavior is identical to the pre-scaling worker.
 
 Never commit `config.yaml`, device tokens, GPT auth cache, or screenshots containing sensitive customer data.
 

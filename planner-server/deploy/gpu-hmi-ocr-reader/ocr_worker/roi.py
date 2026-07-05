@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -29,6 +30,99 @@ class ScreenVisibility:
     mean_luma: float
     p90_luma: float
     p98_luma: float
+
+
+def is_fractional_roi(roi: tuple[float, float, float, float]) -> bool:
+    x, y, width, height = roi
+    if width <= 0 or height <= 0:
+        return False
+    return all(0.0 <= part <= 1.0 for part in (x, y, width, height))
+
+
+def resolve_roi(
+    roi: tuple[float, float, float, float],
+    target_size: tuple[int, int],
+    reference_size: tuple[int, int] | None = None,
+) -> tuple[int, int, int, int]:
+    """Resolve a configured ROI to pixel coordinates for the actual frame size.
+
+    A fractional ROI (every value in 0..1) is interpreted as fractions of
+    ``target_size``. An absolute-pixel ROI is assumed to be measured at
+    ``reference_size`` and is scaled proportionally when the target differs;
+    without a reference it is used as-is. A zero-size ROI is the whole-frame
+    sentinel and passes through unscaled.
+    """
+    x, y, width, height = roi
+    if width <= 0 or height <= 0:
+        return (_round_half_up(x), _round_half_up(y), _round_half_up(width), _round_half_up(height))
+    target_width, target_height = target_size
+    if is_fractional_roi(roi):
+        return (
+            _round_half_up(x * target_width),
+            _round_half_up(y * target_height),
+            _round_half_up(width * target_width),
+            _round_half_up(height * target_height),
+        )
+    if reference_size is None or reference_size[0] <= 0 or reference_size[1] <= 0:
+        return (_round_half_up(x), _round_half_up(y), _round_half_up(width), _round_half_up(height))
+    scale_x = target_width / reference_size[0]
+    scale_y = target_height / reference_size[1]
+    return (
+        _round_half_up(x * scale_x),
+        _round_half_up(y * scale_y),
+        _round_half_up(width * scale_x),
+        _round_half_up(height * scale_y),
+    )
+
+
+def nominal_roi_size(
+    roi: tuple[float, float, float, float],
+    reference_size: tuple[int, int] | None,
+) -> tuple[int, int] | None:
+    """Crop size the ROI would produce at the reference resolution.
+
+    Nested ROIs (e.g. ``hmi.fields``) are measured inside that nominal crop,
+    so it becomes their own reference when the actual crop size differs.
+    """
+    _x, _y, width, height = roi
+    if width <= 0 or height <= 0:
+        return reference_size
+    if is_fractional_roi(roi):
+        if reference_size is None:
+            return None
+        return (_round_half_up(width * reference_size[0]), _round_half_up(height * reference_size[1]))
+    return (_round_half_up(width), _round_half_up(height))
+
+
+def frame_size_warnings(
+    previous_size: tuple[int, int] | None,
+    current_size: tuple[int, int],
+    reference_size: tuple[int, int] | None,
+) -> list[dict[str, object]]:
+    """Warnings about frame-geometry surprises; empty when nothing changed."""
+    if previous_size is not None and tuple(previous_size) != tuple(current_size):
+        return [
+            {
+                "warning": "frame_resolution_changed",
+                "previousResolution": list(previous_size),
+                "currentResolution": list(current_size),
+                "message": "Incoming frame resolution changed between polls; pixel ROIs are rescaled for the new size.",
+            }
+        ]
+    if previous_size is None and reference_size is not None and tuple(current_size) != tuple(reference_size):
+        return [
+            {
+                "warning": "frame_resolution_differs_from_reference",
+                "referenceResolution": list(reference_size),
+                "currentResolution": list(current_size),
+                "message": "Frame resolution differs from reference_resolution; pixel ROIs are scaled proportionally.",
+            }
+        ]
+    return []
+
+
+def _round_half_up(value: float) -> int:
+    return int(math.floor(value + 0.5))
 
 
 def crop_roi(image: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:

@@ -23,16 +23,25 @@ ocr:
   min_confidence: 0.55
   constructor_options: {}
 
+# Frame size [width, height] the pixel ROIs below were measured at. When the
+# camera stream outputs a different size (e.g. the 192.168.1.10 main stream
+# switching 2560x1440 -> 2880x1620), every pixel ROI is scaled proportionally
+# at runtime. Omit only for legacy configs whose ROIs must be applied unscaled.
+reference_resolution: [2560, 1440]
+
 hmi:
   camera_label: "PoE Camera 192.168.1.10"
   detector_name: "paddleocr_ppocrv5_hmi"
   # Coordinates measured from 2560x1440 PoE Camera 192.168.1.10 frames on 2026-07-04.
-  roi: [925, 550, 450, 325] # x,y,w,h in full frame; [0,0,0,0] means whole frame
+  # x,y,w,h in pixels at reference_resolution; [0,0,0,0] means whole frame.
+  # Values may instead all be fractions (0..1) of the actual frame size.
+  roi: [925, 550, 450, 325]
   fields: []
 
 work_order:
   enabled: true
-  roi: [900, 120, 550, 335] # x,y,w,h in full frame; ruler currently occludes part of this region
+  # Same coordinate rules as hmi.roi; ruler currently occludes part of this region.
+  roi: [900, 120, 550, 335]
 
 gpt:
   enabled: true

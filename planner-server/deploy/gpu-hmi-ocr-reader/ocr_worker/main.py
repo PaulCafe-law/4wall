@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 import time
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -17,7 +18,17 @@ from .hmi_analysis import build_structured_fields, classify_hmi_mode, raw_ocr_li
 from .hmi_temperature import apply_temperature_grid_readings, read_temperature_grid, stabilize_temperature_readings
 from .ocr_engine import OcrEngine, OcrTextLine, PaddleOcrEngine
 from .publish import PlatformSink
-from .roi import FieldReading, crop_roi, detect_screen_visibility, lines_inside_roi, preprocess_for_ocr, read_field
+from .roi import (
+    FieldReading,
+    crop_roi,
+    detect_screen_visibility,
+    frame_size_warnings,
+    lines_inside_roi,
+    nominal_roi_size,
+    preprocess_for_ocr,
+    read_field,
+    resolve_roi,
+)
 from .summarizer import GptSummarizer
 from .text_normalization import normalize_traditional_chinese
 
@@ -50,6 +61,7 @@ class HmiOcrRunner:
         self.crop_dir = config.debug.runtime_dir / "crops"
         self.lit_sample_dir = config.debug.runtime_dir / "lit-samples"
         self.temperature_history = {}
+        self._last_frame_size: tuple[int, int] | None = None
         if config.debug.save_crops:
             self.crop_dir.mkdir(parents=True, exist_ok=True)
             self.lit_sample_dir.mkdir(parents=True, exist_ok=True)
@@ -75,7 +87,13 @@ class HmiOcrRunner:
 
     def process_frame(self, frame, *, frame_name: str) -> dict[str, Any]:
         captured_at = _now_iso()
-        hmi_crop = crop_roi(frame, self.config.hmi.roi)
+        frame_height, frame_width = frame.shape[:2]
+        frame_size = (frame_width, frame_height)
+        reference_resolution = self.config.reference_resolution
+        for warning in frame_size_warnings(self._last_frame_size, frame_size, reference_resolution):
+            print(json.dumps({"status": "warning", **warning}, ensure_ascii=False), file=sys.stderr)
+        self._last_frame_size = frame_size
+        hmi_crop = crop_roi(frame, resolve_roi(self.config.hmi.roi, frame_size, reference_resolution))
         screen_visibility = detect_screen_visibility(hmi_crop)
         if self.config.debug.save_crops:
             cv2.imwrite(str(self.crop_dir / f"{frame_name}-hmi-{int(time.time())}.jpg"), hmi_crop)
@@ -91,7 +109,7 @@ class HmiOcrRunner:
             hmi_lines = recognize_scaled(self.engine, hmi_crop, scale=3.0)
         work_order_lines = []
         if self.config.work_order.enabled:
-            work_order_crop = crop_roi(frame, self.config.work_order.roi)
+            work_order_crop = crop_roi(frame, resolve_roi(self.config.work_order.roi, frame_size, reference_resolution))
             if self.config.debug.save_crops:
                 cv2.imwrite(str(self.crop_dir / f"{frame_name}-work-order-{int(time.time())}.jpg"), work_order_crop)
                 _trim_directory(self.crop_dir, self.config.debug.rolling_keep)
@@ -99,7 +117,12 @@ class HmiOcrRunner:
 
         mode_result = classify_hmi_mode(hmi_lines)
         field_readings = []
+        crop_height, crop_width = hmi_crop.shape[:2]
+        # hmi.fields ROIs are measured inside the crop hmi.roi yields at the
+        # reference resolution; rescale them when the actual crop size differs.
+        hmi_crop_reference_size = nominal_roi_size(self.config.hmi.roi, reference_resolution)
         for field in self.config.hmi.fields:
+            field = replace(field, roi=resolve_roi(field.roi, (crop_width, crop_height), hmi_crop_reference_size))
             field_crop = crop_roi(hmi_crop, field.roi)
             ocr_image = preprocess_for_ocr(field_crop)
             if self.config.debug.save_crops:

@@ -1,14 +1,46 @@
 from __future__ import annotations
 
+import numpy as np
+
 from ocr_worker.config import HmiFieldConfig
 from ocr_worker.hmi_temperature import (
+    TEMPERATURE_CELL_ROIS,
     apply_temperature_grid_readings,
     parse_temperature_cell_value,
     read_temperature_field,
+    read_temperature_grid,
     stabilize_temperature_readings,
 )
 from ocr_worker.ocr_engine import OcrTextLine
 from ocr_worker.roi import FieldReading
+
+
+class _EmptyEngine:
+    def recognize(self, image):
+        return []
+
+
+def _grid_field_rois(crop_height: int, crop_width: int) -> dict[str, tuple[int, int, int, int]]:
+    readings = read_temperature_grid(
+        engine=_EmptyEngine(),
+        hmi_crop=np.zeros((crop_height, crop_width, 3), dtype=np.uint8),
+        hmi_lines=[],
+        min_confidence=0.55,
+    )
+    return {reading.field.id: reading.field.roi for reading in readings}
+
+
+def test_read_temperature_grid_keeps_reference_crop_rois_byte_identical() -> None:
+    rois = _grid_field_rois(325, 450)
+    assert rois["hc600_temperature_setpoint_barrel1"] == TEMPERATURE_CELL_ROIS["setpoint"]["barrel1"]
+    assert rois["hc600_temperature_keepWarm_oilTemperature"] == TEMPERATURE_CELL_ROIS["keepWarm"]["oilTemperature"]
+
+
+def test_read_temperature_grid_scales_cell_rois_to_actual_crop_size() -> None:
+    # The 450x325 reference crop becomes 506x366 on the 2880x1620 main stream.
+    rois = _grid_field_rois(366, 506)
+    assert rois["hc600_temperature_setpoint_barrel1"] == (118, 142, 34, 19)
+    assert rois["hc600_temperature_keepWarm_oilTemperature"] == (403, 190, 38, 19)
 
 
 def test_parse_temperature_cell_value_handles_hc600_ocr_confusions() -> None:

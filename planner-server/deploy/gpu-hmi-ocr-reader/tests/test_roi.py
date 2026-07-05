@@ -2,10 +2,70 @@ from __future__ import annotations
 
 import numpy as np
 
-from ocr_worker.roi import crop_roi, detect_screen_visibility, raw_position_for
+from ocr_worker.roi import (
+    crop_roi,
+    detect_screen_visibility,
+    frame_size_warnings,
+    is_fractional_roi,
+    lines_inside_roi,
+    nominal_roi_size,
+    raw_position_for,
+    resolve_roi,
+)
 from ocr_worker.config import HmiFieldConfig
 from ocr_worker.ocr_engine import OcrTextLine
-from ocr_worker.roi import lines_inside_roi
+
+
+def test_resolve_roi_is_identity_at_reference_resolution() -> None:
+    assert resolve_roi((925, 550, 450, 325), (2560, 1440), (2560, 1440)) == (925, 550, 450, 325)
+
+
+def test_resolve_roi_scales_pixels_from_reference_to_actual_frame() -> None:
+    # 2560x1440 baseline ROIs on the 2880x1620 main stream (1.125x).
+    assert resolve_roi((925, 550, 450, 325), (2880, 1620), (2560, 1440)) == (1041, 619, 506, 366)
+    assert resolve_roi((900, 120, 550, 335), (2880, 1620), (2560, 1440)) == (1013, 135, 619, 377)
+
+
+def test_resolve_roi_without_reference_uses_pixels_as_is() -> None:
+    assert resolve_roi((925, 550, 450, 325), (2880, 1620)) == (925, 550, 450, 325)
+
+
+def test_resolve_roi_fractional_scales_with_actual_frame() -> None:
+    assert resolve_roi((0.25, 0.5, 0.5, 0.25), (2880, 1620), (2560, 1440)) == (720, 810, 1440, 405)
+    assert resolve_roi((0.25, 0.5, 0.5, 0.25), (2560, 1440)) == (640, 720, 1280, 360)
+
+
+def test_resolve_roi_keeps_whole_frame_sentinel_unscaled() -> None:
+    assert resolve_roi((0, 0, 0, 0), (2880, 1620), (2560, 1440)) == (0, 0, 0, 0)
+
+
+def test_is_fractional_roi() -> None:
+    assert is_fractional_roi((0.1, 0.2, 0.3, 0.4))
+    assert not is_fractional_roi((0, 0, 0, 0))
+    assert not is_fractional_roi((925, 550, 450, 325))
+
+
+def test_nominal_roi_size() -> None:
+    assert nominal_roi_size((925, 550, 450, 325), (2560, 1440)) == (450, 325)
+    assert nominal_roi_size((925, 550, 450, 325), None) == (450, 325)
+    assert nominal_roi_size((0, 0, 0, 0), (2560, 1440)) == (2560, 1440)
+    assert nominal_roi_size((0.25, 0.5, 0.5, 0.25), (2560, 1440)) == (1280, 360)
+    assert nominal_roi_size((0.25, 0.5, 0.5, 0.25), None) is None
+
+
+def test_frame_size_warnings_reports_change_between_polls() -> None:
+    assert frame_size_warnings((2880, 1620), (2880, 1620), (2560, 1440)) == []
+    changed = frame_size_warnings((2560, 1440), (2880, 1620), (2560, 1440))
+    assert changed[0]["warning"] == "frame_resolution_changed"
+    assert changed[0]["previousResolution"] == [2560, 1440]
+    assert changed[0]["currentResolution"] == [2880, 1620]
+
+
+def test_frame_size_warnings_reports_first_frame_reference_mismatch() -> None:
+    first = frame_size_warnings(None, (2880, 1620), (2560, 1440))
+    assert first[0]["warning"] == "frame_resolution_differs_from_reference"
+    assert frame_size_warnings(None, (2560, 1440), (2560, 1440)) == []
+    assert frame_size_warnings(None, (2880, 1620), None) == []
 
 
 def test_crop_roi_zero_size_returns_whole_image_copy() -> None:

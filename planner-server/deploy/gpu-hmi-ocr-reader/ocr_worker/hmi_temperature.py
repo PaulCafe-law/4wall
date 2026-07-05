@@ -11,7 +11,7 @@ import numpy as np
 
 from .config import HmiFieldConfig
 from .ocr_engine import OcrEngine, OcrTextLine
-from .roi import FieldReading, crop_roi, lines_inside_roi
+from .roi import FieldReading, crop_roi, lines_inside_roi, resolve_roi
 
 
 TemperatureRowId = str
@@ -34,7 +34,12 @@ TEMPERATURE_SLOTS: tuple[tuple[TemperatureSlotId, str], ...] = (
     ("oilTemperature", "油溫"),
 )
 
-# Fixed HC600 HMI screen cell ROIs in the configured HMI crop coordinate space.
+# Crop size (width, height) the TEMPERATURE_CELL_ROIS below were measured in:
+# the 2560x1440-baseline hmi.roi crop of 450x325. read_temperature_grid rescales
+# each cell ROI to the actual crop size, so other stream resolutions keep working.
+TEMPERATURE_REFERENCE_CROP_SIZE: tuple[int, int] = (450, 325)
+
+# Fixed HC600 HMI screen cell ROIs in the TEMPERATURE_REFERENCE_CROP_SIZE space.
 # These are intentionally slightly wider than the visible number boxes because
 # the PoE camera frame has mild barrel distortion and compression shimmer.
 TEMPERATURE_CELL_ROIS: dict[TemperatureRowId, dict[TemperatureSlotId, tuple[int, int, int, int]]] = {
@@ -76,9 +81,11 @@ def read_temperature_grid(
 ) -> list[FieldReading]:
     readings: list[FieldReading] = []
     timestamp = int(time.time())
+    crop_height, crop_width = hmi_crop.shape[:2]
+    crop_size = (crop_width, crop_height)
     for row_id, row_label in TEMPERATURE_ROWS:
         for slot_id, slot_label in TEMPERATURE_SLOTS:
-            roi = TEMPERATURE_CELL_ROIS[row_id][slot_id]
+            roi = resolve_roi(TEMPERATURE_CELL_ROIS[row_id][slot_id], crop_size, TEMPERATURE_REFERENCE_CROP_SIZE)
             field = HmiFieldConfig(
                 id=f"hc600_temperature_{row_id}_{slot_id}",
                 label=f"HC600 {row_label} {slot_label}",
