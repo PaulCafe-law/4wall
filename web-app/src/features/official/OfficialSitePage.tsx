@@ -162,8 +162,8 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
                 className="w-full"
                 src="/official-assets/warroom-live.webp"
                 alt={t.warRoom.imageAlt}
-                width={1563}
-                height={713}
+                width={1552}
+                height={657}
                 fetchPriority="high"
               />
             </div>

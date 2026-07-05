@@ -23,8 +23,8 @@ describe('OfficialSitePage', () => {
     // War-room hero: real platform screenshot + caption.
     const hero = screen.getByRole('img', { name: /3D 鏡像工廠戰情室/ })
     expect(hero).toHaveAttribute('src', '/official-assets/warroom-live.webp')
-    expect(hero).toHaveAttribute('width', '1563')
-    expect(hero).toHaveAttribute('height', '713')
+    expect(hero).toHaveAttribute('width', '1552')
+    expect(hero).toHaveAttribute('height', '657')
     expect(screen.getByText(/內容取自營運中系統/)).toBeInTheDocument()
 
     // Service card titles render as visible text (imageOnly regression guard).
