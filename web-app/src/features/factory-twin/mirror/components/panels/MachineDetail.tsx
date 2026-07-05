@@ -1,6 +1,14 @@
 import { useState } from 'react';
 
 import type { CameraGaugeReading, CameraOcrObservation } from '../../../../../lib/types';
+import {
+  WORK_ORDER_QUANTITY_ROW_ORDER,
+  isWorkOrderCellKnown,
+  parseWorkOrderSheet,
+  workOrderCellText,
+  type WorkOrderLeaf,
+  type WorkOrderSheet,
+} from '../../../../../lib/work-order';
 import type { CameraEntity, MachineEntity } from '../../domain/entities';
 import { statusLabel } from '../../domain/entities';
 import { camerasForMachine } from '../../domain/machineCameras';
@@ -17,6 +25,66 @@ function isOcrObservation(value: unknown): value is CameraOcrObservation {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<CameraOcrObservation>;
   return typeof candidate.mode === 'string' && typeof candidate.summaryStatus === 'string';
+}
+
+function WorkOrderCell({ leaf, unit }: { leaf: WorkOrderLeaf | undefined; unit?: string }) {
+  const known = isWorkOrderCellKnown(leaf);
+  return (
+    <span className={known ? 'wo-num' : 'wo-unknown'}>
+      {workOrderCellText(leaf)}
+      {known && unit ? <span className="wo-unit">{unit}</span> : null}
+    </span>
+  );
+}
+
+function WorkOrderSheetBlock({ observation }: { observation: CameraOcrObservation }) {
+  const sheet: WorkOrderSheet | null = parseWorkOrderSheet(observation.structuredFields);
+  if (!sheet) {
+    return observation.workOrderRawText ? (
+      <div className="detail-note">派工單：{observation.workOrderRawText}</div>
+    ) : null;
+  }
+  const f = sheet.fields;
+  return (
+    <table className="wo-sheet" aria-label="派工單">
+      <tbody>
+        <tr>
+          <th>機台編號</th>
+          <td><WorkOrderCell leaf={f.machineNo} /></td>
+          <th>模具編號</th>
+          <td colSpan={2}><WorkOrderCell leaf={f.moldNo} /></td>
+        </tr>
+        <tr>
+          <th>生產日期</th>
+          <td><WorkOrderCell leaf={f.productionDate} /></td>
+          <th>模具穴數</th>
+          <td colSpan={2}><WorkOrderCell leaf={f.moldCavity} /></td>
+        </tr>
+        {WORK_ORDER_QUANTITY_ROW_ORDER.map(({ key, label }) => {
+          const row = sheet.quantities[key];
+          return (
+            <tr key={key}>
+              <th>{row?.label ?? label}</th>
+              <td className="wo-mark">L</td>
+              <td><WorkOrderCell leaf={row?.left} unit={sheet.unit} /></td>
+              <td className="wo-mark">R</td>
+              <td><WorkOrderCell leaf={row?.right} unit={sheet.unit} /></td>
+            </tr>
+          );
+        })}
+        <tr>
+          <th>材質</th>
+          <td><WorkOrderCell leaf={f.material} /></td>
+          <th>顏色</th>
+          <td colSpan={2}><WorkOrderCell leaf={f.color} /></td>
+        </tr>
+        <tr>
+          <th>備註</th>
+          <td colSpan={4}><WorkOrderCell leaf={f.remark} /></td>
+        </tr>
+      </tbody>
+    </table>
+  );
 }
 
 function gaugeReadingsFor(camera: CameraEntity | undefined): CameraGaugeReading[] {
@@ -150,9 +218,7 @@ export function MachineDetail({ entity }: { entity: MachineEntity }) {
             {summaryText(ocrObservation) ? (
               <div className="detail-note">{summaryText(ocrObservation)}</div>
             ) : null}
-            {ocrObservation.workOrderRawText ? (
-              <div className="detail-note">派工單：{ocrObservation.workOrderRawText}</div>
-            ) : null}
+            <WorkOrderSheetBlock observation={ocrObservation} />
             {ocrObservation.summaryError ? (
               <div className="detail-note">GPT 狀態：{ocrObservation.summaryError}</div>
             ) : null}

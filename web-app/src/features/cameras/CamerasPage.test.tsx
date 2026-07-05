@@ -72,6 +72,32 @@ function ocrObservationFixture(overrides: Partial<CameraOcrObservation> = {}): C
   }
 }
 
+function workOrderSheetFixture() {
+  const unknown = { value: 'unknown', confidence: 0, rawText: '' }
+  return {
+    template: 'hc600_dispatch_sheet_v1',
+    unit: 'PCS',
+    sourceLineCount: 56,
+    fields: {
+      machineNo: { label: '機台編號', value: 'HC600', confidence: 0.82, rawText: 'HC600' },
+      moldNo: { label: '模具編號', value: 'GM096LC', confidence: 0.78, rawText: 'GM096LC' },
+      productionDate: { label: '生產日期', value: '115年', confidence: 0.9, rawText: '生日期 115' },
+      moldCavity: { label: '模具穴數', value: '1模2穴', confidence: 0.77, rawText: '以穴 1 積 2穴' },
+      material: { label: '材質', value: 'PC', confidence: 0.85, rawText: 'PC' },
+      color: { label: '顏色', value: '透明', confidence: 0.99, rawText: '明' },
+      packaging: { label: '包裝方式', ...unknown },
+      shipDate: { label: '出貨日期', ...unknown },
+      remark: { label: '備註', ...unknown },
+    },
+    quantities: {
+      plannedShift: { label: '預計生產數（本班）', left: { ...unknown, rawText: '200 1uwr2' }, right: { ...unknown, rawText: '20 10Y' } },
+      plannedCumulative: { label: '預計生產數（累計）', left: unknown, right: unknown },
+      producedCumulative: { label: '累計生產數', left: { value: 10, confidence: 1, rawText: '10' }, right: { value: 10, confidence: 0.95, rawText: '10' } },
+      total: { label: '總計', left: { value: 210, confidence: 0.95, rawText: '210' }, right: { value: 210, confidence: 0.97, rawText: '210' } },
+    },
+  }
+}
+
 function cameraFixture(
   cameraId: string,
   name: string,
@@ -311,6 +337,38 @@ describe('CamerasPage', () => {
     expect(screen.getByText('摘要完成')).toBeInTheDocument()
     expect(screen.getByText('HC600 目前為手動模式。')).toBeInTheDocument()
     expect(screen.getByText('HC600 FLJ2R02')).toBeInTheDocument()
+  })
+
+  it('renders the structured 派工單 as a paper-form table with unknown cells left blank', async () => {
+    apiMock.listCameras.mockResolvedValue({
+      cameras: [
+        cameraFixture('camera-1', 'PoE Camera 192.168.1.10', {
+          latestOcrObservation: ocrObservationFixture({
+            structuredFields: {
+              screen: { kind: 'machine_monitor' },
+              workOrder: workOrderSheetFixture(),
+            },
+          }),
+        }),
+      ],
+    })
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/cameras" element={<CamerasPage />} />
+      </Routes>,
+      { route: '/cameras' },
+    )
+
+    expect(await screen.findByText('機台編號')).toBeInTheDocument()
+    expect(screen.getByText('HC600')).toBeInTheDocument()
+    expect(screen.getByText('GM096LC')).toBeInTheDocument()
+    expect(screen.getByText('1模2穴')).toBeInTheDocument()
+    expect(screen.getByText('透明')).toBeInTheDocument()
+    expect(screen.getAllByText('210')).toHaveLength(2)
+    expect(screen.getByText('總計')).toBeInTheDocument()
+    // Unreadable handwriting and out-of-crop fields render as blank dashes.
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(5)
   })
 
   it('keeps the previous frame visible while the next frame image is loading', async () => {

@@ -1925,3 +1925,46 @@
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* 派工單 (dispatch sheet) facsimile — ink-ruled paper form filled by OCR */
+.wo-sheet {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  background: var(--cream);
+  color: var(--ink);
+  font-size: 12px;
+}
+.wo-sheet th,
+.wo-sheet td {
+  border: 1px solid var(--ink);
+  padding: 4px 7px;
+  text-align: left;
+  vertical-align: middle;
+}
+.wo-sheet th {
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink-muted);
+  white-space: nowrap;
+  letter-spacing: 0.3px;
+}
+.wo-sheet .wo-mark {
+  width: 26px;
+  text-align: center;
+  font-weight: 700;
+}
+.wo-sheet .wo-num {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wo-sheet .wo-unknown {
+  color: var(--ink-muted);
+  opacity: 0.55;
+}
+.wo-sheet .wo-unit {
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  margin-left: 4px;
+}

@@ -16,6 +16,7 @@ from .config import AppConfig, load_config
 from .frame_source import FrameSourceError, capture_configured_frame, load_frame_file
 from .hmi_analysis import build_structured_fields, classify_hmi_mode, raw_ocr_lines_payload, raw_text
 from .hmi_temperature import apply_temperature_grid_readings, read_temperature_grid, stabilize_temperature_readings
+from .work_order import build_work_order_fields
 from .ocr_engine import OcrEngine, OcrTextLine, PaddleOcrEngine
 from .publish import PlatformSink
 from .roi import (
@@ -174,6 +175,8 @@ class HmiOcrRunner:
             "workOrderOcrRan": self.config.work_order.enabled,
             "screenGate": "run_hmi_ocr_when_screen_visibility_is_lit",
         }
+        if self.config.work_order.enabled:
+            structured_fields["workOrder"] = build_work_order_fields(work_order_lines)
         observation = build_ocr_observation(
             captured_at=captured_at,
             mode=mode_result.mode,

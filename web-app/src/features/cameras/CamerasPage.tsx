@@ -4,6 +4,14 @@ import { DataList, EmptyState, Field, Metric, Panel, Select, ShellSection, forma
 import { api } from '../../lib/api'
 import { useAuthedQuery } from '../../lib/auth-query'
 import type { CameraDevice, CameraGaugeReading, CameraOcrObservation } from '../../lib/types'
+import {
+  WORK_ORDER_QUANTITY_ROW_ORDER,
+  isWorkOrderCellKnown,
+  parseWorkOrderSheet,
+  workOrderCellText,
+  type WorkOrderLeaf,
+  type WorkOrderSheet,
+} from '../../lib/work-order'
 
 function secondsSince(value: string | null): number | null {
   if (!value) return null
@@ -192,6 +200,82 @@ function summaryText(observation: CameraOcrObservation): string | null {
   return typeof value === 'string' && value.trim() ? value : null
 }
 
+const WO_TH = 'border border-chrome-300 bg-chrome-100/70 px-2 py-1.5 text-left text-xs font-semibold text-chrome-700 whitespace-nowrap'
+const WO_TD = 'border border-chrome-300 px-2 py-1.5 text-sm text-chrome-950'
+
+function WorkOrderCell({ leaf, unit }: { leaf: WorkOrderLeaf | undefined; unit?: string }) {
+  const known = isWorkOrderCellKnown(leaf)
+  return (
+    <span className={known ? 'font-semibold tabular-nums' : 'text-chrome-300'}>
+      {workOrderCellText(leaf)}
+      {known && unit ? <span className="ml-1 text-[10px] text-chrome-500">{unit}</span> : null}
+    </span>
+  )
+}
+
+function WorkOrderTable({ sheet }: { sheet: WorkOrderSheet }) {
+  const f = sheet.fields
+  return (
+    <table className="mt-3 w-full border-collapse">
+      <tbody>
+        <tr>
+          <th className={WO_TH}>機台編號</th>
+          <td className={WO_TD}><WorkOrderCell leaf={f.machineNo} /></td>
+          <th className={WO_TH}>模具編號</th>
+          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.moldNo} /></td>
+        </tr>
+        <tr>
+          <th className={WO_TH}>生產日期</th>
+          <td className={WO_TD}><WorkOrderCell leaf={f.productionDate} /></td>
+          <th className={WO_TH}>模具穴數</th>
+          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.moldCavity} /></td>
+        </tr>
+        {WORK_ORDER_QUANTITY_ROW_ORDER.map(({ key, label }) => {
+          const row = sheet.quantities[key]
+          return (
+            <tr key={key}>
+              <th className={WO_TH}>{row?.label ?? label}</th>
+              <td className={`${WO_TD} w-8 text-center font-semibold`}>L</td>
+              <td className={WO_TD}><WorkOrderCell leaf={row?.left} unit={sheet.unit} /></td>
+              <td className={`${WO_TD} w-8 text-center font-semibold`}>R</td>
+              <td className={WO_TD}><WorkOrderCell leaf={row?.right} unit={sheet.unit} /></td>
+            </tr>
+          )
+        })}
+        <tr>
+          <th className={WO_TH}>材質</th>
+          <td className={WO_TD}><WorkOrderCell leaf={f.material} /></td>
+          <th className={WO_TH}>顏色</th>
+          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.color} /></td>
+        </tr>
+        <tr>
+          <th className={WO_TH}>備註</th>
+          <td className={WO_TD} colSpan={4}><WorkOrderCell leaf={f.remark} /></td>
+        </tr>
+      </tbody>
+    </table>
+  )
+}
+
+function WorkOrderSheetCard({ observation }: { observation: CameraOcrObservation }) {
+  const sheet = parseWorkOrderSheet(observation.structuredFields)
+  if (!sheet && !observation.workOrderRawText) return null
+  return (
+    <div className="mt-4 rounded-2xl border border-chrome-200 bg-white/75 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">
+        派工單{sheet ? '（OCR 自動填入，讀不清的欄位留白）' : ' OCR'}
+      </p>
+      {sheet ? <WorkOrderTable sheet={sheet} /> : null}
+      {observation.workOrderRawText ? (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs text-chrome-500">原始 OCR 文字</summary>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-chrome-800">{observation.workOrderRawText}</p>
+        </details>
+      ) : null}
+    </div>
+  )
+}
+
 function HmiOcrPanel({ observation }: { observation: CameraOcrObservation | null }) {
   if (!observation) {
     return (
@@ -246,14 +330,7 @@ function HmiOcrPanel({ observation }: { observation: CameraOcrObservation | null
         </div>
       ) : null}
 
-      {observation.workOrderRawText ? (
-        <div className="mt-4 rounded-2xl border border-chrome-200 bg-white/75 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">派工單 OCR</p>
-          <p className="mt-2 line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-chrome-800">
-            {observation.workOrderRawText}
-          </p>
-        </div>
-      ) : null}
+      <WorkOrderSheetCard observation={observation} />
 
       <div className="mt-4">
         <DataList
