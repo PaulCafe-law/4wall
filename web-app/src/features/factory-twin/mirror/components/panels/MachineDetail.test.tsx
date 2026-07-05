@@ -132,10 +132,10 @@ it('renders the structured 派工單 sheet with OCR values and blank unknown cel
           remark: { label: '備註', ...unknown },
         },
         quantities: {
-          plannedShift: { label: '預計生產數（本班）', left: unknown, right: unknown },
-          plannedCumulative: { label: '預計生產數（累計）', left: unknown, right: unknown },
-          producedCumulative: {
-            label: '累計生產數',
+          plannedWithHanger: { label: '預計生產數（有掛）', left: unknown, right: unknown },
+          plannedScheduledNoHanger: { label: '預計生產數（有排程、無掛）', left: unknown, right: unknown },
+          plannedNoHanger: {
+            label: '預計生產數（無掛）',
             left: { value: 10, confidence: 1, rawText: '10' },
             right: { value: 10, confidence: 0.95, rawText: '10' },
           },

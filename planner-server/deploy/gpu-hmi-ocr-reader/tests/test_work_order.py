@@ -87,15 +87,15 @@ def test_real_sheet_quantities_positional_mapping() -> None:
     # Row 1: both cells contain digit-bearing pen-stroke noise ("1uwr2" next to
     # the L 200; "20"+"10Y" split handwriting on R) -> honest unknown, never a
     # confidently wrong number.
-    assert q["plannedShift"]["left"]["value"] == "unknown"
-    assert "200" in q["plannedShift"]["left"]["rawText"]
-    assert q["plannedShift"]["right"]["value"] == "unknown"
+    assert q["plannedWithHanger"]["left"]["value"] == "unknown"
+    assert "200" in q["plannedWithHanger"]["left"]["rawText"]
+    assert q["plannedWithHanger"]["right"]["value"] == "unknown"
     # Row 2 is blank on the sheet.
-    assert q["plannedCumulative"]["left"]["value"] == "unknown"
-    assert q["plannedCumulative"]["right"]["value"] == "unknown"
+    assert q["plannedScheduledNoHanger"]["left"]["value"] == "unknown"
+    assert q["plannedScheduledNoHanger"]["right"]["value"] == "unknown"
     # Rows 3-4 are clean.
-    assert q["producedCumulative"]["left"]["value"] == 10
-    assert q["producedCumulative"]["right"]["value"] == 10
+    assert q["plannedNoHanger"]["left"]["value"] == 10
+    assert q["plannedNoHanger"]["right"]["value"] == 10
     assert q["total"]["left"]["value"] == 210
     assert q["total"]["right"]["value"] == 210
 
@@ -176,7 +176,7 @@ def test_two_clean_numbers_in_one_cell_degrade_to_unknown() -> None:
     # Operator corrections leave two legible numbers in one cell; reporting
     # either one confidently would be a lie.
     lines = _quantity_grid({0: [_line("30", 0.95, 200, 180), _line("40", 0.95, 260, 180)]})
-    cell = build_work_order_fields(lines)["quantities"]["plannedShift"]["left"]
+    cell = build_work_order_fields(lines)["quantities"]["plannedWithHanger"]["left"]
     assert cell["value"] == "unknown"
     assert "30" in cell["rawText"] and "40" in cell["rawText"]
 
@@ -193,7 +193,7 @@ def test_asymmetric_values_map_to_their_own_sides_and_label_digits_stay_out() ->
             ]
         }
     )
-    row = build_work_order_fields(lines)["quantities"]["producedCumulative"]
+    row = build_work_order_fields(lines)["quantities"]["plannedNoHanger"]
     assert row["left"]["value"] == 90
     assert row["right"]["value"] == 60
 
@@ -235,8 +235,8 @@ def test_missing_quantity_rows_only_trusts_total_label() -> None:
     assert q["total"]["left"]["value"] == 210
     assert q["total"]["right"]["value"] == 210
     # Two rows found but schema expects four -> non-total rows stay unknown.
-    assert q["plannedShift"]["left"]["value"] == "unknown"
-    assert q["producedCumulative"]["left"]["value"] == "unknown"
+    assert q["plannedWithHanger"]["left"]["value"] == "unknown"
+    assert q["plannedNoHanger"]["left"]["value"] == "unknown"
 
 
 class _SheetOnlyEngine:

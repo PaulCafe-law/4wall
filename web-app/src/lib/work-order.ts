@@ -27,9 +27,9 @@ export interface WorkOrderSheet {
 }
 
 export const WORK_ORDER_QUANTITY_ROW_ORDER: ReadonlyArray<{ key: string; label: string }> = [
-  { key: 'plannedShift', label: '預計生產數（本班）' },
-  { key: 'plannedCumulative', label: '預計生產數（累計）' },
-  { key: 'producedCumulative', label: '累計生產數' },
+  { key: 'plannedWithHanger', label: '預計生產數（有掛）' },
+  { key: 'plannedScheduledNoHanger', label: '預計生產數（有排程、無掛）' },
+  { key: 'plannedNoHanger', label: '預計生產數（無掛）' },
   { key: 'total', label: '總計' },
 ]
 

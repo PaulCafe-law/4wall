@@ -21,10 +21,12 @@ from .ocr_engine import OcrTextLine
 
 UNKNOWN = "unknown"
 
+# Row titles transcribed from the physical HC600 dispatch sheet (operator-
+# confirmed 2026-07-05): 有掛/無掛 refer to hanger vs no-hanger production.
 QUANTITY_ROW_SCHEMA: tuple[tuple[str, str], ...] = (
-    ("plannedShift", "預計生產數（本班）"),
-    ("plannedCumulative", "預計生產數（累計）"),
-    ("producedCumulative", "累計生產數"),
+    ("plannedWithHanger", "預計生產數（有掛）"),
+    ("plannedScheduledNoHanger", "預計生產數（有排程、無掛）"),
+    ("plannedNoHanger", "預計生產數（無掛）"),
     ("total", "總計"),
 )
 
