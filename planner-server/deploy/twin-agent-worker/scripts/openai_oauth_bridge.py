@@ -33,6 +33,16 @@ def main(argv: list[str] | None = None) -> int:
             *command_prefix,
             "exec",
             "--skip-git-repo-check",
+            # Answer as a plain completion: skip the operator's global Codex config
+            # (MCP servers, skills, execpolicy rules) so Codex does not boot into
+            # coding-agent mode and treat the factory prompt as a repo task. OAuth
+            # auth still resolves from CODEX_HOME.
+            "--ignore-user-config",
+            "--ignore-rules",
+            # Booth answers must land inside the job-claim TTL; low effort keeps the
+            # single-turn factory Q&A well under the bridge timeout (~5s vs >120s).
+            "-c",
+            f"model_reasoning_effort={args.reasoning_effort}",
             "--sandbox",
             "read-only",
             "-o",
@@ -40,15 +50,20 @@ def main(argv: list[str] | None = None) -> int:
         ]
         if model and model != "latest":
             command.extend(["--model", model])
-        command.append(prompt)
+        # Feed the prompt through stdin ("-"), not as an argv element. On Windows the
+        # codex launcher is a .CMD shim, and a multi-line argv gets truncated at the
+        # first newline there — Codex would then only see the persona line and reply
+        # with a generic "understood, I'll act as..." instead of answering the job.
+        command.append("-")
 
         completed = subprocess.run(
             command,
             cwd=tmp,
-            stdin=subprocess.DEVNULL,
+            input=prompt,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            encoding="utf-8",
             timeout=float(args.timeout_sec),
             check=False,
             env=_codex_env(node_bin),
@@ -118,6 +133,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--timeout-sec", type=float, default=120)
     parser.add_argument("--codex-cli", default="")
     parser.add_argument("--node", default="")
+    parser.add_argument("--reasoning-effort", default="low", choices=["low", "medium", "high", "xhigh"])
     return parser.parse_args(argv)
 
 

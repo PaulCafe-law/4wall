@@ -112,6 +112,7 @@ def _command_env(config: AgentConfig) -> dict[str, str]:
         for key, value in os.environ.items()
         if key not in _SENSITIVE_ENV_KEYS and not key.upper().endswith("_API_KEY")
     }
+    env["PYTHONUTF8"] = "1"
     env["TWIN_AGENT_MODEL"] = config.model
     if config.auth_cache_dir is not None:
         env["TWIN_AGENT_AUTH_CACHE_DIR"] = str(config.auth_cache_dir)
