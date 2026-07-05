@@ -222,10 +222,14 @@ def _fill_material_and_color(rows: list[list[_Line]], fields: dict[str, Any], la
                 and _CJK_PATTERN.search(line.norm)
                 and line.norm not in {"色", "顏色", "材質"}
             ):
+                # Handwritten colors OCR unstably frame to frame (透明 has been
+                # read as 明 and as a巴); publish only when the token snaps to a
+                # known color name — anything else stays a blank cell.
                 snapped = next((color for color in KNOWN_COLORS if line.norm in color or color in line.norm), None)
-                fields["color"] = _leaf(
-                    snapped or line.norm, line.confidence, line.text, label=HEADER_FIELD_LABELS["color"]
-                )
+                if snapped is not None:
+                    fields["color"] = _leaf(
+                        snapped, line.confidence, line.text, label=HEADER_FIELD_LABELS["color"]
+                    )
         if fields["material"]["value"] != UNKNOWN and fields["color"]["value"] != UNKNOWN:
             break
 

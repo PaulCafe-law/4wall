@@ -138,6 +138,17 @@ def test_material_never_captures_stray_marker_when_total_row_marker_garbles() ->
     assert fields["material"]["value"] != "L"
 
 
+def test_color_publishes_only_when_it_snaps_to_a_known_color() -> None:
+    # Live frames have OCR'd the half-occluded 透明 as "a巴"; raw garble must
+    # never be published as the product color.
+    lines = [
+        _line("a巴", 0.62, 476, 329) if (line.text == "明") else line
+        for line in REAL_LINES
+    ]
+    fields = build_work_order_fields(lines)["fields"]
+    assert fields["color"]["value"] == "unknown"
+
+
 def test_material_and_color_degrade_to_unknown_without_quantity_anchor() -> None:
     # All eight L/R markers garbled (glare frame): the scan region loses its
     # anchor, so material/color must degrade instead of grabbing header garble.
