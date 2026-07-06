@@ -67,10 +67,12 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
+    # Public custom domain root lands on the marketing site, not the app
+    # (which would bounce anonymous visitors to /login). Platform routes below
+    # are unaffected; management users reach the app via /login directly.
     location = / {
-        try_files /index.html =404;
-        add_header Cache-Control "no-store";
-        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+        absolute_redirect off;
+        return 301 /official;
     }
 
     location ~ ^/(login|invite|overview|sites|site-map|missions|incidents|industrial-data-engine|billing|control-plane|live-ops|organizations|support|audit)(/|$) {
