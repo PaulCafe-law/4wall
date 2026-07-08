@@ -1,4 +1,4 @@
-// Seed data for the simulated factory. All entities are source: 'sim'.
+// Seed data for the factory twin. Demo-only entities are source: 'sim'.
 // Positions are in scene world units (x: left-right, z: depth, y: up).
 import type { Entity } from './entities';
 
@@ -7,9 +7,10 @@ export function buildMockEntities(): Record<string, Entity> {
     // ---- machines (aligned to the real factory.glb nodes) ----
     {
       id: 'm-hc600', type: 'machine', name: 'HC600-01 成型機', position: { x: 0, y: 0, z: -3 },
-      source: 'sim', subsystemId: 'sub-defect', status: 'running', model: 'HC600',
+      source: 'live', subsystemId: 'sub-defect', status: 'unknown', model: 'HC600',
       aliases: ['HC600', 'HC600-01', 'HC600.001', '塑膠成型機HC600.001', '1號成型機', '一號成型機'],
-      oee: 86, temperature: 78, cycleTimeSec: 32, todayCount: 412, alarms: 1,
+      attrs: { liveMetricsOnly: true },
+      oee: 0, temperature: 0, cycleTimeSec: 0, todayCount: 0, alarms: 0,
     },
     {
       id: 'm-hc600-002', type: 'machine', name: 'HC600-02 成型機', position: { x: -7, y: 0, z: -3 },

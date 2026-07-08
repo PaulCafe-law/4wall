@@ -62,6 +62,9 @@ export function LivePersonDetail({ entity }: { entity: PersonEntity }) {
           </strong>
         </div>
       </div>
+      {attrs?.approximate === true ? (
+        <div className="detail-note">攝影機偵測到現場有人，顯示於此機台前的作業位置。</div>
+      ) : null}
       <div className="detail-note">此為匿名人員在場投影，只讀顯示，不提供 LINE 聊天或派工控制。</div>
     </div>
   );

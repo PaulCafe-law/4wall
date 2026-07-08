@@ -13,6 +13,7 @@ import { useTwinAgentBridge } from './mirror/hooks/useTwinAgentBridge';
 import { useSimEngine } from './mirror/sim/simEngine';
 import { useFactoryStore, uid } from './mirror/store/factoryStore';
 import { FactoryScene } from './mirror/three/FactoryScene';
+import { WorkOrderOverlay } from './mirror/three/WorkOrderOverlay';
 import './mirror/styles.css';
 
 type FactoryMode = 'factory' | 'warehouse';
@@ -22,10 +23,23 @@ function FactoryDemo() {
   const rightOpen = useFactoryStore((s) => s.rightOpen);
   const toggleLeft = useFactoryStore((s) => s.toggleLeft);
   const toggleRight = useFactoryStore((s) => s.toggleRight);
+  const centerRef = useRef<HTMLElement>(null);
 
   useSimEngine(true);
   useLocalAgent();
   useTwinAgentBridge();
+
+  // 3D 內滾輪縮放只進 OrbitControls，不冒泡到頁面捲動。React onWheel 預設是 passive，
+  // 擋不住頁面捲動，需在容器上掛非被動監聽並 preventDefault（標準 R3F 作法）。
+  useEffect(() => {
+    const el = centerRef.current;
+    if (!el) return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+    };
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, []);
 
   const gridCols = `${leftOpen ? '340px' : ''} 1fr ${rightOpen ? '348px' : ''}`.trim();
 
@@ -36,8 +50,9 @@ function FactoryDemo() {
           <ChatPanel />
         </aside>
       ) : null}
-      <main className="col col-center">
+      <main className="col col-center" ref={centerRef}>
         <FactoryScene />
+        <WorkOrderOverlay />
         <SimControlPanel />
         <AgentFeed />
         <DebugPanel />

@@ -4,13 +4,14 @@ import type { CameraGaugeReading, CameraOcrObservation } from '../../../../../li
 import {
   WORK_ORDER_QUANTITY_ROW_ORDER,
   isWorkOrderCellKnown,
+  isWorkOrderCellPending,
   parseWorkOrderSheet,
   workOrderCellText,
   type WorkOrderLeaf,
   type WorkOrderSheet,
 } from '../../../../../lib/work-order';
 import type { CameraEntity, MachineEntity } from '../../domain/entities';
-import { statusLabel } from '../../domain/entities';
+import { machineUsesLiveMetricsOnly, statusLabel } from '../../domain/entities';
 import { camerasForMachine } from '../../domain/machineCameras';
 import { useFactoryStore } from '../../store/factoryStore';
 import { CameraFeed } from './CameraMonitor';
@@ -27,12 +28,22 @@ function isOcrObservation(value: unknown): value is CameraOcrObservation {
   return typeof candidate.mode === 'string' && typeof candidate.summaryStatus === 'string';
 }
 
-function WorkOrderCell({ leaf, unit }: { leaf: WorkOrderLeaf | undefined; unit?: string }) {
+function WorkOrderCell({
+  leaf,
+  unit,
+  sheet,
+}: {
+  leaf: WorkOrderLeaf | undefined;
+  unit?: string;
+  sheet: WorkOrderSheet;
+}) {
   const known = isWorkOrderCellKnown(leaf);
+  const pending = isWorkOrderCellPending(leaf, sheet);
   return (
-    <span className={known ? 'wo-num' : 'wo-unknown'}>
+    <span className={known ? (pending ? 'wo-num wo-pending' : 'wo-num') : 'wo-unknown'}>
       {workOrderCellText(leaf)}
       {known && unit ? <span className="wo-unit">{unit}</span> : null}
+      {pending ? <span className="wo-pending-tag">待確認</span> : null}
     </span>
   );
 }
@@ -46,44 +57,47 @@ function WorkOrderSheetBlock({ observation }: { observation: CameraOcrObservatio
   }
   const f = sheet.fields;
   return (
-    <table className="wo-sheet" aria-label="派工單">
-      <tbody>
-        <tr>
-          <th>機台編號</th>
-          <td><WorkOrderCell leaf={f.machineNo} /></td>
-          <th>模具編號</th>
-          <td colSpan={2}><WorkOrderCell leaf={f.moldNo} /></td>
-        </tr>
-        <tr>
-          <th>生產日期</th>
-          <td><WorkOrderCell leaf={f.productionDate} /></td>
-          <th>模具穴數</th>
-          <td colSpan={2}><WorkOrderCell leaf={f.moldCavity} /></td>
-        </tr>
-        {WORK_ORDER_QUANTITY_ROW_ORDER.map(({ key, label }) => {
-          const row = sheet.quantities[key];
-          return (
-            <tr key={key}>
-              <th>{row?.label ?? label}</th>
-              <td className="wo-mark">L</td>
-              <td><WorkOrderCell leaf={row?.left} unit={sheet.unit} /></td>
-              <td className="wo-mark">R</td>
-              <td><WorkOrderCell leaf={row?.right} unit={sheet.unit} /></td>
-            </tr>
-          );
-        })}
-        <tr>
-          <th>材質</th>
-          <td><WorkOrderCell leaf={f.material} /></td>
-          <th>顏色</th>
-          <td colSpan={2}><WorkOrderCell leaf={f.color} /></td>
-        </tr>
-        <tr>
-          <th>備註</th>
-          <td colSpan={4}><WorkOrderCell leaf={f.remark} /></td>
-        </tr>
-      </tbody>
-    </table>
+    <>
+      <table className="wo-sheet" aria-label="派工單">
+        <tbody>
+          <tr>
+            <th>機台編號</th>
+            <td><WorkOrderCell leaf={f.machineNo} sheet={sheet} /></td>
+            <th>模具編號</th>
+            <td colSpan={2}><WorkOrderCell leaf={f.moldNo} sheet={sheet} /></td>
+          </tr>
+          <tr>
+            <th>生產日期</th>
+            <td><WorkOrderCell leaf={f.productionDate} sheet={sheet} /></td>
+            <th>模具穴數</th>
+            <td colSpan={2}><WorkOrderCell leaf={f.moldCavity} sheet={sheet} /></td>
+          </tr>
+          {WORK_ORDER_QUANTITY_ROW_ORDER.map(({ key, label }) => {
+            const row = sheet.quantities[key];
+            return (
+              <tr key={key}>
+                <th>{row?.label ?? label}</th>
+                <td className="wo-mark">L</td>
+                <td><WorkOrderCell leaf={row?.left} unit={sheet.unit} sheet={sheet} /></td>
+                <td className="wo-mark">R</td>
+                <td><WorkOrderCell leaf={row?.right} unit={sheet.unit} sheet={sheet} /></td>
+              </tr>
+            );
+          })}
+          <tr>
+            <th>材質</th>
+            <td><WorkOrderCell leaf={f.material} sheet={sheet} /></td>
+            <th>顏色</th>
+            <td colSpan={2}><WorkOrderCell leaf={f.color} sheet={sheet} /></td>
+          </tr>
+          <tr>
+            <th>備註</th>
+            <td colSpan={4}><WorkOrderCell leaf={f.remark} sheet={sheet} /></td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="wo-footnote">數字為自動辨識，以現場單據為準。</div>
+    </>
   );
 }
 
@@ -152,21 +166,33 @@ export function MachineDetail({ entity }: { entity: MachineEntity }) {
   const gaugeReadings = gaugeReadingsFor(gaugeCamera);
   const ocrCamera = cameras.find((camera) => ocrObservationFor(camera));
   const ocrObservation = ocrObservationFor(ocrCamera);
+  const liveMetricsOnly = machineUsesLiveMetricsOnly(entity);
 
   return (
     <div className="detail">
       <div className="panel-title">機台資訊</div>
       <h3 className="detail-name">{entity.name}</h3>
-      <span className={`badge ${entity.status}`}>{statusLabel(entity.status)}</span>
+      <span className={`badge ${liveMetricsOnly ? 'live-only' : entity.status}`}>
+        {liveMetricsOnly ? '真實資料' : statusLabel(entity.status)}
+      </span>
 
       <dl className="kv">
         <div><dt>型號</dt><dd>{entity.model}</dd></div>
-        <div><dt>OEE</dt><dd>{entity.oee}%</dd></div>
-        <div><dt>溫度</dt><dd>{entity.temperature}C</dd></div>
-        <div><dt>週期</dt><dd>{entity.cycleTimeSec}s</dd></div>
-        <div><dt>今日產量</dt><dd>{entity.todayCount}</dd></div>
-        <div><dt>警報</dt><dd>{entity.alarms}</dd></div>
-        <div><dt>資料來源</dt><dd>{entity.source === 'sim' ? '模擬' : '即時'}</dd></div>
+        {liveMetricsOnly ? (
+          <>
+            <div><dt>機台狀態</dt><dd>{statusLabel(entity.status)}</dd></div>
+            <div><dt>資料來源</dt><dd>真實資料</dd></div>
+          </>
+        ) : (
+          <>
+            <div><dt>OEE</dt><dd>{entity.oee}%</dd></div>
+            <div><dt>溫度</dt><dd>{entity.temperature}C</dd></div>
+            <div><dt>週期</dt><dd>{entity.cycleTimeSec}s</dd></div>
+            <div><dt>今日產量</dt><dd>{entity.todayCount}</dd></div>
+            <div><dt>警報</dt><dd>{entity.alarms}</dd></div>
+            <div><dt>資料來源</dt><dd>{entity.source === 'sim' ? '模擬' : '即時'}</dd></div>
+          </>
+        )}
       </dl>
 
       <div className="machine-gauges" aria-label={`${entity.name} live gauge readings`}>

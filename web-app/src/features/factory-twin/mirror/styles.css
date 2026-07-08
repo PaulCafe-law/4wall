@@ -47,8 +47,10 @@
   box-sizing: border-box;
 }
 .factory-twin-shell {
-  height: calc(100vh - 10rem);
-  min-height: 720px;
+  /* The factory-twin route lays out header/status strips with flexbox and
+     hands the remaining viewport height to this shell (see FactoryTwinPage). */
+  height: 100%;
+  min-height: 560px;
   overflow: hidden;
   background: var(--cream);
   color: var(--ink);
@@ -248,6 +250,9 @@
   position: relative;
   background: #050608;
   overflow: hidden;
+  /* 滾輪縮放 3D 時不把捲動鏈延伸到外層頁面 */
+  overscroll-behavior: contain;
+  touch-action: none;
 }
 .col-right {
   border-left: 2px solid var(--ink);
@@ -461,6 +466,12 @@
 .badge.maintenance {
   background: var(--mustard);
   border-color: var(--mustard-deep);
+}
+.badge.live-only,
+.badge.unknown {
+  background: #eef1ee;
+  color: var(--ink);
+  border-color: var(--line);
 }
 .kv {
   margin: 14px 0;
@@ -1967,4 +1978,165 @@
   font-size: 9.5px;
   color: var(--ink-muted);
   margin-left: 4px;
+}
+/* OCR value that is readable but not yet trustworthy (low confidence or the
+   sheet has not passed multi-frame consensus): gray italic + 待確認 tag. */
+.wo-sheet .wo-pending {
+  color: var(--ink-muted);
+  font-style: italic;
+  font-weight: 500;
+}
+.wo-sheet .wo-pending-tag {
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.wo-footnote {
+  margin-top: 6px;
+  color: var(--ink-muted);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+
+/* ---- 3D 視圖：當前派工單摘要浮層卡（左下角，深色場景樣式） ---- */
+.wo-overlay {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 55;
+  width: min(272px, calc(100% - 44px));
+  max-height: min(60%, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 122, 26, 0.5);
+  background: rgba(8, 10, 12, 0.82);
+  color: #f5f7f8;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(10px);
+  /* 只讓卡片本身可互動，不擋 3D 操作 */
+  pointer-events: auto;
+  overflow-y: auto;
+}
+.wo-overlay.collapsed {
+  gap: 0;
+  max-height: none;
+  overflow: visible;
+}
+.wo-overlay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.wo-overlay-title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: #f5f7f8;
+}
+.wo-overlay-toggle {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border: 1px solid rgba(245, 247, 248, 0.28);
+  background: rgba(245, 247, 248, 0.08);
+  color: #f5f7f8;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+.wo-overlay-toggle:hover {
+  border-color: #ff9f4a;
+  background: rgba(255, 122, 26, 0.24);
+}
+.wo-overlay-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wo-overlay-row {
+  display: grid;
+  grid-template-columns: 84px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  border-top: 1px solid rgba(245, 247, 248, 0.08);
+}
+.wo-overlay-row:first-child {
+  border-top: none;
+}
+.wo-overlay-row dt {
+  margin: 0;
+  color: rgba(245, 247, 248, 0.56);
+  font-family: var(--font-display);
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+}
+.wo-overlay-row dd {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12px;
+}
+.wo-overlay-lr {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.wo-overlay-mark {
+  color: rgba(245, 247, 248, 0.5);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+}
+.wo-overlay-val {
+  color: #f5f7f8;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.wo-overlay-unknown {
+  color: rgba(245, 247, 248, 0.4);
+}
+.wo-overlay-unit {
+  margin-left: 3px;
+  color: rgba(245, 247, 248, 0.5);
+  font-size: 9.5px;
+}
+/* OCR 值可讀但未可靠（低信心或整張單未通過多幀共識）：灰斜體＋待確認小標 */
+.wo-overlay-pending {
+  color: rgba(245, 247, 248, 0.6);
+  font-style: italic;
+  font-weight: 500;
+}
+.wo-overlay-pending-tag {
+  margin-left: 4px;
+  padding: 0 3px;
+  border: 1px solid rgba(245, 247, 248, 0.3);
+  color: rgba(245, 247, 248, 0.72);
+  font-family: var(--font-display);
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.wo-overlay-footnote {
+  margin-top: 2px;
+  color: rgba(245, 247, 248, 0.5);
+  font-family: var(--font-display);
+  font-size: 10px;
+  letter-spacing: 0.3px;
 }

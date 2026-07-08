@@ -1,6 +1,7 @@
 import { executeToolCall } from './tools';
 import type { ToolCall } from '../api/types';
 import type { Entity, MachineEntity, PersonEntity } from '../domain/entities';
+import { machineUsesLiveMetricsOnly, statusLabel } from '../domain/entities';
 import { useFactoryStore, uid } from '../store/factoryStore';
 
 function textIncludesAny(text: string, terms: string[]): boolean {
@@ -53,6 +54,9 @@ function runTool(call: ToolCall, messages: string[]): void {
 }
 
 function statusText(machine: MachineEntity): string {
+  if (machineUsesLiveMetricsOnly(machine)) {
+    return `${machine.name} 僅顯示真實資料；目前機台狀態為 ${statusLabel(machine.status)}。請查看即時儀表、HMI OCR 或攝影機資料。`;
+  }
   return `${machine.name} 目前狀態 ${machine.status}，OEE ${machine.oee}%，溫度 ${machine.temperature}°C，今日產量 ${machine.todayCount}，告警 ${machine.alarms} 次。`;
 }
 

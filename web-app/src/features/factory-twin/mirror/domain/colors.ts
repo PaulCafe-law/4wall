@@ -25,6 +25,8 @@ export function machineColor(status: string): string {
       return '#6e7b3d'; // olive
     case 'maintenance':
       return '#d9a441'; // mustard
+    case 'unknown':
+      return '#7a807a'; // muted live-data placeholder
     default:
       return '#c9bfa3'; // tan (idle)
   }

@@ -7,6 +7,7 @@ import { useAuthedQuery } from '../../../../lib/auth-query';
 import type { TwinAgentFeedEvent } from '../../../../lib/types';
 import { executeToolCall } from '../agent/tools';
 import type { Entity } from '../domain/entities';
+import { machineUsesLiveMetricsOnly } from '../domain/entities';
 import { uid, useFactoryStore } from '../store/factoryStore';
 
 export const TWIN_AGENT_SESSION_ID = uid('twin-session');
@@ -32,6 +33,14 @@ function compactEntity(e: Entity): Record<string, unknown> {
   };
   switch (e.type) {
     case 'machine':
+      if (machineUsesLiveMetricsOnly(e)) {
+        return {
+          ...base,
+          model: e.model,
+          metricsSource: 'live',
+          metricsAvailable: false,
+        };
+      }
       return {
         ...base,
         model: e.model,

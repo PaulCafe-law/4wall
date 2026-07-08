@@ -78,12 +78,13 @@ function workOrderSheetFixture() {
     template: 'hc600_dispatch_sheet_v1',
     unit: 'PCS',
     sourceLineCount: 56,
+    stabilized: true,
     fields: {
       machineNo: { label: '機台編號', value: 'HC600', confidence: 0.82, rawText: 'HC600' },
       moldNo: { label: '模具編號', value: 'GM096LC', confidence: 0.78, rawText: 'GM096LC' },
       productionDate: { label: '生產日期', value: '115年', confidence: 0.9, rawText: '生日期 115' },
       moldCavity: { label: '模具穴數', value: '1模2穴', confidence: 0.77, rawText: '以穴 1 積 2穴' },
-      material: { label: '材質', value: 'PC', confidence: 0.85, rawText: 'PC' },
+      material: { label: '材質', value: 'PC', confidence: 0.6, rawText: 'PC' },
       color: { label: '顏色', value: '透明', confidence: 0.99, rawText: '明' },
       packaging: { label: '包裝方式', ...unknown },
       shipDate: { label: '出貨日期', ...unknown },
@@ -369,6 +370,11 @@ describe('CamerasPage', () => {
     expect(screen.getByText('總計')).toBeInTheDocument()
     // Unreadable handwriting and out-of-crop fields render as blank dashes.
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(5)
+    // material 信心 0.6 < 0.75 → 灰色斜體＋「待確認」；高信心欄位不受影響。
+    expect(screen.getAllByText('待確認')).toHaveLength(1)
+    expect(screen.getByText('PC').closest('span')).toHaveClass('italic')
+    expect(screen.getByText('HC600').closest('span')).not.toHaveClass('italic')
+    expect(screen.getByText('數字為自動辨識，以現場單據為準。')).toBeInTheDocument()
   })
 
   it('keeps the previous frame visible while the next frame image is loading', async () => {

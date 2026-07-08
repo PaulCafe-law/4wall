@@ -5,6 +5,9 @@
 
 export const WORK_ORDER_UNKNOWN = 'unknown'
 
+// 低於此信心的辨識值視為「待確認」，UI 需灰色斜體標示。
+export const WORK_ORDER_CONFIDENCE_THRESHOLD = 0.75
+
 export interface WorkOrderLeaf {
   value: string | number
   confidence: number
@@ -22,6 +25,8 @@ export interface WorkOrderSheet {
   template: string
   unit: string
   sourceLineCount: number
+  // OCR worker 的多幀共識通過後才會標記 stabilized；缺欄位視為未穩定。
+  stabilized: boolean
   fields: Record<string, WorkOrderLeaf>
   quantities: Record<string, WorkOrderQuantityRow>
 }
@@ -69,6 +74,7 @@ export function parseWorkOrderSheet(structuredFields: Record<string, unknown> | 
     template: sheet.template,
     unit: typeof sheet.unit === 'string' ? sheet.unit : 'PCS',
     sourceLineCount: typeof sheet.sourceLineCount === 'number' ? sheet.sourceLineCount : 0,
+    stabilized: sheet.stabilized === true,
     fields: parsedFields,
     quantities: parsedQuantities,
   }
@@ -81,4 +87,14 @@ export function workOrderCellText(leaf: WorkOrderLeaf | undefined): string {
 
 export function isWorkOrderCellKnown(leaf: WorkOrderLeaf | undefined): boolean {
   return Boolean(leaf) && leaf!.value !== WORK_ORDER_UNKNOWN
+}
+
+// 值已辨識但仍不可靠：整張單尚未通過多幀共識，或該欄信心低於門檻。
+// UI 應以灰色斜體＋「待確認」小標呈現，提醒以現場單據為準。
+export function isWorkOrderCellPending(
+  leaf: WorkOrderLeaf | undefined,
+  sheet: Pick<WorkOrderSheet, 'stabilized'>,
+): boolean {
+  if (!isWorkOrderCellKnown(leaf)) return false
+  return !sheet.stabilized || leaf!.confidence < WORK_ORDER_CONFIDENCE_THRESHOLD
 }

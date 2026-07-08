@@ -13,6 +13,11 @@ import { AmrVisual } from './AmrModel';
 import { AlertPulseRing, AmrSensorRings, GroundRing } from './SensorRings';
 import { FACTORY_THEME } from './factoryTheme';
 
+// 現場真人(source:'live')專用配色:醒目螢光綠,和模擬人員(奶油色)一眼區隔——
+// 讓使用者立刻看出「這是攝影機真的偵測到的人」,不會淹沒在常駐的模擬人員裡。
+const LIVE_PERSON_COLOR = '#2fd27a';
+const LIVE_PERSON_EMISSIVE = '#0f9d58';
+
 function baseColor(e: Entity): string {
   if (e.type === 'machine') return machineColor(e.status);
   return ENTITY_COLOR[e.type] ?? '#cccccc';
@@ -34,19 +39,30 @@ function markerHeight(e: Entity): number {
 function Geometry({ entity, color }: { entity: Entity; color: string }) {
   const matProps = { color, emissive: color, emissiveIntensity: 0.18, roughness: 0.68 };
   switch (entity.type) {
-    case 'person':
+    case 'person': {
+      const live = entity.source === 'live';
+      const bodyColor = live ? LIVE_PERSON_COLOR : '#f1d37a';
+      const bodyEmissive = live ? LIVE_PERSON_EMISSIVE : '#c98222';
       return (
         <group>
           <mesh position={[0, 0.36, 0]} castShadow>
             <cylinderGeometry args={[0.16, 0.2, 0.72, 12]} />
-            <meshStandardMaterial color="#f1d37a" emissive="#c98222" emissiveIntensity={0.08} roughness={0.72} />
+            <meshStandardMaterial color={bodyColor} emissive={bodyEmissive} emissiveIntensity={live ? 0.4 : 0.08} roughness={0.72} />
           </mesh>
           <mesh position={[0, 0.86, 0]} castShadow>
             <sphereGeometry args={[0.16, 16, 16]} />
-            <meshStandardMaterial color="#f6e6c8" roughness={0.74} />
+            <meshStandardMaterial color={live ? '#eafff4' : '#f6e6c8'} emissive={live ? bodyEmissive : '#000000'} emissiveIntensity={live ? 0.25 : 0} roughness={0.74} />
           </mesh>
+          {/* 頭頂螢光信標:高過機台(1.4)頂端,讓真人即使站在機台旁也會冒出頭、看得到。 */}
+          {live && (
+            <mesh position={[0, 1.95, 0]}>
+              <octahedronGeometry args={[0.2, 0]} />
+              <meshStandardMaterial color={bodyColor} emissive={bodyEmissive} emissiveIntensity={0.7} roughness={0.4} />
+            </mesh>
+          )}
         </group>
       );
+    }
     case 'machine':
       return (
         <mesh position={[0, 0.7, 0]} castShadow>
@@ -204,8 +220,10 @@ export function EntityMarker({ entity }: { entity: Entity }) {
 
   const color = highlight?.color ?? baseColor(entity);
   const isAlert = entity.status === 'alarm' || highlight?.color === OVERLAY.alarm || highlight?.color === FACTORY_THEME.alarm;
+  // 現場真人永遠標示身分:醒目名牌 + 持續脈動光環,一眼認得出它是真的偵測到的人。
+  const isLivePerson = entity.type === 'person' && entity.source === 'live';
   const ringRadius = entity.type === 'person' ? 0.38 : entity.type === 'amr' ? 0.9 : entity.type === 'machine' ? 1.7 : 1.15;
-  const showLabel = selected || !!highlight || (debugOpen && bound && entity.type === 'machine');
+  const showLabel = selected || !!highlight || isLivePerson || (debugOpen && bound && entity.type === 'machine');
   const labelHeight = (bound ? 1.2 : markerHeight(entity)) + 0.6;
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
@@ -231,6 +249,9 @@ export function EntityMarker({ entity }: { entity: Entity }) {
       {entity.type === 'amr' && <AmrSensorRings active={entity.status === 'moving' || selected || !!highlight} />}
       {selected && <GroundRing color={FACTORY_THEME.orange} radius={ringRadius} thickness={0.12} opacity={0.9} pulse />}
       {!!highlight && !selected && <GroundRing color={color} radius={ringRadius} thickness={0.1} opacity={0.82} pulse={entity.type !== 'zone'} />}
+      {isLivePerson && !selected && !highlight && (
+        <GroundRing color={LIVE_PERSON_COLOR} radius={0.52} thickness={0.12} opacity={0.92} pulse />
+      )}
       {isAlert && <AlertPulseRing radius={ringRadius + 0.22} />}
       <ScreenHitTarget entity={entity} height={labelHeight - 0.1} />
       {showLabel && (

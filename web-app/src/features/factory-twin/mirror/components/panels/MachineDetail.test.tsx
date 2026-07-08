@@ -60,14 +60,15 @@ const hc600: MachineEntity = {
   type: 'machine',
   name: 'HC600-01',
   position: { x: 0, y: 0, z: 0 },
-  status: 'running',
-  source: 'sim',
+  status: 'unknown',
+  source: 'live',
   model: 'HC600',
-  oee: 86,
-  temperature: 78,
-  cycleTimeSec: 32,
-  todayCount: 412,
-  alarms: 1,
+  attrs: { liveMetricsOnly: true },
+  oee: 0,
+  temperature: 0,
+  cycleTimeSec: 0,
+  todayCount: 0,
+  alarms: 0,
 };
 
 beforeEach(() => {
@@ -101,6 +102,9 @@ it('shows live gauge readings and HMI OCR for HC600-01 when platform camera data
 
   render(<MachineDetail entity={hc600} />);
 
+  expect(screen.getAllByText('真實資料')).toHaveLength(2);
+  expect(screen.queryByText('OEE')).not.toBeInTheDocument();
+  expect(screen.queryByText('今日產量')).not.toBeInTheDocument();
   expect(screen.getByText('實際讀表')).toBeInTheDocument();
   expect(screen.getByText('PRESS AM METER')).toBeInTheDocument();
   expect(screen.getByText('FLOW AM METER')).toBeInTheDocument();
@@ -120,9 +124,10 @@ it('renders the structured 派工單 sheet with OCR values and blank unknown cel
         template: 'hc600_dispatch_sheet_v1',
         unit: 'PCS',
         sourceLineCount: 56,
+        stabilized: true,
         fields: {
           machineNo: { label: '機台編號', value: 'HC600', confidence: 0.82, rawText: 'HC600' },
-          moldNo: { label: '模具編號', value: 'GM096LC', confidence: 0.78, rawText: 'GM096LC' },
+          moldNo: { label: '模具編號', value: 'GM096LC', confidence: 0.62, rawText: 'GM096LC' },
           productionDate: { label: '生產日期', value: '115年', confidence: 0.9, rawText: '115' },
           moldCavity: { label: '模具穴數', value: '1模2穴', confidence: 0.77, rawText: '1 2穴' },
           material: { label: '材質', value: 'PC', confidence: 0.85, rawText: 'PC' },
@@ -176,4 +181,59 @@ it('renders the structured 派工單 sheet with OCR values and blank unknown cel
   expect(sheet.getAllByText('210')).toHaveLength(2);
   expect(sheet.getByText('總計')).toBeInTheDocument();
   expect(sheet.getAllByText('—').length).toBeGreaterThanOrEqual(5);
+  // moldNo 信心 0.62 < 0.75 → 灰色斜體＋「待確認」小標；其餘欄位不受影響。
+  expect(sheet.getAllByText('待確認')).toHaveLength(1);
+  expect(sheet.getByText('GM096LC').closest('span')).toHaveClass('wo-pending');
+  expect(sheet.getByText('HC600').closest('span')).not.toHaveClass('wo-pending');
+  expect(screen.getByText('數字為自動辨識，以現場單據為準。')).toBeInTheDocument();
+});
+
+it('marks every recognized cell 待確認 when the sheet has not stabilized yet', () => {
+  const observation = {
+    ...ocrObservation('factory-1'),
+    structuredFields: {
+      screen: { kind: 'machine_monitor' },
+      workOrder: {
+        template: 'hc600_dispatch_sheet_v1',
+        unit: 'PCS',
+        sourceLineCount: 12,
+        stabilized: false,
+        fields: {
+          machineNo: { label: '機台編號', value: 'HC600', confidence: 0.99, rawText: 'HC600' },
+        },
+        quantities: {
+          total: {
+            label: '總計',
+            left: { value: 210, confidence: 0.99, rawText: '210' },
+            right: { value: 'unknown', confidence: 0, rawText: '' },
+          },
+        },
+      },
+    },
+  };
+  useFactoryStore.setState({
+    platformCameras: [
+      {
+        id: 'fw-camera-panel',
+        type: 'camera',
+        name: 'PoE Camera 192.168.1.10',
+        position: { x: 0, y: 0, z: 0 },
+        status: 'active',
+        source: 'live',
+        siteLabel: '靚程工廠 / HC600-01',
+        online: true,
+        samplingIntervalSeconds: 10,
+        feedMode: 'snapshot',
+        attrs: { latestOcrObservation: observation },
+      },
+    ],
+  });
+
+  render(<MachineDetail entity={hc600} />);
+
+  const sheet = within(screen.getByRole('table', { name: '派工單' }));
+  // 高信心也一樣待確認：整張單尚未通過多幀共識。未知欄位維持留白、不加標。
+  expect(sheet.getAllByText('待確認')).toHaveLength(2);
+  expect(sheet.getByText('HC600').closest('span')).toHaveClass('wo-pending');
+  expect(screen.getByText('數字為自動辨識，以現場單據為準。')).toBeInTheDocument();
 });

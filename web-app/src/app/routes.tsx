@@ -3,6 +3,7 @@ import type { ReactElement } from 'react'
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
 
 import { AppShell } from './shell'
+import { AttributionWorkbenchPage } from '../features/attribution/AttributionWorkbenchPage'
 import { AuditPage } from '../features/audit/AuditPage'
 import { InvitePage } from '../features/auth/InvitePage'
 import { LoginPage } from '../features/auth/LoginPage'
@@ -53,6 +54,14 @@ export function AppRoutes() {
                 <Route path="/missions/:missionId" element={<MissionDetailPage />} />
                 <Route path="/incidents" element={<IncidentCenterPage />} />
                 <Route path="/incidents/:incidentId" element={<IncidentDetailPage />} />
+                <Route
+                  path="/attribution"
+                  element={
+                    <RequireInternal>
+                      <AttributionWorkbenchPage />
+                    </RequireInternal>
+                  }
+                />
                 <Route path="/industrial-data-engine" element={<IndustrialDataEnginePage />} />
                 <Route path="/billing" element={<BillingPage />} />
                 <Route

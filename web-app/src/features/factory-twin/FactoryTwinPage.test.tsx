@@ -6,7 +6,12 @@ import { AppShell } from '../../app/shell';
 import { RequireAuthenticated } from '../../app/routes';
 import type { CameraDevice, CameraPersonObservation } from '../../lib/types';
 import { createAuthValue, renderWithProviders } from '../../test/utils';
-import { FactoryTwinPage } from './FactoryTwinPage';
+import { FactoryTwinPage, toLivePersons } from './FactoryTwinPage';
+import {
+  LIVE_PERSON_MACHINE_OFFSET_X_M,
+  LIVE_PERSON_MACHINE_OFFSET_Z_M,
+} from './mirror/domain/machineCameras';
+import { buildMockEntities } from './mirror/domain/mockData';
 
 const apiMock = vi.hoisted(() => ({
   listCameras: vi.fn(),
@@ -190,6 +195,10 @@ describe('FactoryTwinPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('platform cameras: 3');
     });
+    // 統計卡已改為 3D 區塊上方的一行狀態列。
+    expect(await screen.findByText(/3 攝影機在線・現場 0 人・10s・真實資料/)).toBeInTheDocument();
+    expect(screen.queryByText('快照更新')).not.toBeInTheDocument();
+    expect(screen.queryByText('已綁定至數位分身的平台攝影機')).not.toBeInTheDocument();
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('gauge readings: 2');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('機台周遭');
@@ -231,7 +240,7 @@ describe('FactoryTwinPage', () => {
 
     renderFactoryRoute();
 
-    expect(await screen.findByText('現場人數')).toBeInTheDocument();
+    expect(await screen.findByText(/現場 2 人/)).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 2');
     });
@@ -239,7 +248,7 @@ describe('FactoryTwinPage', () => {
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員 3-2');
   });
 
-  it('drops expired, null, and out-of-bounds live person projections', async () => {
+  it('drops expired observations and observations without detected people', async () => {
     apiMock.listCameras.mockResolvedValueOnce({
       cameras: [
         cameraFixture(
@@ -250,11 +259,31 @@ describe('FactoryTwinPage', () => {
           personObservation('expired', { capturedAt: '2020-01-01T00:00:00Z' }),
         ),
         cameraFixture(
-          'bad-projection',
+          'nobody',
           'PoE Camera 192.168.1.28',
           'dd6cbdd3aa744736ad96d2791d689fce',
           [],
-          personObservation('bad-projection', {
+          personObservation('nobody', { personCount: 0, detections: [] }),
+        ),
+      ],
+    });
+
+    renderFactoryRoute();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
+    });
+  });
+
+  it('falls back to a machine-side presence marker when floor projection is unavailable', async () => {
+    apiMock.listCameras.mockResolvedValueOnce({
+      cameras: [
+        cameraFixture(
+          'machine-cam',
+          'PoE Camera 192.168.1.31',
+          'dd6cbdd3aa744736ad96d2791d689fce',
+          [],
+          personObservation('machine-cam', {
             personCount: 2,
             detections: [
               {
@@ -278,7 +307,81 @@ describe('FactoryTwinPage', () => {
     renderFactoryRoute();
 
     await waitFor(() => {
-      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 1');
     });
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員 ×2');
+  });
+});
+
+describe('toLivePersons', () => {
+  it('anchors the fallback presence marker beside the mapped HC600-01 machine', () => {
+    const nowMs = Date.now();
+    const machine = buildMockEntities()['m-hc600'];
+    const camera = cameraFixture(
+      'machine-cam',
+      'PoE Camera 192.168.1.31',
+      'dd6cbdd3aa744736ad96d2791d689fce',
+      [],
+      personObservation('machine-cam', {
+        personCount: 2,
+        detections: [
+          { bbox: [100, 120, 40, 160], confidence: 0.92, footPoint: [120, 280], floorPosition: null },
+          { bbox: [200, 150, 42, 180], confidence: 0.81, footPoint: [221, 330], floorPosition: null },
+        ],
+      }),
+    );
+
+    const persons = toLivePersons([camera], nowMs);
+
+    expect(persons).toHaveLength(1);
+    expect(persons[0].id).toBe('fw-live-person-machine-cam-presence');
+    expect(persons[0].name).toBe('現場人員 ×2');
+    expect(persons[0].source).toBe('live');
+    expect(persons[0].position).toEqual({
+      x: machine.position.x + LIVE_PERSON_MACHINE_OFFSET_X_M,
+      y: 0.05,
+      z: machine.position.z + LIVE_PERSON_MACHINE_OFFSET_Z_M,
+    });
+    expect(persons[0].attrs?.personCount).toBe(2);
+    expect(persons[0].attrs?.approximate).toBe(true);
+    expect(persons[0].attrs?.confidence).toBe(0.92);
+  });
+
+  it('measures freshness by receivedAt within the 90s window and drops older ones', () => {
+    const nowMs = Date.now();
+    const freshCamera = cameraFixture(
+      'fresh',
+      'PoE Camera 192.168.1.31',
+      'dd6cbdd3aa744736ad96d2791d689fce',
+      [],
+      personObservation('fresh', { receivedAt: new Date(nowMs - 80_000).toISOString() }),
+    );
+    const staleCamera = cameraFixture(
+      'stale',
+      'PoE Camera 192.168.1.31',
+      'dd6cbdd3aa744736ad96d2791d689fce',
+      [],
+      personObservation('stale', { receivedAt: new Date(nowMs - 100_000).toISOString() }),
+    );
+
+    expect(toLivePersons([freshCamera], nowMs)).toHaveLength(2);
+    expect(toLivePersons([staleCamera], nowMs)).toHaveLength(0);
+  });
+
+  it('prefers receivedAt over a lagging camera capturedAt clock', () => {
+    const nowMs = Date.now();
+    // Edge (Pi) clock lags: capturedAt looks old, but the platform received it just now.
+    const camera = cameraFixture(
+      'lagging-clock',
+      'PoE Camera 192.168.1.28',
+      'dd6cbdd3aa744736ad96d2791d689fce',
+      [],
+      personObservation('laggy', {
+        capturedAt: new Date(nowMs - 600_000).toISOString(),
+        receivedAt: new Date(nowMs - 5_000).toISOString(),
+      }),
+    );
+    // Kept (not dropped) despite the stale capturedAt, because receivedAt is recent.
+    expect(toLivePersons([camera], nowMs)).toHaveLength(2);
   });
 });

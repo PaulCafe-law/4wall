@@ -152,32 +152,32 @@ it('set_machine_state alarm uses the store trigger and bumps manualAlarmNonce', 
 it('set_machine_state running clears repair state and highlight', () => {
   seedMockEntities();
   const s = useFactoryStore.getState();
-  s.patchEntity('m-hc600', {
+  s.patchEntity('m-hc600-003', {
     status: 'alarm',
     temperature: 88,
     attrs: { repairState: 'waiting_dispatch' },
   });
-  s.setHighlight('m-hc600', { color: '#c0492f' });
+  s.setHighlight('m-hc600-003', { color: '#c0492f' });
 
-  const result = set_machine_state({ machineId: 'm-hc600', state: 'running' });
+  const result = set_machine_state({ machineId: 'm-hc600-003', state: 'running' });
 
   expect(result.ok).toBe(true);
   const state = useFactoryStore.getState();
-  const target = state.entities['m-hc600'] as MachineEntity;
+  const target = state.entities['m-hc600-003'] as MachineEntity;
   expect(target.status).toBe('running');
   expect(target.temperature).toBe(74);
   expect(target.attrs?.repairState).toBeUndefined();
   expect(target.attrs?.simNextAlarmAt).toBe(60_000);
-  expect(state.highlights['m-hc600']).toBeUndefined();
+  expect(state.highlights['m-hc600-003']).toBeUndefined();
 });
 
 it('set_machine_state maintenance schedules repairDoneAt', () => {
   seedMockEntities();
 
-  const result = set_machine_state({ machineId: 'm-hc600', state: 'maintenance' });
+  const result = set_machine_state({ machineId: 'm-hc600-003', state: 'maintenance' });
 
   expect(result.ok).toBe(true);
-  const target = useFactoryStore.getState().entities['m-hc600'] as MachineEntity;
+  const target = useFactoryStore.getState().entities['m-hc600-003'] as MachineEntity;
   expect(target.status).toBe('maintenance');
   expect(target.attrs?.repairState).toBe('repairing');
   expect(target.attrs?.repairDoneAt).toBe(15_000);
@@ -185,6 +185,10 @@ it('set_machine_state maintenance schedules repairDoneAt', () => {
 
 it('set_machine_state refuses live machines and unknown ids', () => {
   seedMockEntities([liveMachine]);
+
+  const hc600 = set_machine_state({ machineId: 'm-hc600', state: 'running' });
+  expect(hc600.ok).toBe(false);
+  expect(hc600.message).toContain('模擬機台');
 
   const live = set_machine_state({ machineId: 'm-live-01', state: 'idle' });
   expect(live.ok).toBe(false);

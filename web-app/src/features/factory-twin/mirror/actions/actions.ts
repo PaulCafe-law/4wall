@@ -6,7 +6,7 @@
 // ============================================================================
 import { useFactoryStore, uid } from '../store/factoryStore';
 import type { AmrEntity, Entity, MachineEntity, MachineStatus } from '../domain/entities';
-import { statusLabel } from '../domain/entities';
+import { machineUsesLiveMetricsOnly, statusLabel } from '../domain/entities';
 import { OVERLAY } from '../domain/colors';
 import { movementAreaFromAttrs } from '../domain/movementArea';
 import { findWalkPath } from '../domain/pathfinding';
@@ -274,6 +274,9 @@ function resolveEntityRef<T extends Entity>(ref: string, candidates: T[]): T | n
 function describe(e: Entity): string {
   switch (e.type) {
     case 'machine':
+      if (machineUsesLiveMetricsOnly(e)) {
+        return `${e.name}：僅使用真實資料；狀態 ${statusLabel(e.status)}。請查看即時儀表、HMI OCR 或攝影機資料。`;
+      }
       return `${e.name}：${statusLabel(e.status)}・OEE ${e.oee}%・溫度 ${e.temperature}°C・週期 ${e.cycleTimeSec}s・今日 ${e.todayCount} 模・告警 ${e.alarms}`;
     case 'person':
       return `${e.name}（${e.role}）：${statusLabel(e.status)}${e.station ? '・站別 ' + e.station : ''}`;

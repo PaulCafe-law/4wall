@@ -7,6 +7,7 @@ import type { CameraDevice, CameraGaugeReading, CameraOcrObservation } from '../
 import {
   WORK_ORDER_QUANTITY_ROW_ORDER,
   isWorkOrderCellKnown,
+  isWorkOrderCellPending,
   parseWorkOrderSheet,
   workOrderCellText,
   type WorkOrderLeaf,
@@ -203,12 +204,34 @@ function summaryText(observation: CameraOcrObservation): string | null {
 const WO_TH = 'border border-chrome-300 bg-chrome-100/70 px-2 py-1.5 text-left text-xs font-semibold text-chrome-700 whitespace-nowrap'
 const WO_TD = 'border border-chrome-300 px-2 py-1.5 text-sm text-chrome-950'
 
-function WorkOrderCell({ leaf, unit }: { leaf: WorkOrderLeaf | undefined; unit?: string }) {
+function WorkOrderCell({
+  leaf,
+  unit,
+  sheet,
+}: {
+  leaf: WorkOrderLeaf | undefined
+  unit?: string
+  sheet: WorkOrderSheet
+}) {
   const known = isWorkOrderCellKnown(leaf)
+  const pending = isWorkOrderCellPending(leaf, sheet)
   return (
-    <span className={known ? 'font-semibold tabular-nums' : 'text-chrome-300'}>
+    <span
+      className={
+        known
+          ? pending
+            ? 'font-semibold italic tabular-nums text-chrome-400'
+            : 'font-semibold tabular-nums'
+          : 'text-chrome-300'
+      }
+    >
       {workOrderCellText(leaf)}
-      {known && unit ? <span className="ml-1 text-[10px] text-chrome-500">{unit}</span> : null}
+      {known && unit ? <span className="ml-1 text-[10px] not-italic text-chrome-500">{unit}</span> : null}
+      {pending ? (
+        <span className="ml-1 rounded bg-chrome-100 px-1 py-0.5 text-[10px] font-normal not-italic text-chrome-500">
+          待確認
+        </span>
+      ) : null}
     </span>
   )
 }
@@ -220,15 +243,15 @@ function WorkOrderTable({ sheet }: { sheet: WorkOrderSheet }) {
       <tbody>
         <tr>
           <th className={WO_TH}>機台編號</th>
-          <td className={WO_TD}><WorkOrderCell leaf={f.machineNo} /></td>
+          <td className={WO_TD}><WorkOrderCell leaf={f.machineNo} sheet={sheet} /></td>
           <th className={WO_TH}>模具編號</th>
-          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.moldNo} /></td>
+          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.moldNo} sheet={sheet} /></td>
         </tr>
         <tr>
           <th className={WO_TH}>生產日期</th>
-          <td className={WO_TD}><WorkOrderCell leaf={f.productionDate} /></td>
+          <td className={WO_TD}><WorkOrderCell leaf={f.productionDate} sheet={sheet} /></td>
           <th className={WO_TH}>模具穴數</th>
-          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.moldCavity} /></td>
+          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.moldCavity} sheet={sheet} /></td>
         </tr>
         {WORK_ORDER_QUANTITY_ROW_ORDER.map(({ key, label }) => {
           const row = sheet.quantities[key]
@@ -236,21 +259,21 @@ function WorkOrderTable({ sheet }: { sheet: WorkOrderSheet }) {
             <tr key={key}>
               <th className={WO_TH}>{row?.label ?? label}</th>
               <td className={`${WO_TD} w-8 text-center font-semibold`}>L</td>
-              <td className={WO_TD}><WorkOrderCell leaf={row?.left} unit={sheet.unit} /></td>
+              <td className={WO_TD}><WorkOrderCell leaf={row?.left} unit={sheet.unit} sheet={sheet} /></td>
               <td className={`${WO_TD} w-8 text-center font-semibold`}>R</td>
-              <td className={WO_TD}><WorkOrderCell leaf={row?.right} unit={sheet.unit} /></td>
+              <td className={WO_TD}><WorkOrderCell leaf={row?.right} unit={sheet.unit} sheet={sheet} /></td>
             </tr>
           )
         })}
         <tr>
           <th className={WO_TH}>材質</th>
-          <td className={WO_TD}><WorkOrderCell leaf={f.material} /></td>
+          <td className={WO_TD}><WorkOrderCell leaf={f.material} sheet={sheet} /></td>
           <th className={WO_TH}>顏色</th>
-          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.color} /></td>
+          <td className={WO_TD} colSpan={2}><WorkOrderCell leaf={f.color} sheet={sheet} /></td>
         </tr>
         <tr>
           <th className={WO_TH}>備註</th>
-          <td className={WO_TD} colSpan={4}><WorkOrderCell leaf={f.remark} /></td>
+          <td className={WO_TD} colSpan={4}><WorkOrderCell leaf={f.remark} sheet={sheet} /></td>
         </tr>
       </tbody>
     </table>
@@ -266,6 +289,9 @@ function WorkOrderSheetCard({ observation }: { observation: CameraOcrObservation
         派工單{sheet ? '（OCR 自動填入，讀不清的欄位留白）' : ' OCR'}
       </p>
       {sheet ? <WorkOrderTable sheet={sheet} /> : null}
+      {sheet ? (
+        <p className="mt-2 text-[11px] text-chrome-500">數字為自動辨識，以現場單據為準。</p>
+      ) : null}
       {observation.workOrderRawText ? (
         <details className="mt-3">
           <summary className="cursor-pointer text-xs text-chrome-500">原始 OCR 文字</summary>

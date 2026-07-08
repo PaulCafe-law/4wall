@@ -35,7 +35,7 @@ export interface PersonEntity extends BaseEntity {
   lineUserId?: string; // mock LINE id (real LINE Messaging API wired later)
 }
 
-export type MachineStatus = 'running' | 'idle' | 'alarm' | 'maintenance';
+export type MachineStatus = 'running' | 'idle' | 'alarm' | 'maintenance' | 'unknown';
 export interface MachineEntity extends BaseEntity {
   type: 'machine';
   status: MachineStatus;
@@ -45,6 +45,10 @@ export interface MachineEntity extends BaseEntity {
   cycleTimeSec: number;
   todayCount: number;
   alarms: number;
+}
+
+export function machineUsesLiveMetricsOnly(entity: MachineEntity): boolean {
+  return entity.attrs?.liveMetricsOnly === true;
 }
 
 // Mirrors Fourth Wall `CameraDevice`: cameras are JPEG snapshot pollers, not live streams.
@@ -108,6 +112,7 @@ export const STATUS_LABEL: Record<string, string> = {
   idle: '待機',
   alarm: '告警',
   maintenance: '保養中',
+  unknown: '無資料',
   'on-duty': '在崗',
   active: '在線',
   inactive: '離線',

@@ -327,3 +327,33 @@ it('caps snapshot entities at 150 and relabels live persons', () => {
   const person = compact.find((entry) => entry.id === livePerson.id);
   expect(person).toMatchObject({ role: '現場人員', position: { x: 1.3, y: 0, z: 2 } });
 });
+
+it('omits placeholder machine metrics for live-only machines', () => {
+  const liveOnlyMachine: MachineEntity = {
+    ...machineFixture('m-hc600', 0),
+    status: 'unknown',
+    source: 'live',
+    attrs: { liveMetricsOnly: true },
+    oee: 0,
+    temperature: 0,
+    todayCount: 0,
+    alarms: 0,
+  };
+
+  const [compact] = compactEntities({ [liveOnlyMachine.id]: liveOnlyMachine });
+
+  expect(compact).toEqual({
+    id: 'm-hc600',
+    type: 'machine',
+    name: 'M-HC600',
+    status: 'unknown',
+    position: { x: 0, y: 0, z: -3.1 },
+    model: 'HC600',
+    metricsSource: 'live',
+    metricsAvailable: false,
+  });
+  expect(compact).not.toHaveProperty('oee');
+  expect(compact).not.toHaveProperty('temperature');
+  expect(compact).not.toHaveProperty('todayCount');
+  expect(compact).not.toHaveProperty('alarms');
+});

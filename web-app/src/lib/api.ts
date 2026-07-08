@@ -327,6 +327,81 @@ export interface IncidentPayload {
   aiConfidence?: number
 }
 
+export type DecisionPointEventType = 'dispatch' | 'plan_vs_actual' | 'anomaly_response' | 'maintenance'
+
+export type DecisionPointStatus = 'awaiting_actual' | 'resolved'
+
+export type DecisionPointAttributionReason =
+  | 'rule_wrong'
+  | 'data_missing'
+  | 'schedule_gap'
+  | 'skill_matrix_stale'
+  | 'implicit_rule'
+  | 'foreman_preference'
+  | 'site_exception'
+  | 'other'
+
+export interface DecisionPointCandidate {
+  name: string
+  score: number
+  rationale: string
+}
+
+export interface DecisionPointPrediction {
+  engine?: string
+  candidates?: DecisionPointCandidate[]
+}
+
+export interface DecisionPoint {
+  decisionPointId: string
+  organizationId: string
+  domain: string
+  eventType: DecisionPointEventType
+  source: string
+  subjectRef: string
+  occurredAt: string
+  plan: Record<string, unknown>
+  prediction: DecisionPointPrediction | null
+  predictedAt: string | null
+  actual: Record<string, unknown> | null
+  actualRecordedAt: string | null
+  consistent: boolean | null
+  attribution: string
+  attributionNote: string | null
+  attributedBy: string | null
+  attributedAt: string | null
+  status: DecisionPointStatus
+  createdAt: string
+}
+
+export interface DecisionPointListResponse {
+  decisionPoints: DecisionPoint[]
+}
+
+export interface DecisionPointStats {
+  windowDays: number
+  totalPoints: number
+  judgedPoints: number
+  consistentPoints: number
+  consistencyRate: number | null
+  attributedPoints: number
+  mismatchedUnattributed: number
+}
+
+export interface DecisionPointFilters {
+  organizationId?: string
+  eventType?: string
+  status?: DecisionPointStatus
+  mismatchOnly?: boolean
+  unattributedOnly?: boolean
+  limit?: number
+}
+
+export interface DecisionPointAttributionPayload {
+  attribution: DecisionPointAttributionReason
+  note?: string | null
+}
+
 export interface InspectionRoutePayload {
   organizationId: string
   siteId: string
@@ -601,6 +676,32 @@ export const api = {
       `/v1/incidents/summary${buildQuery({ date, organizationId })}`,
       { token },
     ),
+  listDecisionPoints: (token: string, filters?: DecisionPointFilters) =>
+    apiFetch<DecisionPointListResponse>(
+      `/v1/decision-points${buildQuery({
+        organizationId: filters?.organizationId,
+        eventType: filters?.eventType,
+        status: filters?.status,
+        mismatchOnly: filters?.mismatchOnly ? 'true' : undefined,
+        unattributedOnly: filters?.unattributedOnly ? 'true' : undefined,
+        limit: filters?.limit != null ? String(filters.limit) : undefined,
+      })}`,
+      { token },
+    ),
+  getDecisionPointStats: (token: string, params: { organizationId: string; days?: number }) =>
+    apiFetch<DecisionPointStats>(
+      `/v1/decision-points/stats${buildQuery({
+        organizationId: params.organizationId,
+        days: params.days != null ? String(params.days) : undefined,
+      })}`,
+      { token },
+    ),
+  attributeDecisionPoint: (token: string, decisionPointId: string, payload: DecisionPointAttributionPayload) =>
+    apiFetch<DecisionPoint>(`/v1/decision-points/${decisionPointId}/attribution`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
   listInspectionRoutes: (token: string, filters?: { organizationId?: string; siteId?: string }) =>
     apiFetch<InspectionRoute[]>(`/v1/inspection/routes${buildQuery(filters ?? {})}`, { token }),
   createInspectionRoute: (token: string, payload: InspectionRoutePayload) =>

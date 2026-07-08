@@ -1,4 +1,5 @@
 import { clear_overlays } from '../actions/actions';
+import { machineUsesLiveMetricsOnly } from '../domain/entities';
 import { useFactoryStore } from '../store/factoryStore';
 
 export type AppMode = 'factory' | 'warehouse';
@@ -14,7 +15,7 @@ export function TopBar({ mode, onModeChange }: TopBarProps) {
   const list = Object.values(entities);
   const people = list.filter((e) => e.type === 'person').length;
   const machines = list.filter((e) => e.type === 'machine').length;
-  const alarms = list.filter((e) => e.type === 'machine' && e.alarms > 0).length;
+  const alarms = list.filter((e) => e.type === 'machine' && !machineUsesLiveMetricsOnly(e) && e.alarms > 0).length;
 
   return (
     <header className="topbar">
