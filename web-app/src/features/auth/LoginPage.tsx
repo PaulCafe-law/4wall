@@ -9,7 +9,7 @@ import { useAuth } from '../../lib/auth'
 import { formatApiError } from '../../lib/presentation'
 
 const loginSchema = z.object({
-  email: z.string().email('請輸入有效的電子郵件地址'),
+  email: z.string().trim().min(3, '請輸入帳號或電子郵件'),
   password: z.string().min(8, '密碼至少需要 8 個字元'),
 })
 
@@ -91,8 +91,8 @@ export function LoginPage() {
           ) : null}
 
           <form className="mt-6 space-y-4" noValidate onSubmit={onSubmit}>
-            <Field label="電子郵件" error={errors.email?.message}>
-              <Input type="email" autoComplete="email" {...register('email')} />
+            <Field label="帳號或電子郵件" error={errors.email?.message}>
+              <Input type="text" autoComplete="username" {...register('email')} />
             </Field>
             <Field label="密碼" error={errors.password?.message}>
               <Input type="password" autoComplete="current-password" {...register('password')} />

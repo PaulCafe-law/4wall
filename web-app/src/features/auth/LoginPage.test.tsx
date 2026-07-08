@@ -13,11 +13,11 @@ describe('LoginPage', () => {
       auth: createAuthValue({ status: 'anonymous', session: null, user: null }),
     })
 
-    await user.type(screen.getByLabelText('電子郵件'), 'invalid-email')
+    await user.type(screen.getByLabelText('帳號或電子郵件'), 'ab')
     await user.type(screen.getByLabelText('密碼'), '123')
     await user.click(screen.getByRole('button', { name: '進入主控台' }))
 
-    expect(await screen.findByText('請輸入有效的電子郵件地址')).toBeInTheDocument()
+    expect(await screen.findByText('請輸入帳號或電子郵件')).toBeInTheDocument()
     expect(await screen.findByText('密碼至少需要 8 個字元')).toBeInTheDocument()
   })
 })
