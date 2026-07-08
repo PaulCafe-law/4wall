@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, time
 from typing import Iterable
 
@@ -35,6 +36,8 @@ from app.models import (
     Site,
     utc_now,
 )
+
+logger = logging.getLogger(__name__)
 
 
 INCIDENT_STATUSES = {"pending_review", "confirmed", "in_progress", "resolved", "false_positive"}
@@ -311,7 +314,37 @@ def assign_incident(
         metadata={"from": previous, "to": incident.assignee_name},
     )
     record_incident_line_notification(session, settings, incident, "incident_assigned")
+    _record_dispatch_shadow_point(session, incident)
     return incident
+
+
+def _record_dispatch_shadow_point(session: Session, incident: IncidentRecord) -> None:
+    """Shadow-mode hook: every real assignment becomes a ledger decision point.
+
+    Best-effort by design — the ledger must never break the incident flow.
+    """
+
+    if not incident.assignee_name:
+        return
+    location = incident.location_json or {}
+    machine_no = location.get("machineId") or location.get("equipmentName")
+    if not machine_no:
+        return
+    try:
+        from app.dispatch import create_dispatch_point
+
+        create_dispatch_point(
+            session,
+            organization_id=incident.organization_id,
+            site_id=incident.site_id,
+            machine_no=str(machine_no),
+            occurred_at=incident.created_at,
+            source="incident",
+            plan={"incidentId": incident.id, "title": incident.title},
+            actual_assignee=incident.assignee_name,
+        )
+    except Exception:  # pragma: no cover - defensive: ledger must not block incidents
+        logger.exception("dispatch_shadow_point_failed", extra={"incident_id": incident.id})
 
 
 def add_incident_comment(

@@ -28,6 +28,7 @@ from app.models import (
     CameraDevice,
     CameraFrame,
     CameraGaugeReading,
+    CameraOcrObservation,
     IncidentLineNotificationRecord,
     IncidentRecord,
     LineGroupBinding,
@@ -284,6 +285,101 @@ def test_text_machine_detail_degrades_without_public_thumbnail(test_settings, mo
     message = replies[0]["messages"][0]
     assert "hero" not in message["contents"]
     assert "暫無可公開縮圖" in json.dumps(message, ensure_ascii=False)
+
+
+class _CroppableStorage(FakeStorage):
+    """FakeStorage variant that serves frame bytes and accepts ticket writes."""
+
+    def __init__(self, blobs: dict[str, bytes]) -> None:
+        super().__init__()
+        self.blobs = dict(blobs)
+        self.writes: list[str] = []
+
+    def write(self, *, key: str, data: bytes, content_type: str, cache_control: str):
+        self.blobs[key] = data
+        self.writes.append(key)
+        return None
+
+    def read(self, key: str) -> bytes | None:
+        return self.blobs.get(key)
+
+
+def _ticket_jpeg(width: int = 1280, height: int = 720) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (width, height), color=(220, 220, 220)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _seed_work_order_observation(app) -> None:
+    now = datetime.now(timezone.utc)
+    with app.state.session_factory() as session:
+        camera = session.exec(select(CameraDevice).where(CameraDevice.id == "camera-gauge")).first()
+        session.add(
+            CameraOcrObservation(
+                camera_id=camera.id,
+                organization_id=camera.organization_id,
+                site_id=camera.site_id,
+                mode="machine_monitor",
+                mode_confidence=0.9,
+                captured_at=now - timedelta(minutes=2),
+                structured_fields_json={
+                    "workOrder": {
+                        "stabilized": True,
+                        "fields": {"machineNo": {"value": "HC600", "confidence": 0.9}},
+                        "quantities": {"total": {"left": {"value": 1000}, "right": {"value": None}}},
+                    }
+                },
+            )
+        )
+        session.commit()
+
+
+def test_dispatch_ticket_endpoint_crops_frame_with_render_token(test_settings) -> None:
+    settings = _line_settings(test_settings)
+    storage = _CroppableStorage({"camera-frames/org/camera/frame.jpg": _ticket_jpeg()})
+    app = build_app(settings=settings, artifact_storage=storage)
+    with TestClient(app) as client:
+        _seed_scope(app)
+        token = create_floorplan_render_token(settings, site_slug="jingcheng", group_id=BOUND_GROUP_ID)
+        ok = client.get(f"/v1/line/dispatch-ticket/jingcheng/{token}/frame-latest")
+        missing = client.get(f"/v1/line/dispatch-ticket/jingcheng/{token}/frame-unknown")
+        bad_token = client.get("/v1/line/dispatch-ticket/jingcheng/bad-token/frame-latest")
+
+    assert ok.status_code == 200, ok.text
+    assert ok.headers["content-type"] == "image/png"
+    # 1280x720 halves the 2560x1440 reference resolution, so the ROI halves too.
+    assert Image.open(BytesIO(ok.content)).size == (275, 168)
+    assert missing.status_code == 404
+    assert bad_token.status_code == 403
+
+
+def test_text_dispatch_ticket_replies_cropped_image_and_summary(test_settings, monkeypatch) -> None:
+    settings = _line_settings(test_settings)
+    replies = _capture_replies(monkeypatch)
+    storage = _CroppableStorage({"camera-frames/org/camera/frame.jpg": _ticket_jpeg()})
+    app = build_app(settings=settings, artifact_storage=storage)
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _seed_work_order_observation(app)
+        response = _post_line_events(
+            client,
+            settings,
+            [_message_event("派工單", event_id="evt-ticket", reply_token="reply-ticket")],
+        )
+        assert response.status_code == 200, response.text
+        image_message, summary_message = replies[0]["messages"]
+        image_path = image_message["originalContentUrl"].removeprefix("https://api.example.test")
+        fetched = client.get(image_path)
+
+    assert image_message["type"] == "image"
+    assert "/v1/line/dispatch-ticket/jingcheng/" in image_message["originalContentUrl"]
+    assert image_message["previewImageUrl"] == image_message["originalContentUrl"]
+    assert "HC600" in summary_message["text"]
+    assert "1000" in summary_message["text"]
+    assert "以圖為準" in summary_message["text"]
+    assert storage.writes == ["line-dispatch-tickets/frame-latest.png"]
+    assert fetched.status_code == 200, fetched.text
+    assert Image.open(BytesIO(fetched.content)).size == (275, 168)
 
 
 def test_unbound_group_direct_chat_and_bind_request_do_not_leak_site_data(test_settings, monkeypatch) -> None:

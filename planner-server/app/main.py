@@ -18,6 +18,7 @@ from app.rate_limit import RateLimiter
 from app.routers import (
     auth_router,
     camera_ingest_router,
+    decision_ledger_router,
     incidents_router,
     industrial_data_engine_router,
     inspection_router,
@@ -107,6 +108,7 @@ def build_app(
 
     app.include_router(auth_router)
     app.include_router(camera_ingest_router)
+    app.include_router(decision_ledger_router)
     app.include_router(inspection_router)
     app.include_router(incidents_router)
     app.include_router(industrial_data_engine_router)

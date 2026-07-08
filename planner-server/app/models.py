@@ -581,3 +581,96 @@ class AuditEvent(SQLModel, table=True):
     target_id: str | None = Field(default=None, index=True)
     metadata_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     created_at: datetime = Field(default_factory=utc_now)
+
+
+class DecisionPointRecord(SQLModel, table=True):
+    """Domain-neutral decision ledger row: plan / prediction / actual / attribution.
+
+    The four JSON columns keep the schema portable across domains (factory
+    dispatch today; hotel or kitchen dispatch reuse the same shape).
+    """
+
+    __tablename__ = "decision_points"
+    __table_args__ = (Index("ix_decision_points_org_occurred_at", "organization_id", "occurred_at"),)
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    domain: str = Field(default="factory", index=True)
+    event_type: str = Field(index=True)  # dispatch | plan_vs_actual | anomaly_response | maintenance
+    source: str = Field(default="manual", index=True)  # work_order | incident | line_report | manual
+    subject_ref: str = Field(default="", index=True)  # machine no / zone / mold id
+    occurred_at: datetime = Field(index=True)
+    plan_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    prediction_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    predicted_at: datetime | None = None
+    actual_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    actual_recorded_at: datetime | None = None
+    consistent: bool | None = Field(default=None, index=True)
+    attribution: str = Field(default="none", index=True)
+    attribution_note: str | None = None
+    attributed_by: str | None = None
+    attributed_at: datetime | None = None
+    status: str = Field(default="awaiting_actual", index=True)  # awaiting_actual | resolved
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class ShiftRosterEntryRecord(SQLModel, table=True):
+    __tablename__ = "shift_roster_entries"
+    __table_args__ = (Index("ix_shift_roster_org_date", "organization_id", "work_date"),)
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    work_date: str = Field(index=True)  # YYYY-MM-DD
+    shift: str = Field(default="day", index=True)  # day | night | full
+    person_name: str = Field(index=True)
+    zone_name: str | None = Field(default=None, index=True)
+    machine_nos_json: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class SkillMatrixEntryRecord(SQLModel, table=True):
+    __tablename__ = "skill_matrix_entries"
+    __table_args__ = (Index("ix_skill_matrix_org_person_machine", "organization_id", "person_name", "machine_no", unique=True),)
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    person_name: str = Field(index=True)
+    machine_no: str = Field(index=True)
+    level: int = Field(default=1)  # 1 = can operate, 2 = proficient, 3 = expert/mentor
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class SemanticZoneRecord(SQLModel, table=True):
+    __tablename__ = "semantic_zones"
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    name: str = Field(index=True)
+    x_min: float
+    x_max: float
+    z_min: float
+    z_max: float
+    machine_nos_json: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class MoldMaintenanceRuleRecord(SQLModel, table=True):
+    __tablename__ = "mold_maintenance_rules"
+    __table_args__ = (Index("ix_mold_rules_org_mold", "organization_id", "mold_no", unique=True),)
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    mold_no: str = Field(index=True)
+    threshold_count: int
+    current_count: int = Field(default=0)
+    counter_source: str = Field(default="manual")  # manual | line_report | gauge:<id> | hmi_field:<id>
+    last_reset_at: datetime | None = None
+    last_alert_at: datetime | None = None
+    is_active: bool = Field(default=True, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)

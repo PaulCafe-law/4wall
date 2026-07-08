@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from threading import Lock
 
@@ -11,6 +12,7 @@ from sqlmodel import Session, select
 
 from app.deps import get_artifact_storage, get_rate_limiter, get_session, get_settings
 from app.incident_dto import CreateIncidentRequestDto, IncidentLocationDto, LineWebhookResponseDto
+from app.dispatch import create_dispatch_point, record_machine_actual, reset_mold_counter
 from app.incidents import build_daily_summary, create_incident, reopen_incident, update_incident_status
 from app.line_bot import (
     LineBotConfigurationError,
@@ -22,6 +24,14 @@ from app.line_bot import (
     reply_line_messages,
     verify_line_signature,
 )
+from app.line_dispatch_ticket import (
+    DispatchTicketCropError,
+    build_dispatch_ticket_summary,
+    crop_dispatch_ticket_png,
+    dispatch_ticket_storage_key,
+    find_latest_work_order_capture,
+    frame_is_stale,
+)
 from app.line_floorplan.layout import (
     FloorplanLayoutError,
     load_floorplan_layout,
@@ -31,6 +41,7 @@ from app.line_floorplan.messages import (
     build_floorplan_imagemap_message,
     build_gauges_message,
     build_help_message,
+    build_image_message,
     build_liveview_button_message,
     build_machine_detail_message,
     build_machine_list_message,
@@ -54,7 +65,7 @@ from app.line_floorplan.tokens import (
     verify_floorplan_render_token,
 )
 from app.line_floorplan.links import liveview_url_for_binding
-from app.models import IncidentRecord, LineGroupBinding, LineWebhookEventRecord, utc_now
+from app.models import CameraFrame, IncidentRecord, LineGroupBinding, LineWebhookEventRecord, utc_now
 from app.rate_limit import RateLimitRule, RateLimiter, client_identity
 from app.storage import ArtifactStorage
 from app.twin_agent import count_pending_line_jobs, enqueue_twin_agent_job, sweep_twin_agent_jobs
@@ -65,6 +76,7 @@ logger = logging.getLogger(__name__)
 
 FLOORPLAN_RENDER_RATE_LIMIT = RateLimitRule(max_attempts=120, window_seconds=60)
 FLOORPLAN_LIVEVIEW_RATE_LIMIT = RateLimitRule(max_attempts=120, window_seconds=60)
+DISPATCH_TICKET_NO_IMAGE_TEXT = "目前沒有新的派工單畫面"
 FLOORPLAN_STATE_CACHE_SECONDS = 5
 TWIN_AGENT_LINE_RATE_LIMIT = RateLimitRule(max_attempts=6, window_seconds=60)
 TWIN_AGENT_LINE_PENDING_MAX = 3
@@ -179,6 +191,46 @@ def get_line_floorplan_image(
             "X-Line-Floorplan-Width": str(rendered.width),
             "X-Line-Floorplan-Height": str(rendered.height),
         },
+    )
+
+
+@router.get("/v1/line/dispatch-ticket/{site_slug}/{render_token}/{frame_id}")
+def get_line_dispatch_ticket_image(
+    site_slug: str,
+    render_token: str,
+    frame_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings=Depends(get_settings),
+    storage: ArtifactStorage = Depends(get_artifact_storage),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> Response:
+    try:
+        token_payload = verify_floorplan_render_token(settings, site_slug=site_slug, token=render_token)
+    except FloorplanTokenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    rate_limiter.check(
+        f"line-dispatch-ticket:{site_slug}:{client_identity(request, settings)}", FLOORPLAN_RENDER_RATE_LIMIT
+    )
+    binding = get_active_group_binding(session, group_id=token_payload.group_id)
+    if binding is None or binding.site_slug != site_slug:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="dispatch_ticket_binding_not_found")
+    frame = session.get(CameraFrame, frame_id)
+    if frame is None or frame.organization_id != binding.organization_id or frame.upload_status != "uploaded":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found")
+    content = storage.read(dispatch_ticket_storage_key(frame.id))
+    if content is None:
+        original = storage.read(frame.storage_key)
+        if not original:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found")
+        try:
+            content = crop_dispatch_ticket_png(original)
+        except DispatchTicketCropError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found") from exc
+    return Response(
+        content=content,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=600"},
     )
 
 
@@ -309,6 +361,8 @@ def _handle_message_event(session: Session, storage: ArtifactStorage, settings, 
     binding = _bound_group_or_reply(session, settings, event)
     if binding is None:
         return
+    if _handle_dispatch_command(session, settings, event, binding, text, storage=storage):
+        return
     action = _text_action(text)
     if action == "machine_detail":
         _reply_machine_detail(session, storage, settings, event, binding, _machine_id_from_text(text))
@@ -320,6 +374,130 @@ def _handle_message_event(session: Session, storage: ArtifactStorage, settings, 
         _handle_twin_agent_message(settings, rate_limiter, event, binding, text)
         return
     _reply_messages_if_possible(settings, event, [build_help_message()])
+
+
+_DISPATCH_REPORT_RE = re.compile(r"^回報\s+(\S+)\s+(?:數量\s*)?(\d+)\s*$")
+_DISPATCH_ASSIGN_RE = re.compile(r"^派工\s+(\S+)\s+(\S+)\s*$")
+_MAINTENANCE_DONE_RE = re.compile(r"^保養完成\s+(\S+)\s*$")
+
+
+def _handle_dispatch_command(
+    session: Session,
+    settings,
+    event: dict,
+    binding: LineGroupBinding,
+    text: str,
+    storage: ArtifactStorage | None = None,
+) -> bool:
+    """Decision-ledger text commands. Returns True when the text was consumed.
+
+    These run BEFORE the twin-agent LLM path: ledger writes must be
+    deterministic, never model-mediated.
+    """
+
+    if text == "派工單":
+        _reply_dispatch_ticket(session, storage, settings, event, binding)
+        return True
+
+    match = _DISPATCH_REPORT_RE.match(text)
+    if match:
+        machine_no, amount = match.group(1), int(match.group(2))
+        point = record_machine_actual(
+            session,
+            organization_id=binding.organization_id,
+            machine_no=machine_no,
+            actual_total=amount,
+            reported_by=str((event.get("source") or {}).get("userId") or "line"),
+        )
+        session.commit()
+        if point is None:
+            reply = f"找不到 {machine_no} 今天的派工單對帳項。請確認機台編號,或先等派工單辨識入帳。"
+        else:
+            mark = "✅ 達標" if point.consistent else ("⚠️ 與計畫有差異" if point.consistent is False else "已記錄")
+            planned = point.plan_json.get("plannedTotal")
+            reply = f"已回報 {machine_no} 實際 {amount} PCS(計畫 {planned if planned is not None else '?'}){mark}"
+        _reply_messages_if_possible(settings, event, [build_text_message(reply)])
+        return True
+
+    match = _DISPATCH_ASSIGN_RE.match(text)
+    if match:
+        machine_no, assignee = match.group(1), match.group(2)
+        point = create_dispatch_point(
+            session,
+            organization_id=binding.organization_id,
+            site_id=binding.site_id,
+            machine_no=machine_no,
+            occurred_at=utc_now(),
+            source="line_report",
+            actual_assignee=assignee,
+        )
+        session.commit()
+        candidates = point.prediction_json.get("candidates") or []
+        suggestion = "、".join(c["name"] for c in candidates) if candidates else "(無建議:缺排班/技能資料)"
+        reply = f"已記錄:{machine_no} 派 {assignee}。\n影子建議:{suggestion}"
+        _reply_messages_if_possible(settings, event, [build_text_message(reply)])
+        return True
+
+    match = _MAINTENANCE_DONE_RE.match(text)
+    if match:
+        mold_no = match.group(1)
+        rule = reset_mold_counter(
+            session,
+            organization_id=binding.organization_id,
+            mold_no=mold_no,
+            actor_name=str((event.get("source") or {}).get("userId") or "line"),
+        )
+        session.commit()
+        if rule is None:
+            reply = f"找不到模具 {mold_no} 的保養規則。請先在平台設定。"
+        else:
+            reply = f"已記錄 {mold_no} 保養完成,模數歸零(門檻 {rule.threshold_count})。"
+        _reply_messages_if_possible(settings, event, [build_text_message(reply)])
+        return True
+
+    return False
+
+
+def _reply_dispatch_ticket(
+    session: Session,
+    storage: ArtifactStorage | None,
+    settings,
+    event: dict,
+    binding: LineGroupBinding,
+) -> None:
+    """LINE「派工單」: crop the dispatch-sheet region of the newest frame and
+    reply image + parsed summary. Honest fallback when nothing fresh exists."""
+
+    no_image = [build_text_message(DISPATCH_TICKET_NO_IMAGE_TEXT)]
+    capture = find_latest_work_order_capture(session, organization_id=binding.organization_id)
+    if capture is None or capture.frame is None or frame_is_stale(capture.frame):
+        _reply_messages_if_possible(settings, event, no_image)
+        return
+    image_bytes = storage.read(capture.frame.storage_key) if storage is not None else None
+    if not image_bytes:
+        _reply_messages_if_possible(settings, event, no_image)
+        return
+    try:
+        cropped = crop_dispatch_ticket_png(image_bytes)
+    except DispatchTicketCropError:
+        _reply_messages_if_possible(settings, event, no_image)
+        return
+    storage.write(
+        key=dispatch_ticket_storage_key(capture.frame.id),
+        data=cropped,
+        content_type="image/png",
+        cache_control="private, max-age=600",
+    )
+    messages: list[dict] = []
+    if settings.line_public_base_url:
+        token = create_floorplan_render_token(settings, site_slug=binding.site_slug, group_id=binding.group_id)
+        base_origin = settings.line_public_base_url.rstrip("/")
+        image_url = f"{base_origin}/v1/line/dispatch-ticket/{binding.site_slug}/{token}/{capture.frame.id}"
+        messages.append(build_image_message(image_url))
+    else:
+        messages.append(build_text_message("LINE_PUBLIC_BASE_URL 尚未設定，無法傳送派工單圖片。"))
+    messages.append(build_text_message(build_dispatch_ticket_summary(capture.observation)))
+    _reply_messages_if_possible(settings, event, messages)
 
 
 def _handle_twin_agent_message(

@@ -205,6 +205,14 @@ def build_help_message() -> dict:
     }
 
 
+def build_image_message(original_url: str, preview_url: str | None = None) -> dict:
+    return {
+        "type": "image",
+        "originalContentUrl": original_url,
+        "previewImageUrl": preview_url or original_url,
+    }
+
+
 def build_text_message(text: str) -> dict:
     return {"type": "text", "text": text[:5000]}
 
