@@ -82,7 +82,10 @@ class PersonPresenceRunner:
 
         raw_detections = self.detector.detect(frame.image)
         observation = build_person_observation(frame, raw_detections, self.config)
-        if self.publish_enabled:
+        # 只上報「有人」的觀測。若把每個空幀(0 人)也 POST 上去,前端最新觀測會在偵測到人/
+        # 沒偵測到人之間反覆翻轉,造成標記閃爍;改成人離開後由前端新鮮窗自然老化清除。
+        has_person = bool(observation.get("detections"))
+        if self.publish_enabled and has_person:
             self.platform_sink.submit_person_observation(observation)
             if self.platform_sink.state.last_error:
                 print(

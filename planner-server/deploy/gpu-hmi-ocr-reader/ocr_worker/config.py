@@ -75,6 +75,13 @@ class GptConfig:
     command: list[str] = field(default_factory=list)
     timeout_sec: float = 60.0
     min_interval_sec: float = 300.0
+    # Work-order adjudication channel: escalate ambiguous handwritten cells
+    # (overwritten numbers, flapping consensus, low-confidence key cells) to
+    # GPT with the work-order crop image attached.
+    adjudication_enabled: bool = False
+    adjudication_command: list[str] = field(default_factory=list)
+    adjudication_timeout_sec: float = 150.0
+    adjudication_daily_limit: int = 20
 
 
 @dataclass(frozen=True)
@@ -176,6 +183,14 @@ def load_config(path: str | Path) -> AppConfig:
             command=_parse_command(gpt_payload.get("command") or os.environ.get("GPT_SUMMARY_COMMAND")),
             timeout_sec=float(gpt_payload.get("timeout_sec", 60)),
             min_interval_sec=float(gpt_payload.get("min_interval_sec", 300)),
+            adjudication_enabled=_env_bool(
+                "GPT_ADJUDICATION_ENABLED", bool(gpt_payload.get("adjudication_enabled", False))
+            ),
+            adjudication_command=_parse_command(
+                gpt_payload.get("adjudication_command") or os.environ.get("GPT_ADJUDICATION_COMMAND")
+            ),
+            adjudication_timeout_sec=float(gpt_payload.get("adjudication_timeout_sec", 150)),
+            adjudication_daily_limit=int(gpt_payload.get("adjudication_daily_limit", 20)),
         ),
         debug=DebugConfig(
             runtime_dir=runtime_dir,

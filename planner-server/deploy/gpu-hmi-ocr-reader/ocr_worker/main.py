@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 
 import cv2
 
+from .adjudication import GptAdjudicator
 from .config import AppConfig, load_config
 from .frame_source import FrameSourceError, capture_configured_frame, load_frame_file
 from .hmi_analysis import build_structured_fields, classify_hmi_mode, raw_ocr_lines_payload, raw_text
@@ -59,8 +60,10 @@ class HmiOcrRunner:
         self.engine = engine or PaddleOcrEngine(config.ocr)
         self.platform_sink = PlatformSink(config.platform)
         self.summarizer = GptSummarizer(config.gpt)
+        self.adjudicator = GptAdjudicator(config.gpt)
         self.crop_dir = config.debug.runtime_dir / "crops"
         self.lit_sample_dir = config.debug.runtime_dir / "lit-samples"
+        self.adjudication_dir = config.debug.runtime_dir / "adjudication"
         self.temperature_history = {}
         self.work_order_history = {}
         self._last_frame_size: tuple[int, int] | None = None
@@ -177,9 +180,16 @@ class HmiOcrRunner:
             "screenGate": "run_hmi_ocr_when_screen_visibility_is_lit",
         }
         if self.config.work_order.enabled:
-            structured_fields["workOrder"] = stabilize_work_order(
+            work_order_sheet = stabilize_work_order(
                 build_work_order_fields(work_order_lines), self.work_order_history
             )
+            if work_order_sheet.get("needsAdjudication"):
+                work_order_sheet = self.adjudicator.adjudicate(
+                    work_order_sheet,
+                    self.work_order_history,
+                    lambda: self._save_adjudication_crop(work_order_crop, frame_name),
+                )
+            structured_fields["workOrder"] = work_order_sheet
         observation = build_ocr_observation(
             captured_at=captured_at,
             mode=mode_result.mode,
@@ -204,6 +214,15 @@ class HmiOcrRunner:
                     file=sys.stderr,
                 )
         return {"readings": readings, "ocrObservation": observation}
+
+    def _save_adjudication_crop(self, work_order_crop, frame_name: str) -> Path:
+        """Persist the sheet crop for `codex exec -i`; called only when the
+        adjudicator actually invokes the bridge (not on cache/limit paths)."""
+        self.adjudication_dir.mkdir(parents=True, exist_ok=True)
+        path = self.adjudication_dir / f"{frame_name}-work-order-{int(time.time())}.jpg"
+        cv2.imwrite(str(path), work_order_crop)
+        _trim_directory(self.adjudication_dir, self.config.debug.rolling_keep)
+        return path
 
 
 def build_platform_reading(reading: FieldReading, captured_at: str, detector_name: str) -> dict[str, Any]:

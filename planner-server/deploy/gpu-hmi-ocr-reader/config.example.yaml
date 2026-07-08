@@ -59,6 +59,23 @@ gpt:
     - "120"
   timeout_sec: 150
   min_interval_sec: 300
+  # Work-order adjudication channel: when the rule parser flags a suspicious
+  # sheet (a quantity cell holding >=2 overlapping handwritten numbers,
+  # consensus flapping across frames, or a low-confidence key cell), the
+  # work-order crop image is sent through this bridge (codex exec -i <image>)
+  # and GPT reads the topmost/newest stroke. Results are cached per sheet
+  # identity (machineNo+moldNo) and capped per day; adjudicated values are
+  # always tagged source: "gpt_adjudicated" in structuredFields.workOrder.
+  adjudication_enabled: true
+  adjudication_command:
+    - "./.venv/bin/python"
+    - "scripts/codex_adjudicate_bridge.py"
+    - "--model"
+    - "{model}"
+    - "--timeout-sec"
+    - "120"
+  adjudication_timeout_sec: 150
+  adjudication_daily_limit: 20
 
 debug:
   runtime_dir: "runtime"

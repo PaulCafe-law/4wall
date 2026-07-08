@@ -164,7 +164,14 @@ def _window_value(row: list[_Line], x_from: float, x_to: float) -> dict[str, Any
     raw = " ".join(line.text for line in in_window)
     if len(clean) == 1 and not noisy_digits:
         return _leaf(int(clean[0].norm), clean[0].confidence, clean[0].text)
-    return _leaf(UNKNOWN, 0.0, raw)
+    leaf = _leaf(UNKNOWN, 0.0, raw)
+    if len(clean) >= 2:
+        # Overwrite-without-strikethrough: operators write the corrected number
+        # on top of (or next to) the old one, so one cell carries two legible
+        # numbers. The rule parser stays honest (unknown), but surfaces both
+        # readings so the GPT adjudication channel can pick the newest stroke.
+        leaf["candidates"] = [int(line.norm) for line in clean]
+    return leaf
 
 
 def _fill_header_codes(rows: list[list[_Line]], fields: dict[str, Any], first_quantity_cy: float, max_x: float) -> None:
@@ -265,6 +272,19 @@ _IDENTITY_CELLS = ("fields.machineNo", "fields.moldNo")
 # they clear this bar within ~2 minutes at the default capture interval.
 _IDENTITY_REPLACE_STREAK = 4
 
+# --- GPT adjudication triggers ---------------------------------------------
+# Cells whose misread is expensive enough to justify a GPT call when their
+# per-frame confidence is low: the sheet identity pair and the 總計 row.
+_KEY_CELLS = ("fields.machineNo", "fields.moldNo", "quantities.total.left", "quantities.total.right")
+_KEY_CELL_MIN_CONFIDENCE = 0.5
+# Consecutive frames whose read DISAGREES with the previous frame's read; three
+# in a row means the consensus machinery is flapping instead of converging.
+_FLAPPING_FRAMES = 3
+# Marker keys a lock carries through to every published frame. `source` is the
+# honesty tag ("gpt_adjudicated"): an adjudicated value must never be
+# indistinguishable from a rule-parsed one.
+_LOCK_MARKER_KEYS = ("source", "overwritten", "oldValue")
+
 
 def stabilize_work_order(sheet: dict[str, Any], history: WorkOrderHistory) -> dict[str, Any]:
     cells = list(_sheet_cells(sheet))
@@ -283,6 +303,10 @@ def stabilize_work_order(sheet: dict[str, Any], history: WorkOrderHistory) -> di
         if path not in _IDENTITY_CELLS:
             _update_cell_history(path, leaf, history)
 
+    # Detect BEFORE locks overwrite the per-frame reads: low confidence must be
+    # judged on what THIS frame saw, not on the held lock's confidence.
+    triggers = _adjudication_triggers(cells, history)
+
     for path, leaf in cells:
         locked = history.get(path, {}).get("locked")
         if locked is not None:
@@ -291,13 +315,48 @@ def stabilize_work_order(sheet: dict[str, Any], history: WorkOrderHistory) -> di
             leaf["value"] = locked["value"]
             leaf["confidence"] = locked["confidence"]
             leaf["rawText"] = locked["rawText"]
+            for key in _LOCK_MARKER_KEYS:
+                if key in locked:
+                    leaf[key] = locked[key]
         elif leaf["value"] != UNKNOWN:
             # First sighting: keep the raw read visible but do not publish yet.
             leaf["consensusPending"] = True
             leaf["value"] = UNKNOWN
             leaf["confidence"] = 0.0
     sheet["stabilized"] = True
+    sheet["needsAdjudication"] = bool(triggers)
+    if triggers:
+        sheet["adjudicationTriggers"] = triggers
     return sheet
+
+
+def _adjudication_triggers(
+    cells: list[tuple[str, dict[str, Any]]], history: WorkOrderHistory
+) -> list[dict[str, Any]]:
+    """Suspicion signals that rule parsing cannot resolve on its own.
+
+    - multi_candidate: one quantity cell held >= 2 clean numbers this frame
+      (the overwrite-without-strikethrough pattern).
+    - consensus_flapping: _FLAPPING_FRAMES consecutive frames each disagreeing
+      with the previous one, so consensus never converges.
+    - low_confidence: a key cell (identity / 總計) produced a value this frame
+      but below _KEY_CELL_MIN_CONFIDENCE.
+    """
+    triggers: list[dict[str, Any]] = []
+    for path, leaf in cells:
+        candidates = leaf.get("candidates")
+        if candidates:
+            triggers.append({"cell": path, "reason": "multi_candidate", "candidates": list(candidates)})
+        if (
+            path in _KEY_CELLS
+            and leaf["value"] != UNKNOWN
+            and leaf["confidence"] < _KEY_CELL_MIN_CONFIDENCE
+        ):
+            triggers.append({"cell": path, "reason": "low_confidence", "confidence": leaf["confidence"]})
+        flips = history.get(path, {}).get("flips", 0)
+        if flips >= _FLAPPING_FRAMES:
+            triggers.append({"cell": path, "reason": "consensus_flapping", "flips": flips})
+    return triggers
 
 
 def _sheet_cells(sheet: dict[str, Any]):
@@ -318,15 +377,21 @@ def _update_cell_history(
     frames may lock. Replacing an existing different lock requires
     ``replace_streak`` consecutive frames; the initial lock always needs 2.
     """
-    entry = history.setdefault(path, {"last": None, "streak": 0, "locked": None})
+    entry = history.setdefault(path, {"last": None, "streak": 0, "locked": None, "flips": 0})
     value = leaf["value"]
     if value == UNKNOWN:
         entry["last"] = None
         entry["streak"] = 0
+        entry["flips"] = 0
         return False
     if value == entry["last"]:
         entry["streak"] += 1
+        entry["flips"] = 0
     else:
+        # Count CONSECUTIVE disagreeing frames; an agreeing (or unknown) frame
+        # resets the run. Sustained flapping is an adjudication trigger.
+        if entry["last"] is not None:
+            entry["flips"] = entry.get("flips", 0) + 1
         entry["last"] = value
         entry["streak"] = 1
     previous = entry["locked"]

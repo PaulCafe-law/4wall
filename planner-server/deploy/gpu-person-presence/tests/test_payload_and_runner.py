@@ -65,6 +65,26 @@ def test_runner_queues_platform_failures_without_stopping(tmp_path) -> None:
     assert runner.platform_sink.state.last_error == "platform_sink_missing_api_url_or_device_token"
 
 
+def test_runner_does_not_publish_empty_observation(tmp_path) -> None:
+    # 空幀(0 人)不應上報:否則前端最新觀測會在「有人/沒人」之間反覆翻轉,造成標記閃爍。
+    detector = FakeDetector([])
+    config = _config(
+        tmp_path,
+        platform=PlatformConfig(enabled=True, api_base_url="", device_token="", retry_queue_size=2),
+    )
+    runner = PersonPresenceRunner(config, detector=detector, publish=True)
+
+    result = runner.process_frame(_frame(frame_id="empty-frame"))
+
+    assert result["skipped"] is False
+    assert result["rawDetectionCount"] == 0
+    assert result["personObservation"]["detections"] == []
+    # 沒有嘗試上報:佇列為空、無錯誤、送出計數為 0。
+    assert result["platformQueuedCount"] == 0
+    assert runner.platform_sink.state.last_error is None
+    assert runner.platform_sink.state.submitted_count == 0
+
+
 def _frame(frame_id: str = "frame-1") -> CapturedFrame:
     return CapturedFrame(
         image=np.zeros((240, 320, 3), dtype=np.uint8),

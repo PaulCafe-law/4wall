@@ -25,6 +25,31 @@ detector:
   valid_region_polygon: []
   constructor_options: {}
 
+# ---------------------------------------------------------------------------
+# YOLOX backend (cv2.dnn ONNX) — accurate CNN detector, no torch/paddle needed.
+# Runs on opencv-python-headless (cv2.dnn) + numpy only. Much fewer false
+# positives than the HOG backend. See README "YOLOX backend 部署" for the exact
+# model download URL.
+#
+# detector:
+#   backend: yolox
+#   detector_name: yolox_s_opencv_zoo
+#   # model_dir is used as the full path to the .onnx file (or set
+#   # constructor_options.model_path instead — model_path wins if both are set).
+#   model_dir: "/opt/fourwall/person-presence/models/object_detection_yolox_2022nov.onnx"
+#   device: gpu            # gpu -> tries cv2.dnn CUDA backend, falls back to CPU
+#   confidence_threshold: 0.4   # score = obj * cls_person; 0.4 is a good start
+#   min_bbox_height_px: 48
+#   valid_region_polygon: []
+#   constructor_options:
+#     # model_path: "/abs/path/to/model.onnx"   # optional; overrides model_dir
+#     nms_threshold: 0.45     # IoU threshold for cv2.dnn.NMSBoxes
+#     strides: [8, 16, 32]    # YOLOX FPN strides; leave as-is for stock models
+#     input_size: 640         # YOLOX letterbox size (square)
+#     # decoded: false        # set true ONLY if your ONNX already bakes the
+#     #                        # grid+stride decode in (avoids double-decoding).
+#     #                        # The stock OpenCV Zoo model is RAW -> keep false.
+
 projection:
   calibration_id: null
   # Optional 3x3 homography from image foot point [u, v, 1] to Factory Twin {x, z}.
