@@ -1,0 +1,14 @@
+server {
+    listen ${PORT};
+    server_name _;
+
+    location = /healthz {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 'redirect-ok';
+    }
+
+    location / {
+        return 302 ${REDIRECT_TARGET}$request_uri;
+    }
+}

@@ -1,0 +1,8 @@
+FROM nginx:stable-alpine
+
+ENV PORT=8080
+ENV REDIRECT_TARGET=https://four-wall-web.onrender.com
+
+COPY nginx.redirect.conf.template /etc/nginx/templates/default.conf.template
+
+EXPOSE 8080
