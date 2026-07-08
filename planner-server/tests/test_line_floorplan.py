@@ -693,6 +693,7 @@ def test_twin_agent_fallthrough_enqueues_job_without_sync_reply(test_settings, m
     assert job.group_id == BOUND_GROUP_ID
     assert job.reply_token == "reply-twin-nl"
     assert job.site_slug == "jingcheng"
+    assert job.organization_id is not None
 
 
 def test_twin_agent_disabled_falls_back_to_help_reply(test_settings, monkeypatch) -> None:

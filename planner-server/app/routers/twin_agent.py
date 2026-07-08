@@ -9,7 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-from app.deps import CurrentWebUser, auth_scheme, get_rate_limiter, get_settings, require_internal_user
+from app.deps import CurrentWebUser, auth_scheme, get_rate_limiter, get_session, get_settings, require_internal_user
+from app.dispatch import build_daily_brief_context
 from app.rate_limit import RateLimitRule, RateLimiter
 from app.twin_agent import (
     TwinAgentFeedEvent,
@@ -62,6 +63,7 @@ class TwinAgentSnapshotDto(BaseModel):
 class TwinAgentMessageDto(BaseModel):
     sessionId: str = Field(min_length=1, max_length=80)
     text: str = Field(min_length=1, max_length=500)
+    organizationId: str | None = Field(default=None, min_length=1, max_length=80)
 
 
 class TwinAgentToolCallDto(BaseModel):
@@ -92,7 +94,17 @@ def post_twin_agent_message(
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> dict:
     rate_limiter.check(f"twin-agent-web:{payload.sessionId}", TWIN_AGENT_WEB_MESSAGE_RATE_LIMIT)
-    job = enqueue_twin_agent_job(source="web", text=payload.text, session_id=payload.sessionId)
+    organization_id = payload.organizationId
+    if organization_id is not None and not current_user.can_read_org(organization_id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
+    if organization_id is None and len(current_user.readable_org_ids) == 1:
+        organization_id = current_user.readable_org_ids[0]
+    job = enqueue_twin_agent_job(
+        source="web",
+        text=payload.text,
+        session_id=payload.sessionId,
+        organization_id=organization_id,
+    )
     return {"jobId": job.job_id}
 
 
@@ -115,6 +127,7 @@ def get_twin_agent_updates(
 @router.get("/v1/twin-agent/jobs")
 def get_twin_agent_job(
     settings=Depends(get_settings),
+    session=Depends(get_session),
     _worker: None = Depends(require_twin_agent_worker),
 ) -> dict:
     record_worker_heartbeat()
@@ -125,6 +138,7 @@ def get_twin_agent_job(
         "job": _job_payload(job) if job is not None else None,
         "world": world,
         "worldAgeSeconds": world_age_seconds,
+        "ledgerContext": _ledger_context_payload(session, job),
     }
 
 
@@ -176,7 +190,16 @@ def _job_payload(job: TwinAgentJob) -> dict:
         "source": job.source,
         "text": job.text,
         "sessionId": job.session_id,
+        "organizationId": job.organization_id,
         "groupId": job.group_id,
         "siteSlug": job.site_slug,
         "createdAt": job.created_at,
     }
+
+
+def _ledger_context_payload(session, job: TwinAgentJob | None) -> dict | None:
+    if job is None:
+        return None
+    if not job.organization_id:
+        return {"available": False, "reason": "organization_scope_missing"}
+    return build_daily_brief_context(session, organization_id=job.organization_id, target_date=job.created_at)

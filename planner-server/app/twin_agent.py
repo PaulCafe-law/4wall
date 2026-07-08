@@ -39,6 +39,7 @@ class TwinAgentJob:
     source: str
     text: str
     session_id: str | None = None
+    organization_id: str | None = None
     group_id: str | None = None
     reply_token: str | None = None
     site_slug: str | None = None
@@ -109,6 +110,7 @@ def enqueue_twin_agent_job(
     source: str,
     text: str,
     session_id: str | None = None,
+    organization_id: str | None = None,
     group_id: str | None = None,
     reply_token: str | None = None,
     site_slug: str | None = None,
@@ -118,6 +120,7 @@ def enqueue_twin_agent_job(
         source=source,
         text=text,
         session_id=session_id,
+        organization_id=organization_id,
         group_id=group_id,
         reply_token=reply_token,
         site_slug=site_slug,

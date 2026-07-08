@@ -963,6 +963,7 @@ export interface TwinAgentSnapshotPayload {
 export interface TwinAgentMessagePayload {
   sessionId: string
   text: string
+  organizationId?: string
 }
 
 export interface TwinAgentMessageResponse {

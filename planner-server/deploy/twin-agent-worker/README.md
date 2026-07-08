@@ -8,9 +8,9 @@ It never stores OpenAI tokens and never accepts inbound connections. The bridge 
 
 ```text
 Bearer TWIN_AGENT_WORKER_TOKEN GET /v1/twin-agent/jobs
-  -> {job: {jobId, source, text, sessionId?, groupId?, siteSlug?} | null, world, worldAgeSeconds}
+  -> {job: {jobId, source, text, sessionId?, groupId?, siteSlug?, organizationId?} | null, world, worldAgeSeconds, ledgerContext?}
   -> skip duplicate job ids
-  -> build one prompt: rules + tool specs + world JSON + job
+  -> build one prompt: rules + tool specs + world JSON + ledgerContext JSON + job
   -> scripts/openai_oauth_bridge.py -> codex exec (local OAuth login)
   -> validate toolCalls against the allowlist, truncate text
   -> POST /v1/twin-agent/jobs/{jobId}/result
@@ -76,7 +76,14 @@ Create a job file:
 {
   "job": { "jobId": "local-1", "source": "web", "text": "HC600-01 現在溫度多少？" },
   "world": { "entities": [] },
-  "worldAgeSeconds": 2.0
+  "worldAgeSeconds": 2.0,
+  "ledgerContext": {
+    "available": true,
+    "date": "2026-07-09",
+    "timezone": "Asia/Taipei",
+    "text": "今日尚無派工單對帳資料。",
+    "planVsActual": []
+  }
 }
 ```
 

@@ -93,7 +93,12 @@ class TwinAgentRunner:
             self._processed_job_ids.append(job_id)
             self._processed_job_ids = self._processed_job_ids[-100:]
 
-        prompt = build_agent_prompt(job, polled.world, world_age_seconds=polled.world_age_seconds)
+        prompt = build_agent_prompt(
+            job,
+            polled.world,
+            world_age_seconds=polled.world_age_seconds,
+            ledger_context=polled.ledger_context,
+        )
         bridge_result = self.bridge.run(prompt)
         if bridge_result.status != "ok":
             print(
@@ -120,14 +125,22 @@ class TwinAgentRunner:
         }
 
 
-def build_agent_prompt(job: dict[str, Any], world: dict[str, Any] | None, *, world_age_seconds: float | None = None) -> str:
+def build_agent_prompt(
+    job: dict[str, Any],
+    world: dict[str, Any] | None,
+    *,
+    world_age_seconds: float | None = None,
+    ledger_context: dict[str, Any] | None = None,
+) -> str:
     job_payload: dict[str, Any] = {"source": job.get("source"), "text": job.get("text")}
     if job.get("siteSlug"):
         job_payload["siteSlug"] = job.get("siteSlug")
     world_age = "unknown" if world_age_seconds is None else round(float(world_age_seconds), 1)
     lines = [
         "You are the Fourth Wall factory-twin booth assistant and commander.",
-        "Answer ONLY from the provided world snapshot; if the data is absent say you don't know — never invent facts.",
+        "Answer ONLY from the provided world snapshot and ledger context; if the data is absent say you don't know — never invent facts.",
+        "For plan-vs-actual reconciliation, use ONLY ledgerContext.text and ledgerContext.planVsActual.",
+        "If ledgerContext is unavailable or empty, say 今日尚無派工單對帳資料 / no reconciliation data yet.",
         "Reply in the SAME LANGUAGE as the question.",
         "Keep replies <= 3 short sentences (LINE-friendly).",
         'When commanding, phrase the reply as "instruction issued, watch the big screen / 已下達指令，請看大螢幕".',
@@ -142,6 +155,8 @@ def build_agent_prompt(job: dict[str, Any], world: dict[str, Any] | None, *, wor
         '- clear_overlays {}: clear highlights and overlays.',
         f"World snapshot (age seconds: {world_age}):",
         json.dumps(world if world is not None else {}, ensure_ascii=False),
+        "Ledger context:",
+        json.dumps(ledger_context if ledger_context is not None else {}, ensure_ascii=False),
         "Job:",
         json.dumps(job_payload, ensure_ascii=False),
     ]
@@ -173,6 +188,7 @@ def _polled_from_payload(payload: dict[str, Any]) -> PolledJob:
         job=job,
         world=world,
         world_age_seconds=float(age) if isinstance(age, (int, float)) and not isinstance(age, bool) else None,
+        ledger_context=payload.get("ledgerContext") if isinstance(payload.get("ledgerContext"), dict) else None,
     )
 
 

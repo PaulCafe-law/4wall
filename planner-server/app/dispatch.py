@@ -45,12 +45,19 @@ _WORK_ORDER_QUANTITY_KEYS = (
 
 
 SITE_TZ = timezone(timedelta(hours=8))  # Taiwan factory local time
+SITE_TZ_NAME = "Asia/Taipei"
 
 
 def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc)
+
+
+def _site_day_window(target_date: datetime) -> tuple[datetime, datetime, datetime]:
+    local_day = _as_utc(target_date).astimezone(SITE_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    day_start = local_day.astimezone(timezone.utc)
+    return day_start, day_start + timedelta(days=1), local_day
 
 
 # ---------------------------------------------------------------------------
@@ -378,14 +385,8 @@ def ledger_stats(session: Session, *, organization_id: str, days: int = 14) -> d
     }
 
 
-def build_daily_brief(session: Session, *, organization_id: str, target_date: datetime) -> str:
-    day_start = (
-        _as_utc(target_date)
-        .astimezone(SITE_TZ)
-        .replace(hour=0, minute=0, second=0, microsecond=0)
-        .astimezone(timezone.utc)
-    )
-    day_end = day_start + timedelta(days=1)
+def build_daily_brief_context(session: Session, *, organization_id: str, target_date: datetime) -> dict:
+    day_start, day_end, local_day = _site_day_window(target_date)
     points = session.exec(
         select(DecisionPointRecord).where(
             DecisionPointRecord.organization_id == organization_id,
@@ -394,23 +395,60 @@ def build_daily_brief(session: Session, *, organization_id: str, target_date: da
         )
     ).all()
     plan_points = [p for p in points if p.event_type == "plan_vs_actual"]
-    lines = [f"【第四面牆|每日對帳 {day_start:%m/%d}】"]
-    if not plan_points:
-        lines.append("今日尚無派工單對帳資料。")
+    items: list[dict] = []
     for point in sorted(plan_points, key=lambda p: p.subject_ref):
         planned = point.plan_json.get("plannedTotal")
         actual = point.actual_json.get("actualTotal")
         if actual is None:
-            lines.append(f"{point.subject_ref}:計畫 {planned if planned is not None else '?'} PCS|實際 待回報")
+            state = "pending_actual"
+        elif point.consistent is True:
+            state = "consistent"
+        elif point.consistent is False:
+            state = "mismatch"
         else:
-            mark = "✅" if point.consistent else "⚠️"
-            lines.append(f"{point.subject_ref}:計畫 {planned}|實際 {actual} {mark}")
+            state = "recorded"
+        items.append(
+            {
+                "decisionPointId": point.id,
+                "machineNo": point.subject_ref,
+                "plannedTotal": planned,
+                "actualTotal": actual,
+                "consistent": point.consistent,
+                "status": state,
+                "moldNo": point.plan_json.get("moldNo"),
+                "actualRecordedAt": point.actual_recorded_at.isoformat() if point.actual_recorded_at else None,
+                "source": point.source,
+            }
+        )
     stats = ledger_stats(session, organization_id=organization_id, days=14)
+    lines = [f"【第四面牆|每日對帳 {local_day:%m/%d}】"]
+    if not plan_points:
+        lines.append("今日尚無派工單對帳資料。")
+    for item in items:
+        planned = item["plannedTotal"]
+        actual = item["actualTotal"]
+        if actual is None:
+            lines.append(f"{item['machineNo']}:計畫 {planned if planned is not None else '?'} PCS|實際 待回報")
+        else:
+            mark = "✅" if item["consistent"] else "⚠️"
+            lines.append(f"{item['machineNo']}:計畫 {planned}|實際 {actual} {mark}")
     rate = stats["consistencyRate"]
     rate_text = f"、一致率 {rate:.0%}" if rate is not None else "(實驗中)"
     lines.append(f"影子模式:累積 {stats['totalPoints']} 點(14天){rate_text}")
     lines.append("回報實際:輸入「回報 機台 數量 N」")
-    return "\n".join(lines)
+    return {
+        "available": True,
+        "organizationId": organization_id,
+        "date": local_day.date().isoformat(),
+        "timezone": SITE_TZ_NAME,
+        "text": "\n".join(lines),
+        "planVsActual": items,
+        "stats": stats,
+    }
+
+
+def build_daily_brief(session: Session, *, organization_id: str, target_date: datetime) -> str:
+    return str(build_daily_brief_context(session, organization_id=organization_id, target_date=target_date)["text"])
 
 
 def push_brief_to_bound_groups(session: Session, settings, *, organization_id: str, text: str) -> int:

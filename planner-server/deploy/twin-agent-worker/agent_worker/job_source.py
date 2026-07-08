@@ -18,6 +18,7 @@ class PolledJob:
     job: dict[str, Any] | None
     world: dict[str, Any] | None
     world_age_seconds: float | None
+    ledger_context: dict[str, Any] | None
 
 
 def fetch_job(config: PlatformConfig) -> PolledJob:
@@ -54,8 +55,10 @@ def parse_poll_payload(data: bytes | str) -> PolledJob:
     job = payload.get("job")
     world = payload.get("world")
     age = payload.get("worldAgeSeconds")
+    ledger_context = payload.get("ledgerContext")
     return PolledJob(
         job=job if isinstance(job, dict) else None,
         world=world if isinstance(world, dict) else None,
         world_age_seconds=float(age) if isinstance(age, (int, float)) and not isinstance(age, bool) else None,
+        ledger_context=ledger_context if isinstance(ledger_context, dict) else None,
     )

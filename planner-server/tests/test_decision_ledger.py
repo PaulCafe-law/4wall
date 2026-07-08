@@ -21,6 +21,7 @@ from app.models import (
     CameraOcrObservation,
     CameraPersonObservation,
     DecisionPointRecord,
+    IncidentRecord,
     LineGroupBinding,
     MoldMaintenanceRuleRecord,
     SemanticZoneRecord,
@@ -228,6 +229,22 @@ def test_reconcile_work_orders_and_line_report(client, session_factory) -> None:
         brief = build_daily_brief(session, organization_id=org_id, target_date=DAY)
         assert "HC600" in brief
         assert "980" in brief
+
+
+def test_daily_brief_uses_site_local_date_label(client, session_factory) -> None:
+    with session_factory() as session:
+        org = _seed_org_with_user(session, email="timezone@ledger.test")
+        org_id = org.id
+        session.commit()
+
+    with session_factory() as session:
+        brief = build_daily_brief(
+            session,
+            organization_id=org_id,
+            target_date=datetime(2026, 7, 8, 0, 0, tzinfo=timezone.utc),
+        )
+
+    assert "每日對帳 07/08" in brief
 
 
 def test_ledger_api_flow_attribution(client, session_factory) -> None:
@@ -521,6 +538,13 @@ def test_incident_assign_creates_shadow_point(client, session_factory) -> None:
     )
     assert created.status_code == 200, created.text
     incident_id = created.json()["incidentId"]
+
+    with session_factory() as session:
+        incident = session.get(IncidentRecord, incident_id)
+        incident.created_at = DAY
+        incident.updated_at = DAY
+        session.add(incident)
+        session.commit()
 
     assigned = client.patch(
         f"/v1/incidents/{incident_id}/assignee",

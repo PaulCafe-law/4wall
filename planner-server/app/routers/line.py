@@ -519,6 +519,7 @@ def _handle_twin_agent_message(
     enqueue_twin_agent_job(
         source="line",
         text=text,
+        organization_id=binding.organization_id,
         group_id=binding.group_id,
         reply_token=event.get("replyToken"),
         site_slug=binding.site_slug,

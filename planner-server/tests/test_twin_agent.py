@@ -9,6 +9,7 @@ import pytest
 from app import twin_agent
 from app.line_bot import LineBotDeliveryError
 from app.main import build_app
+from app.models import DecisionPointRecord
 from app.twin_agent import (
     COMMAND_FRESH_WINDOW,
     JOB_CLAIMED_TTL,
@@ -231,6 +232,88 @@ def test_web_job_round_trip(test_settings) -> None:
         drained = client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}&cursor=4", headers=headers).json()
         assert drained["events"] == []
         assert drained["cursor"] == 4
+
+
+def test_worker_job_includes_ledger_context_for_line_org(test_settings) -> None:
+    app = build_app(settings=_twin_settings(test_settings))
+    now = datetime.now(timezone.utc)
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            org = seed_organization(session, name="Ledger Twin Org")
+            session.add(
+                DecisionPointRecord(
+                    organization_id=org.id,
+                    event_type="plan_vs_actual",
+                    source="work_order",
+                    subject_ref="HC600-01",
+                    occurred_at=now,
+                    plan_json={"plannedTotal": 500, "moldNo": "GM096LC"},
+                    actual_json={"actualTotal": 480},
+                    actual_recorded_at=now,
+                    consistent=False,
+                    status="resolved",
+                )
+            )
+            session.commit()
+            org_id = org.id
+
+        enqueue_twin_agent_job(
+            source="line",
+            text="今日計畫 vs 實際對帳簡報",
+            organization_id=org_id,
+            group_id="Cgroup",
+            site_slug="jingcheng",
+        )
+        claimed = client.get("/v1/twin-agent/jobs", headers=_worker_headers()).json()
+
+    assert claimed["job"]["organizationId"] == org_id
+    assert claimed["ledgerContext"]["available"] is True
+    assert claimed["ledgerContext"]["organizationId"] == org_id
+    assert "HC600-01" in claimed["ledgerContext"]["text"]
+    item = claimed["ledgerContext"]["planVsActual"][0]
+    assert item["machineNo"] == "HC600-01"
+    assert item["plannedTotal"] == 500
+    assert item["actualTotal"] == 480
+    assert item["consistent"] is False
+    assert item["status"] == "mismatch"
+    assert item["moldNo"] == "GM096LC"
+    assert item["actualRecordedAt"]
+    assert item["source"] == "work_order"
+
+
+def test_worker_ledger_context_respects_job_organization_scope(test_settings) -> None:
+    app = build_app(settings=_twin_settings(test_settings))
+    now = datetime.now(timezone.utc)
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            scoped_org = seed_organization(session, name="Scoped Org")
+            other_org = seed_organization(session, name="Other Org")
+            session.add(
+                DecisionPointRecord(
+                    organization_id=other_org.id,
+                    event_type="plan_vs_actual",
+                    source="work_order",
+                    subject_ref="OTHER-01",
+                    occurred_at=now,
+                    plan_json={"plannedTotal": 999},
+                )
+            )
+            session.commit()
+            scoped_org_id = scoped_org.id
+
+        enqueue_twin_agent_job(
+            source="line",
+            text="今日對帳",
+            organization_id=scoped_org_id,
+            group_id="Cgroup",
+            site_slug="jingcheng",
+        )
+        claimed = client.get("/v1/twin-agent/jobs", headers=_worker_headers()).json()
+
+    assert claimed["ledgerContext"]["organizationId"] == scoped_org_id
+    assert claimed["ledgerContext"]["planVsActual"] == []
+    assert "今日尚無派工單對帳資料" in claimed["ledgerContext"]["text"]
+    assert "OTHER-01" not in claimed["ledgerContext"]["text"]
 
 
 def test_updates_cursor_zero_after_init_delivers_new_events(test_settings) -> None:

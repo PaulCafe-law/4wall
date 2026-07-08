@@ -6,22 +6,30 @@ import pytest
 
 from agent_worker.bridge import BridgeResult, FakeAgentBridge
 from agent_worker.config import AgentConfig, AppConfig, DebugConfig, PlatformConfig
-from agent_worker.job_source import PolledJob
+from agent_worker.job_source import PolledJob, parse_poll_payload
 from agent_worker.main import FALLBACK_TEXT, TwinAgentRunner, build_agent_prompt, build_result_payload
 
 
 def test_prompt_includes_world_tools_and_language_rule() -> None:
     job = {"jobId": "j1", "source": "line", "text": "HC600-01 現在溫度多少？", "siteSlug": "jingcheng"}
     world = {"entities": [{"id": "hc600-01", "type": "machine", "temperature": 61.2}]}
+    ledger_context = {
+        "available": True,
+        "text": "HC600-01:計畫 500|實際 480 ⚠️",
+        "planVsActual": [{"machineNo": "HC600-01", "plannedTotal": 500, "actualTotal": 480}],
+    }
 
-    prompt = build_agent_prompt(job, world, world_age_seconds=2.5)
+    prompt = build_agent_prompt(job, world, world_age_seconds=2.5, ledger_context=ledger_context)
 
     assert "SAME LANGUAGE" in prompt
+    assert "ledger context" in prompt
+    assert "plan-vs-actual reconciliation" in prompt
     assert "focus_camera" in prompt
     assert "dispatch_amr" in prompt
     assert "set_machine_state" in prompt
     assert "clear_overlays" in prompt
     assert json.dumps(world, ensure_ascii=False) in prompt
+    assert json.dumps(ledger_context, ensure_ascii=False) in prompt
     assert "HC600-01 現在溫度多少？" in prompt
     assert "jingcheng" in prompt
 
@@ -31,6 +39,20 @@ def test_prompt_handles_missing_world() -> None:
 
     assert "age seconds: unknown" in prompt
     assert "{}" in prompt
+    assert "no reconciliation data yet" in prompt
+
+
+def test_parse_poll_payload_preserves_ledger_context() -> None:
+    payload = {
+        "job": {"jobId": "j-ledger", "source": "line", "text": "今日對帳"},
+        "world": {"entities": []},
+        "worldAgeSeconds": 1.5,
+        "ledgerContext": {"available": True, "text": "今日尚無派工單對帳資料。"},
+    }
+
+    parsed = parse_poll_payload(json.dumps(payload, ensure_ascii=False))
+
+    assert parsed.ledger_context == payload["ledgerContext"]
 
 
 def test_result_payload_drops_invalid_tool_calls() -> None:
@@ -143,6 +165,7 @@ def _polled(job_id: str = "job-1") -> PolledJob:
         job={"jobId": job_id, "source": "web", "text": "status?", "sessionId": "twin-session-1"},
         world={"entities": []},
         world_age_seconds=1.0,
+        ledger_context=None,
     )
 
 
