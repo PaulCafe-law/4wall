@@ -255,7 +255,7 @@ def web_logout(
             record_audit(session, action="web.logout", actor_user_id=payload["sub"], target_type="user", target_id=payload["sub"])
         except AuthError:
             pass
-    _clear_refresh_cookie(response)
+    _clear_refresh_cookie(response, secure=_refresh_cookie_secure(settings))
     session.commit()
     return response
 
@@ -1021,7 +1021,7 @@ def get_audit_log(
 def _issue_web_session(session: Session, settings, user: UserAccount, response: Response) -> WebSessionDto:
     access_token = create_web_access_token(settings, user)
     refresh_token = create_web_refresh_token(session, settings, user)
-    _set_refresh_cookie(response, refresh_token, secure=settings.environment.lower() not in {"development", "dev", "test"})
+    _set_refresh_cookie(response, refresh_token, secure=_refresh_cookie_secure(settings))
     return WebSessionDto(
         accessToken=access_token,
         expiresInSeconds=settings.access_token_ttl_minutes * 60,
@@ -1306,20 +1306,34 @@ def _build_overview_support_summary(
     )
 
 
+def _refresh_cookie_secure(settings) -> bool:
+    return settings.environment.lower() not in {"development", "dev", "test"}
+
+
 def _set_refresh_cookie(response: Response, token: str, *, secure: bool) -> None:
+    # web 前端與 API 位於不同的 onrender.com 子網域;onrender.com 在 Public Suffix List,
+    # 因此瀏覽器視兩者為不同 site。refresh cookie 必須以 SameSite=None 才會在跨站 fetch 時
+    # 送出(否則靜默續期永遠失敗、使用者每 15 分鐘就被登出)。None 需搭配 Secure;本機開發
+    # (secure=False)瀏覽器會拒收 SameSite=None,故退回 lax(同源開發本就送得出)。
     response.set_cookie(
         key=WEB_REFRESH_COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="strict",
+        samesite="none" if secure else "lax",
         secure=secure,
         max_age=7 * 24 * 60 * 60,
         path="/",
     )
 
 
-def _clear_refresh_cookie(response: Response) -> None:
-    response.delete_cookie(key=WEB_REFRESH_COOKIE_NAME, path="/")
+def _clear_refresh_cookie(response: Response, *, secure: bool) -> None:
+    # 刪除時屬性需與寫入時一致,瀏覽器才會覆蓋掉 SameSite=None 的 cookie。
+    response.delete_cookie(
+        key=WEB_REFRESH_COOKIE_NAME,
+        path="/",
+        samesite="none" if secure else "lax",
+        secure=secure,
+    )
 
 
 def _slugify(value: str) -> str:

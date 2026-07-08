@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+import logging
 import math
 from pathlib import Path
 import re
@@ -13,6 +14,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.audit import record_audit
+from app.dispatch import upsert_plan_point_from_observation
 from app.deps import (
     CurrentWebUser,
     get_artifact_storage,
@@ -37,6 +39,7 @@ from app.web_scope import apply_org_read_scope, ensure_org_read_access, ensure_o
 
 
 router = APIRouter(tags=["camera-ingest"])
+logger = logging.getLogger(__name__)
 
 FRAME_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 FRAME_UPLOAD_TTL_SECONDS = 15 * 60
@@ -45,6 +48,9 @@ MAX_FRAME_SIZE_BYTES = 5 * 1024 * 1024
 SUPPORTED_CONTENT_TYPES = {"image/jpeg": "jpg", "image/png": "png"}
 ALLOWED_SEVERITIES = {"low", "medium", "high", "critical"}
 GAUGE_SORT_ORDER = {"press_am_meter": 0, "flow_am_meter": 1}
+# The web camera list is a status feed: keep the payload lean by capping the
+# detections echoed on latestPersonObservation (personCount stays the full count).
+MAX_STATUS_PERSON_DETECTIONS = 10
 
 
 class CreateCameraFrameUploadIntentDto(BaseModel):
@@ -590,6 +596,18 @@ def submit_camera_ocr_observation(
     camera.updated_at = _now()
     session.add(observation)
     session.add(camera)
+    # Flush the observation + camera BEFORE the ledger side-effect so a plan-point
+    # failure (e.g. a missing migration, as happened when decision_points was absent
+    # on prod) rolls back only the savepoint below — not the observation insert.
+    # Previously the except swallowed the DB error without rollback, leaving the
+    # transaction aborted so the final commit() raised and 500'd EVERY OCR ingest,
+    # silently dropping all HMI/OCR data. Ledger must never block ingest.
+    session.flush()
+    try:
+        with session.begin_nested():
+            upsert_plan_point_from_observation(session, camera=camera, observation=observation)
+    except Exception:  # ledger must never block ingest
+        logger.exception("plan_point_upsert_failed", extra={"camera_id": camera.id})
     record_audit(
         session,
         action="camera.ocr_observation.submitted",
@@ -990,7 +1008,14 @@ def _serialize_ocr_observation(observation: CameraOcrObservation) -> CameraOcrOb
     )
 
 
-def _serialize_person_observation(observation: CameraPersonObservation) -> CameraPersonObservationDto:
+def _serialize_person_observation(
+    observation: CameraPersonObservation,
+    *,
+    max_detections: int | None = None,
+) -> CameraPersonObservationDto:
+    detections = observation.detections_json
+    if max_detections is not None:
+        detections = detections[:max_detections]
     return CameraPersonObservationDto(
         observationId=observation.id,
         cameraId=observation.camera_id,
@@ -1003,7 +1028,7 @@ def _serialize_person_observation(observation: CameraPersonObservation) -> Camer
         calibrationId=observation.calibration_id,
         detectorName=observation.detector_name,
         personCount=observation.person_count,
-        detections=observation.detections_json,
+        detections=detections,
     )
 
 
@@ -1033,7 +1058,11 @@ def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDe
             _serialize_gauge_reading(reading) for reading in _latest_gauge_readings_for_camera(session, camera)
         ],
         latestOcrObservation=_serialize_ocr_observation(latest_ocr) if latest_ocr is not None else None,
-        latestPersonObservation=_serialize_person_observation(latest_person) if latest_person is not None else None,
+        latestPersonObservation=(
+            _serialize_person_observation(latest_person, max_detections=MAX_STATUS_PERSON_DETECTIONS)
+            if latest_person is not None
+            else None
+        ),
     )
 
 

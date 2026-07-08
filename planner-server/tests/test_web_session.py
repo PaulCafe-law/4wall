@@ -1,14 +1,45 @@
 from dataclasses import replace
 
+from fastapi import Response
 from fastapi.testclient import TestClient
 
 from app.main import build_app
 
+from app.routers.web import _clear_refresh_cookie, _set_refresh_cookie
 from app.security import WEB_REFRESH_COOKIE_NAME
 from tests.helpers import login_web, seed_organization, seed_user
 
 
 PASSWORD = "Password123!"
+
+
+def test_refresh_cookie_is_cross_site_none_in_prod() -> None:
+    # web 與 API 為不同 onrender.com 子網域(跨站),cookie 必須 SameSite=None+Secure
+    # 才會在跨站 fetch 時送出。少了這個,靜默續期永遠失敗、使用者每 15 分鐘被登出。
+    response = Response()
+    _set_refresh_cookie(response, "token-value", secure=True)
+    header = response.headers["set-cookie"].lower()
+    assert "samesite=none" in header
+    assert "secure" in header
+    assert "httponly" in header
+
+
+def test_refresh_cookie_falls_back_to_lax_in_dev() -> None:
+    # 本機開發走 http,瀏覽器會拒收 SameSite=None(需 Secure),故退回 lax 且不帶 Secure。
+    response = Response()
+    _set_refresh_cookie(response, "token-value", secure=False)
+    header = response.headers["set-cookie"].lower()
+    assert "samesite=lax" in header
+    assert "secure" not in header
+
+
+def test_clear_refresh_cookie_matches_cross_site_attributes() -> None:
+    # 刪除時屬性需與寫入一致,瀏覽器才會覆蓋掉 SameSite=None 的 cookie。
+    response = Response()
+    _clear_refresh_cookie(response, secure=True)
+    header = response.headers["set-cookie"].lower()
+    assert "samesite=none" in header
+    assert "secure" in header
 
 
 def test_web_login_sets_refresh_cookie_and_returns_memberships(client, session_factory) -> None:

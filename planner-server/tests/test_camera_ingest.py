@@ -460,6 +460,51 @@ def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client,
     assert latest["gptSummary"]["machine"] == "HC600"
 
 
+def test_ocr_ingest_succeeds_even_when_plan_point_upsert_fails(client, session_factory, monkeypatch) -> None:
+    # Regression: a ledger side-effect failure (e.g. the decision_points table missing
+    # on prod because a migration was not applied) must NOT block OCR ingest. Before the
+    # savepoint fix, the swallowed DB error left the transaction aborted and the final
+    # commit 500'd — silently dropping every HMI/OCR submission.
+    import app.routers.camera_ingest as camera_ingest_module
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("simulated decision_points missing")
+
+    monkeypatch.setattr(camera_ingest_module, "upsert_plan_point_from_observation", _boom)
+
+    token = "fwcam_ocr_ledger_fail"
+    with session_factory() as session:
+        org = seed_organization(session, name="Ledger Fail Org")
+        site = seed_site(session, organization_id=org.id, name="Ledger Fail Site")
+        camera = _seed_camera(session, org.id, site.id, token=token)
+        camera.name = "PoE Camera 192.168.1.10"
+        camera_id = camera.id
+        session.commit()
+
+    response = client.post(
+        "/v1/camera-ingest/ocr-observations",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "mode": "machine_monitor",
+            "modeConfidence": 0.9,
+            "source": "live",
+            "capturedAt": "2026-07-04T10:00:00+08:00",
+            "rawOcrLines": [{"text": "溫度", "confidence": 0.9, "region": "hmi"}],
+            "structuredFields": {},
+            "workOrderRawText": "HC600",
+            "gptSummary": {"summary": "HC600"},
+            "summaryStatus": "ok",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    with session_factory() as session:
+        stored = session.exec(
+            select(CameraOcrObservation).where(CameraOcrObservation.camera_id == camera_id)
+        ).all()
+        assert len(stored) == 1  # observation persisted despite the ledger failure
+
+
 def test_camera_device_submits_person_observation_and_web_list_shows_latest(client, session_factory) -> None:
     token = "fwcam_person_presence"
     with session_factory() as session:
@@ -504,6 +549,45 @@ def test_camera_device_submits_person_observation_and_web_list_shows_latest(clie
     assert latest["personCount"] == 2
     assert latest["calibrationId"] == "overview-h-20260704"
     assert latest["detectorName"] == "paddledet_ppyoloe_plus_person"
+
+
+def test_camera_list_caps_latest_person_observation_detections(client, session_factory) -> None:
+    token = "fwcam_person_cap"
+    with session_factory() as session:
+        org = seed_organization(session, name="Person Cap Org")
+        camera = _seed_camera(session, org.id, None, token=token)
+        camera_id = camera.id
+        seed_user(session, email="admin@personcap.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        session.commit()
+
+    detections = [
+        {
+            "bbox": [40 * index, 120, 30, 160],
+            "confidence": 0.9,
+            "footPoint": [40 * index + 15, 280],
+            "floorPosition": {"x": float(index), "z": -3.0},
+        }
+        for index in range(12)
+    ]
+    response = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers={"Authorization": f"Bearer {token}"},
+        json=_person_observation_payload(detections=detections),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["personCount"] == 12
+    assert len(response.json()["detections"]) == 12
+
+    admin_headers, _ = login_web(client, email="admin@personcap.test", password=PASSWORD)
+    listed = client.get("/v1/cameras", headers=admin_headers)
+    assert listed.status_code == 200, listed.text
+    latest = listed.json()["cameras"][0]["latestPersonObservation"]
+    assert latest["cameraId"] == camera_id
+    assert latest["personCount"] == 12
+    assert len(latest["detections"]) == 10
+    assert latest["detections"][0]["floorPosition"] == {"x": 0.0, "z": -3.0}
+    assert latest["detections"][9]["floorPosition"] == {"x": 9.0, "z": -3.0}
 
 
 def test_camera_device_submits_empty_person_observation_as_zero_people(client, session_factory) -> None:
