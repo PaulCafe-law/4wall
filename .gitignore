@@ -38,3 +38,9 @@ tmp/
 .gstack/
 .codex-tmp/
 .codex-remote-attachments/
+
+# Local Claude Code state (worktrees, session data) — never commit
+.claude/
+
+# Large video-production assets (~1.2GB) — keep out of git
+docs/video-production/
