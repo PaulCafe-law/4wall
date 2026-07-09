@@ -213,20 +213,17 @@ def _move_model_batch(
     camera_ids: list[str],
     target_org_id: str,
     batch_size: int,
-) -> int:
-    ids = list(
-        session.exec(
-            select(model.id)
-            .where(
-                _not_in_target(model, target_org_id),
-                _child_scope(model, site_id=site_id, camera_ids=camera_ids),
-            )
-            .order_by(model.id)
-            .limit(batch_size)
-        ).all()
+    after_id: str | None,
+) -> tuple[int, str] | None:
+    statement = select(model.id).where(
+        _not_in_target(model, target_org_id),
+        _child_scope(model, site_id=site_id, camera_ids=camera_ids),
     )
+    if after_id is not None:
+        statement = statement.where(model.id > after_id)
+    ids = list(session.exec(statement.order_by(model.id).limit(batch_size)).all())
     if not ids:
-        return 0
+        return None
     changed = int(
         session.exec(update(model).where(model.id.in_(ids)).values(organization_id=target_org_id)).rowcount or 0
     )
@@ -234,7 +231,7 @@ def _move_model_batch(
         raise RuntimeError(f"{model.__tablename__} batch changed {changed} rows; expected {len(ids)}")
     # Commit every small batch so the live API can continue serving requests.
     session.commit()
-    return changed
+    return changed, ids[-1]
 
 
 def _move_child_rows_in_batches(
@@ -247,14 +244,19 @@ def _move_child_rows_in_batches(
 ) -> dict[str, int]:
     changed = _empty_child_changes()
     for model in CHILD_MODELS:
-        while moved := _move_model_batch(
+        # Advance through the primary-key index once. The final locked pass
+        # below catches the small set of rows that may arrive behind cursor.
+        cursor: str | None = None
+        while batch := _move_model_batch(
             session,
             model=model,
             site_id=site_id,
             camera_ids=camera_ids,
             target_org_id=target_org_id,
             batch_size=batch_size,
+            after_id=cursor,
         ):
+            moved, cursor = batch
             changed[model.__tablename__] += moved
     return changed
 
