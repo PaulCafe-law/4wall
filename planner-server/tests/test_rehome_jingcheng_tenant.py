@@ -43,19 +43,34 @@ def test_rehome_jingcheng_moves_only_target_site_and_customer_data(client, sessi
         session.add_all(cameras)
         session.flush()
         captured_at = datetime(2026, 7, 10, tzinfo=timezone.utc)
-        session.add(
-            CameraFrame(
-                id="jingcheng-frame",
-                camera_id=cameras[0].id,
-                organization_id=source.id,
-                site_id=jingcheng_site.id,
-                captured_at=captured_at,
-                storage_key="camera-frames/mixed/jingcheng-frame.jpg",
-                content_type="image/jpeg",
-                upload_status="uploaded",
-                analysis_status="queued",
-                upload_expires_at=captured_at,
-            )
+        session.add_all(
+            [
+                CameraFrame(
+                    id="jingcheng-frame",
+                    camera_id=cameras[0].id,
+                    organization_id=source.id,
+                    site_id=jingcheng_site.id,
+                    captured_at=captured_at,
+                    storage_key="camera-frames/mixed/jingcheng-frame.jpg",
+                    content_type="image/jpeg",
+                    upload_status="uploaded",
+                    analysis_status="queued",
+                    upload_expires_at=captured_at,
+                ),
+                # Older edge uploads can omit site_id. The camera ID is the
+                # safe fallback and this also exercises multiple small batches.
+                CameraFrame(
+                    id="jingcheng-legacy-frame",
+                    camera_id=cameras[0].id,
+                    organization_id=source.id,
+                    captured_at=captured_at,
+                    storage_key="camera-frames/mixed/jingcheng-legacy-frame.jpg",
+                    content_type="image/jpeg",
+                    upload_status="uploaded",
+                    analysis_status="queued",
+                    upload_expires_at=captured_at,
+                ),
+            ]
         )
         session.add(
             CameraGaugeReading(
@@ -119,7 +134,7 @@ def test_rehome_jingcheng_moves_only_target_site_and_customer_data(client, sessi
             apply=False,
         )
         assert dry_run["mode"] == "dry-run"
-        assert dry_run["counts"]["camera_frames"] == 1
+        assert dry_run["counts"]["camera_frames"] == 2
         assert session.get(type(jingcheng_site), jingcheng_site.id).organization_id == source.id
 
         result = rehome_jingcheng_tenant(
@@ -128,16 +143,18 @@ def test_rehome_jingcheng_moves_only_target_site_and_customer_data(client, sessi
             account_email=customer.email,
             target_org_name="靚程企業",
             target_org_slug="jingcheng",
+            batch_size=1,
             apply=True,
         )
 
         target = session.exec(select(Organization).where(Organization.slug == "jingcheng")).one()
         assert target.product_mode == "factory_ops"
         assert result["verification"]["cameraCount"] == 3
-        assert result["firstPass"]["camera_frames"] == 1
+        assert result["firstPass"]["camera_frames"] == 2
         assert session.get(type(jingcheng_site), jingcheng_site.id).organization_id == target.id
         assert session.get(type(other_site), other_site.id).organization_id == source.id
         assert session.get(CameraFrame, "jingcheng-frame").organization_id == target.id
+        assert session.get(CameraFrame, "jingcheng-legacy-frame").organization_id == target.id
         assert session.exec(select(DecisionPointRecord)).one().organization_id == target.id
         assert session.exec(select(LineGroupBinding)).one().organization_id == target.id
 
@@ -153,6 +170,7 @@ def test_rehome_jingcheng_moves_only_target_site_and_customer_data(client, sessi
             account_email=customer.email,
             target_org_name="靚程企業",
             target_org_slug="jingcheng",
+            batch_size=1,
             apply=True,
         )
         assert rerun["verification"]["cameraCount"] == 3

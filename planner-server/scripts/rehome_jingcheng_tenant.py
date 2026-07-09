@@ -87,6 +87,7 @@ CAMERA_ONLY_MODELS = (
 
 SITE_SCOPED_MODELS = SITE_AND_CAMERA_SCOPED_MODELS + SITE_ONLY_MODELS
 CAMERA_SCOPED_MODELS = SITE_AND_CAMERA_SCOPED_MODELS + CAMERA_ONLY_MODELS
+CHILD_MODELS = SITE_AND_CAMERA_SCOPED_MODELS + SITE_ONLY_MODELS + CAMERA_ONLY_MODELS
 
 
 def _count(statement, session: Session) -> int:
@@ -99,16 +100,12 @@ def _site_counts(session: Session, site_id: str, camera_ids: list[str]) -> dict[
             select(func.count()).select_from(CameraDevice).where(CameraDevice.site_id == site_id), session
         ),
     }
-    for model in SITE_SCOPED_MODELS:
+    for model in CHILD_MODELS:
         counts[model.__tablename__] = _count(
-            select(func.count()).select_from(model).where(model.site_id == site_id), session
-        )
-    for model in CAMERA_SCOPED_MODELS:
-        name = model.__tablename__
-        if name in counts:
-            continue
-        counts[name] = _count(
-            select(func.count()).select_from(model).where(model.camera_id.in_(camera_ids)), session
+            select(func.count())
+            .select_from(model)
+            .where(_child_scope(model, site_id=site_id, camera_ids=camera_ids)),
+            session,
         )
     return counts
 
@@ -193,8 +190,133 @@ def _not_in_target(model: type[Any], target_org_id: str):
     return or_(model.organization_id.is_(None), model.organization_id != target_org_id)
 
 
-def _move_rows(session: Session, *, site_id: str, camera_ids: list[str], target_org_id: str) -> dict[str, int]:
-    changed: dict[str, int] = {}
+def _child_scope(model: type[Any], *, site_id: str, camera_ids: list[str]):
+    if model in SITE_AND_CAMERA_SCOPED_MODELS:
+        return or_(
+            model.site_id == site_id,
+            and_(model.site_id.is_(None), model.camera_id.in_(camera_ids)),
+        )
+    if model in SITE_ONLY_MODELS:
+        return model.site_id == site_id
+    return model.camera_id.in_(camera_ids)
+
+
+def _empty_child_changes() -> dict[str, int]:
+    return {model.__tablename__: 0 for model in CHILD_MODELS}
+
+
+def _move_model_batch(
+    session: Session,
+    *,
+    model: type[Any],
+    site_id: str,
+    camera_ids: list[str],
+    target_org_id: str,
+    batch_size: int,
+) -> int:
+    ids = list(
+        session.exec(
+            select(model.id)
+            .where(
+                _not_in_target(model, target_org_id),
+                _child_scope(model, site_id=site_id, camera_ids=camera_ids),
+            )
+            .order_by(model.id)
+            .limit(batch_size)
+        ).all()
+    )
+    if not ids:
+        return 0
+    changed = int(
+        session.exec(update(model).where(model.id.in_(ids)).values(organization_id=target_org_id)).rowcount or 0
+    )
+    if changed != len(ids):
+        raise RuntimeError(f"{model.__tablename__} batch changed {changed} rows; expected {len(ids)}")
+    # Commit every small batch so the live API can continue serving requests.
+    session.commit()
+    return changed
+
+
+def _move_child_rows_in_batches(
+    session: Session,
+    *,
+    site_id: str,
+    camera_ids: list[str],
+    target_org_id: str,
+    batch_size: int,
+) -> dict[str, int]:
+    changed = _empty_child_changes()
+    for model in CHILD_MODELS:
+        while moved := _move_model_batch(
+            session,
+            model=model,
+            site_id=site_id,
+            camera_ids=camera_ids,
+            target_org_id=target_org_id,
+            batch_size=batch_size,
+        ):
+            changed[model.__tablename__] += moved
+    return changed
+
+
+def _count_remaining_child_rows(
+    session: Session,
+    *,
+    site_id: str,
+    camera_ids: list[str],
+    target_org_id: str,
+) -> int:
+    return sum(
+        _count(
+            select(func.count())
+            .select_from(model)
+            .where(
+                _not_in_target(model, target_org_id),
+                _child_scope(model, site_id=site_id, camera_ids=camera_ids),
+            ),
+            session,
+        )
+        for model in CHILD_MODELS
+    )
+
+
+def _finalize_rehome(
+    session: Session,
+    *,
+    site_id: str,
+    camera_ids: list[str],
+    account_id: str,
+    source_org_id: str | None,
+    target_org_id: str,
+    final_batch_limit: int,
+) -> tuple[dict[str, int], dict[str, int]]:
+    # This row lock prevents new camera uploads from being assigned to the old
+    # tenant while the final residual rows, site, devices, and membership flip.
+    session.exec(select(CameraDevice.id).where(CameraDevice.id.in_(camera_ids)).with_for_update()).all()
+    remaining = _count_remaining_child_rows(
+        session,
+        site_id=site_id,
+        camera_ids=camera_ids,
+        target_org_id=target_org_id,
+    )
+    if remaining > final_batch_limit:
+        raise RuntimeError(
+            f"{remaining} rows arrived during tenant rehome; rerun to continue the batched transfer before finalizing"
+        )
+
+    changed = _empty_child_changes()
+    for model in CHILD_MODELS:
+        changed[model.__tablename__] = int(
+            session.exec(
+                update(model)
+                .where(
+                    _not_in_target(model, target_org_id),
+                    _child_scope(model, site_id=site_id, camera_ids=camera_ids),
+                )
+                .values(organization_id=target_org_id)
+            ).rowcount
+            or 0
+        )
     changed["site"] = int(
         session.exec(
             update(Site)
@@ -211,38 +333,17 @@ def _move_rows(session: Session, *, site_id: str, camera_ids: list[str], target_
         ).rowcount
         or 0
     )
-    for model in SITE_AND_CAMERA_SCOPED_MODELS:
-        changed[model.__tablename__] = int(
-            session.exec(
-                update(model)
-                .where(
-                    _not_in_target(model, target_org_id),
-                    or_(
-                        model.site_id == site_id,
-                        and_(model.site_id.is_(None), model.camera_id.in_(camera_ids)),
-                    ),
-                )
-                .values(organization_id=target_org_id)
-            ).rowcount
-            or 0
-        )
-    for model in SITE_ONLY_MODELS:
-        changed[model.__tablename__] = int(
-            session.exec(
-                update(model)
-                .where(model.site_id == site_id, _not_in_target(model, target_org_id))
-                .values(organization_id=target_org_id)
-            ).rowcount or 0
-        )
-    for model in CAMERA_ONLY_MODELS:
-        changed[model.__tablename__] = int(
-            session.exec(
-                update(model)
-                .where(model.camera_id.in_(camera_ids), _not_in_target(model, target_org_id))
-                .values(organization_id=target_org_id)
-            ).rowcount or 0
-        )
-    return changed
+    membership_changes = _upsert_customer_membership(session, user_id=account_id, target_org_id=target_org_id)
+    record_audit(
+        session,
+        action="tenant.jingcheng_rehomed",
+        organization_id=target_org_id,
+        target_type="site",
+        target_id=site_id,
+        metadata={"sourceOrganizationId": source_org_id, "cameraIds": camera_ids, "strategy": "batched"},
+    )
+    session.commit()
+    return membership_changes, changed
 
 
 def _verify_target(
@@ -310,8 +411,11 @@ def rehome_jingcheng_tenant(
     target_org_name: str = DEFAULT_TARGET_ORG_NAME,
     target_org_slug: str = DEFAULT_TARGET_ORG_SLUG,
     expected_camera_count: int = 3,
+    batch_size: int = 500,
     apply: bool = False,
 ) -> dict[str, Any]:
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
     site, account, camera_ids = _load_source(
         session,
         site_id=site_id,
@@ -339,27 +443,30 @@ def rehome_jingcheng_tenant(
             target_org_name=target_org_name,
             target_org_slug=target_org_slug,
         )
-        membership_changes = _upsert_customer_membership(session, user_id=account.id, target_org_id=target.id)
-        first_pass = _move_rows(session, site_id=site.id, camera_ids=camera_ids, target_org_id=target.id)
-        record_audit(
+        target_org_id = target.id
+        # Keep the target inaccessible until every historical row is ready.
+        session.commit()
+        first_pass = _move_child_rows_in_batches(
             session,
-            action="tenant.jingcheng_rehomed",
-            organization_id=target.id,
-            target_type="site",
-            target_id=site.id,
-            metadata={"sourceOrganizationId": source_org_id, "cameraIds": camera_ids, "pass": 1},
+            site_id=site.id,
+            camera_ids=camera_ids,
+            target_org_id=target_org_id,
+            batch_size=batch_size,
         )
-        session.commit()
-
-        # A camera upload can have started before its CameraDevice row changed.
-        # Run a second, short reconciliation pass before declaring success.
-        second_pass = _move_rows(session, site_id=site.id, camera_ids=camera_ids, target_org_id=target.id)
-        session.commit()
+        membership_changes, second_pass = _finalize_rehome(
+            session,
+            site_id=site.id,
+            camera_ids=camera_ids,
+            account_id=account.id,
+            source_org_id=source_org_id,
+            target_org_id=target_org_id,
+            final_batch_limit=batch_size,
+        )
         verification = _verify_target(
             session,
             site_id=site.id,
             camera_ids=camera_ids,
-            target_org_id=target.id,
+            target_org_id=target_org_id,
         )
     except Exception:
         session.rollback()
@@ -367,7 +474,7 @@ def rehome_jingcheng_tenant(
 
     return {
         **plan,
-        "targetOrganizationId": target.id,
+        "targetOrganizationId": target_org_id,
         "membership": membership_changes,
         "firstPass": first_pass,
         "secondPass": second_pass,
@@ -383,6 +490,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-org-name", default=DEFAULT_TARGET_ORG_NAME)
     parser.add_argument("--target-org-slug", default=DEFAULT_TARGET_ORG_SLUG)
     parser.add_argument("--expected-camera-count", type=int, default=3)
+    parser.add_argument("--batch-size", type=int, default=500)
     return parser.parse_args()
 
 
@@ -397,6 +505,7 @@ def main() -> int:
             target_org_name=args.target_org_name,
             target_org_slug=args.target_org_slug,
             expected_camera_count=args.expected_camera_count,
+            batch_size=args.batch_size,
             apply=args.apply,
         )
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
