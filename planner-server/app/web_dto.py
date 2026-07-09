@@ -9,6 +9,7 @@ from app.dto import MissionArtifactsDto, MissionBundleDto
 
 
 RoleLiteral = Literal["platform_admin", "ops", "customer_admin", "customer_viewer"]
+ProductModeLiteral = Literal["building_route", "factory_ops"]
 InvoiceStatusLiteral = Literal["draft", "issued", "invoice_due", "paid", "overdue", "void"]
 SupportSeverityLiteral = Literal["info", "warning", "critical"]
 SupportCategoryLiteral = Literal[
@@ -56,6 +57,9 @@ AnalysisReprocessModeLiteral = Literal["normal", "no_findings", "analysis_failed
 class MembershipDto(BaseModel):
     membershipId: str
     organizationId: str | None = None
+    organizationName: str | None = None
+    organizationSlug: str | None = None
+    productMode: ProductModeLiteral | None = None
     role: RoleLiteral
     isActive: bool
 

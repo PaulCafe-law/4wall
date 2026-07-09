@@ -1,7 +1,7 @@
 // One clickable marker per entity. Color = overlay highlight if present, else the
 // entity's base color. Position lerps toward the entity's (sim-updated) position so
 // moving people / AMRs glide instead of teleporting.
-import { useRef, type WheelEvent as ReactWheelEvent } from 'react';
+import { useEffect, useRef, type WheelEvent as ReactWheelEvent } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import type { Entity } from '../domain/entities';
 import { useFactoryStore } from '../store/factoryStore';
 import { ENTITY_COLOR, OVERLAY, machineColor } from '../domain/colors';
+import { broadcastLivePersonAnchorPreview } from '../domain/machineCameras';
 import { AmrVisual } from './AmrModel';
 import { AlertPulseRing, AmrSensorRings, GroundRing } from './SensorRings';
 import { FACTORY_THEME } from './factoryTheme';
@@ -17,6 +18,31 @@ import { FACTORY_THEME } from './factoryTheme';
 // 讓使用者立刻看出「這是攝影機真的偵測到的人」,不會淹沒在常駐的模擬人員裡。
 const LIVE_PERSON_COLOR = '#2fd27a';
 const LIVE_PERSON_EMISSIVE = '#0f9d58';
+const LIVE_PERSON_DRAG_Y = 0.05;
+
+function isAnchorPickerMode(): boolean {
+  return globalThis.location?.search.includes('anchorPicker=1') === true;
+}
+
+function isDraggableLiveAnchor(entity: Entity): boolean {
+  return (
+    isAnchorPickerMode() &&
+    entity.type === 'person' &&
+    entity.source === 'live' &&
+    (entity.attrs?.anchorPreview === true || entity.attrs?.placementRule === 'hc600_01_left_side_anchor')
+  );
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function stopCanvasGesture(e: ThreeEvent<PointerEvent>) {
+  e.stopPropagation();
+  e.nativeEvent.preventDefault();
+  e.nativeEvent.stopPropagation();
+  e.nativeEvent.stopImmediatePropagation?.();
+}
 
 function baseColor(e: Entity): string {
   if (e.type === 'machine') return machineColor(e.status);
@@ -205,7 +231,12 @@ function ScreenHitTarget({ entity, height }: { entity: Entity; height: number })
 
 export function EntityMarker({ entity }: { entity: Entity }) {
   const ref = useRef<THREE.Group>(null);
+  const dragging = useRef(false);
+  const dragPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -LIVE_PERSON_DRAG_Y));
+  const dragPoint = useRef(new THREE.Vector3());
   const select = useFactoryStore((s) => s.select);
+  const setProbedCoord = useFactoryStore((s) => s.setProbedCoord);
+  const setLivePersonAnchorDragging = useFactoryStore((s) => s.setLivePersonAnchorDragging);
   const selected = useFactoryStore((s) => s.selectedId === entity.id);
   const highlight = useFactoryStore((s) => s.highlights[entity.id]);
   const debugOpen = useFactoryStore((s) => s.debugOpen);
@@ -222,9 +253,41 @@ export function EntityMarker({ entity }: { entity: Entity }) {
   const isAlert = entity.status === 'alarm' || highlight?.color === OVERLAY.alarm || highlight?.color === FACTORY_THEME.alarm;
   // 現場真人永遠標示身分:醒目名牌 + 持續脈動光環,一眼認得出它是真的偵測到的人。
   const isLivePerson = entity.type === 'person' && entity.source === 'live';
+  const draggableLiveAnchor = isDraggableLiveAnchor(entity);
   const ringRadius = entity.type === 'person' ? 0.38 : entity.type === 'amr' ? 0.9 : entity.type === 'machine' ? 1.7 : 1.15;
   const showLabel = selected || !!highlight || isLivePerson || (debugOpen && bound && entity.type === 'machine');
   const labelHeight = (bound ? 1.2 : markerHeight(entity)) + 0.6;
+
+  useEffect(() => {
+    return () => {
+      if (dragging.current) setLivePersonAnchorDragging(false);
+    };
+  }, [setLivePersonAnchorDragging]);
+
+  const moveLiveAnchor = (e: ThreeEvent<PointerEvent>) => {
+    const point = e.ray.intersectPlane(dragPlane.current, dragPoint.current)
+      ? dragPoint.current
+      : e.point;
+    const anchor = { x: round2(point.x), y: LIVE_PERSON_DRAG_Y, z: round2(point.z) };
+    setProbedCoord({ x: anchor.x, z: anchor.z });
+    const state = useFactoryStore.getState();
+    const nextPeople = state.livePersons.map((person) =>
+      person.id === entity.id || person.attrs?.anchorPreview === true
+        ? {
+            ...person,
+            position: anchor,
+            attrs: {
+              ...(person.attrs ?? {}),
+              fixedWorld: true,
+              approximate: true,
+              placementRule: 'hc600_01_left_side_anchor',
+            },
+          }
+        : person,
+    );
+    if (nextPeople.length > 0) state.setLivePersons(nextPeople);
+    broadcastLivePersonAnchorPreview(anchor);
+  };
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -234,6 +297,26 @@ export function EntityMarker({ entity }: { entity: Entity }) {
   const onPointerDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     select(entity.id);
+    if (!draggableLiveAnchor) return;
+    dragging.current = true;
+    setLivePersonAnchorDragging(true);
+    stopCanvasGesture(e);
+    (e.target as HTMLElement | null)?.setPointerCapture?.(e.pointerId);
+    moveLiveAnchor(e);
+  };
+
+  const onPointerMove = (e: ThreeEvent<PointerEvent>) => {
+    if (!dragging.current || !draggableLiveAnchor) return;
+    stopCanvasGesture(e);
+    moveLiveAnchor(e);
+  };
+
+  const onPointerUp = (e: ThreeEvent<PointerEvent>) => {
+    if (!dragging.current) return;
+    stopCanvasGesture(e);
+    dragging.current = false;
+    setLivePersonAnchorDragging(false);
+    (e.target as HTMLElement | null)?.releasePointerCapture?.(e.pointerId);
   };
 
   return (
@@ -241,6 +324,9 @@ export function EntityMarker({ entity }: { entity: Entity }) {
       ref={ref}
       position={[entity.position.x, entity.position.y, entity.position.z]}
       onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
       onClick={onClick}
     >
       {bound && <BoundHitTarget entity={entity} />}
@@ -253,7 +339,7 @@ export function EntityMarker({ entity }: { entity: Entity }) {
         <GroundRing color={LIVE_PERSON_COLOR} radius={0.52} thickness={0.12} opacity={0.92} pulse />
       )}
       {isAlert && <AlertPulseRing radius={ringRadius + 0.22} />}
-      <ScreenHitTarget entity={entity} height={labelHeight - 0.1} />
+      {!draggableLiveAnchor && <ScreenHitTarget entity={entity} height={labelHeight - 0.1} />}
       {showLabel && (
         <Html position={[0, labelHeight, 0]} center zIndexRange={[12, 0]} style={{ pointerEvents: 'none' }}>
           <div className="marker-label">{entity.name}</div>

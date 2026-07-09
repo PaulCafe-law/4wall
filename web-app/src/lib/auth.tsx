@@ -13,7 +13,7 @@ import {
 } from 'react'
 
 import { api, ApiError, type InviteAcceptPayload, type LoginPayload, type SignupPayload } from './api'
-import type { Role, SessionUser, WebSession } from './types'
+import type { Membership, Role, SessionUser, WebSession } from './types'
 
 export type AuthStatus = 'restoring' | 'anonymous' | 'authenticated' | 'expired'
 
@@ -230,6 +230,22 @@ export function getWritableOrganizationIds(user: SessionUser | null): string[] {
         membership.organizationId && membership.isActive && membership.role === 'customer_admin',
     )
     .map((membership) => membership.organizationId as string)
+}
+
+export function getFactoryOpsMembership(user: SessionUser | null): Membership | null {
+  if (!user) {
+    return null
+  }
+  return (
+    user.memberships.find(
+      (membership) =>
+        membership.organizationId !== null && membership.isActive && membership.productMode === 'factory_ops',
+    ) ?? null
+  )
+}
+
+export function isFactoryOpsCustomer(user: SessionUser | null): boolean {
+  return Boolean(user && !user.globalRoles.some(isInternalRole) && getFactoryOpsMembership(user))
 }
 
 export function isUnauthorized(error: unknown): error is ApiError {

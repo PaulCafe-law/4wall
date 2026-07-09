@@ -1,5 +1,5 @@
 [Unit]
-Description=Fourth Wall factory twin agent worker
+Description=4WALL AI factory twin agent worker
 After=network-online.target
 Wants=network-online.target
 

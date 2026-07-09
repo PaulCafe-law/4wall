@@ -16,15 +16,20 @@ function titleFor(type: string): string {
   return 'Factory Twin 事件';
 }
 
-export function useLocalAgent() {
+export function useLocalAgent(enabled = true) {
   const seen = useRef(new Set<string>());
 
   useEffect(() => {
+    if (!enabled) {
+      useFactoryStore.getState().setAgentConnected(false);
+      return;
+    }
     useFactoryStore.getState().setAgentConnected(true);
     return () => useFactoryStore.getState().setAgentConnected(false);
-  }, []);
+  }, [enabled]);
 
   useEffect(() => {
+    if (!enabled) return;
     return useFactoryStore.subscribe((state) => {
       for (const event of state.simEvents) {
         if (seen.current.has(event.id) || event.important === false) continue;
@@ -41,5 +46,5 @@ export function useLocalAgent() {
         });
       }
     });
-  }, []);
+  }, [enabled]);
 }

@@ -14,7 +14,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/data/artifacts
+RUN addgroup --system app \
+    && adduser --system --ingroup app --no-create-home app \
+    && mkdir -p /app/data/artifacts \
+    && chown -R app:app /app
+
+USER app
 
 EXPOSE 8000
 

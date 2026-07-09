@@ -3,7 +3,14 @@
 import { useState } from 'react';
 import { useFactoryStore } from '../store/factoryStore';
 import { BOUND_ENTITY_IDS } from '../domain/meshBindings';
-import type { Entity } from '../domain/entities';
+import {
+  broadcastLivePersonAnchorPreview,
+  clearStoredLivePersonAnchor,
+  livePersonAnchorForCamera,
+  readStoredLivePersonAnchor,
+  writeStoredLivePersonAnchor,
+} from '../domain/machineCameras';
+import type { Entity, PersonEntity, Vec3 } from '../domain/entities';
 
 function isArchitectureName(name: string): boolean {
   return /wall|roof|floor|level|railing|rail|stair|beam|hn400|ub-universal|柱|钢|鋼|型钢|型鋼/i.test(name);
@@ -28,6 +35,65 @@ function DebugList({ items, empty }: { items: string[]; empty: string }) {
   );
 }
 
+function LivePersonAnchorControls({
+  previewAnchor,
+  savedLivePersonAnchor,
+  onApply,
+  onClear,
+  onNudge,
+}: {
+  previewAnchor: Vec3 | null;
+  savedLivePersonAnchor: Vec3 | null;
+  onApply: () => void;
+  onClear: () => void;
+  onNudge: (dx: number, dz: number) => void;
+}) {
+  return (
+    <>
+      <div className="debug-coord">
+        {previewAnchor ? (
+          <code>
+            預覽 x: {previewAnchor.x} z: {previewAnchor.z}
+          </code>
+        ) : (
+          <span className="debug-hint">拖動小人來調整位置</span>
+        )}
+      </div>
+      <div className="debug-actions">
+        <button type="button" className="debug-action" disabled={!previewAnchor} onClick={onApply}>
+          套用為 HC600-01 現場人員位置
+        </button>
+        <button type="button" className="debug-action ghost" disabled={!savedLivePersonAnchor} onClick={onClear}>
+          清除暫存位置
+        </button>
+      </div>
+      <div className="debug-nudge" aria-label="微調現場人員位置">
+        <button type="button" disabled={!previewAnchor} onClick={() => onNudge(0, -0.15)}>
+          上
+        </button>
+        <button type="button" disabled={!previewAnchor} onClick={() => onNudge(-0.15, 0)}>
+          左
+        </button>
+        <button type="button" disabled={!previewAnchor} onClick={() => onNudge(0.15, 0)}>
+          右
+        </button>
+        <button type="button" disabled={!previewAnchor} onClick={() => onNudge(0, 0.15)}>
+          下
+        </button>
+      </div>
+      <div className="debug-coord">
+        {savedLivePersonAnchor ? (
+          <code>
+            已保存 x: {savedLivePersonAnchor.x} z: {savedLivePersonAnchor.z}
+          </code>
+        ) : (
+          <span className="debug-hint">尚未保存 HC600-01 現場人員位置</span>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function DebugPanel() {
   const open = useFactoryStore((s) => s.debugOpen);
   const toggle = useFactoryStore((s) => s.toggleDebug);
@@ -36,7 +102,14 @@ export function DebugPanel() {
   const boundMap = useFactoryStore((s) => s.boundMap);
   const entities = useFactoryStore((s) => s.entities);
   const probedCoord = useFactoryStore((s) => s.probedCoord);
+  const livePersons = useFactoryStore((s) => s.livePersons);
+  const setLivePersons = useFactoryStore((s) => s.setLivePersons);
+  const setProbedCoord = useFactoryStore((s) => s.setProbedCoord);
+  const focus = useFactoryStore((s) => s.focus);
   const [filter, setFilter] = useState('');
+  const [savedLivePersonAnchor, setSavedLivePersonAnchor] = useState<Vec3 | null>(() =>
+    readStoredLivePersonAnchor(),
+  );
 
   if (!open) return null;
 
@@ -55,6 +128,71 @@ export function DebugPanel() {
   }));
   const boundEquipment = bindable.filter((b) => b.bound);
   const unboundEquipment = bindable.filter((b) => !b.bound);
+  const anchorPickerMode = new URLSearchParams(window.location.search).get('anchorPicker') === '1';
+  const previewAnchor = probedCoord ? { x: probedCoord.x, y: 0.05, z: probedCoord.z } : savedLivePersonAnchor;
+  const getCurrentPreviewAnchor = (): Vec3 | null => {
+    const current = useFactoryStore.getState().probedCoord;
+    if (current) return { x: current.x, y: 0.05, z: current.z };
+    return readStoredLivePersonAnchor() ?? livePersonAnchorForCamera('fw-camera-hc600-01-anchor-preview');
+  };
+  const setPreviewAnchor = (anchor: Vec3) => {
+    const nextAnchor = {
+      x: Math.round(anchor.x * 100) / 100,
+      y: 0.05,
+      z: Math.round(anchor.z * 100) / 100,
+    };
+    setProbedCoord({ x: nextAnchor.x, z: nextAnchor.z });
+    const nextPeople = useFactoryStore.getState().livePersons.map(
+      (person): PersonEntity => ({
+        ...person,
+        position:
+          person.attrs?.anchorPreview === true || person.attrs?.placementRule === 'hc600_01_left_side_anchor'
+            ? nextAnchor
+            : person.position,
+        attrs:
+          person.attrs?.anchorPreview === true || person.attrs?.placementRule === 'hc600_01_left_side_anchor'
+            ? {
+                ...(person.attrs ?? {}),
+                fixedWorld: true,
+                approximate: true,
+                placementRule: 'hc600_01_left_side_anchor',
+              }
+            : person.attrs,
+      }),
+    );
+    if (nextPeople.length > 0) setLivePersons(nextPeople);
+    broadcastLivePersonAnchorPreview(nextAnchor);
+  };
+  const nudgeLivePersonAnchor = (dx: number, dz: number) => {
+    const current = getCurrentPreviewAnchor();
+    if (!current) return;
+    setPreviewAnchor({ x: current.x + dx, y: 0.05, z: current.z + dz });
+  };
+  const applyLivePersonAnchor = () => {
+    const current = getCurrentPreviewAnchor();
+    if (!current) return;
+    const anchor = writeStoredLivePersonAnchor(current);
+    setSavedLivePersonAnchor(anchor);
+    const pinnedPeople = livePersons.map(
+      (person): PersonEntity => ({
+        ...person,
+        position: anchor,
+        attrs: {
+          ...(person.attrs ?? {}),
+          fixedWorld: true,
+          approximate: true,
+          manuallyPinned: true,
+          placementRule: 'hc600_01_left_side_anchor',
+        },
+      }),
+    );
+    setLivePersons(pinnedPeople);
+    if (pinnedPeople[0]) focus(pinnedPeople[0].id);
+  };
+  const clearLivePersonAnchor = () => {
+    clearStoredLivePersonAnchor();
+    setSavedLivePersonAnchor(null);
+  };
 
   return (
     <div className="debug-panel">
@@ -64,6 +202,20 @@ export function DebugPanel() {
           ✕
         </button>
       </div>
+
+      {anchorPickerMode ? (
+        <div className="debug-section anchor-picker-section">
+          <div className="debug-label">HC600-01 現場人員定位</div>
+          <div className="debug-hint">拖動綠色小人調整位置，座標確認後再按套用保存。</div>
+          <LivePersonAnchorControls
+            previewAnchor={previewAnchor}
+            savedLivePersonAnchor={savedLivePersonAnchor}
+            onApply={applyLivePersonAnchor}
+            onClear={clearLivePersonAnchor}
+            onNudge={nudgeLivePersonAnchor}
+          />
+        </div>
+      ) : null}
 
       <div className="debug-section">
         <div className="debug-summary">
@@ -146,7 +298,7 @@ export function DebugPanel() {
               x: {probedCoord.x} z: {probedCoord.z}
             </code>
           ) : (
-            <span className="debug-hint">點工廠地板任一點讀取世界座標</span>
+            <span className="debug-hint">拖動小人或點地板都會更新座標</span>
           )}
         </div>
         <div className="debug-hint">

@@ -5,8 +5,9 @@ import { DebugPanel } from './mirror/components/DebugPanel';
 import { DetailPanel } from './mirror/components/DetailPanel';
 import { SimControlPanel } from './mirror/components/SimControlPanel';
 import { WarehouseSimulator } from './mirror/components/warehouse/WarehouseSimulator';
-import { buildMockEntities } from './mirror/domain/mockData';
+import { buildLiveFactoryEntities, buildMockEntities } from './mirror/domain/mockData';
 import { SPATIAL_ZONES } from './mirror/domain/spatialZones';
+import { livePersonAnchorForCamera, readStoredLivePersonAnchor } from './mirror/domain/machineCameras';
 import type { CameraEntity, PersonEntity } from './mirror/domain/entities';
 import { useLocalAgent } from './mirror/hooks/useLocalAgent';
 import { useTwinAgentBridge } from './mirror/hooks/useTwinAgentBridge';
@@ -18,15 +19,15 @@ import './mirror/styles.css';
 
 type FactoryMode = 'factory' | 'warehouse';
 
-function FactoryDemo() {
+function FactoryDemo({ liveOnly }: { liveOnly: boolean }) {
   const leftOpen = useFactoryStore((s) => s.leftOpen);
   const rightOpen = useFactoryStore((s) => s.rightOpen);
   const toggleLeft = useFactoryStore((s) => s.toggleLeft);
   const toggleRight = useFactoryStore((s) => s.toggleRight);
   const centerRef = useRef<HTMLElement>(null);
 
-  useSimEngine(true);
-  useLocalAgent();
+  useSimEngine(!liveOnly);
+  useLocalAgent(!liveOnly);
   useTwinAgentBridge();
 
   // 3D 內滾輪縮放只進 OrbitControls，不冒泡到頁面捲動。React onWheel 預設是 passive，
@@ -47,15 +48,15 @@ function FactoryDemo() {
     <div className="layout" style={{ gridTemplateColumns: gridCols }}>
       {leftOpen ? (
         <aside className="col col-left">
-          <ChatPanel />
+          <ChatPanel liveOnly={liveOnly} />
         </aside>
       ) : null}
       <main className="col col-center" ref={centerRef}>
         <FactoryScene />
         <WorkOrderOverlay />
-        <SimControlPanel />
-        <AgentFeed />
-        <DebugPanel />
+        {!liveOnly ? <SimControlPanel /> : null}
+        {!liveOnly ? <AgentFeed /> : null}
+        {!liveOnly ? <DebugPanel /> : null}
         <button
           className={`edge-handle left ${leftOpen ? 'open' : ''}`}
           onClick={toggleLeft}
@@ -87,29 +88,47 @@ function FactoryDemo() {
 export function FactoryTwinWorkspace({
   platformCameras,
   livePersons,
+  liveOnly = false,
 }: {
   platformCameras: CameraEntity[];
   livePersons: PersonEntity[];
+  liveOnly?: boolean;
 }) {
   const [mode, setMode] = useState<FactoryMode>('factory');
-  const seeded = useRef(false);
+  const seededMode = useRef<boolean | null>(null);
   const setEntities = useFactoryStore((s) => s.setEntities);
   const addMessage = useFactoryStore((s) => s.addMessage);
   const setPlatformCameras = useFactoryStore((s) => s.setPlatformCameras);
   const setLivePersons = useFactoryStore((s) => s.setLivePersons);
+  const setProbedCoord = useFactoryStore((s) => s.setProbedCoord);
 
   useEffect(() => {
-    if (seeded.current) return;
-    seeded.current = true;
-    const entities = buildMockEntities();
-    for (const zone of SPATIAL_ZONES) entities[zone.id] = zone;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('anchorPicker') !== '1') return;
+    const store = useFactoryStore.getState();
+    if (!store.debugOpen) store.toggleDebug();
+    if (!store.probedCoord) {
+      const anchor = readStoredLivePersonAnchor() ?? livePersonAnchorForCamera('fw-camera-hc600-01-anchor-preview');
+      if (anchor) setProbedCoord({ x: anchor.x, z: anchor.z });
+    }
+  }, [setProbedCoord]);
+
+  useEffect(() => {
+    if (seededMode.current === liveOnly) return;
+    seededMode.current = liveOnly;
+    const entities = liveOnly ? buildLiveFactoryEntities() : buildMockEntities();
+    if (!liveOnly) {
+      for (const zone of SPATIAL_ZONES) entities[zone.id] = zone;
+    }
     setEntities(entities);
     addMessage({
       id: uid('msg'),
       role: 'assistant',
-      text: '靚程工廠數位分身已載入。可問「小明在哪」、「HC600 今天狀況」，或輸入「派小明去處理 HC600」。',
+      text: liveOnly
+        ? '4WALL AI 已連上靚程工廠的真實資料。可問「01機台現在狀況」、「今天計畫與實際對帳」或「現場有人嗎」。'
+        : '靚程工廠數位分身已載入。可問「小明在哪」、「HC600 今天狀況」，或輸入「派小明去處理 HC600」。',
     });
-  }, [addMessage, setEntities]);
+  }, [addMessage, liveOnly, setEntities]);
 
   useEffect(() => {
     setPlatformCameras(platformCameras);
@@ -119,24 +138,28 @@ export function FactoryTwinWorkspace({
     setLivePersons(livePersons);
   }, [livePersons, setLivePersons]);
 
+  const activeMode: FactoryMode = liveOnly ? 'factory' : mode;
+
   return (
     <div className="factory-twin-shell">
       <div className="app">
         <div className="factory-twin-modebar">
           <div>
             <span className="factory-twin-kicker">Mirror Factory</span>
-            <strong>{mode === 'factory' ? '靚程工廠數位分身' : '倉儲情境模擬'}</strong>
+            <strong>{activeMode === 'factory' ? '靚程工廠即時戰情室' : '倉儲情境模擬'}</strong>
           </div>
-          <div className="mode-switch" role="group" aria-label="Factory Twin mode">
-            <button className={mode === 'factory' ? 'active' : ''} onClick={() => setMode('factory')} type="button">
-              工廠戰情室
-            </button>
-            <button className={mode === 'warehouse' ? 'active' : ''} onClick={() => setMode('warehouse')} type="button">
-              倉儲模擬
-            </button>
-          </div>
+          {!liveOnly ? (
+            <div className="mode-switch" role="group" aria-label="工廠數位分身模式">
+              <button className={mode === 'factory' ? 'active' : ''} onClick={() => setMode('factory')} type="button">
+                工廠戰情室
+              </button>
+              <button className={mode === 'warehouse' ? 'active' : ''} onClick={() => setMode('warehouse')} type="button">
+                倉儲模擬
+              </button>
+            </div>
+          ) : null}
         </div>
-        {mode === 'warehouse' ? <WarehouseSimulator /> : <FactoryDemo />}
+        {activeMode === 'warehouse' ? <WarehouseSimulator /> : <FactoryDemo liveOnly={liveOnly} />}
       </div>
     </div>
   );

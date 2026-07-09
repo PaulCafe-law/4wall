@@ -115,6 +115,7 @@ export interface FactoryState {
   pendingAgentReplies: number;
   platformCameras: CameraEntity[];
   livePersons: PersonEntity[];
+  livePersonAnchorDragging: boolean;
 
   // GLB binding info (for debug panel + marker/sim awareness)
   glbLoadState: 'loading' | 'ready' | 'failed';
@@ -153,6 +154,7 @@ export interface FactoryState {
   decPendingAgentReplies: () => void;
   setPlatformCameras: (cameras: CameraEntity[]) => void;
   setLivePersons: (people: PersonEntity[]) => void;
+  setLivePersonAnchorDragging: (dragging: boolean) => void;
   clearOverlays: () => void;
   setGlbLoadState: (state: FactoryState['glbLoadState']) => void;
   setGlbInfo: (meshNames: string[], boundIds: string[], boundMap: Record<string, string>) => void;
@@ -181,6 +183,7 @@ export const useFactoryStore = create<FactoryState>((set) => ({
   pendingAgentReplies: 0,
   platformCameras: [],
   livePersons: [],
+  livePersonAnchorDragging: false,
   glbLoadState: 'loading',
   glbMeshNames: [],
   boundEntityIds: [],
@@ -257,6 +260,7 @@ export const useFactoryStore = create<FactoryState>((set) => ({
   decPendingAgentReplies: () =>
     set((s) => ({ pendingAgentReplies: Math.max(0, s.pendingAgentReplies - 1) })),
   setPlatformCameras: (cameras) => set({ platformCameras: cameras }),
+  setLivePersonAnchorDragging: (dragging) => set({ livePersonAnchorDragging: dragging }),
   setLivePersons: (people) =>
     set((s) => {
       const nextEntities = { ...s.entities };

@@ -219,8 +219,8 @@ it('pushes a compact world snapshot every 3 seconds', () => {
       vi.advanceTimersByTime(3000);
     });
 
-    expect(apiMock.postTwinAgentSnapshot).toHaveBeenCalledTimes(1);
-    const [token, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
+    expect(apiMock.postTwinAgentSnapshot).toHaveBeenCalledTimes(2);
+    const [token, payload] = apiMock.postTwinAgentSnapshot.mock.calls.at(-1)!;
     expect(token).toBe('test-token');
     expect(payload.sessionId).toBe(TWIN_AGENT_SESSION_ID);
     expect(typeof payload.capturedAt).toBe('string');
@@ -240,6 +240,7 @@ it('pushes a compact world snapshot every 3 seconds', () => {
     ]);
     expect(payload.world.recentEvents).toEqual([]);
     expect(payload.world.cameraSummary).toEqual([]);
+    expect(payload.world.machineRealData).toEqual([]);
   } finally {
     vi.useRealTimers();
   }
@@ -290,7 +291,10 @@ it('includes real gauge readings and the 派工單 sheet in the camera summary',
             mode: 'temperature_monitor',
             capturedAt: '2026-07-05T19:40:00+08:00',
             gptSummary: { summary: 'HC600 保溫中。' },
-            structuredFields: { workOrder },
+            structuredFields: {
+              workOrder,
+              screenVisibility: { status: 'lit', confidence: 0.91, meanLuma: 120, p90Luma: 150, p98Luma: 180 },
+            },
           },
         },
       } as never,
@@ -305,10 +309,217 @@ it('includes real gauge readings and the 派工單 sheet in the camera summary',
     const camera = payload.world.cameraSummary[0];
     expect(camera.name).toBe('PoE Camera 192.168.1.10');
     expect(camera.actualGaugeReadings).toEqual([
-      { label: 'PRESS AM METER', value: 0, unit: 'A', status: 'ok', capturedAt: '2026-07-05T19:35:59+08:00' },
+      {
+        label: 'PRESS AM METER',
+        value: 0,
+        unit: 'A',
+        status: 'ok',
+        statusText: '正常',
+        capturedAt: '2026-07-05T19:35:59+08:00',
+      },
     ]);
     expect(camera.hmiOcr.summary).toBe('HC600 保溫中。');
     expect(camera.hmiOcr.workOrder).toEqual(workOrder);
+    expect(camera.hmiOcr.screenVisibility).toMatchObject({
+      status: 'lit',
+      statusText: '螢幕有亮，代表目前有開機跡象',
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('groups HC600-01 live camera readings, dispatch sheet, and nearby people by machine', () => {
+  vi.useFakeTimers();
+  try {
+    apiMock.getTwinAgentUpdates.mockResolvedValue({ workerOnline: false, events: [], cursor: 0 });
+    apiMock.postTwinAgentSnapshot.mockResolvedValue(undefined);
+    const liveOnlyMachine: MachineEntity = {
+      ...machineFixture('m-hc600', 0),
+      name: 'HC600-01',
+      status: 'unknown',
+      source: 'live',
+      attrs: { liveMetricsOnly: true },
+      oee: 0,
+      temperature: 0,
+      todayCount: 0,
+      alarms: 0,
+    };
+    const nearbyPerson: PersonEntity = {
+      ...livePerson,
+      id: 'live-near-hc600',
+      position: { x: 1.2, y: 0.05, z: -1.2 },
+      station: '操作側',
+      attrs: {
+        approximate: true,
+        cameraLabel: '操作側',
+        receivedAt: '2026-07-05T19:42:01+08:00',
+        personCount: 2,
+        confidence: 0.93,
+      },
+    };
+    const workOrder = {
+      template: 'hc600_dispatch_sheet_v1',
+      unit: 'PCS',
+      fields: { machineNo: { value: 'HC600-01' } },
+    };
+
+    useFactoryStore.getState().setEntities({ [liveOnlyMachine.id]: liveOnlyMachine });
+    useFactoryStore.getState().setLivePersons([nearbyPerson]);
+    useFactoryStore.getState().setPlatformCameras([
+      {
+        id: 'fw-camera-panel',
+        type: 'camera',
+        name: '操作側',
+        position: { x: 0, y: 0, z: 0 },
+        status: 'active',
+        source: 'live',
+        siteLabel: '靚程工廠 / HC600-01',
+        online: true,
+        samplingIntervalSeconds: 10,
+        feedMode: 'snapshot',
+        attrs: {
+          latestGaugeReadings: [
+            {
+              label: 'PRESS AM METER',
+              value: 4.2,
+              unit: 'A',
+              status: 'ok',
+              capturedAt: '2026-07-05T19:41:59+08:00',
+            },
+          ],
+          latestOcrObservation: {
+            mode: 'machine_monitor',
+            capturedAt: '2026-07-05T19:42:00+08:00',
+            gptSummary: { summary: 'HMI 顯示機台正常，派工單已辨識。' },
+            structuredFields: {
+              workOrder,
+              screenVisibility: { status: 'lit', confidence: 0.92, meanLuma: 121, p90Luma: 151, p98Luma: 181 },
+            },
+          },
+          latestPersonObservation: {
+            personCount: 2,
+            capturedAt: '2026-07-05T19:42:00+08:00',
+            receivedAt: '2026-07-05T19:42:01+08:00',
+            detectorName: 'yolox',
+            detections: [{ confidence: 0.93, floorPosition: { x: 1.23, z: -1.24 } }],
+          },
+        },
+      } as never,
+    ]);
+
+    renderWithProviders(<Harness />);
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    const [, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
+    const machine = payload.world.machineRealData[0];
+    expect(machine).toMatchObject({
+      machineId: 'm-hc600',
+      machineName: 'HC600-01',
+      screenPowerInference: {
+        state: 'screen_lit',
+        text: '螢幕有亮，代表目前有開機跡象',
+        sourceCamera: '操作側',
+        capturedAt: '2026-07-05T19:42:00+08:00',
+        confidence: 0.92,
+      },
+      metricsSource: 'live',
+      actualDataAvailable: true,
+    });
+    expect(machine).not.toHaveProperty('status');
+    expect(machine.relatedCameras[0]).toMatchObject({
+      id: 'fw-camera-panel',
+      machineId: 'm-hc600',
+      actualGaugeReadings: [
+        {
+          label: 'PRESS AM METER',
+          value: 4.2,
+          unit: 'A',
+          status: 'ok',
+          statusText: '正常',
+          capturedAt: '2026-07-05T19:41:59+08:00',
+        },
+      ],
+      hmiOcr: {
+        summary: 'HMI 顯示機台正常，派工單已辨識。',
+        workOrder,
+        screenVisibility: { status: 'lit', statusText: '螢幕有亮，代表目前有開機跡象' },
+      },
+      actualPersonObservation: { personCount: 2 },
+    });
+    expect(machine.nearbyLivePersons).toEqual([
+      expect.objectContaining({
+        id: 'live-near-hc600',
+        station: '操作側',
+        sourceCamera: '操作側',
+        personCount: 2,
+        approximate: true,
+        confidence: 0.9,
+      }),
+    ]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('uses dark HMI screen visibility as the machine power evidence', () => {
+  vi.useFakeTimers();
+  try {
+    apiMock.getTwinAgentUpdates.mockResolvedValue({ workerOnline: false, events: [], cursor: 0 });
+    apiMock.postTwinAgentSnapshot.mockResolvedValue(undefined);
+    const liveOnlyMachine: MachineEntity = {
+      ...machineFixture('m-hc600', 0),
+      name: 'HC600-01',
+      status: 'unknown',
+      source: 'live',
+      attrs: { liveMetricsOnly: true },
+      oee: 0,
+      temperature: 0,
+      todayCount: 0,
+      alarms: 0,
+    };
+
+    useFactoryStore.getState().setEntities({ [liveOnlyMachine.id]: liveOnlyMachine });
+    useFactoryStore.getState().setPlatformCameras([
+      {
+        id: 'fw-camera-panel',
+        type: 'camera',
+        name: '操作側',
+        position: { x: 0, y: 0, z: 0 },
+        status: 'active',
+        source: 'live',
+        siteLabel: '靚程工廠 / HC600-01',
+        online: true,
+        samplingIntervalSeconds: 10,
+        feedMode: 'snapshot',
+        attrs: {
+          latestOcrObservation: {
+            mode: 'unknown',
+            capturedAt: '2026-07-05T20:00:00+08:00',
+            gptSummary: {},
+            structuredFields: {
+              screenVisibility: { status: 'dark', confidence: 0.88, meanLuma: 25, p90Luma: 30, p98Luma: 40 },
+            },
+          },
+        },
+      } as never,
+    ]);
+
+    renderWithProviders(<Harness />);
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    const [, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
+    expect(payload.world.machineRealData[0].screenPowerInference).toEqual({
+      state: 'screen_dark',
+      text: '螢幕是暗的',
+      sourceCamera: '操作側',
+      capturedAt: '2026-07-05T20:00:00+08:00',
+      confidence: 0.88,
+    });
   } finally {
     vi.useRealTimers();
   }
@@ -346,12 +557,13 @@ it('omits placeholder machine metrics for live-only machines', () => {
     id: 'm-hc600',
     type: 'machine',
     name: 'M-HC600',
-    status: 'unknown',
     position: { x: 0, y: 0, z: -3.1 },
     model: 'HC600',
     metricsSource: 'live',
     metricsAvailable: false,
   });
+  expect(compact).not.toHaveProperty('status');
+  expect(compact).not.toHaveProperty('machineStateNote');
   expect(compact).not.toHaveProperty('oee');
   expect(compact).not.toHaveProperty('temperature');
   expect(compact).not.toHaveProperty('todayCount');

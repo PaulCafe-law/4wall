@@ -105,22 +105,25 @@ def test_worker_endpoints_require_worker_token(test_settings) -> None:
         assert response.json()["detail"] == "twin_agent_worker_token_missing"
 
 
-def test_web_endpoints_require_internal_role(test_settings) -> None:
+def test_customer_web_endpoints_are_scoped_to_snapshot_owner(test_settings) -> None:
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
         with app.state.session_factory() as session:
             org = seed_organization(session, name="Twin Org")
-            seed_user(session, email="customer@twin.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+            org_id = org.id
+            seed_user(session, email="customer-a@twin.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+            seed_user(session, email="customer-b@twin.test", password=PASSWORD, org_roles=[(org.id, "customer_viewer")])
             session.commit()
-        headers, _ = login_web(client, email="customer@twin.test", password=PASSWORD)
+        headers_a, _ = login_web(client, email="customer-a@twin.test", password=PASSWORD)
+        headers_b, _ = login_web(client, email="customer-b@twin.test", password=PASSWORD)
+        snapshot = {**_snapshot_body({"entities": [{"id": "own-machine"}]}), "organizationId": org_id}
 
         assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body()).status_code == 401
-        assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body(), headers=headers).status_code == 403
-        assert (
-            client.post("/v1/twin-agent/messages", json={"sessionId": SESSION_ID, "text": "hi"}, headers=headers).status_code
-            == 403
-        )
-        assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers).status_code == 403
+        assert client.post("/v1/twin-agent/snapshot", json=snapshot, headers=headers_a).status_code == 204
+        assert client.post("/v1/twin-agent/messages", json={"sessionId": SESSION_ID, "text": "hi"}, headers=headers_a).status_code == 200
+        assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers_a).status_code == 200
+        assert client.post("/v1/twin-agent/messages", json={"sessionId": SESSION_ID, "text": "hi"}, headers=headers_b).status_code == 404
+        assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers_b).status_code == 404
 
 
 def test_snapshot_size_guard(test_settings) -> None:
@@ -143,6 +146,7 @@ def test_web_message_rate_limit(test_settings) -> None:
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
         headers = _internal_headers(app, client)
+        assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body(), headers=headers).status_code == 204
         statuses = [
             client.post(
                 "/v1/twin-agent/messages",
@@ -320,6 +324,7 @@ def test_updates_cursor_zero_after_init_delivers_new_events(test_settings) -> No
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
         headers = _internal_headers(app, client)
+        assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body(), headers=headers).status_code == 204
         handshake = client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers).json()
         assert handshake == {"workerOnline": False, "events": [], "cursor": 0}
 
@@ -374,6 +379,7 @@ def test_worker_stays_online_during_long_reply_and_result_refreshes_heartbeat(te
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
         headers = _internal_headers(app, client)
+        assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body(), headers=headers).status_code == 204
         job = enqueue_twin_agent_job(source="web", text="慢問題", session_id=SESSION_ID)
         client.get("/v1/twin-agent/jobs", headers=_worker_headers())
 
@@ -511,6 +517,7 @@ def test_sweep_expires_pending_web_job_and_appends_canned_reply(test_settings) -
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
         headers = _internal_headers(app, client)
+        assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body(), headers=headers).status_code == 204
         handshake = client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers).json()
         assert handshake["cursor"] == 0
 
@@ -530,6 +537,7 @@ def test_sweep_expires_stale_claimed_jobs(test_settings) -> None:
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
         headers = _internal_headers(app, client)
+        assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body(), headers=headers).status_code == 204
         job = enqueue_twin_agent_job(source="web", text="hello", session_id=SESSION_ID)
         client.get("/v1/twin-agent/jobs", headers=_worker_headers())
         twin_agent._STATE.jobs[0].claimed_monotonic -= JOB_CLAIMED_TTL + 1

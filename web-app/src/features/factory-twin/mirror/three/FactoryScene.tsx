@@ -18,6 +18,7 @@ export function FactoryScene() {
   const entities = useFactoryStore((s) => s.entities);
   const select = useFactoryStore((s) => s.select);
   const glbLoadState = useFactoryStore((s) => s.glbLoadState);
+  const livePersonAnchorDragging = useFactoryStore((s) => s.livePersonAnchorDragging);
   const showRuntimeOverlays = glbLoadState !== 'loading';
 
   return (
@@ -70,6 +71,7 @@ export function FactoryScene() {
 
       <OrbitControls
         makeDefault
+        enabled={!livePersonAnchorDragging}
         enableDamping
         enablePan
         enableZoom

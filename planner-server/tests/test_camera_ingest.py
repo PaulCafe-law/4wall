@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 
+import app.routers.camera_ingest as camera_ingest
 from app.models import CameraDevice, CameraFrame, CameraGaugeReading, CameraOcrObservation, CameraPersonObservation
 from app.routers.camera_ingest import MAX_FRAME_SIZE_BYTES
 from app.security import hash_camera_device_token, verify_camera_device_token
@@ -1045,6 +1046,103 @@ def test_latest_frame_image_returns_404_without_uploaded_frame(client, session_f
 
     assert response.status_code == 404
     assert response.json()["detail"] == "camera_latest_frame_not_found"
+
+
+def test_camera_list_batches_historical_status_queries(client, session_factory, monkeypatch) -> None:
+    """The list endpoint must not fall back to one history scan per camera."""
+    captured_at = datetime(2026, 7, 10, 8, 0, tzinfo=timezone.utc)
+    with session_factory() as session:
+        org = seed_organization(session, name="Batched Camera Org")
+        site = seed_site(session, organization_id=org.id, name="Batched Factory")
+        first = _seed_camera(session, org.id, site.id, token="fwcam_batch_first")
+        second = _seed_camera(session, org.id, site.id, token="fwcam_batch_second")
+        first_id = first.id
+        second_id = second.id
+        session.add_all(
+            [
+                CameraFrame(
+                    id="batch-first-old",
+                    camera_id=first.id,
+                    organization_id=org.id,
+                    site_id=site.id,
+                    captured_at=captured_at - timedelta(minutes=1),
+                    storage_key="batch/first-old.jpg",
+                    content_type="image/jpeg",
+                    upload_status="uploaded",
+                    analysis_status="queued",
+                    upload_expires_at=captured_at,
+                ),
+                CameraFrame(
+                    id="batch-first-new",
+                    camera_id=first.id,
+                    organization_id=org.id,
+                    site_id=site.id,
+                    captured_at=captured_at,
+                    storage_key="batch/first-new.jpg",
+                    content_type="image/jpeg",
+                    upload_status="failed",
+                    analysis_status="failed",
+                    upload_expires_at=captured_at,
+                ),
+                CameraFrame(
+                    id="batch-second",
+                    camera_id=second.id,
+                    organization_id=org.id,
+                    site_id=site.id,
+                    captured_at=captured_at,
+                    storage_key="batch/second.jpg",
+                    content_type="image/jpeg",
+                    upload_status="uploaded",
+                    analysis_status="queued",
+                    upload_expires_at=captured_at,
+                ),
+                CameraGaugeReading(
+                    camera_id=first.id,
+                    organization_id=org.id,
+                    site_id=site.id,
+                    gauge_id="press_am_meter",
+                    label="壓力表",
+                    value=12.0,
+                    unit="A",
+                    confidence=0.9,
+                    captured_at=captured_at - timedelta(minutes=1),
+                ),
+                CameraGaugeReading(
+                    camera_id=first.id,
+                    organization_id=org.id,
+                    site_id=site.id,
+                    gauge_id="press_am_meter",
+                    label="壓力表",
+                    value=13.0,
+                    unit="A",
+                    confidence=0.9,
+                    captured_at=captured_at,
+                ),
+            ]
+        )
+        seed_user(session, email="admin@batched-camera.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        session.commit()
+
+    def fail_legacy_query(*_args, **_kwargs):
+        raise AssertionError("camera list must use batch queries")
+
+    monkeypatch.setattr(camera_ingest, "_latest_frame_for_camera", fail_legacy_query)
+    monkeypatch.setattr(camera_ingest, "_latest_ocr_observation_for_camera", fail_legacy_query)
+    monkeypatch.setattr(camera_ingest, "_latest_person_observation_for_camera", fail_legacy_query)
+    monkeypatch.setattr(camera_ingest, "_latest_gauge_readings_for_camera", fail_legacy_query)
+    monkeypatch.setattr(camera_ingest, "_count_camera_frames", fail_legacy_query)
+
+    headers, _ = login_web(client, email="admin@batched-camera.test", password=PASSWORD)
+    response = client.get("/v1/cameras", headers=headers)
+
+    assert response.status_code == 200, response.text
+    cameras = {item["cameraId"]: item for item in response.json()["cameras"]}
+    assert cameras[first_id]["latestFrame"]["frameId"] == "batch-first-new"
+    assert cameras[first_id]["uploadedFrameCount"] == 1
+    assert cameras[first_id]["queuedFrameCount"] == 1
+    assert cameras[first_id]["failedFrameCount"] == 2
+    assert cameras[first_id]["latestGaugeReadings"][0]["value"] == 13.0
+    assert cameras[second_id]["latestFrame"]["frameId"] == "batch-second"
 
 
 def _person_observation_payload(**overrides) -> dict:

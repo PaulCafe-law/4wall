@@ -1776,6 +1776,13 @@
   padding-top: 8px;
   margin-top: 8px;
 }
+
+.debug-section.anchor-picker-section {
+  border: 1px solid rgba(214, 123, 45, 0.35);
+  background: rgba(214, 123, 45, 0.08);
+  padding: 10px;
+}
+
 .debug-label {
   color: var(--ink);
   font-weight: 600;
@@ -1903,6 +1910,55 @@
   display: inline-block;
   padding: 4px 8px;
   font-size: 12px;
+}
+
+.debug-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.debug-action {
+  border: 1px solid var(--teal);
+  background: var(--teal);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.25;
+  padding: 5px 8px;
+}
+
+.debug-action.ghost {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink);
+}
+
+.debug-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.debug-nudge {
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 7px;
+}
+
+.debug-nudge button {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+}
+
+.debug-nudge button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 /* ---- GLB loading / failure ---- */

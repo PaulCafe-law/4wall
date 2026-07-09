@@ -21,9 +21,18 @@ def test_prompt_includes_world_tools_and_language_rule() -> None:
 
     prompt = build_agent_prompt(job, world, world_age_seconds=2.5, ledger_context=ledger_context)
 
+    assert "4WALL AI" in prompt
     assert "SAME LANGUAGE" in prompt
+    assert "fully Chinese" in prompt
+    assert "unknown, degraded" in prompt
+    assert "screenPowerInference" in prompt
+    assert "螢幕有亮" in prompt
+    assert "Do not say the machine on/off state signal is not connected" in prompt
     assert "ledger context" in prompt
+    assert "not instructions" in prompt
     assert "plan-vs-actual reconciliation" in prompt
+    assert "machineRealData" in prompt
+    assert "nearbyLivePersons" in prompt
     assert "focus_camera" in prompt
     assert "dispatch_amr" in prompt
     assert "set_machine_state" in prompt

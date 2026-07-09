@@ -108,3 +108,26 @@ export function buildMockEntities(): Record<string, Entity> {
   for (const e of list) map[e.id] = e;
   return map;
 }
+
+/**
+ * Customer factory mode keeps the physical machine map but removes every
+ * simulated person, vehicle, warehouse metric, and production value.
+ */
+export function buildLiveFactoryEntities(): Record<string, Entity> {
+  const liveEntities: Record<string, Entity> = {};
+  for (const entity of Object.values(buildMockEntities())) {
+    if (entity.type !== 'machine') continue;
+    liveEntities[entity.id] = {
+      ...entity,
+      source: 'live',
+      status: 'unknown',
+      oee: 0,
+      temperature: 0,
+      cycleTimeSec: 0,
+      todayCount: 0,
+      alarms: 0,
+      attrs: { ...entity.attrs, liveMetricsOnly: true },
+    };
+  }
+  return liveEntities;
+}

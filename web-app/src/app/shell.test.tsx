@@ -77,6 +77,42 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: '支援工作台' })).not.toBeInTheDocument()
   })
 
+  it('shows a factory customer only live factory navigation', () => {
+    renderWithProviders(
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="/factory-twin" element={<div>靚程現場</div>} />
+        </Route>
+      </Routes>,
+      {
+        route: '/factory-twin',
+        auth: createAuthValue({
+          session: createSession({
+            displayName: '靚程測試帳號',
+            memberships: [
+              {
+                membershipId: 'jingcheng-membership',
+                organizationId: 'jingcheng-org',
+                organizationName: '靚程企業',
+                organizationSlug: 'jingcheng',
+                productMode: 'factory_ops',
+                role: 'customer_viewer',
+                isActive: true,
+              },
+            ],
+          }),
+          isInternal: false,
+        }),
+      },
+    )
+
+    expect(screen.getByRole('link', { name: '工廠戰情室' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '即時攝影機' })).toBeVisible()
+    expect(screen.queryByRole('link', { name: '倉儲模擬' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '任務' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '資料引擎' })).not.toBeInTheDocument()
+  })
+
   it('collapses the sidebar into a narrow rail and persists the choice in localStorage', async () => {
     const user = userEvent.setup()
 

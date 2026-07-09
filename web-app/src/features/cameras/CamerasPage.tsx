@@ -419,10 +419,10 @@ export function CamerasPage() {
       {!camerasQuery.isLoading && cameras.length === 0 ? (
         <EmptyState
           title="尚無攝影機"
-          body="目前帳號尚未綁定固定攝影機。請聯絡第四面牆團隊安排安裝與綁定，完成後最新截圖會自動出現在這裡。"
+          body="目前帳號尚未綁定固定攝影機。請聯絡 4WALL AI 團隊安排安裝與綁定，完成後最新截圖會自動出現在這裡。"
           action={
             <a className="text-sm text-ember-500 underline" href="mailto:4walltech@gmail.com">
-              聯絡第四面牆團隊
+              聯絡 4WALL AI 團隊
             </a>
           }
         />

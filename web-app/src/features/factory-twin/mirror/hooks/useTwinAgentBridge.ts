@@ -6,8 +6,9 @@ import { useAuth } from '../../../../lib/auth';
 import { useAuthedQuery } from '../../../../lib/auth-query';
 import type { TwinAgentFeedEvent } from '../../../../lib/types';
 import { executeToolCall } from '../agent/tools';
-import type { Entity } from '../domain/entities';
+import type { CameraEntity, Entity, MachineEntity, PersonEntity } from '../domain/entities';
 import { machineUsesLiveMetricsOnly } from '../domain/entities';
+import { machineIdForCamera } from '../domain/machineCameras';
 import { uid, useFactoryStore } from '../store/factoryStore';
 
 export const TWIN_AGENT_SESSION_ID = uid('twin-session');
@@ -15,12 +16,49 @@ export const TWIN_AGENT_SESSION_ID = uid('twin-session');
 const SNAPSHOT_INTERVAL_MS = 3000;
 const UPDATES_INTERVAL_MS = 2000;
 const MAX_SNAPSHOT_ENTITIES = 150;
+const NEARBY_PERSON_RADIUS_M = 5;
 
 const cursorRef = { current: null as number | null };
 const processedSeqs = new Set<number>();
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function compactPosition(position: { x: number; y: number; z: number }): Record<string, number> {
+  return { x: round1(position.x), y: round1(position.y), z: round1(position.z) };
+}
+
+function gaugeStatusText(status: unknown): string {
+  if (status === 'ok') return '正常';
+  if (status === 'degraded') return '異常';
+  if (status === 'failed') return '辨識失敗';
+  if (status === 'unknown') return '未判定';
+  return typeof status === 'string' && status.trim() ? status : '未判定';
+}
+
+function ocrModeText(mode: unknown): string {
+  if (mode === 'temperature_monitor') return '溫度監視畫面';
+  if (mode === 'machine_monitor') return '機台監視畫面';
+  return '未判定畫面';
+}
+
+function screenVisibilityText(status: unknown): string {
+  if (status === 'lit') return '螢幕有亮，代表目前有開機跡象';
+  if (status === 'dark') return '螢幕是暗的';
+  return '螢幕狀態未判定';
+}
+
+function isMachine(entity: Entity): entity is MachineEntity {
+  return entity.type === 'machine';
+}
+
+function isLivePerson(entity: Entity): entity is PersonEntity {
+  return entity.type === 'person' && entity.source === 'live';
 }
 
 function compactEntity(e: Entity): Record<string, unknown> {
@@ -35,7 +73,10 @@ function compactEntity(e: Entity): Record<string, unknown> {
     case 'machine':
       if (machineUsesLiveMetricsOnly(e)) {
         return {
-          ...base,
+          id: e.id,
+          type: e.type,
+          name: e.name,
+          position: compactPosition(e.position),
           model: e.model,
           metricsSource: 'live',
           metricsAvailable: false,
@@ -66,9 +107,54 @@ export function compactEntities(entities: Record<string, Entity>): Record<string
 
 // Real platform data (gauge readings / HMI OCR / 派工單) rides along with each
 // camera so the agent can answer 實際讀表 questions instead of only sim state.
-function compactCameraRealData(camera: Entity): Record<string, unknown> {
-  const attrs = (camera as { attrs?: Record<string, unknown> }).attrs ?? {};
-  const summary: Record<string, unknown> = { name: camera.name, online: (camera as { online?: boolean }).online ?? false };
+function compactPersonObservation(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  const detections = Array.isArray(value.detections)
+    ? value.detections
+        .filter(isRecord)
+        .slice(0, 10)
+        .map((detection) => {
+          const floorPosition = isRecord(detection.floorPosition) ? detection.floorPosition : null;
+          return {
+            confidence: detection.confidence,
+            floorPosition:
+              floorPosition && typeof floorPosition.x === 'number' && typeof floorPosition.z === 'number'
+                ? { x: round1(floorPosition.x), z: round1(floorPosition.z) }
+                : null,
+          };
+        })
+    : [];
+  return {
+    personCount: value.personCount,
+    capturedAt: value.capturedAt,
+    receivedAt: value.receivedAt,
+    detectorName: value.detectorName ?? null,
+    detections,
+  };
+}
+
+function compactScreenVisibility(value: unknown): Record<string, unknown> | null {
+  if (!isRecord(value)) return null;
+  return {
+    status: value.status,
+    statusText: screenVisibilityText(value.status),
+    confidence: value.confidence,
+    meanLuma: value.meanLuma,
+    p90Luma: value.p90Luma,
+    p98Luma: value.p98Luma,
+  };
+}
+
+function compactCameraRealData(camera: CameraEntity): Record<string, unknown> {
+  const attrs = camera.attrs ?? {};
+  const summary: Record<string, unknown> = {
+    id: camera.id,
+    name: camera.name,
+    siteLabel: camera.siteLabel,
+    machineId: machineIdForCamera(camera.id),
+    online: camera.online,
+    capturedAt: attrs.latestFrameCapturedAt ?? attrs.lastFrameAt ?? null,
+  };
 
   const readings = attrs.latestGaugeReadings;
   if (Array.isArray(readings) && readings.length > 0) {
@@ -80,25 +166,108 @@ function compactCameraRealData(camera: Entity): Record<string, unknown> {
         value: r.value,
         unit: r.unit,
         status: r.status,
+        statusText: gaugeStatusText(r.status),
         capturedAt: r.capturedAt,
       }));
   }
 
   const observation = attrs.latestOcrObservation;
-  if (typeof observation === 'object' && observation !== null) {
-    const obs = observation as Record<string, unknown>;
-    const structured = (typeof obs.structuredFields === 'object' && obs.structuredFields !== null
-      ? obs.structuredFields
-      : {}) as Record<string, unknown>;
-    const gpt = (typeof obs.gptSummary === 'object' && obs.gptSummary !== null ? obs.gptSummary : {}) as Record<string, unknown>;
+  if (isRecord(observation)) {
+    const structured = isRecord(observation.structuredFields) ? observation.structuredFields : {};
+    const gpt = isRecord(observation.gptSummary) ? observation.gptSummary : {};
+    const screenVisibility = compactScreenVisibility(structured.screenVisibility);
     summary.hmiOcr = {
-      mode: obs.mode,
-      capturedAt: obs.capturedAt,
+      mode: observation.mode,
+      modeText: ocrModeText(observation.mode),
+      capturedAt: observation.capturedAt,
       summary: typeof gpt.summary === 'string' ? gpt.summary : null,
       workOrder: structured.workOrder ?? null,
+      ...(screenVisibility ? { screenVisibility } : {}),
     };
   }
+  const personObservation = compactPersonObservation(attrs.latestPersonObservation);
+  if (personObservation) summary.actualPersonObservation = personObservation;
   return summary;
+}
+
+function cameraHasActualData(camera: CameraEntity): boolean {
+  const attrs = camera.attrs ?? {};
+  return (
+    (Array.isArray(attrs.latestGaugeReadings) && attrs.latestGaugeReadings.length > 0) ||
+    isRecord(attrs.latestOcrObservation) ||
+    isRecord(attrs.latestPersonObservation)
+  );
+}
+
+function distance2d(a: Entity['position'], b: Entity['position']): number {
+  return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+function compactNearbyPerson(person: PersonEntity): Record<string, unknown> {
+  const attrs = person.attrs ?? {};
+  return {
+    id: person.id,
+    name: person.name,
+    station: person.station ?? null,
+    position: compactPosition(person.position),
+    sourceCamera: attrs.cameraLabel ?? attrs.platformCameraName ?? null,
+    observedAt: attrs.receivedAt ?? attrs.capturedAt ?? null,
+    personCount: typeof attrs.personCount === 'number' ? attrs.personCount : 1,
+    approximate: attrs.approximate === true,
+    confidence: typeof attrs.confidence === 'number' ? round1(attrs.confidence) : null,
+  };
+}
+
+function screenPowerInferenceFor(cameraSummaries: Record<string, unknown>[]): Record<string, unknown> | null {
+  for (const camera of cameraSummaries) {
+    const hmiOcr = isRecord(camera.hmiOcr) ? camera.hmiOcr : null;
+    const visibility = hmiOcr && isRecord(hmiOcr.screenVisibility) ? hmiOcr.screenVisibility : null;
+    const status = visibility?.status;
+    if (visibility && (status === 'lit' || status === 'dark')) {
+      return {
+        state: status === 'lit' ? 'screen_lit' : 'screen_dark',
+        text: screenVisibilityText(status),
+        sourceCamera: camera.name ?? null,
+        capturedAt: hmiOcr?.capturedAt ?? null,
+        confidence: visibility.confidence ?? null,
+      };
+    }
+  }
+  return null;
+}
+
+function buildMachineRealData(
+  entities: Record<string, Entity>,
+  platformCameras: CameraEntity[],
+  livePersons: PersonEntity[],
+): Record<string, unknown>[] {
+  const machines = Object.values(entities).filter(isMachine);
+  const people = livePersons.length > 0 ? livePersons : Object.values(entities).filter(isLivePerson);
+
+  return machines.flatMap((machine) => {
+    const relatedCameras = platformCameras.filter((camera) => machineIdForCamera(camera.id) === machine.id);
+    const relatedCameraSummaries = relatedCameras.map(compactCameraRealData);
+    const screenPowerInference = screenPowerInferenceFor(relatedCameraSummaries);
+    const nearbyLivePersons = people
+      .filter((person) => distance2d(machine.position, person.position) <= NEARBY_PERSON_RADIUS_M)
+      .map(compactNearbyPerson);
+    if (!machineUsesLiveMetricsOnly(machine) && relatedCameras.length === 0 && nearbyLivePersons.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        machineId: machine.id,
+        machineName: machine.name,
+        aliases: machine.aliases ?? [],
+        ...(screenPowerInference ? { screenPowerInference } : {}),
+        metricsSource: machineUsesLiveMetricsOnly(machine) ? 'live' : machine.source,
+        actualDataAvailable: relatedCameras.some(cameraHasActualData) || nearbyLivePersons.length > 0,
+        relatedCameras: relatedCameraSummaries,
+        nearbyLivePersons,
+      },
+    ];
+  });
 }
 
 function buildWorldSnapshot(): Record<string, unknown> {
@@ -109,7 +278,18 @@ function buildWorldSnapshot(): Record<string, unknown> {
       .slice(0, 20)
       .map((event) => ({ atMs: event.atMs, type: event.type, message: event.message })),
     cameraSummary: s.platformCameras.map(compactCameraRealData),
+    machineRealData: buildMachineRealData(s.entities, s.platformCameras, s.livePersons),
   };
+}
+
+function snapshotOrganizationId(): string | undefined {
+  const organizationIds = new Set(
+    useFactoryStore
+      .getState()
+      .platformCameras.map((camera) => camera.attrs?.platformOrganizationId)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0),
+  );
+  return organizationIds.size === 1 ? [...organizationIds][0] : undefined;
 }
 
 function handleFeedEvent(event: TwinAgentFeedEvent): void {
@@ -135,19 +315,25 @@ export function useTwinAgentBridge() {
   const auth = useAuth();
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
+    const publishSnapshot = () => {
       const token = auth.session?.accessToken;
       if (!token) return;
-      api
-        .postTwinAgentSnapshot(token, {
+      const organizationId = snapshotOrganizationId();
+      void Promise.resolve(
+        api.postTwinAgentSnapshot(token, {
           sessionId: TWIN_AGENT_SESSION_ID,
           capturedAt: new Date().toISOString(),
           world: buildWorldSnapshot(),
-        })
-        .catch(() => {});
+          ...(organizationId ? { organizationId } : {}),
+        }),
+      ).catch(() => {});
+    };
+    publishSnapshot();
+    const timer = window.setInterval(() => {
+      publishSnapshot();
     }, SNAPSHOT_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [auth]);
+  }, [auth.session?.accessToken]);
 
   const updatesQuery = useAuthedQuery({
     queryKey: ['factory-twin', 'twin-agent-updates', TWIN_AGENT_SESSION_ID],

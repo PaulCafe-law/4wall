@@ -156,7 +156,7 @@ function personObservation(
   };
 }
 
-function renderFactoryRoute(auth = createAuthValue()) {
+function renderFactoryRoute(auth = createAuthValue(), route = '/factory-twin') {
   return renderWithProviders(
     <Routes>
       <Route element={<RequireAuthenticated />}>
@@ -166,12 +166,14 @@ function renderFactoryRoute(auth = createAuthValue()) {
       </Route>
       <Route path="/login" element={<div>login page</div>} />
     </Routes>,
-    { route: '/factory-twin', auth },
+    { route, auth },
   );
 }
 
 describe('FactoryTwinPage', () => {
   beforeEach(() => {
+    window.history.pushState({}, '', '/');
+    window.localStorage.clear();
     apiMock.listCameras.mockReset();
     apiMock.listCameras.mockResolvedValue({
       cameras: [
@@ -187,10 +189,10 @@ describe('FactoryTwinPage', () => {
     });
   });
 
-  it('adds a protected Fourth Wall platform page for the factory twin', async () => {
+  it('adds a protected 4WALL AI platform page for the factory twin', async () => {
     renderFactoryRoute();
 
-    expect(await screen.findByRole('heading', { name: '靚程工廠 Digital Twin' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: '靚程工廠即時戰情室' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '工廠數位分身' })).toHaveAttribute('href', '/factory-twin');
     await waitFor(() => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('platform cameras: 3');
@@ -222,10 +224,10 @@ describe('FactoryTwinPage', () => {
     );
 
     expect(await screen.findByText('login page')).toBeInTheDocument();
-    expect(screen.queryByText('靚程工廠 Digital Twin')).not.toBeInTheDocument();
+    expect(screen.queryByText('靚程工廠即時戰情室')).not.toBeInTheDocument();
   });
 
-  it('projects fresh valid person observations into live person entities', async () => {
+  it('anchors fresh valid person observations beside HC600-01', async () => {
     apiMock.listCameras.mockResolvedValueOnce({
       cameras: [
         cameraFixture(
@@ -242,10 +244,26 @@ describe('FactoryTwinPage', () => {
 
     expect(await screen.findByText(/現場 2 人/)).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 2');
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 1');
     });
-    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員 3-1');
-    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員 3-2');
+    expect(screen.getByTestId('factory-twin-workspace').textContent).toContain('×2');
+  });
+
+  it('shows a live-person anchor preview only in anchor picker mode', async () => {
+    window.localStorage.setItem(
+      'fourwall:factory-twin:hc600-01-live-person-anchor',
+      JSON.stringify({ x: 1.5, y: 0.05, z: -8.5 }),
+    );
+    window.history.pushState({}, '', '/factory-twin?anchorPicker=1');
+    apiMock.listCameras.mockResolvedValueOnce({ cameras: [] });
+
+    renderFactoryRoute(createAuthValue(), '/factory-twin?anchorPicker=1');
+
+    expect(await screen.findByText(/現場 0 人/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 1');
+    });
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員定位預覽');
   });
 
   it('drops expired observations and observations without detected people', async () => {
@@ -314,7 +332,7 @@ describe('FactoryTwinPage', () => {
 });
 
 describe('toLivePersons', () => {
-  it('anchors the fallback presence marker beside the mapped HC600-01 machine', () => {
+  it('anchors the fallback presence marker at the calibrated HC600-01 live-person point', () => {
     const nowMs = Date.now();
     const machine = buildMockEntities()['m-hc600'];
     const camera = cameraFixture(
@@ -344,7 +362,31 @@ describe('toLivePersons', () => {
     });
     expect(persons[0].attrs?.personCount).toBe(2);
     expect(persons[0].attrs?.approximate).toBe(true);
+    expect(persons[0].attrs?.placementRule).toBe('hc600_01_left_side_anchor');
     expect(persons[0].attrs?.confidence).toBe(0.92);
+  });
+
+  it('uses a manually selected anchor for the HC600-01 live person marker', () => {
+    const nowMs = Date.now();
+    const manualAnchor = { x: 1.23, y: 0.05, z: -9.87 };
+    const camera = cameraFixture(
+      'machine-cam',
+      'PoE Camera 192.168.1.31',
+      'dd6cbdd3aa744736ad96d2791d689fce',
+      [],
+      personObservation('machine-cam', {
+        personCount: 1,
+        detections: [
+          { bbox: [100, 120, 40, 160], confidence: 0.92, footPoint: [120, 280], floorPosition: null },
+        ],
+      }),
+    );
+
+    const persons = toLivePersons([camera], nowMs, manualAnchor);
+
+    expect(persons).toHaveLength(1);
+    expect(persons[0].position).toEqual(manualAnchor);
+    expect(persons[0].attrs?.placementRule).toBe('hc600_01_left_side_anchor');
   });
 
   it('measures freshness by receivedAt within the 90s window and drops older ones', () => {
@@ -364,7 +406,7 @@ describe('toLivePersons', () => {
       personObservation('stale', { receivedAt: new Date(nowMs - 100_000).toISOString() }),
     );
 
-    expect(toLivePersons([freshCamera], nowMs)).toHaveLength(2);
+    expect(toLivePersons([freshCamera], nowMs)).toHaveLength(1);
     expect(toLivePersons([staleCamera], nowMs)).toHaveLength(0);
   });
 
@@ -382,6 +424,6 @@ describe('toLivePersons', () => {
       }),
     );
     // Kept (not dropped) despite the stale capturedAt, because receivedAt is recent.
-    expect(toLivePersons([camera], nowMs)).toHaveLength(2);
+    expect(toLivePersons([camera], nowMs)).toHaveLength(1);
   });
 });

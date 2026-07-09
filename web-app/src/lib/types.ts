@@ -1,5 +1,6 @@
 export type Role = 'platform_admin' | 'ops' | 'customer_admin' | 'customer_viewer'
 export type CustomerRole = 'customer_admin' | 'customer_viewer'
+export type ProductMode = 'building_route' | 'factory_ops'
 
 export type InvoiceStatus = 'draft' | 'issued' | 'invoice_due' | 'paid' | 'overdue' | 'void'
 
@@ -53,6 +54,9 @@ export type ControlMode =
 export interface Membership {
   membershipId: string
   organizationId: string | null
+  organizationName?: string | null
+  organizationSlug?: string | null
+  productMode?: ProductMode | null
   role: Role
   isActive: boolean
 }
@@ -958,6 +962,7 @@ export interface TwinAgentSnapshotPayload {
   sessionId: string
   capturedAt: string
   world: Record<string, unknown>
+  organizationId?: string
 }
 
 export interface TwinAgentMessagePayload {

@@ -51,6 +51,9 @@ class Organization(SQLModel, table=True):
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     name: str = Field(index=True)
     slug: str = Field(index=True, unique=True)
+    # Existing route-planning organizations keep the default. Factory customers
+    # receive a live-data-only surface without changing the legacy product.
+    product_mode: str = Field(default="building_route", index=True)
     is_active: bool = True
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
@@ -121,6 +124,11 @@ class CameraDevice(SQLModel, table=True):
 
 class CameraFrame(SQLModel, table=True):
     __tablename__ = "camera_frames"
+    __table_args__ = (
+        Index("ix_camera_frames_camera_captured_created", "camera_id", "captured_at", "created_at"),
+        Index("ix_camera_frames_camera_upload_status", "camera_id", "upload_status"),
+        Index("ix_camera_frames_camera_analysis_status", "camera_id", "analysis_status"),
+    )
 
     id: str = Field(primary_key=True)
     camera_id: str = Field(foreign_key="camera_devices.id", index=True)
@@ -144,6 +152,9 @@ class CameraFrame(SQLModel, table=True):
 
 class CameraGaugeReading(SQLModel, table=True):
     __tablename__ = "camera_gauge_readings"
+    __table_args__ = (
+        Index("ix_camera_gauge_readings_camera_gauge_captured", "camera_id", "gauge_id", "captured_at", "created_at"),
+    )
 
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     camera_id: str = Field(foreign_key="camera_devices.id", index=True)
@@ -165,6 +176,9 @@ class CameraGaugeReading(SQLModel, table=True):
 
 class CameraOcrObservation(SQLModel, table=True):
     __tablename__ = "camera_ocr_observations"
+    __table_args__ = (
+        Index("ix_camera_ocr_observations_camera_captured", "camera_id", "captured_at", "created_at"),
+    )
 
     id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
     camera_id: str = Field(foreign_key="camera_devices.id", index=True)

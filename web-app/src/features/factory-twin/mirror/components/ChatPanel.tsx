@@ -6,7 +6,7 @@ import { runConversation } from '../agent/runConversation';
 import { TWIN_AGENT_SESSION_ID } from '../hooks/useTwinAgentBridge';
 import { AuthControl } from './AuthControl';
 
-const SUGGESTIONS = [
+const DEMO_SUGGESTIONS = [
   '小明在哪？',
   'HC600-03 今天狀況？',
   '派小明去處理 HC600-01',
@@ -16,7 +16,13 @@ const SUGGESTIONS = [
   '讓 HC600-02 出貨口跑一趟',
 ];
 
-export function ChatPanel() {
+const LIVE_FACTORY_SUGGESTIONS = [
+  '01機台現在狀況',
+  '今天計畫與實際對帳',
+  '現場有人嗎',
+];
+
+export function ChatPanel({ liveOnly = false }: { liveOnly?: boolean }) {
   const messages = useFactoryStore((s) => s.messages);
   const cloudAgentOnline = useFactoryStore((s) => s.cloudAgentOnline);
   const pendingAgentReplies = useFactoryStore((s) => s.pendingAgentReplies);
@@ -34,18 +40,28 @@ export function ChatPanel() {
   }, [messages]);
 
   const thinking = busy || pendingAgentReplies > 0;
+  const suggestions = liveOnly ? LIVE_FACTORY_SUGGESTIONS : DEMO_SUGGESTIONS;
 
   const send = async (text?: string) => {
     const t = (text ?? input).trim();
     if (!t || busy) return;
     setInput('');
+    const store = useFactoryStore.getState();
     if (cloudAgentOnline) {
-      const store = useFactoryStore.getState();
       store.addMessage({ id: uid('msg'), role: 'user', text: t });
       store.incPendingAgentReplies();
       sendCloudMessage
         .mutateAsync(t)
         .catch(() => useFactoryStore.getState().decPendingAgentReplies());
+      return;
+    }
+    if (liveOnly) {
+      store.addMessage({ id: uid('msg'), role: 'user', text: t });
+      store.addMessage({
+        id: uid('msg'),
+        role: 'assistant',
+        text: '4WALL AI 助理暫時離線，請稍後再試。',
+      });
       return;
     }
     setBusy(true);
@@ -59,8 +75,8 @@ export function ChatPanel() {
   return (
     <div className="chat">
       <div className="chat-head">
-        <span className="chat-title">工廠對話</span>
-        <AuthControl />
+        <span className="chat-title">4WALL AI 工廠助手</span>
+        {!liveOnly ? <AuthControl /> : null}
       </div>
 
       <div className="chat-body">
@@ -75,7 +91,7 @@ export function ChatPanel() {
       </div>
 
       <div className="chat-suggest">
-        {SUGGESTIONS.map((s) => (
+        {suggestions.map((s) => (
           <button key={s} className="chip" onClick={() => send(s)}>
             {s}
           </button>
@@ -86,7 +102,7 @@ export function ChatPanel() {
         <textarea
           value={input}
           rows={1}
-          placeholder="問工廠任何事（中/EN）… Ask the factory anything…"
+          placeholder="請輸入想了解的現場狀況…"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

@@ -25,7 +25,7 @@ import { OverviewPage } from '../features/overview/OverviewPage'
 import { SiteMapPage } from '../features/site-map/SiteMapPage'
 import { SitesPage } from '../features/sites/SitesPage'
 import { SupportPage } from '../features/support/SupportPage'
-import { AuthProvider, useAuth } from '../lib/auth'
+import { AuthProvider, isFactoryOpsCustomer, useAuth } from '../lib/auth'
 
 const queryClient = new QueryClient()
 
@@ -42,16 +42,65 @@ export function AppRoutes() {
             <Route path="/m/floorplan/:siteSlug" element={<LineFloorplanMobilePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>
-                <Route index element={<Navigate to="/overview" replace />} />
-                <Route path="/overview" element={<OverviewPage />} />
-                <Route path="/sites" element={<SitesPage />} />
-                <Route path="/sites/:siteId" element={<SitesPage />} />
+                <Route index element={<AuthenticatedHome />} />
+                <Route
+                  path="/overview"
+                  element={
+                    <RequireBuildingRoute>
+                      <OverviewPage />
+                    </RequireBuildingRoute>
+                  }
+                />
+                <Route
+                  path="/sites"
+                  element={
+                    <RequireBuildingRoute>
+                      <SitesPage />
+                    </RequireBuildingRoute>
+                  }
+                />
+                <Route
+                  path="/sites/:siteId"
+                  element={
+                    <RequireBuildingRoute>
+                      <SitesPage />
+                    </RequireBuildingRoute>
+                  }
+                />
                 <Route path="/cameras" element={<CamerasPage />} />
                 <Route path="/factory-twin" element={<FactoryTwinPage />} />
-                <Route path="/site-map" element={<SiteMapPage />} />
-                <Route path="/missions" element={<MissionsPage />} />
-                <Route path="/missions/new" element={<PlannerPage />} />
-                <Route path="/missions/:missionId" element={<MissionDetailPage />} />
+                <Route
+                  path="/site-map"
+                  element={
+                    <RequireBuildingRoute>
+                      <SiteMapPage />
+                    </RequireBuildingRoute>
+                  }
+                />
+                <Route
+                  path="/missions"
+                  element={
+                    <RequireBuildingRoute>
+                      <MissionsPage />
+                    </RequireBuildingRoute>
+                  }
+                />
+                <Route
+                  path="/missions/new"
+                  element={
+                    <RequireBuildingRoute>
+                      <PlannerPage />
+                    </RequireBuildingRoute>
+                  }
+                />
+                <Route
+                  path="/missions/:missionId"
+                  element={
+                    <RequireBuildingRoute>
+                      <MissionDetailPage />
+                    </RequireBuildingRoute>
+                  }
+                />
                 <Route path="/incidents" element={<IncidentCenterPage />} />
                 <Route path="/incidents/:incidentId" element={<IncidentDetailPage />} />
                 <Route
@@ -62,8 +111,22 @@ export function AppRoutes() {
                     </RequireInternal>
                   }
                 />
-                <Route path="/industrial-data-engine" element={<IndustrialDataEnginePage />} />
-                <Route path="/billing" element={<BillingPage />} />
+                <Route
+                  path="/industrial-data-engine"
+                  element={
+                    <RequireBuildingRoute>
+                      <IndustrialDataEnginePage />
+                    </RequireBuildingRoute>
+                  }
+                />
+                <Route
+                  path="/billing"
+                  element={
+                    <RequireBuildingRoute>
+                      <BillingPage />
+                    </RequireBuildingRoute>
+                  }
+                />
                 <Route
                   path="/control-plane"
                   element={
@@ -170,6 +233,19 @@ export function RequireAuthenticated() {
   }
 
   return <Outlet />
+}
+
+function AuthenticatedHome() {
+  const auth = useAuth()
+  return <Navigate to={isFactoryOpsCustomer(auth.user) ? '/factory-twin' : '/overview'} replace />
+}
+
+function RequireBuildingRoute({ children }: { children: ReactElement }) {
+  const auth = useAuth()
+  if (isFactoryOpsCustomer(auth.user)) {
+    return <Navigate to="/factory-twin" replace />
+  }
+  return children
 }
 
 export function RequireInternal({ children }: { children: ReactElement }) {

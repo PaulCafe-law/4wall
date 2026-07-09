@@ -22,12 +22,14 @@ WORKER_ONLINE_WINDOW = 75
 REPLY_TOKEN_MAX_AGE = 50
 FEED_MAX_EVENTS = 100
 MAX_TRACKED_JOBS = 200
-TWIN_AGENT_OFFLINE_TEXT = "AI 助理暫時離線，請稍後再試 / AI assistant is temporarily offline, please retry shortly."
+TWIN_AGENT_OFFLINE_TEXT = "4WALL AI 助理暫時離線，請稍後再試。"
 
 
 @dataclass
 class TwinAgentWorldSlot:
     session_id: str
+    owner_user_id: str
+    organization_id: str | None
     world: dict
     captured_at: datetime
     received_at_monotonic: float
@@ -63,7 +65,7 @@ class TwinAgentFeedEvent:
 class TwinAgentState:
     def __init__(self) -> None:
         self.lock = Lock()
-        self.world_slot: TwinAgentWorldSlot | None = None
+        self.world_slots: dict[str, TwinAgentWorldSlot] = {}
         self.jobs: list[TwinAgentJob] = []
         self.feeds: dict[str, list[TwinAgentFeedEvent]] = {}
         self.feed_seq: dict[str, int] = {}
@@ -75,34 +77,68 @@ _STATE = TwinAgentState()
 
 def clear_twin_agent_state() -> None:
     with _STATE.lock:
-        _STATE.world_slot = None
+        _STATE.world_slots.clear()
         _STATE.jobs.clear()
         _STATE.feeds.clear()
         _STATE.feed_seq.clear()
         _STATE.last_worker_seen_monotonic = None
 
 
-def store_world_snapshot(*, session_id: str, world: dict, captured_at: datetime) -> None:
+def store_world_snapshot(
+    *,
+    session_id: str,
+    owner_user_id: str,
+    organization_id: str | None,
+    world: dict,
+    captured_at: datetime,
+) -> None:
     with _STATE.lock:
-        _STATE.world_slot = TwinAgentWorldSlot(
+        _STATE.world_slots[session_id] = TwinAgentWorldSlot(
             session_id=session_id,
+            owner_user_id=owner_user_id,
+            organization_id=organization_id,
             world=world,
             captured_at=captured_at,
             received_at_monotonic=time.monotonic(),
         )
 
 
-def get_world_snapshot() -> tuple[dict | None, float | None]:
+def get_owned_session_organization(session_id: str, owner_user_id: str) -> tuple[bool, str | None]:
+    """Return whether the caller owns the browser session and its org scope."""
     with _STATE.lock:
-        slot = _STATE.world_slot
+        slot = _STATE.world_slots.get(session_id)
+        if slot is None or slot.owner_user_id != owner_user_id:
+            return False, None
+        return True, slot.organization_id
+
+
+def get_world_snapshot(
+    *,
+    session_id: str | None = None,
+    organization_id: str | None = None,
+) -> tuple[dict | None, float | None]:
+    with _STATE.lock:
+        slot = _STATE.world_slots.get(session_id) if session_id else _latest_world_slot(organization_id)
         if slot is None:
             return None, None
         return slot.world, time.monotonic() - slot.received_at_monotonic
 
 
-def get_active_session_id() -> str | None:
+def get_active_session_id(organization_id: str | None = None) -> str | None:
     with _STATE.lock:
-        return _STATE.world_slot.session_id if _STATE.world_slot is not None else None
+        slot = _latest_world_slot(organization_id)
+        return slot.session_id if slot is not None else None
+
+
+def _latest_world_slot(organization_id: str | None) -> TwinAgentWorldSlot | None:
+    candidates = [
+        slot
+        for slot in _STATE.world_slots.values()
+        if organization_id is None or slot.organization_id == organization_id
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda slot: slot.received_at_monotonic)
 
 
 def enqueue_twin_agent_job(

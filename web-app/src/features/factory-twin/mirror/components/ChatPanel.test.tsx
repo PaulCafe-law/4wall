@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 
 function typeAndSend(text: string) {
-  const textarea = screen.getByPlaceholderText(/Ask the factory anything/);
+  const textarea = screen.getByPlaceholderText('請輸入想了解的現場狀況…');
   fireEvent.change(textarea, { target: { value: text } });
   fireEvent.keyDown(textarea, { key: 'Enter' });
 }
@@ -106,4 +106,15 @@ it('falls back to the local rule engine when the cloud agent is offline', async 
   });
   expect(apiMock.postTwinAgentMessage).not.toHaveBeenCalled();
   expect(useFactoryStore.getState().pendingAgentReplies).toBe(0);
+});
+
+it('never uses simulated local replies for a live-only customer factory', () => {
+  renderWithProviders(<ChatPanel liveOnly />);
+
+  typeAndSend('01機台現在狀況');
+
+  expect(runConversationMock).not.toHaveBeenCalled();
+  expect(screen.getByText('4WALL AI 助理暫時離線，請稍後再試。')).toBeInTheDocument();
+  expect(screen.getByText('今天計畫與實際對帳')).toBeInTheDocument();
+  expect(screen.queryByText('Send an AMR to the dock')).not.toBeInTheDocument();
 });

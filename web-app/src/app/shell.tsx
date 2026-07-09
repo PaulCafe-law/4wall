@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
 import { ActionButton } from '../components/ui'
-import { useAuth } from '../lib/auth'
+import { getFactoryOpsMembership, isFactoryOpsCustomer, useAuth } from '../lib/auth'
 import { formatRole } from '../lib/presentation'
 
 const customerLinks = [
@@ -16,6 +16,12 @@ const customerLinks = [
   { to: '/incidents', label: '異常事件' },
   { to: '/industrial-data-engine', label: '資料引擎' },
   { to: '/billing', label: '帳務' },
+]
+
+const factoryCustomerLinks = [
+  { to: '/factory-twin', label: '工廠戰情室' },
+  { to: '/cameras', label: '即時攝影機' },
+  { to: '/incidents', label: '異常事件' },
 ]
 
 const internalLinks = [
@@ -80,6 +86,9 @@ function SidebarToggle({
 export function AppShell() {
   const auth = useAuth()
   const location = useLocation()
+  const factoryCustomer = isFactoryOpsCustomer(auth.user)
+  const factoryMembership = getFactoryOpsMembership(auth.user)
+  const activeCustomerLinks = factoryCustomer ? factoryCustomerLinks : customerLinks
   // 工廠數位分身頁以 3D 為主體：拿掉頁首文案、讓內容區撐滿可視高度。
   const immersive = location.pathname.startsWith('/factory-twin')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed)
@@ -116,13 +125,13 @@ export function AppShell() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">
-                  The Fourth Wall
+                  4WALL AI
                 </p>
                 <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">
-                  建築巡檢工作區
+                  {factoryCustomer ? factoryMembership?.organizationName ?? '靚程工廠' : '營運工作區'}
                 </h1>
                 <p className="mt-3 text-sm text-chrome-700">
-                  Web 端負責規劃、營運、支援與客戶入口，不進 flight-critical loop。
+                  {factoryCustomer ? '只顯示工廠現場的真實資料與客戶相關資訊。' : '規劃、營運、支援與客戶入口。'}
                 </p>
               </div>
               <SidebarToggle collapsed={false} onToggle={toggleSidebar} />
@@ -134,7 +143,7 @@ export function AppShell() {
                   客戶工作區
                 </p>
                 <nav className="mt-3 flex gap-2 overflow-x-auto pb-1 md:flex-col md:items-start md:overflow-visible md:pb-0">
-                  {customerLinks.map((link) => (
+                  {activeCustomerLinks.map((link) => (
                     <NavLink key={link.to} to={link.to} className={({ isActive }) => linkClass(isActive)}>
                       {link.label}
                     </NavLink>
@@ -180,7 +189,7 @@ export function AppShell() {
                       key={membership.membershipId}
                       className="rounded-full bg-chrome-100 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-chrome-700"
                     >
-                      {formatRole(membership.role)}
+                      {membership.organizationName ?? formatRole(membership.role)}
                     </span>
                   ))}
               </div>
@@ -204,7 +213,7 @@ export function AppShell() {
                 目前頁面範圍
               </p>
               <p className="text-sm text-chrome-700">
-                目前位於客戶入口，可檢視場域、任務、報表與帳務資訊。
+                {factoryCustomer ? '目前顯示靚程工廠的即時資料與客戶相關資訊。' : '目前位於客戶入口。'}
               </p>
             </div>
           </header>

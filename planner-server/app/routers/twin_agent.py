@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
-from app.deps import CurrentWebUser, auth_scheme, get_rate_limiter, get_session, get_settings, require_internal_user
+from app.deps import CurrentWebUser, auth_scheme, get_current_web_user, get_rate_limiter, get_session, get_settings
 from app.dispatch import build_daily_brief_context
 from app.rate_limit import RateLimitRule, RateLimiter
 from app.twin_agent import (
@@ -22,6 +22,7 @@ from app.twin_agent import (
     deliver_line_job_text,
     enqueue_twin_agent_job,
     get_active_session_id,
+    get_owned_session_organization,
     get_world_snapshot,
     is_worker_online,
     record_worker_heartbeat,
@@ -58,6 +59,7 @@ class TwinAgentSnapshotDto(BaseModel):
     sessionId: str = Field(min_length=1, max_length=80)
     capturedAt: datetime
     world: dict[str, Any]
+    organizationId: str | None = Field(default=None, min_length=1, max_length=80)
 
 
 class TwinAgentMessageDto(BaseModel):
@@ -79,26 +81,33 @@ class TwinAgentJobResultDto(BaseModel):
 @router.post("/v1/twin-agent/snapshot", status_code=status.HTTP_204_NO_CONTENT)
 def post_twin_agent_snapshot(
     payload: TwinAgentSnapshotDto,
-    current_user: CurrentWebUser = Depends(require_internal_user),
+    current_user: CurrentWebUser = Depends(get_current_web_user),
 ) -> Response:
     if len(json.dumps(payload.world)) > SNAPSHOT_MAX_JSON_CHARS:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="twin_agent_snapshot_too_large")
-    store_world_snapshot(session_id=payload.sessionId, world=payload.world, captured_at=payload.capturedAt)
+    organization_id = _resolve_snapshot_organization(current_user, payload.organizationId)
+    store_world_snapshot(
+        session_id=payload.sessionId,
+        owner_user_id=current_user.user.id,
+        organization_id=organization_id,
+        world=payload.world,
+        captured_at=payload.capturedAt,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/v1/twin-agent/messages")
 def post_twin_agent_message(
     payload: TwinAgentMessageDto,
-    current_user: CurrentWebUser = Depends(require_internal_user),
+    current_user: CurrentWebUser = Depends(get_current_web_user),
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> dict:
     rate_limiter.check(f"twin-agent-web:{payload.sessionId}", TWIN_AGENT_WEB_MESSAGE_RATE_LIMIT)
-    organization_id = payload.organizationId
-    if organization_id is not None and not current_user.can_read_org(organization_id):
+    owns_session, organization_id = get_owned_session_organization(payload.sessionId, current_user.user.id)
+    if not owns_session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="twin_agent_session_not_found")
+    if payload.organizationId is not None and payload.organizationId != organization_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
-    if organization_id is None and len(current_user.readable_org_ids) == 1:
-        organization_id = current_user.readable_org_ids[0]
     job = enqueue_twin_agent_job(
         source="web",
         text=payload.text,
@@ -112,9 +121,12 @@ def post_twin_agent_message(
 def get_twin_agent_updates(
     sessionId: str,
     cursor: int | None = None,
-    current_user: CurrentWebUser = Depends(require_internal_user),
+    current_user: CurrentWebUser = Depends(get_current_web_user),
     settings=Depends(get_settings),
 ) -> dict:
+    owns_session, _organization_id = get_owned_session_organization(sessionId, current_user.user.id)
+    if not owns_session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="twin_agent_session_not_found")
     sweep_twin_agent_jobs(settings)
     events, tail = collect_feed_events(sessionId, cursor)
     return {
@@ -133,7 +145,10 @@ def get_twin_agent_job(
     record_worker_heartbeat()
     sweep_twin_agent_jobs(settings)
     job = claim_next_job()
-    world, world_age_seconds = get_world_snapshot()
+    world, world_age_seconds = get_world_snapshot(
+        session_id=job.session_id if job is not None else None,
+        organization_id=job.organization_id if job is not None else None,
+    )
     return {
         "job": _job_payload(job) if job is not None else None,
         "world": world,
@@ -163,7 +178,7 @@ def post_twin_agent_job_result(
     elif job.source == "line":
         deliver_line_job_text(settings, job, payload.text)
         if tool_calls:
-            active_session_id = get_active_session_id()
+            active_session_id = get_active_session_id(job.organization_id)
             if active_session_id:
                 append_feed_event(
                     active_session_id,
@@ -203,3 +218,15 @@ def _ledger_context_payload(session, job: TwinAgentJob | None) -> dict | None:
     if not job.organization_id:
         return {"available": False, "reason": "organization_scope_missing"}
     return build_daily_brief_context(session, organization_id=job.organization_id, target_date=job.created_at)
+
+
+def _resolve_snapshot_organization(current_user: CurrentWebUser, requested_organization_id: str | None) -> str | None:
+    if requested_organization_id is not None:
+        if not current_user.can_read_org(requested_organization_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
+        return requested_organization_id
+    if len(current_user.readable_org_ids) == 1:
+        return current_user.readable_org_ids[0]
+    if current_user.global_roles.intersection({"platform_admin", "ops"}):
+        return None
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="twin_agent_organization_required")

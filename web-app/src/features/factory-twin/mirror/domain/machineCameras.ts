@@ -49,11 +49,52 @@ export function camerasForMachine(machineId: string): CameraEntity[] {
 // 直接以 platformCameras 呈現 m-hc600 監視器選單的對映一致。
 export const PLATFORM_CAMERA_MACHINE_ID = 'm-hc600';
 
-// 攝影機偵測到人但沒有有效地板投影時,把 live 人員放在「機台前方作業走道」——
-// 和模擬操作員(z 正向、站在機台前)同一排,看起來就是自然站在機台旁的人,
-// 而不是卡在機台側邊/後方的一個抽象點。
-export const LIVE_PERSON_MACHINE_OFFSET_X_M = 0.8;
-export const LIVE_PERSON_MACHINE_OFFSET_Z_M = 2.4;
+// HC600-01 的攝影機人員偵測目前只代表「這台機台旁有人」。
+// 不採用尚未校準好的地板投影,固定放在 GLB 中 01 機台旁的作業側。
+export const LIVE_PERSON_MACHINE_OFFSET_X_M = 3.64;
+export const LIVE_PERSON_MACHINE_OFFSET_Z_M = 3.51;
+export const HC600_01_LIVE_PERSON_ANCHOR_STORAGE_KEY = 'fourwall:factory-twin:hc600-01-live-person-anchor';
+export const HC600_01_LIVE_PERSON_ANCHOR_CHANGED_EVENT = 'fourwall:factory-twin:hc600-01-live-person-anchor-changed';
+
+function validAnchor(value: unknown): Vec3 | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as Partial<Vec3>;
+  const x = Number(candidate.x);
+  const y = Number(candidate.y ?? 0.05);
+  const z = Number(candidate.z);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
+  return { x, y, z };
+}
+
+export function readStoredLivePersonAnchor(): Vec3 | null {
+  const storage = globalThis.localStorage;
+  if (!storage) return null;
+  const raw = storage.getItem(HC600_01_LIVE_PERSON_ANCHOR_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return validAnchor(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export function broadcastLivePersonAnchorPreview(anchor: Vec3 | null): void {
+  globalThis.dispatchEvent?.(
+    new CustomEvent(HC600_01_LIVE_PERSON_ANCHOR_CHANGED_EVENT, { detail: anchor }),
+  );
+}
+
+export function writeStoredLivePersonAnchor(anchor: Vec3): Vec3 {
+  const cleanAnchor = validAnchor(anchor) ?? anchor;
+  globalThis.localStorage?.setItem(HC600_01_LIVE_PERSON_ANCHOR_STORAGE_KEY, JSON.stringify(cleanAnchor));
+  broadcastLivePersonAnchorPreview(cleanAnchor);
+  return cleanAnchor;
+}
+
+export function clearStoredLivePersonAnchor(): void {
+  globalThis.localStorage?.removeItem(HC600_01_LIVE_PERSON_ANCHOR_STORAGE_KEY);
+  broadcastLivePersonAnchorPreview(null);
+}
 
 export function machineIdForCamera(cameraEntityId: string): string | null {
   if (HC600_01_CAMERAS.some((camera) => camera.id === cameraEntityId)) return PLATFORM_CAMERA_MACHINE_ID;
@@ -61,9 +102,10 @@ export function machineIdForCamera(cameraEntityId: string): string | null {
   return null;
 }
 
-export function livePersonAnchorForCamera(cameraEntityId: string): Vec3 | null {
+export function livePersonAnchorForCamera(cameraEntityId: string, override?: Vec3 | null): Vec3 | null {
   const machineId = machineIdForCamera(cameraEntityId);
   if (!machineId) return null;
+  if (override && machineId === PLATFORM_CAMERA_MACHINE_ID) return override;
   const machine = buildMockEntities()[machineId];
   if (!machine || machine.type !== 'machine') return null;
   return {

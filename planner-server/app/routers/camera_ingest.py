@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 from app.audit import record_audit
@@ -718,7 +718,7 @@ def list_camera_devices(
         current_user,
     )
     cameras = session.exec(statement).all()
-    return CameraDeviceListDto(cameras=[_serialize_camera_status(session, camera) for camera in cameras])
+    return CameraDeviceListDto(cameras=_serialize_camera_statuses(session, cameras))
 
 
 @router.post("/v1/cameras", response_model=ProvisionedCameraDeviceDto)
@@ -1033,9 +1033,50 @@ def _serialize_person_observation(
 
 
 def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDeviceStatusDto:
-    latest_frame = _latest_frame_for_camera(session, camera)
-    latest_ocr = _latest_ocr_observation_for_camera(session, camera)
-    latest_person = _latest_person_observation_for_camera(session, camera)
+    return _serialize_camera_statuses(session, [camera])[0]
+
+
+def _serialize_camera_statuses(session: Session, cameras: list[CameraDevice]) -> list[CameraDeviceStatusDto]:
+    """Return the status feed with bounded queries, regardless of camera count.
+
+    The previous list path ran eight historical-table queries for every camera.
+    On a production camera with more than one hundred thousand frames that made
+    the administrative list page time out before it could render any camera.
+    Window queries give each camera its newest record without loading history.
+    """
+    if not cameras:
+        return []
+
+    camera_ids = [camera.id for camera in cameras]
+    latest_frames = _latest_records_by_camera(session, CameraFrame, camera_ids)
+    latest_ocr = _latest_records_by_camera(session, CameraOcrObservation, camera_ids)
+    latest_person = _latest_records_by_camera(session, CameraPersonObservation, camera_ids)
+    latest_gauges = _latest_gauge_readings_by_camera(session, camera_ids)
+    frame_counts = _frame_counts_by_camera(session, camera_ids)
+
+    return [
+        _serialize_camera_status_from_records(
+            camera,
+            latest_frame=latest_frames.get(camera.id),
+            latest_ocr=latest_ocr.get(camera.id),
+            latest_person=latest_person.get(camera.id),
+            latest_gauge_readings=latest_gauges.get(camera.id, []),
+            frame_counts=frame_counts.get(camera.id, (0, 0, 0, 0)),
+        )
+        for camera in cameras
+    ]
+
+
+def _serialize_camera_status_from_records(
+    camera: CameraDevice,
+    *,
+    latest_frame: CameraFrame | None,
+    latest_ocr: CameraOcrObservation | None,
+    latest_person: CameraPersonObservation | None,
+    latest_gauge_readings: list[CameraGaugeReading],
+    frame_counts: tuple[int, int, int, int],
+) -> CameraDeviceStatusDto:
+    uploaded_count, queued_count, upload_failed_count, analysis_failed_count = frame_counts
     return CameraDeviceStatusDto(
         cameraId=camera.id,
         organizationId=camera.organization_id,
@@ -1049,14 +1090,11 @@ def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDe
         lastHeartbeatAt=camera.last_heartbeat_at,
         lastFrameAt=camera.last_frame_at,
         lastError=camera.last_error,
-        uploadedFrameCount=_count_camera_frames(session, camera, upload_status="uploaded"),
-        queuedFrameCount=_count_camera_frames(session, camera, analysis_status="queued"),
-        failedFrameCount=_count_camera_frames(session, camera, upload_status="failed")
-        + _count_camera_frames(session, camera, analysis_status="failed"),
+        uploadedFrameCount=uploaded_count,
+        queuedFrameCount=queued_count,
+        failedFrameCount=upload_failed_count + analysis_failed_count,
         latestFrame=_serialize_frame(latest_frame) if latest_frame is not None else None,
-        latestGaugeReadings=[
-            _serialize_gauge_reading(reading) for reading in _latest_gauge_readings_for_camera(session, camera)
-        ],
+        latestGaugeReadings=[_serialize_gauge_reading(reading) for reading in latest_gauge_readings],
         latestOcrObservation=_serialize_ocr_observation(latest_ocr) if latest_ocr is not None else None,
         latestPersonObservation=(
             _serialize_person_observation(latest_person, max_detections=MAX_STATUS_PERSON_DETECTIONS)
@@ -1064,6 +1102,67 @@ def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDe
             else None
         ),
     )
+
+
+def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) -> dict[str, Any]:
+    rank = func.row_number().over(
+        partition_by=model.camera_id,
+        order_by=(model.captured_at.desc(), model.created_at.desc()),
+    ).label("record_rank")
+    ranked = select(model.id.label("id"), rank).where(model.camera_id.in_(camera_ids)).subquery()
+    records = session.exec(
+        select(model).join(ranked, model.id == ranked.c.id).where(ranked.c.record_rank == 1)
+    ).all()
+    return {record.camera_id: record for record in records}
+
+
+def _latest_gauge_readings_by_camera(
+    session: Session,
+    camera_ids: list[str],
+) -> dict[str, list[CameraGaugeReading]]:
+    rank = func.row_number().over(
+        partition_by=(CameraGaugeReading.camera_id, CameraGaugeReading.gauge_id),
+        order_by=(CameraGaugeReading.captured_at.desc(), CameraGaugeReading.created_at.desc()),
+    ).label("record_rank")
+    ranked = (
+        select(CameraGaugeReading.id.label("id"), rank)
+        .where(CameraGaugeReading.camera_id.in_(camera_ids))
+        .subquery()
+    )
+    readings = session.exec(
+        select(CameraGaugeReading)
+        .join(ranked, CameraGaugeReading.id == ranked.c.id)
+        .where(ranked.c.record_rank == 1)
+    ).all()
+    grouped: dict[str, list[CameraGaugeReading]] = {camera_id: [] for camera_id in camera_ids}
+    for reading in readings:
+        grouped.setdefault(reading.camera_id, []).append(reading)
+    for camera_readings in grouped.values():
+        camera_readings.sort(key=lambda reading: (GAUGE_SORT_ORDER.get(reading.gauge_id, 100), reading.gauge_id))
+    return grouped
+
+
+def _frame_counts_by_camera(session: Session, camera_ids: list[str]) -> dict[str, tuple[int, int, int, int]]:
+    rows = session.exec(
+        select(
+            CameraFrame.camera_id,
+            func.sum(case((CameraFrame.upload_status == "uploaded", 1), else_=0)),
+            func.sum(case((CameraFrame.analysis_status == "queued", 1), else_=0)),
+            func.sum(case((CameraFrame.upload_status == "failed", 1), else_=0)),
+            func.sum(case((CameraFrame.analysis_status == "failed", 1), else_=0)),
+        )
+        .where(CameraFrame.camera_id.in_(camera_ids))
+        .group_by(CameraFrame.camera_id)
+    ).all()
+    return {
+        str(camera_id): (
+            int(uploaded or 0),
+            int(queued or 0),
+            int(upload_failed or 0),
+            int(analysis_failed or 0),
+        )
+        for camera_id, uploaded, queued, upload_failed, analysis_failed in rows
+    }
 
 
 def _latest_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFrame | None:

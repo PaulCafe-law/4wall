@@ -421,7 +421,7 @@ def build_daily_brief_context(session: Session, *, organization_id: str, target_
             }
         )
     stats = ledger_stats(session, organization_id=organization_id, days=14)
-    lines = [f"【第四面牆|每日對帳 {local_day:%m/%d}】"]
+    lines = [f"【4WALL AI｜每日對帳 {local_day:%m/%d}】"]
     if not plan_points:
         lines.append("今日尚無派工單對帳資料。")
     for item in items:
@@ -509,7 +509,7 @@ def bump_mold_counter(
         rule.last_alert_at = utc_now()
         alerted = True
         text = (
-            f"【第四面牆|保養提醒】\n模具 {rule.mold_no} 累計 {rule.current_count} 模,"
+            f"【4WALL AI｜保養提醒】\n模具 {rule.mold_no} 累計 {rule.current_count} 模,"
             f"已達保養門檻 {rule.threshold_count}。\n保養完成後請輸入:「保養完成 {rule.mold_no}」"
         )
         if line_is_configured(settings):

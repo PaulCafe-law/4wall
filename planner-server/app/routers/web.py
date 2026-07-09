@@ -261,8 +261,11 @@ def web_logout(
 
 
 @router.get("/v1/web/session/me", response_model=WebSessionUserDto)
-def web_me(current_user: CurrentWebUser = Depends(get_current_web_user)) -> WebSessionUserDto:
-    return _serialize_user(current_user)
+def web_me(
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+) -> WebSessionUserDto:
+    return _serialize_user(session, current_user)
 
 
 @router.post("/v1/internal/operators", response_model=OperatorAdminDto)
@@ -1026,6 +1029,7 @@ def _issue_web_session(session: Session, settings, user: UserAccount, response: 
         accessToken=access_token,
         expiresInSeconds=settings.access_token_ttl_minutes * 60,
         user=_serialize_user(
+            session,
             CurrentWebUser(
                 user=user,
                 memberships=list(session.exec(select(OrganizationMembership).where(OrganizationMembership.user_id == user.id)).all()),
@@ -1034,7 +1038,16 @@ def _issue_web_session(session: Session, settings, user: UserAccount, response: 
     )
 
 
-def _serialize_user(current_user: CurrentWebUser) -> WebSessionUserDto:
+def _serialize_user(session: Session, current_user: CurrentWebUser) -> WebSessionUserDto:
+    organization_ids = [
+        membership.organization_id
+        for membership in current_user.memberships
+        if membership.organization_id is not None
+    ]
+    organizations = {
+        organization.id: organization
+        for organization in session.exec(select(Organization).where(Organization.id.in_(organization_ids))).all()
+    } if organization_ids else {}
     return WebSessionUserDto(
         userId=current_user.user.id,
         email=current_user.user.email,
@@ -1044,6 +1057,15 @@ def _serialize_user(current_user: CurrentWebUser) -> WebSessionUserDto:
             MembershipDto(
                 membershipId=membership.id,
                 organizationId=membership.organization_id,
+                organizationName=organizations[membership.organization_id].name
+                if membership.organization_id in organizations
+                else None,
+                organizationSlug=organizations[membership.organization_id].slug
+                if membership.organization_id in organizations
+                else None,
+                productMode=organizations[membership.organization_id].product_mode
+                if membership.organization_id in organizations
+                else None,
                 role=membership.role,
                 isActive=membership.is_active,
             )

@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { api } from '../../lib/api';
+import { isFactoryOpsCustomer, useAuth } from '../../lib/auth';
 import { useAuthedQuery } from '../../lib/auth-query';
 import type { CameraDevice } from '../../lib/types';
 import { FactoryTwinWorkspace } from './FactoryTwinWorkspace';
-import type { CameraEntity, PersonEntity } from './mirror/domain/entities';
-import { livePersonAnchorForCamera } from './mirror/domain/machineCameras';
+import type { CameraEntity, PersonEntity, Vec3 } from './mirror/domain/entities';
+import {
+  HC600_01_LIVE_PERSON_ANCHOR_CHANGED_EVENT,
+  livePersonAnchorForCamera,
+  readStoredLivePersonAnchor,
+} from './mirror/domain/machineCameras';
 import { REAL_FACTORY_MOVEMENT_AREA } from './mirror/domain/movementArea';
 
 const JINGCHENG_SITE_ID = 'dd6cbdd3aa744736ad96d2791d689fce';
@@ -16,6 +21,7 @@ const LIVE_PERSON_FRESH_MS = 90_000;
 // Allow observations that look slightly "in the future" from the client's clock.
 const LIVE_PERSON_FUTURE_SKEW_MS = 60_000;
 const LIVE_PERSON_BOUNDS_MARGIN_M = 2;
+const CAMERA_SIGNAL_FRESH_MS = 75_000;
 
 const FACTORY_CAMERA_LABELS: Array<{ ip: string; label: string; order: number }> = [
   { ip: '192.168.1.31', label: '機台周遭', order: 0 },
@@ -34,22 +40,34 @@ function cameraSortOrder(camera: CameraDevice): number {
   return matchingFactoryCamera(camera)?.order ?? Number.MAX_SAFE_INTEGER;
 }
 
+function hasFreshCameraSignal(camera: CameraDevice): boolean {
+  if (camera.status === 'inactive' || camera.lastError) return false;
+  const timestamps = [camera.lastHeartbeatAt, camera.lastFrameAt, camera.latestFrame?.capturedAt]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => Date.parse(value))
+    .filter(Number.isFinite);
+  if (timestamps.length === 0) return false;
+  return Date.now() - Math.max(...timestamps) <= CAMERA_SIGNAL_FRESH_MS;
+}
+
 function toFactoryCamera(camera: CameraDevice): CameraEntity {
   const label = matchingFactoryCamera(camera)?.label ?? camera.name;
+  const online = hasFreshCameraSignal(camera);
   return {
     id: `fw-camera-${camera.cameraId}`,
     type: 'camera',
     name: label,
     position: { x: -1.5 + cameraSortOrder(camera) * 1.5, y: 1.6, z: -6.5 },
-    status: camera.lastError ? 'inactive' : 'active',
+    status: online ? 'active' : 'inactive',
     source: 'live',
     siteLabel: '靚程工廠 / HC600-01',
-    online: !camera.lastError && camera.status !== 'inactive',
+    online,
     samplingIntervalSeconds: camera.samplingIntervalSeconds || 10,
     feedMode: 'snapshot',
     attrs: {
       platformCameraId: camera.cameraId,
       platformCameraName: camera.name,
+      platformOrganizationId: camera.organizationId,
       latestFrameId: camera.latestFrame?.frameId ?? null,
       latestFrameCapturedAt: camera.latestFrame?.capturedAt ?? null,
       latestGaugeReadings: camera.latestGaugeReadings,
@@ -90,7 +108,11 @@ function isWithinLivePersonBounds(position: { x: number; z: number }): boolean {
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- 測試需直接驗證 live 人員投影邏輯
-export function toLivePersons(cameras: CameraDevice[], nowMs: number): PersonEntity[] {
+export function toLivePersons(
+  cameras: CameraDevice[],
+  nowMs: number,
+  livePersonAnchorOverride: Vec3 | null = null,
+): PersonEntity[] {
   return cameras.flatMap((camera): PersonEntity[] => {
     const match = matchingFactoryCamera(camera);
     const observation = camera.latestPersonObservation;
@@ -100,6 +122,42 @@ export function toLivePersons(cameras: CameraDevice[], nowMs: number): PersonEnt
     const freshnessTimestamp = observation.receivedAt || observation.capturedAt;
     if (!isFreshObservation(freshnessTimestamp, nowMs)) return [];
     if (observation.personCount <= 0) return [];
+
+    const anchor = livePersonAnchorForCamera(`fw-camera-${camera.cameraId}`, livePersonAnchorOverride);
+    if (anchor) {
+      const confidences = observation.detections
+        .map((detection) => detection.confidence)
+        .filter((value) => Number.isFinite(value));
+
+      return [
+        {
+          id: `fw-live-person-${camera.cameraId}-presence`,
+          type: 'person',
+          name: observation.personCount > 1 ? `現場人員 ×${observation.personCount}` : '現場人員',
+          role: 'anonymous-presence',
+          station: match.label,
+          position: anchor,
+          status: 'on-duty',
+          source: 'live',
+          attrs: {
+            fixedWorld: true,
+            approximate: true,
+            platformCameraId: camera.cameraId,
+            platformCameraName: camera.name,
+            cameraLabel: match.label,
+            observationId: observation.observationId,
+            frameId: observation.frameId,
+            capturedAt: observation.capturedAt,
+            receivedAt: observation.receivedAt,
+            calibrationId: observation.calibrationId,
+            detectorName: observation.detectorName,
+            personCount: observation.personCount,
+            placementRule: 'hc600_01_left_side_anchor',
+            ...(confidences.length > 0 ? { confidence: Math.max(...confidences) } : {}),
+          },
+        } satisfies PersonEntity,
+      ];
+    }
 
     const projected = observation.detections.flatMap((detection, index) => {
       const floorPosition = detection.floorPosition;
@@ -137,8 +195,8 @@ export function toLivePersons(cameras: CameraDevice[], nowMs: number): PersonEnt
 
     // 偵測到人但沒有任何有效地板投影(未校正或投影超出廠區)時,
     // 退回「攝影機對映機台旁」的估算位置,聚合成單一現場人員標記。
-    const anchor = livePersonAnchorForCamera(`fw-camera-${camera.cameraId}`);
-    if (!anchor) return [];
+    const fallbackAnchor = livePersonAnchorForCamera(`fw-camera-${camera.cameraId}`, livePersonAnchorOverride);
+    if (!fallbackAnchor) return [];
     const confidences = observation.detections
       .map((detection) => detection.confidence)
       .filter((value) => Number.isFinite(value));
@@ -150,7 +208,7 @@ export function toLivePersons(cameras: CameraDevice[], nowMs: number): PersonEnt
         name: observation.personCount > 1 ? `現場人員 ×${observation.personCount}` : '現場人員',
         role: 'anonymous-presence',
         station: match.label,
-        position: anchor,
+        position: fallbackAnchor,
         status: 'on-duty',
         source: 'live',
         attrs: {
@@ -174,7 +232,13 @@ export function toLivePersons(cameras: CameraDevice[], nowMs: number): PersonEnt
 }
 
 export function FactoryTwinPage() {
+  const auth = useAuth();
+  const liveOnly = isFactoryOpsCustomer(auth.user);
   const [nowMs, setNowMs] = useState(0);
+  const [anchorPickerMode] = useState(() => new URLSearchParams(window.location.search).get('anchorPicker') === '1');
+  const [livePersonAnchorOverride, setLivePersonAnchorOverride] = useState<Vec3 | null>(() =>
+    readStoredLivePersonAnchor(),
+  );
   const camerasQuery = useAuthedQuery({
     queryKey: ['factory-twin', 'cameras'],
     queryFn: api.listCameras,
@@ -189,6 +253,18 @@ export function FactoryTwinPage() {
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const handleAnchorChanged = (event: Event) => {
+      setLivePersonAnchorOverride((event as CustomEvent<Vec3 | null>).detail ?? readStoredLivePersonAnchor());
+    };
+    window.addEventListener(HC600_01_LIVE_PERSON_ANCHOR_CHANGED_EVENT, handleAnchorChanged);
+    window.addEventListener('storage', handleAnchorChanged);
+    return () => {
+      window.removeEventListener(HC600_01_LIVE_PERSON_ANCHOR_CHANGED_EVENT, handleAnchorChanged);
+      window.removeEventListener('storage', handleAnchorChanged);
+    };
+  }, []);
+
   const platformCameras = useMemo(() => {
     return [...(camerasQuery.data?.cameras ?? [])]
       .filter((camera) => Boolean(matchingFactoryCamera(camera)))
@@ -196,12 +272,33 @@ export function FactoryTwinPage() {
       .map(toFactoryCamera);
   }, [camerasQuery.data?.cameras]);
 
-  const livePersons = useMemo(
-    () => toLivePersons(camerasQuery.data?.cameras ?? [], nowMs),
-    [camerasQuery.data?.cameras, nowMs],
-  );
+  const livePersons = useMemo(() => {
+    const people = toLivePersons(camerasQuery.data?.cameras ?? [], nowMs, livePersonAnchorOverride);
+    const previewAnchor =
+      livePersonAnchorOverride ?? livePersonAnchorForCamera('fw-camera-hc600-01-anchor-preview');
+    if (people.length > 0 || !anchorPickerMode || !previewAnchor) return people;
+    return [
+      {
+        id: 'fw-live-person-anchor-preview',
+        type: 'person',
+        name: '現場人員定位預覽',
+        role: 'anchor-preview',
+        station: 'HC600-01',
+        position: previewAnchor,
+        status: 'on-duty',
+        source: 'live',
+        attrs: {
+          fixedWorld: true,
+          approximate: true,
+          anchorPreview: true,
+          placementRule: 'hc600_01_left_side_anchor',
+        },
+      } satisfies PersonEntity,
+    ];
+  }, [anchorPickerMode, camerasQuery.data?.cameras, livePersonAnchorOverride, nowMs]);
   const onlineCount = platformCameras.filter((camera) => camera.online).length;
   const livePersonCount = livePersons.reduce((total, person) => {
+    if (person.attrs?.anchorPreview === true) return total;
     const count = person.attrs?.personCount;
     return total + (typeof count === 'number' && Number.isFinite(count) && count > 0 ? count : 1);
   }, 0);
@@ -210,7 +307,7 @@ export function FactoryTwinPage() {
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-chrome-200/80 bg-chrome-50/90 px-4 py-1.5 md:px-6">
         <h1 className="font-display text-sm font-semibold tracking-[-0.02em] text-chrome-950">
-          靚程工廠 Digital Twin
+          靚程工廠即時戰情室
         </h1>
         <p className="font-mono text-[11px] text-chrome-600">
           {onlineCount} 攝影機在線・現場 {livePersonCount} 人・
@@ -220,12 +317,12 @@ export function FactoryTwinPage() {
 
       {camerasQuery.isError ? (
         <div className="border-b border-amber-200 bg-amber-50/90 px-4 py-1.5 text-xs text-amber-900 md:px-6">
-          暫時無法讀取 camera metadata，Factory Twin 會保留既有場景，但不會顯示最新平台資料。
+          暫時無法讀取攝影機資料，目前不會顯示最新現場資訊。
         </div>
       ) : null}
 
       <div className="min-h-0 flex-1">
-        <FactoryTwinWorkspace platformCameras={platformCameras} livePersons={livePersons} />
+        <FactoryTwinWorkspace platformCameras={platformCameras} livePersons={livePersons} liveOnly={liveOnly} />
       </div>
     </div>
   );
