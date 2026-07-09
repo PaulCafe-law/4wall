@@ -14,6 +14,7 @@ from typing import Any
 
 DEFAULT_CODEX_CLI = Path.home() / ".local/codex-cli/node_modules/@openai/codex/bin/codex.js"
 DEFAULT_NODE = Path.home() / ".local/opt/node-v22/bin/node"
+IGNORED_USER_CONFIG_FLAGS = ("--ignore-user-config", "--ignore-rules")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -37,8 +38,7 @@ def main(argv: list[str] | None = None) -> int:
             # (MCP servers, skills, execpolicy rules) so Codex does not boot into
             # coding-agent mode and treat the factory prompt as a repo task. OAuth
             # auth still resolves from CODEX_HOME.
-            "--ignore-user-config",
-            "--ignore-rules",
+            *IGNORED_USER_CONFIG_FLAGS,
             # Booth answers must land inside the job-claim TTL; low effort keeps the
             # single-turn factory Q&A well under the bridge timeout (~5s vs >120s).
             "-c",
@@ -56,18 +56,25 @@ def main(argv: list[str] | None = None) -> int:
         # with a generic "understood, I'll act as..." instead of answering the job.
         command.append("-")
 
-        completed = subprocess.run(
+        completed = _run_codex(
             command,
             cwd=tmp,
-            input=prompt,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            timeout=float(args.timeout_sec),
-            check=False,
-            env=_codex_env(node_bin),
+            prompt=prompt,
+            timeout_sec=args.timeout_sec,
+            node_bin=node_bin,
         )
+        if completed.returncode != 0 and _needs_legacy_cli_retry(completed.stderr):
+            # Older Codex CLI versions reject these optional isolation flags before
+            # reaching the model. Retry once while retaining the read-only sandbox,
+            # temporary working directory, and all other execution constraints.
+            command = [part for part in command if part not in IGNORED_USER_CONFIG_FLAGS]
+            completed = _run_codex(
+                command,
+                cwd=tmp,
+                prompt=prompt,
+                timeout_sec=args.timeout_sec,
+                node_bin=node_bin,
+            )
         if completed.returncode != 0:
             sys.stderr.write((completed.stderr or completed.stdout)[-4000:])
             return completed.returncode
@@ -102,6 +109,28 @@ def _resolve_codex_command(args: argparse.Namespace) -> tuple[list[str] | None, 
 
 def _configured_node(args: argparse.Namespace) -> Path:
     return Path(args.node or os.environ.get("CODEX_NODE") or DEFAULT_NODE).expanduser()
+
+
+def _run_codex(
+    command: list[str], *, cwd: Path, prompt: str, timeout_sec: float, node_bin: str | None
+) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        input=prompt,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        timeout=float(timeout_sec),
+        check=False,
+        env=_codex_env(node_bin),
+    )
+
+
+def _needs_legacy_cli_retry(stderr: str) -> bool:
+    lowered = stderr.lower()
+    return "unexpected argument" in lowered and any(flag in lowered for flag in IGNORED_USER_CONFIG_FLAGS)
 
 
 def _parse_json_message(message: str) -> dict[str, Any]:

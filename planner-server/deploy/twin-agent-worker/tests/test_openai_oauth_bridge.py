@@ -25,3 +25,10 @@ def test_path_codex_uses_supported_node_when_available(monkeypatch, tmp_path: Pa
     assert command == ["/usr/local/bin/codex"]
     assert node_bin == str(supported_node.parent)
     assert error == ""
+
+
+def test_legacy_cli_retry_requires_an_unsupported_isolation_flag() -> None:
+    assert oauth_bridge._needs_legacy_cli_retry(
+        "error: unexpected argument '--ignore-user-config' found"
+    )
+    assert not oauth_bridge._needs_legacy_cli_retry("error: authentication required")
