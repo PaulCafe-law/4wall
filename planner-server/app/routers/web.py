@@ -1039,10 +1039,14 @@ def _issue_web_session(session: Session, settings, user: UserAccount, response: 
 
 
 def _serialize_user(session: Session, current_user: CurrentWebUser) -> WebSessionUserDto:
+    active_memberships = [
+        membership
+        for membership in current_user.memberships
+        if membership.organization_id is not None and membership.is_active
+    ]
     organization_ids = [
         membership.organization_id
-        for membership in current_user.memberships
-        if membership.organization_id is not None
+        for membership in active_memberships
     ]
     organizations = {
         organization.id: organization
@@ -1069,8 +1073,7 @@ def _serialize_user(session: Session, current_user: CurrentWebUser) -> WebSessio
                 role=membership.role,
                 isActive=membership.is_active,
             )
-            for membership in current_user.memberships
-            if membership.organization_id is not None
+            for membership in active_memberships
         ],
     )
 

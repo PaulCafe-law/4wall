@@ -4,6 +4,7 @@ from fastapi import Response
 from fastapi.testclient import TestClient
 
 from app.main import build_app
+from app.models import OrganizationMembership
 
 from app.routers.web import _clear_refresh_cookie, _set_refresh_cookie
 from app.security import WEB_REFRESH_COOKIE_NAME
@@ -65,6 +66,34 @@ def test_web_login_sets_refresh_cookie_and_returns_memberships(client, session_f
 
     assert me_response.status_code == 200
     assert me_response.json()["email"] == "admin@acme.test"
+
+
+def test_web_login_omits_inactive_organization_memberships(client, session_factory) -> None:
+    with session_factory() as session:
+        active_organization = seed_organization(session, name="Active Org")
+        inactive_organization = seed_organization(session, name="Former Org")
+        active_organization_id = active_organization.id
+        user = seed_user(
+            session,
+            email="customer@active-org.test",
+            password=PASSWORD,
+            org_roles=[(active_organization.id, "customer_viewer")],
+        )
+        session.add(
+            OrganizationMembership(
+                user_id=user.id,
+                organization_id=inactive_organization.id,
+                role="customer_viewer",
+                is_active=False,
+            )
+        )
+        session.commit()
+
+    _, body = login_web(client, email="customer@active-org.test", password=PASSWORD)
+
+    assert [membership["organizationId"] for membership in body["user"]["memberships"]] == [
+        active_organization_id
+    ]
 
 
 def test_web_refresh_rotates_cookie_and_revokes_previous_token(client, session_factory) -> None:
