@@ -82,16 +82,26 @@ def _resolve_codex_command(args: argparse.Namespace) -> tuple[list[str] | None, 
     if not configured:
         located = shutil.which("codex")
         if located:
-            return [located], None, ""
+            # A systemd user service commonly inherits an older system Node.js even
+            # when Codex CLI and a supported Node runtime are installed separately.
+            # Keep the wrapper command, but prepend the configured runtime for its
+            # shebang when it is available.
+            node = _configured_node(args)
+            node_bin = str(node.parent) if node.exists() else None
+            return [located], node_bin, ""
     codex_cli = Path(configured or DEFAULT_CODEX_CLI).expanduser()
     if not codex_cli.exists():
         return None, None, f"codex_cli_missing:{codex_cli}"
     if codex_cli.suffix.lower() != ".js":
         return [str(codex_cli)], None, ""
-    node = Path(args.node or os.environ.get("CODEX_NODE") or DEFAULT_NODE).expanduser()
+    node = _configured_node(args)
     if not node.exists():
         return None, None, f"node_missing:{node}"
     return [str(node), str(codex_cli)], str(node.parent), ""
+
+
+def _configured_node(args: argparse.Namespace) -> Path:
+    return Path(args.node or os.environ.get("CODEX_NODE") or DEFAULT_NODE).expanduser()
 
 
 def _parse_json_message(message: str) -> dict[str, Any]:
