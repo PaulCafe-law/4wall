@@ -42,6 +42,9 @@ function heartbeatLabel(camera: CameraDevice): string {
 }
 
 const CAMERA_STATUS_LABELS: Record<string, string> = {
+  連線中: '連線中',
+  逾時: '連線逾時',
+  異常: '異常',
   uploaded: '已上傳',
   skipped: '略過分析',
   succeeded: '分析完成',

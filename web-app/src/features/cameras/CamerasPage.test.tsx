@@ -176,6 +176,7 @@ describe('CamerasPage', () => {
     expect((await screen.findAllByText('現場攝影機 1')).length).toBeGreaterThan(0)
     const images = await screen.findAllByAltText('現場攝影機 1 最新畫面')
     expect(images[0]).toHaveAttribute('src', 'blob:camera-frame')
+    expect(screen.getAllByText('連線中').length).toBeGreaterThan(1)
     expect(screen.getAllByText('略過分析').length).toBeGreaterThan(0)
 
     await waitFor(() => {
