@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import case, func
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.audit import record_audit
@@ -1037,13 +1037,7 @@ def _serialize_camera_status(session: Session, camera: CameraDevice) -> CameraDe
 
 
 def _serialize_camera_statuses(session: Session, cameras: list[CameraDevice]) -> list[CameraDeviceStatusDto]:
-    """Return the status feed with bounded queries, regardless of camera count.
-
-    The previous list path ran eight historical-table queries for every camera.
-    On a production camera with more than one hundred thousand frames that made
-    the administrative list page time out before it could render any camera.
-    Window queries give each camera its newest record without loading history.
-    """
+    """Return current status using index-friendly lookups for each camera."""
     if not cameras:
         return []
 
@@ -1105,64 +1099,58 @@ def _serialize_camera_status_from_records(
 
 
 def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) -> dict[str, Any]:
-    rank = func.row_number().over(
-        partition_by=model.camera_id,
-        order_by=(model.captured_at.desc(), model.created_at.desc()),
-    ).label("record_rank")
-    ranked = select(model.id.label("id"), rank).where(model.camera_id.in_(camera_ids)).subquery()
-    records = session.exec(
-        select(model).join(ranked, model.id == ranked.c.id).where(ranked.c.record_rank == 1)
-    ).all()
-    return {record.camera_id: record for record in records}
+    records: dict[str, Any] = {}
+    for camera_id in camera_ids:
+        record = session.exec(
+            select(model)
+            .where(model.camera_id == camera_id)
+            .order_by(model.captured_at.desc(), model.created_at.desc())
+            .limit(1)
+        ).first()
+        if record is not None:
+            records[camera_id] = record
+    return records
 
 
 def _latest_gauge_readings_by_camera(
     session: Session,
     camera_ids: list[str],
 ) -> dict[str, list[CameraGaugeReading]]:
-    rank = func.row_number().over(
-        partition_by=(CameraGaugeReading.camera_id, CameraGaugeReading.gauge_id),
-        order_by=(CameraGaugeReading.captured_at.desc(), CameraGaugeReading.created_at.desc()),
-    ).label("record_rank")
-    ranked = (
-        select(CameraGaugeReading.id.label("id"), rank)
-        .where(CameraGaugeReading.camera_id.in_(camera_ids))
-        .subquery()
-    )
-    readings = session.exec(
-        select(CameraGaugeReading)
-        .join(ranked, CameraGaugeReading.id == ranked.c.id)
-        .where(ranked.c.record_rank == 1)
-    ).all()
     grouped: dict[str, list[CameraGaugeReading]] = {camera_id: [] for camera_id in camera_ids}
-    for reading in readings:
-        grouped.setdefault(reading.camera_id, []).append(reading)
-    for camera_readings in grouped.values():
-        camera_readings.sort(key=lambda reading: (GAUGE_SORT_ORDER.get(reading.gauge_id, 100), reading.gauge_id))
+    for camera_id in camera_ids:
+        readings = session.exec(
+            select(CameraGaugeReading)
+            .where(CameraGaugeReading.camera_id == camera_id)
+            .order_by(CameraGaugeReading.captured_at.desc(), CameraGaugeReading.created_at.desc())
+            .limit(50)
+        ).all()
+        latest_by_gauge: dict[str, CameraGaugeReading] = {}
+        for reading in readings:
+            latest_by_gauge.setdefault(reading.gauge_id, reading)
+        grouped[camera_id] = sorted(
+            latest_by_gauge.values(),
+            key=lambda reading: (GAUGE_SORT_ORDER.get(reading.gauge_id, 100), reading.gauge_id),
+        )
     return grouped
 
 
 def _frame_counts_by_camera(session: Session, camera_ids: list[str]) -> dict[str, tuple[int, int, int, int]]:
-    rows = session.exec(
-        select(
-            CameraFrame.camera_id,
-            func.sum(case((CameraFrame.upload_status == "uploaded", 1), else_=0)),
-            func.sum(case((CameraFrame.analysis_status == "queued", 1), else_=0)),
-            func.sum(case((CameraFrame.upload_status == "failed", 1), else_=0)),
-            func.sum(case((CameraFrame.analysis_status == "failed", 1), else_=0)),
-        )
-        .where(CameraFrame.camera_id.in_(camera_ids))
-        .group_by(CameraFrame.camera_id)
-    ).all()
-    return {
-        str(camera_id): (
-            int(uploaded or 0),
-            int(queued or 0),
-            int(upload_failed or 0),
-            int(analysis_failed or 0),
-        )
-        for camera_id, uploaded, queued, upload_failed, analysis_failed in rows
-    }
+    counts = {camera_id: [0, 0, 0, 0] for camera_id in camera_ids}
+    status_queries = (
+        (CameraFrame.upload_status, "uploaded", 0),
+        (CameraFrame.analysis_status, "queued", 1),
+        (CameraFrame.upload_status, "failed", 2),
+        (CameraFrame.analysis_status, "failed", 3),
+    )
+    for column, value, index in status_queries:
+        rows = session.exec(
+            select(CameraFrame.camera_id, func.count())
+            .where(CameraFrame.camera_id.in_(camera_ids), column == value)
+            .group_by(CameraFrame.camera_id)
+        ).all()
+        for camera_id, count in rows:
+            counts[str(camera_id)][index] = int(count)
+    return {camera_id: tuple(values) for camera_id, values in counts.items()}
 
 
 def _latest_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFrame | None:

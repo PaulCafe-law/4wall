@@ -16,7 +16,7 @@ export function DetailPanel() {
       <div className="detail empty">
         <div className="panel-title">詳細資訊</div>
         <div className="detail-hint">
-          點選場景中的人員 / 機台 / 倉儲 / AMR / 無人機，或用左側對話查詢。HC600-01 的監視器在機台詳情內。
+          點選場景中的人員或機台，或用左側對話查詢。HC600-01 的監視器在機台詳情內。
         </div>
       </div>
     );
