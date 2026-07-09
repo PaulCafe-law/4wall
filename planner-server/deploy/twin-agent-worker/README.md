@@ -130,3 +130,31 @@ sudo journalctl -u fourwall-twin-agent -n 100 --no-pager
 ```
 
 Store secrets in `/etc/fourwall/twin-agent.env` (`TWIN_AGENT_ENABLED`, `TWIN_AGENT_API_BASE_URL`, `TWIN_AGENT_WORKER_TOKEN`). On Windows, use Task Scheduler to run the same `-m agent_worker.main --config <abs path>` entrypoint with the venv interpreter.
+
+## User systemd on a GPU host
+
+When the worker runs under a normal Linux user without sudo, use
+`systemd/fourwall-twin-agent.user.service`. It uses systemd user lingering, so
+the worker survives logout and starts again after a host reboot.
+
+Install a current Codex CLI under that user's home directory, then install the
+unit. The service stores only the worker settings in
+`~/.config/fourwall/twin-agent.env`; keep `TWIN_AGENT_WORKER_TOKEN` there with
+mode `0600` and do not put it in the unit file.
+
+```bash
+PATH="$HOME/.local/opt/node-v22/bin:$PATH" \
+  npm install --prefix "$HOME/.local/codex-cli" @openai/codex@latest
+
+mkdir -p ~/.config/systemd/user ~/.config/fourwall
+cp systemd/fourwall-twin-agent.user.service ~/.config/systemd/user/fourwall-twin-agent.service
+chmod 600 ~/.config/fourwall/twin-agent.env
+loginctl enable-linger "$USER"
+systemctl --user daemon-reload
+systemctl --user enable --now fourwall-twin-agent
+systemctl --user status fourwall-twin-agent --no-pager
+```
+
+The unit explicitly selects the user-local Codex CLI and Node 22 paths so a
+system-wide, older Node.js cannot break the worker after reboot. If the host
+uses a different Node 22 location, update only `CODEX_NODE` in the user unit.

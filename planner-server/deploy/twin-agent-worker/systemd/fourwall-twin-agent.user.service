@@ -1,0 +1,17 @@
+[Unit]
+Description=4WALL AI factory twin agent worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/fourwall/twin-agent
+EnvironmentFile=%h/.config/fourwall/twin-agent.env
+Environment=CODEX_CLI=%h/.local/codex-cli/node_modules/@openai/codex/bin/codex.js
+Environment=CODEX_NODE=%h/.local/opt/node-v22/bin/node
+ExecStart=%h/fourwall/twin-agent/.venv/bin/python -m agent_worker.main --config %h/fourwall/twin-agent/config.yaml
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
