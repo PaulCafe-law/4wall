@@ -176,7 +176,7 @@ function GaugeReadingList({ readings }: { readings: CameraGaugeReading[] }) {
             {reading.value === null ? 'N/A' : reading.value.toFixed(2)}
             <span className="ml-2 text-base font-medium text-chrome-500">{reading.unit}</span>
           </p>
-          <p className="mt-2 text-xs text-chrome-500">confidence {(reading.confidence * 100).toFixed(0)}%</p>
+          <p className="mt-2 text-xs text-chrome-500">信心度 {(reading.confidence * 100).toFixed(0)}%</p>
         </div>
       ))}
     </div>
@@ -432,10 +432,10 @@ export function CamerasPage() {
         <Panel>
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera Overview</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">攝影機總覽</p>
               <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">場域攝影機</h2>
               <p className="mt-2 max-w-2xl text-sm text-chrome-600">
-                每次只載入選中場域的攝影機畫面，避免牙醫診所與工廠畫面一起刷新造成頁面變慢。
+                每次只載入選中場域的攝影機畫面，避免不同場域資料一起刷新造成頁面變慢。
               </p>
             </div>
             <div className="w-full max-w-sm">
@@ -524,7 +524,7 @@ export function CamerasPage() {
             <Panel className="overflow-hidden p-0">
               <div className="flex flex-col gap-3 border-b border-chrome-200 bg-white/70 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
                 <div className="min-w-0">
-                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Latest Frame</p>
+                  <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">最新畫面</p>
                   <h2 className="mt-2 break-words font-display text-2xl font-semibold text-chrome-950">
                     {selectedCamera.name}
                   </h2>
@@ -540,7 +540,7 @@ export function CamerasPage() {
             </Panel>
 
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Gauge Readings</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">儀表讀值</p>
               <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">機台儀表讀值</h2>
               <div className="mt-4">
                 <GaugeReadingList readings={selectedCamera.latestGaugeReadings} />
@@ -550,7 +550,7 @@ export function CamerasPage() {
             <HmiOcrPanel observation={selectedCamera.latestOcrObservation} />
 
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Frame Metadata</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">影像資訊</p>
               <div className="mt-4">
                 <DataList
                   rows={[
@@ -567,7 +567,7 @@ export function CamerasPage() {
 
           <div className="space-y-6">
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera List</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">攝影機清單</p>
               <div className="mt-4 space-y-5">
                 {selectedCameraGroup ? (
                   <section key={selectedCameraGroup.key} className="space-y-2">
@@ -605,7 +605,7 @@ export function CamerasPage() {
             </Panel>
 
             <Panel>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Camera Health</p>
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">攝影機狀態</p>
               <div className="mt-4">
                 <DataList
                   rows={[
