@@ -24,10 +24,10 @@ function secondsSince(value: string | null): number | null {
 function formatAge(value: string | null): string {
   const seconds = secondsSince(value)
   if (seconds === null) return '尚無'
-  if (seconds < 60) return `${seconds}s`
+  if (seconds < 60) return `${seconds} 秒前`
   const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
-  return `${Math.round(minutes / 60)}h`
+  if (minutes < 60) return `${minutes} 分鐘前`
+  return `${Math.round(minutes / 60)} 小時前`
 }
 
 function formatNullableDateTime(value: string | null): string {
@@ -39,6 +39,31 @@ function heartbeatLabel(camera: CameraDevice): string {
   if (camera.lastError) return '異常'
   if (age === null) return '未知'
   return age <= 90 ? '連線中' : '逾時'
+}
+
+const CAMERA_STATUS_LABELS: Record<string, string> = {
+  uploaded: '已上傳',
+  skipped: '略過分析',
+  succeeded: '分析完成',
+  ok: '正常',
+  failed: '處理失敗',
+  queued: '等待處理',
+  pending: '等待分析',
+  degraded: '部分異常',
+  temperature_monitor: '溫度監控',
+  machine_monitor: '機台監視',
+  auth_required: '需要登入',
+  unknown: '未知',
+}
+
+function cameraStatusLabel(value: string): string {
+  return CAMERA_STATUS_LABELS[value] ?? '未知'
+}
+
+function cameraErrorLabel(value: string | null | undefined): string {
+  if (!value) return '無'
+  if (value === 'no_active_watch_zones') return '未設定分析區域'
+  return '處理異常'
 }
 
 function badgeClass(value: string): string {
@@ -57,7 +82,7 @@ function badgeClass(value: string): string {
 function Badge({ value }: { value: string }) {
   return (
     <span className={`inline-flex rounded-full px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] ${badgeClass(value)}`}>
-      {value}
+      {cameraStatusLabel(value)}
     </span>
   )
 }
@@ -84,7 +109,7 @@ function cameraSiteLabel(camera: CameraDevice): string {
   if (camera.siteId && KNOWN_CAMERA_SITE_LABELS[camera.siteId]) return KNOWN_CAMERA_SITE_LABELS[camera.siteId]
   if (camera.name.includes('牙醫診所') || camera.name.includes('AVTECH')) return '牙醫診所'
   if (camera.name.startsWith('PoE Camera')) return '靚程工廠'
-  return camera.siteId ? `場域 ${camera.siteId.slice(0, 8)}` : '未綁定場域'
+  return camera.siteId ? '未命名場域' : '未綁定場域'
 }
 
 function cameraSiteKey(camera: CameraDevice, label: string): string {
@@ -116,7 +141,31 @@ function groupCamerasBySite(cameras: CameraDevice[]): CameraSiteGroup[] {
   return Array.from(groups.values()).sort(compareCameraSiteGroups)
 }
 
-export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
+const JINGCHENG_CAMERA_DISPLAY_NAMES: Array<{ address: string; label: string }> = [
+  { address: '192.168.1.31', label: '機台周遭攝影機' },
+  { address: '192.168.1.28', label: '桌面分類攝影機' },
+  { address: '192.168.1.10', label: '儀表板攝影機' },
+]
+
+function cameraDisplayName(camera: CameraDevice, cameras: CameraDevice[]): string {
+  const knownCamera = JINGCHENG_CAMERA_DISPLAY_NAMES.find((item) => camera.name.includes(item.address))
+  if (knownCamera) return knownCamera.label
+
+  if (/\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(camera.name) || camera.name.startsWith('PoE Camera')) {
+    const index = cameras.findIndex((candidate) => candidate.cameraId === camera.cameraId)
+    return `現場攝影機 ${index >= 0 ? index + 1 : ''}`.trim()
+  }
+
+  return camera.name
+}
+
+export function CameraFrameImage({
+  camera,
+  displayName = camera.name,
+}: {
+  camera: CameraDevice
+  displayName?: string
+}) {
   const latestFrameId = camera.latestFrame?.frameId ?? null
   const frameImageQuery = useAuthedQuery({
     queryKey: ['cameras', camera.cameraId, 'latest-frame-image', latestFrameId],
@@ -144,7 +193,7 @@ export function CameraFrameImage({ camera }: { camera: CameraDevice }) {
         <img
           key={latestFrameId ?? camera.cameraId}
           src={imageUrl}
-          alt={`${camera.name} latest frame`}
+          alt={`${displayName} 最新畫面`}
           className="h-full w-full object-contain"
         />
       ) : (
@@ -173,7 +222,7 @@ function GaugeReadingList({ readings }: { readings: CameraGaugeReading[] }) {
             <Badge value={reading.status} />
           </div>
           <p className="mt-4 font-display text-3xl font-semibold tracking-[-0.035em] text-chrome-950">
-            {reading.value === null ? 'N/A' : reading.value.toFixed(2)}
+            {reading.value === null ? '無' : reading.value.toFixed(2)}
             <span className="ml-2 text-base font-medium text-chrome-500">{reading.unit}</span>
           </p>
           <p className="mt-2 text-xs text-chrome-500">信心度 {(reading.confidence * 100).toFixed(0)}%</p>
@@ -191,7 +240,7 @@ function ocrModeLabel(mode: CameraOcrObservation['mode']): string {
 
 function summaryStatusLabel(status: CameraOcrObservation['summaryStatus']): string {
   if (status === 'ok') return '摘要完成'
-  if (status === 'auth_required') return '需要登入 GPT'
+  if (status === 'auth_required') return '目前無法產生 AI 摘要'
   if (status === 'failed') return '摘要失敗'
   return '尚未摘要'
 }
@@ -286,7 +335,7 @@ function WorkOrderSheetCard({ observation }: { observation: CameraOcrObservation
   return (
     <div className="mt-4 rounded-2xl border border-chrome-200 bg-white/75 p-4">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">
-        派工單{sheet ? '（OCR 自動填入，讀不清的欄位留白）' : ' OCR'}
+        派工單{sheet ? '（自動辨識填入，讀不清的欄位留白）' : '原始辨識文字'}
       </p>
       {sheet ? <WorkOrderTable sheet={sheet} /> : null}
       {sheet ? (
@@ -294,7 +343,7 @@ function WorkOrderSheetCard({ observation }: { observation: CameraOcrObservation
       ) : null}
       {observation.workOrderRawText ? (
         <details className="mt-3">
-          <summary className="cursor-pointer text-xs text-chrome-500">原始 OCR 文字</summary>
+          <summary className="cursor-pointer text-xs text-chrome-500">原始辨識文字</summary>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-chrome-800">{observation.workOrderRawText}</p>
         </details>
       ) : null}
@@ -306,21 +355,20 @@ function HmiOcrPanel({ observation }: { observation: CameraOcrObservation | null
   if (!observation) {
     return (
       <Panel>
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">HMI OCR</p>
-        <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">尚無 HMI OCR</h2>
-        <p className="mt-3 text-sm text-chrome-600">nckusoc 尚未送回這支攝影機的 HMI raw OCR 或 GPT 摘要。</p>
+        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">機台畫面辨識</p>
+        <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">尚無機台畫面辨識</h2>
+        <p className="mt-3 text-sm text-chrome-600">這支攝影機尚未送回可辨識的機台畫面或派工單資訊。</p>
       </Panel>
     )
   }
 
-  const screen = observation.structuredFields.screen as { kind?: string } | undefined
   const text = summaryText(observation)
 
   return (
     <Panel>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">HMI OCR</p>
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">機台畫面辨識</p>
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
             {ocrModeLabel(observation.mode)}
           </h2>
@@ -344,29 +392,20 @@ function HmiOcrPanel({ observation }: { observation: CameraOcrObservation | null
           <p className="mt-2 text-sm font-semibold text-chrome-950">{summaryStatusLabel(observation.summaryStatus)}</p>
         </div>
         <div className="rounded-2xl border border-chrome-200 bg-white/75 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">Raw OCR</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-chrome-500">原始辨識</p>
           <p className="mt-2 text-sm font-semibold text-chrome-950">{observation.rawOcrLines.length} 行</p>
         </div>
       </div>
 
       {text ? (
         <div className="mt-4 rounded-2xl border border-moss-200 bg-moss-50/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss-600">GPT 摘要</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-moss-600">AI 摘要</p>
           <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-chrome-900">{text}</p>
         </div>
       ) : null}
 
       <WorkOrderSheetCard observation={observation} />
 
-      <div className="mt-4">
-        <DataList
-          rows={[
-            { label: 'Observation', value: observation.observationId },
-            { label: 'Screen schema', value: screen?.kind ?? observation.mode },
-            { label: 'Summary error', value: observation.summaryError ?? '無' },
-          ]}
-        />
-      </div>
     </Panel>
   )
 }
@@ -405,7 +444,7 @@ export function CamerasPage() {
 
       <div className="grid gap-4 md:grid-cols-4">
         <Metric label="攝影機" value={visibleCameras.length} />
-        <Metric label="連線中" value={onlineCount} hint="最近 90 秒內有 heartbeat" />
+        <Metric label="連線中" value={onlineCount} hint="最近 90 秒內有連線回報" />
         <Metric label="待分析" value={queuedCount} hint="已上傳，等待系統分析" />
         <Metric label="異常" value={failedCount} hint="上傳或分析失敗的截圖" />
       </div>
@@ -462,7 +501,7 @@ export function CamerasPage() {
               <section key={selectedCameraGroup.key} aria-labelledby={`camera-site-${selectedCameraGroup.key}`} className="space-y-3">
                 <div className="flex flex-col gap-1 border-b border-chrome-200 pb-3 sm:flex-row sm:items-end sm:justify-between">
                   <div>
-                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">Site</p>
+                    <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">場域</p>
                     <h3
                       id={`camera-site-${selectedCameraGroup.key}`}
                       className="font-display text-xl font-semibold text-chrome-950"
@@ -485,14 +524,14 @@ export function CamerasPage() {
                           active ? 'border-ember-300 shadow-sm' : 'border-chrome-200 hover:border-chrome-400'
                         }`}
                       >
-                        <CameraFrameImage camera={camera} />
+                        <CameraFrameImage camera={camera} displayName={cameraDisplayName(camera, selectedCameraGroup.cameras)} />
                         <div className="space-y-3 px-4 py-3">
                           <div className="flex flex-wrap gap-2">
                             <Badge value={heartbeatLabel(camera)} />
                             {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
                           </div>
                           <div>
-                            <p className="break-words text-sm font-semibold text-chrome-950">{camera.name}</p>
+                            <p className="break-words text-sm font-semibold text-chrome-950">{cameraDisplayName(camera, selectedCameraGroup.cameras)}</p>
                             <p className="mt-1 text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</p>
                           </div>
                           {camera.latestGaugeReadings.length > 0 ? (
@@ -501,7 +540,7 @@ export function CamerasPage() {
                                 <div key={reading.gaugeId} className="flex items-center justify-between gap-2">
                                   <span className="truncate">{reading.label || reading.gaugeId}</span>
                                   <span className="font-mono">
-                                    {reading.value === null ? 'N/A' : reading.value.toFixed(2)} {reading.unit}
+                                    {reading.value === null ? '無' : reading.value.toFixed(2)} {reading.unit}
                                   </span>
                                 </div>
                               ))}
@@ -526,7 +565,7 @@ export function CamerasPage() {
                 <div className="min-w-0">
                   <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-chrome-500">最新畫面</p>
                   <h2 className="mt-2 break-words font-display text-2xl font-semibold text-chrome-950">
-                    {selectedCamera.name}
+                    {cameraDisplayName(selectedCamera, selectedCameraGroup?.cameras ?? visibleCameras)}
                   </h2>
                 </div>
                 <div className="flex flex-wrap gap-2">
@@ -535,7 +574,10 @@ export function CamerasPage() {
                 </div>
               </div>
               <div className="bg-chrome-950">
-                <CameraFrameImage camera={selectedCamera} />
+                <CameraFrameImage
+                  camera={selectedCamera}
+                  displayName={cameraDisplayName(selectedCamera, selectedCameraGroup?.cameras ?? visibleCameras)}
+                />
               </div>
             </Panel>
 
@@ -554,11 +596,11 @@ export function CamerasPage() {
               <div className="mt-4">
                 <DataList
                   rows={[
-                    { label: 'Frame', value: selectedCamera.latestFrame?.frameId ?? '尚無' },
+                    { label: '影像狀態', value: selectedCamera.latestFrame ? '已有最新影像' : '尚無' },
                     { label: '擷取時間', value: formatNullableDateTime(selectedCamera.latestFrame?.capturedAt ?? null) },
-                    { label: '上傳狀態', value: selectedCamera.latestFrame?.uploadStatus ?? '尚無' },
-                    { label: '分析狀態', value: selectedCamera.latestFrame?.analysisStatus ?? '尚無' },
-                    { label: '錯誤', value: selectedCamera.latestFrame?.errorMessage ?? selectedCamera.lastError ?? '無' },
+                    { label: '上傳狀態', value: selectedCamera.latestFrame ? cameraStatusLabel(selectedCamera.latestFrame.uploadStatus) : '尚無' },
+                    { label: '分析狀態', value: selectedCamera.latestFrame ? cameraStatusLabel(selectedCamera.latestFrame.analysisStatus) : '尚無' },
+                    { label: '處理狀態', value: cameraErrorLabel(selectedCamera.latestFrame?.errorMessage ?? selectedCamera.lastError) },
                   ]}
                 />
               </div>
@@ -589,7 +631,9 @@ export function CamerasPage() {
                                 : 'border-chrome-200 bg-white/70 hover:border-chrome-400'
                             }`}
                           >
-                            <span className="block break-words text-sm font-medium text-chrome-950">{camera.name}</span>
+                            <span className="block break-words text-sm font-medium text-chrome-950">
+                              {cameraDisplayName(camera, selectedCameraGroup.cameras)}
+                            </span>
                             <span className="mt-2 flex flex-wrap gap-2">
                               <Badge value={heartbeatLabel(camera)} />
                               {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
@@ -609,12 +653,12 @@ export function CamerasPage() {
               <div className="mt-4">
                 <DataList
                   rows={[
-                    { label: 'Camera', value: selectedCamera.cameraId },
-                    { label: 'Site', value: selectedCamera.siteId ?? '未綁定' },
-                    { label: 'Heartbeat', value: formatNullableDateTime(selectedCamera.lastHeartbeatAt) },
+                    { label: '攝影機', value: cameraDisplayName(selectedCamera, selectedCameraGroup?.cameras ?? visibleCameras) },
+                    { label: '場域', value: selectedCameraGroup?.label ?? '未綁定' },
+                    { label: '最近連線', value: formatNullableDateTime(selectedCamera.lastHeartbeatAt) },
                     { label: '最新畫面', value: formatNullableDateTime(selectedCamera.lastFrameAt) },
-                    { label: '間隔', value: `${selectedCamera.samplingIntervalSeconds}s` },
-                    { label: '保存', value: `${selectedCamera.retentionDays}d` },
+                    { label: '更新間隔', value: `${selectedCamera.samplingIntervalSeconds} 秒` },
+                    { label: '保存天數', value: `${selectedCamera.retentionDays} 天` },
                   ]}
                 />
               </div>

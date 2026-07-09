@@ -109,7 +109,7 @@ it('shows live gauge readings and HMI OCR for HC600-01 when platform camera data
   expect(screen.getByText('PRESS AM METER')).toBeInTheDocument();
   expect(screen.getByText('FLOW AM METER')).toBeInTheDocument();
   expect(screen.getAllByText('0.0 A')).toHaveLength(2);
-  expect(screen.getByText('HMI OCR / 派工單')).toBeInTheDocument();
+  expect(screen.getByText('機台畫面與派工單')).toBeInTheDocument();
   expect(screen.getByText('機器監視頁')).toBeInTheDocument();
   expect(screen.getByText('HC600 目前為手動模式，派工單為 FLJ2R02。')).toBeInTheDocument();
 });

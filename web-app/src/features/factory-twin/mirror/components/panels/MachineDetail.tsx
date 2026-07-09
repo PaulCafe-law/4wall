@@ -112,8 +112,16 @@ function ocrObservationFor(camera: CameraEntity | undefined): CameraOcrObservati
 }
 
 function formatGaugeValue(reading: CameraGaugeReading): string {
-  if (reading.value === null) return 'N/A';
+  if (reading.value === null) return '無';
   return `${reading.value.toFixed(1)} ${reading.unit}`.trim();
+}
+
+function gaugeStatusLabel(status: CameraGaugeReading['status']): string {
+  if (status === 'ok') return '正常';
+  if (status === 'pending') return '等待分析';
+  if (status === 'failed') return '處理失敗';
+  if (status === 'skipped') return '略過分析';
+  return '未知';
 }
 
 function formatTime(value: string): string {
@@ -141,7 +149,7 @@ function ocrModeLabel(mode: CameraOcrObservation['mode']): string {
 
 function summaryStatusLabel(status: CameraOcrObservation['summaryStatus']): string {
   if (status === 'ok') return '摘要完成';
-  if (status === 'auth_required') return '需要登入 GPT';
+  if (status === 'auth_required') return '目前無法產生 AI 摘要';
   if (status === 'failed') return '摘要失敗';
   return '尚未摘要';
 }
@@ -195,18 +203,18 @@ export function MachineDetail({ entity }: { entity: MachineEntity }) {
         )}
       </dl>
 
-      <div className="machine-gauges" aria-label={`${entity.name} live gauge readings`}>
+      <div className="machine-gauges" aria-label={`${entity.name} 實際讀表`}>
         <div className="panel-title">實際讀表</div>
         {gaugeReadings.length > 0 ? (
           <>
-            <div className="gauge-source">來源：{gaugeCamera?.name ?? 'Pi gauge reader'}</div>
+            <div className="gauge-source">來源：{gaugeCamera?.name ?? '現場讀表資料'}</div>
             <div className="gauge-list">
               {gaugeReadings.map((reading) => (
                 <div className="gauge-card" key={reading.gaugeId}>
                   <div>
                     <div className="gauge-name">{reading.label || reading.gaugeId}</div>
                     <div className="gauge-meta">
-                      {reading.status} / 信心 {confidenceLabel(reading.confidence)}
+                      {gaugeStatusLabel(reading.status)} / 信心 {confidenceLabel(reading.confidence)}
                     </div>
                   </div>
                   <div className="gauge-reading">
@@ -218,15 +226,15 @@ export function MachineDetail({ entity }: { entity: MachineEntity }) {
             </div>
           </>
         ) : (
-          <div className="detail-note">尚無實際讀表資料。請確認 Pi gauge reader 或 GPU OCR worker 是否已上傳。</div>
+          <div className="detail-note">尚無實際讀表資料。請確認現場讀表或畫面辨識資料是否已上傳。</div>
         )}
       </div>
 
-      <div className="machine-gauges" aria-label={`${entity.name} HMI OCR`}>
-        <div className="panel-title">HMI OCR / 派工單</div>
+      <div className="machine-gauges" aria-label={`${entity.name} 機台畫面與派工單`}>
+        <div className="panel-title">機台畫面與派工單</div>
         {ocrObservation ? (
           <>
-            <div className="gauge-source">來源：{ocrCamera?.name ?? 'GPU HMI OCR worker'}</div>
+            <div className="gauge-source">來源：{ocrCamera?.name ?? '現場辨識資料'}</div>
             <div className="gauge-list">
               <div className="gauge-card">
                 <div>
@@ -246,18 +254,18 @@ export function MachineDetail({ entity }: { entity: MachineEntity }) {
             ) : null}
             <WorkOrderSheetBlock observation={ocrObservation} />
             {ocrObservation.summaryError ? (
-              <div className="detail-note">GPT 狀態：{ocrObservation.summaryError}</div>
+              <div className="detail-note">AI 摘要狀態：摘要未完成</div>
             ) : null}
           </>
         ) : (
-          <div className="detail-note">尚無 HMI OCR。nckusoc worker 送回 observation 後會顯示在這裡。</div>
+          <div className="detail-note">尚無機台畫面或派工單辨識資料。</div>
         )}
       </div>
 
       {cameras.length > 0 ? (
         <div className="machine-cameras">
           <div className="panel-title">監視器選單</div>
-          <div className="cam-switcher" role="tablist" aria-label={`${entity.name} cameras`}>
+          <div className="cam-switcher" role="tablist" aria-label={`${entity.name} 攝影機`}>
             {cameras.map((camera) => (
               <button
                 key={camera.id}

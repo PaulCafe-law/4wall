@@ -173,10 +173,10 @@ describe('CamerasPage', () => {
     )
 
     expect(await screen.findByRole('heading', { level: 1, name: '即時截圖總覽' })).toBeInTheDocument()
-    expect((await screen.findAllByText('PoE Camera')).length).toBeGreaterThan(0)
-    const images = await screen.findAllByAltText('PoE Camera latest frame')
+    expect((await screen.findAllByText('現場攝影機 1')).length).toBeGreaterThan(0)
+    const images = await screen.findAllByAltText('現場攝影機 1 最新畫面')
     expect(images[0]).toHaveAttribute('src', 'blob:camera-frame')
-    expect(screen.getAllByText('skipped').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('略過分析').length).toBeGreaterThan(0)
 
     await waitFor(() => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'camera-1')
@@ -192,7 +192,7 @@ describe('CamerasPage', () => {
 
     renderWithProviders(<CameraFrameImage camera={camera} />)
 
-    expect(await screen.findByAltText('PoE Camera 192.168.1.31 latest frame')).toHaveAttribute(
+    expect(await screen.findByAltText('PoE Camera 192.168.1.31 最新畫面')).toHaveAttribute(
       'src',
       'blob:camera-frame',
     )
@@ -219,9 +219,9 @@ describe('CamerasPage', () => {
     )
 
     expect(await screen.findByText('場域攝影機')).toBeInTheDocument()
-    expect(await screen.findAllByAltText('PoE Camera 192.168.1.10 latest frame')).not.toHaveLength(0)
-    expect(await screen.findByAltText('PoE Camera 192.168.1.28 latest frame')).toBeInTheDocument()
-    expect(await screen.findByAltText('PoE Camera 192.168.1.31 latest frame')).toBeInTheDocument()
+    expect(await screen.findAllByAltText('儀表板攝影機 最新畫面')).not.toHaveLength(0)
+    expect(await screen.findByAltText('桌面分類攝影機 最新畫面')).toBeInTheDocument()
+    expect(await screen.findByAltText('機台周遭攝影機 最新畫面')).toBeInTheDocument()
 
     await waitFor(() => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'camera-1')
@@ -262,7 +262,8 @@ describe('CamerasPage', () => {
     expect(siteSelect).toHaveValue('靚程工廠')
     expect(await screen.findByRole('heading', { level: 3, name: '靚程工廠' })).toBeInTheDocument()
     expect(screen.getByText('3 支攝影機')).toBeInTheDocument()
-    expect(screen.getAllByText('PoE Camera 192.168.1.31').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('機台周遭攝影機').length).toBeGreaterThan(0)
+    expect(screen.queryByText('PoE Camera 192.168.1.31')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { level: 3, name: '牙醫診所' })).not.toBeInTheDocument()
     expect(screen.queryByText('牙醫診所 AVTECH Ch6')).not.toBeInTheDocument()
 
@@ -279,7 +280,7 @@ describe('CamerasPage', () => {
     expect(await screen.findByRole('heading', { level: 3, name: '牙醫診所' })).toBeInTheDocument()
     expect(screen.getByText('6 支攝影機')).toBeInTheDocument()
     expect(screen.getAllByText('牙醫診所 AVTECH Ch6').length).toBeGreaterThan(0)
-    expect(screen.queryByText('PoE Camera 192.168.1.31')).not.toBeInTheDocument()
+    expect(screen.queryByText('機台周遭攝影機')).not.toBeInTheDocument()
 
     await waitFor(() => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'dental-1')
@@ -340,6 +341,20 @@ describe('CamerasPage', () => {
     expect(screen.getByText('HC600 FLJ2R02')).toBeInTheDocument()
   })
 
+  it('uses customer-facing copy when a camera has no machine-screen observation', async () => {
+    renderWithProviders(
+      <Routes>
+        <Route path="/cameras" element={<CamerasPage />} />
+      </Routes>,
+      { route: '/cameras' },
+    )
+
+    expect(await screen.findByText('尚無機台畫面辨識')).toBeInTheDocument()
+    expect(screen.getByText('這支攝影機尚未送回可辨識的機台畫面或派工單資訊。')).toBeInTheDocument()
+    expect(screen.queryByText(/nckusoc/i)).not.toBeInTheDocument()
+    expect(screen.queryByText('no_active_watch_zones')).not.toBeInTheDocument()
+  })
+
   it('renders the structured 派工單 as a paper-form table with unknown cells left blank', async () => {
     apiMock.listCameras.mockResolvedValue({
       cameras: [
@@ -388,14 +403,14 @@ describe('CamerasPage', () => {
 
     const { rerender } = renderWithProviders(<CameraFrameImage camera={firstCamera} />)
 
-    expect(await screen.findByAltText('PoE Camera latest frame')).toHaveAttribute('src', 'blob:first-frame')
+    expect(await screen.findByAltText('PoE Camera 最新畫面')).toHaveAttribute('src', 'blob:first-frame')
 
     rerender(<CameraFrameImage camera={nextCamera} />)
 
     await waitFor(() => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledTimes(2)
     })
-    expect(screen.getByAltText('PoE Camera latest frame')).toHaveAttribute('src', 'blob:first-frame')
+    expect(screen.getByAltText('PoE Camera 最新畫面')).toHaveAttribute('src', 'blob:first-frame')
     expect(screen.queryByText('載入最新截圖中')).not.toBeInTheDocument()
   })
 
