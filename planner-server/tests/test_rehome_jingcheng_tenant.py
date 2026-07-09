@@ -134,6 +134,7 @@ def test_rehome_jingcheng_moves_only_target_site_and_customer_data(client, sessi
         target = session.exec(select(Organization).where(Organization.slug == "jingcheng")).one()
         assert target.product_mode == "factory_ops"
         assert result["verification"]["cameraCount"] == 3
+        assert result["firstPass"]["camera_frames"] == 1
         assert session.get(type(jingcheng_site), jingcheng_site.id).organization_id == target.id
         assert session.get(type(other_site), other_site.id).organization_id == source.id
         assert session.get(CameraFrame, "jingcheng-frame").organization_id == target.id
@@ -155,3 +156,5 @@ def test_rehome_jingcheng_moves_only_target_site_and_customer_data(client, sessi
             apply=True,
         )
         assert rerun["verification"]["cameraCount"] == 3
+        assert all(changed == 0 for changed in rerun["firstPass"].values())
+        assert all(changed == 0 for changed in rerun["secondPass"].values())

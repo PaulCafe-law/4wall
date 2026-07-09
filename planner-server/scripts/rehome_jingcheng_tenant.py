@@ -17,7 +17,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from sqlalchemy import func, update
+from sqlalchemy import and_, func, or_, update
 from sqlmodel import Session, select
 
 from app.audit import record_audit
@@ -52,15 +52,22 @@ DEFAULT_ACCOUNT_EMAIL = "jingcheng"
 DEFAULT_TARGET_ORG_NAME = "靚程企業"
 DEFAULT_TARGET_ORG_SLUG = "jingcheng"
 
-# These tables have an explicit site_id and can be moved without guessing from
-# text fields or human-readable names. The factory has no legacy route data at
-# present, but including these tables makes the command fail-safe if any exists.
-SITE_SCOPED_MODELS = (
+# These camera tables can be matched by their site when available, then by the
+# three known camera IDs only for legacy rows that have no site assignment.
+# Keeping this as one update per table is important: the factory history is
+# sizeable and re-updating every row extends the production write lock.
+SITE_AND_CAMERA_SCOPED_MODELS = (
     CameraFrame,
     CameraGaugeReading,
     CameraOcrObservation,
     CameraPersonObservation,
     EquipmentStateObservation,
+)
+
+# These tables have an explicit site_id and can be moved without guessing from
+# text fields or human-readable names. The factory has no legacy route data at
+# present, but including these tables makes the command fail-safe if any exists.
+SITE_ONLY_MODELS = (
     InspectionRoute,
     InspectionTemplate,
     InspectionSchedule,
@@ -73,16 +80,13 @@ SITE_SCOPED_MODELS = (
     SemanticZoneRecord,
 )
 
-# Camera rows can have a NULL site_id in older uploads. Reconcile by camera ID
-# after the site move so an in-flight edge upload cannot leave a foreign row.
-CAMERA_SCOPED_MODELS = (
-    CameraFrame,
-    CameraGaugeReading,
-    CameraOcrObservation,
-    CameraPersonObservation,
+# This table has no site_id, so camera IDs are its sole safe scope.
+CAMERA_ONLY_MODELS = (
     EquipmentWatchZone,
-    EquipmentStateObservation,
 )
+
+SITE_SCOPED_MODELS = SITE_AND_CAMERA_SCOPED_MODELS + SITE_ONLY_MODELS
+CAMERA_SCOPED_MODELS = SITE_AND_CAMERA_SCOPED_MODELS + CAMERA_ONLY_MODELS
 
 
 def _count(statement, session: Session) -> int:
@@ -184,29 +188,60 @@ def _upsert_customer_membership(session: Session, *, user_id: str, target_org_id
     return {"membershipCreated": created, "otherMembershipsDeactivated": int(deactivated)}
 
 
+def _not_in_target(model: type[Any], target_org_id: str):
+    """Return only rows that still need to be moved to the target tenant."""
+    return or_(model.organization_id.is_(None), model.organization_id != target_org_id)
+
+
 def _move_rows(session: Session, *, site_id: str, camera_ids: list[str], target_org_id: str) -> dict[str, int]:
     changed: dict[str, int] = {}
     changed["site"] = int(
-        session.exec(update(Site).where(Site.id == site_id).values(organization_id=target_org_id)).rowcount or 0
-    )
-    changed["camera_devices"] = int(
         session.exec(
-            update(CameraDevice).where(CameraDevice.id.in_(camera_ids)).values(organization_id=target_org_id)
+            update(Site)
+            .where(Site.id == site_id, _not_in_target(Site, target_org_id))
+            .values(organization_id=target_org_id)
         ).rowcount
         or 0
     )
-    for model in SITE_SCOPED_MODELS:
+    changed["camera_devices"] = int(
+        session.exec(
+            update(CameraDevice)
+            .where(CameraDevice.id.in_(camera_ids), _not_in_target(CameraDevice, target_org_id))
+            .values(organization_id=target_org_id)
+        ).rowcount
+        or 0
+    )
+    for model in SITE_AND_CAMERA_SCOPED_MODELS:
         changed[model.__tablename__] = int(
-            session.exec(update(model).where(model.site_id == site_id).values(organization_id=target_org_id)).rowcount or 0
-        )
-    for model in CAMERA_SCOPED_MODELS:
-        count = int(
             session.exec(
-                update(model).where(model.camera_id.in_(camera_ids)).values(organization_id=target_org_id)
+                update(model)
+                .where(
+                    _not_in_target(model, target_org_id),
+                    or_(
+                        model.site_id == site_id,
+                        and_(model.site_id.is_(None), model.camera_id.in_(camera_ids)),
+                    ),
+                )
+                .values(organization_id=target_org_id)
             ).rowcount
             or 0
         )
-        changed[model.__tablename__] = max(changed.get(model.__tablename__, 0), count)
+    for model in SITE_ONLY_MODELS:
+        changed[model.__tablename__] = int(
+            session.exec(
+                update(model)
+                .where(model.site_id == site_id, _not_in_target(model, target_org_id))
+                .values(organization_id=target_org_id)
+            ).rowcount or 0
+        )
+    for model in CAMERA_ONLY_MODELS:
+        changed[model.__tablename__] = int(
+            session.exec(
+                update(model)
+                .where(model.camera_id.in_(camera_ids), _not_in_target(model, target_org_id))
+                .values(organization_id=target_org_id)
+            ).rowcount or 0
+        )
     return changed
 
 
@@ -215,7 +250,6 @@ def _verify_target(
     *,
     site_id: str,
     camera_ids: list[str],
-    source_org_id: str,
     target_org_id: str,
 ) -> dict[str, Any]:
     site = session.get(Site, site_id)
@@ -230,38 +264,41 @@ def _verify_target(
     if moved_cameras != len(camera_ids):
         raise RuntimeError("camera organization verification failed")
 
-    remaining_source_rows: dict[str, int] = {}
-    if source_org_id == target_org_id:
-        return {
-            "siteOrganizationId": site.organization_id,
-            "cameraCount": moved_cameras,
-            "remainingSourceRows": remaining_source_rows,
-        }
-    for model in SITE_SCOPED_MODELS:
-        remaining_source_rows[model.__tablename__] = _count(
+    remaining_foreign_rows: dict[str, int] = {}
+    for model in SITE_AND_CAMERA_SCOPED_MODELS:
+        remaining_foreign_rows[model.__tablename__] = _count(
             select(func.count())
             .select_from(model)
-            .where(model.site_id == site_id, model.organization_id == source_org_id),
+            .where(
+                _not_in_target(model, target_org_id),
+                or_(
+                    model.site_id == site_id,
+                    and_(model.site_id.is_(None), model.camera_id.in_(camera_ids)),
+                ),
+            ),
             session,
         )
-    for model in CAMERA_SCOPED_MODELS:
-        name = model.__tablename__
-        remaining_source_rows[name] = max(
-            remaining_source_rows.get(name, 0),
-            _count(
-                select(func.count())
-                .select_from(model)
-                .where(model.camera_id.in_(camera_ids), model.organization_id == source_org_id),
-                session,
-            ),
+    for model in SITE_ONLY_MODELS:
+        remaining_foreign_rows[model.__tablename__] = _count(
+            select(func.count())
+            .select_from(model)
+            .where(model.site_id == site_id, _not_in_target(model, target_org_id)),
+            session,
         )
-    leaks = {name: count for name, count in remaining_source_rows.items() if count}
+    for model in CAMERA_ONLY_MODELS:
+        remaining_foreign_rows[model.__tablename__] = _count(
+            select(func.count())
+            .select_from(model)
+            .where(model.camera_id.in_(camera_ids), _not_in_target(model, target_org_id)),
+            session,
+        )
+    leaks = {name: count for name, count in remaining_foreign_rows.items() if count}
     if leaks:
-        raise RuntimeError(f"source organization still has Jingcheng rows: {leaks}")
+        raise RuntimeError(f"foreign organization still has Jingcheng rows: {leaks}")
     return {
         "siteOrganizationId": site.organization_id,
         "cameraCount": moved_cameras,
-        "remainingSourceRows": remaining_source_rows,
+        "remainingForeignRows": remaining_foreign_rows,
     }
 
 
@@ -322,7 +359,6 @@ def rehome_jingcheng_tenant(
             session,
             site_id=site.id,
             camera_ids=camera_ids,
-            source_org_id=source_org_id,
             target_org_id=target.id,
         )
     except Exception:
