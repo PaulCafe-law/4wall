@@ -4,12 +4,16 @@ import type { AmrEntity, Entity, MachineEntity, PersonEntity } from '../domain/e
 import { buildMockEntities } from '../domain/mockData';
 import { SPATIAL_ZONES } from '../domain/spatialZones';
 import { useFactoryStore } from '../store/factoryStore';
+import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
 import {
   ACTIONS,
   assign_task,
   dispatch_amr,
   set_machine_state,
   trigger_demo_incident,
+  enter_warehouse,
+  run_warehouse_scenario,
+  select_warehouse_plan,
 } from './actions';
 
 const livePerson: PersonEntity = {
@@ -62,6 +66,7 @@ function seedMockEntities(extra: Entity[] = []): void {
 
 beforeEach(() => {
   useFactoryStore.setState(useFactoryStore.getInitialState(), true);
+  useWarehouseDemoStore.getState().disable();
   const entities: Record<string, Entity> = {
     [livePerson.id]: livePerson,
     [machine.id]: machine,
@@ -169,6 +174,33 @@ it('set_machine_state running clears repair state and highlight', () => {
   expect(target.attrs?.repairState).toBeUndefined();
   expect(target.attrs?.simNextAlarmAt).toBe(60_000);
   expect(state.highlights['m-hc600-003']).toBeUndefined();
+});
+
+it('keeps warehouse tools disabled outside the internal demo', () => {
+  expect(enter_warehouse().ok).toBe(false);
+  expect(run_warehouse_scenario({ familyDemandIncreasePercent: 40 }).ok).toBe(false);
+});
+
+it('runs and selects deterministic warehouse proposals inside the internal demo', () => {
+  useWarehouseDemoStore.getState().initialize();
+
+  const run = run_warehouse_scenario({
+    familyDemandIncreasePercent: 55,
+    workstationOutageMinutes: 90,
+    agvCount: 5,
+    maxRelocations: 70,
+  });
+  const select = select_warehouse_plan({ objective: 'minimum_moves' });
+
+  expect(run.ok).toBe(true);
+  expect(useWarehouseDemoStore.getState().scenario).toMatchObject({
+    familyDemandIncreasePercent: 55,
+    workstationOutageMinutes: 90,
+    agvCount: 5,
+    maxRelocations: 70,
+  });
+  expect(select.ok).toBe(true);
+  expect(useWarehouseDemoStore.getState().selectedPlanId).toContain('minimum_moves');
 });
 
 it('set_machine_state maintenance schedules repairDoneAt', () => {

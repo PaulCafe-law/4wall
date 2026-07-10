@@ -7,8 +7,10 @@ import { renderWithProviders } from '../../../../test/utils';
 import type { MachineEntity, PersonEntity } from '../domain/entities';
 import { buildDemoScenarioEntities } from '../domain/demoScenarios';
 import { useFactoryStore } from '../store/factoryStore';
+import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
 import {
   compactEntities,
+  buildWorldSnapshot,
   DEMO_TWIN_AGENT_SESSION_ID,
   TWIN_AGENT_SESSION_ID,
   useTwinAgentBridge,
@@ -82,6 +84,7 @@ const livePerson: PersonEntity = {
 beforeEach(() => {
   vi.clearAllMocks();
   useFactoryStore.setState(useFactoryStore.getInitialState(), true);
+  useWarehouseDemoStore.getState().disable();
 });
 
 it('isolates accelerator demo snapshots from Jingcheng live evidence and organization routing', async () => {
@@ -111,6 +114,7 @@ it('isolates accelerator demo snapshots from Jingcheng live evidence and organiz
       },
     },
   ]);
+  useWarehouseDemoStore.getState().initialize();
 
   renderWithProviders(
     <Harness
@@ -148,9 +152,34 @@ it('isolates accelerator demo snapshots from Jingcheng live evidence and organiz
   expect(payload.world.simulationContext).toMatchObject({
     scenarioId: 'plan_gap',
     totals: { plan: 2460, actual: 1704, delta: -756 },
+    warehouseDecision: {
+      source: 'simulation',
+      status: 'ready',
+      scenario: { demandChange: 'A 系列需求 +40%' },
+    },
   });
+  expect(payload.world.experience).toEqual({
+    snapshotScope: 'accelerator_demo',
+    facilitySpace: 'factory',
+  });
+  expect(JSON.stringify(payload.world.simulationContext.warehouseDecision).length).toBeLessThan(20_000);
   expect(JSON.stringify(payload.world)).not.toContain('不得送進展示助手');
   expect(JSON.stringify(payload.world)).not.toContain('jingcheng-org');
+});
+
+it('rejects demo context from an organization snapshot even when the caller passes demo options', () => {
+  useWarehouseDemoStore.getState().initialize();
+  useWarehouseDemoStore.getState().beginTransition('warehouse');
+  useWarehouseDemoStore.getState().completeTransition();
+
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'organization_live',
+    includeLiveEvidence: true,
+    demoScenarioId: 'plan_gap',
+  });
+
+  expect(world.experience).toEqual({ snapshotScope: 'organization_live', facilitySpace: 'factory' });
+  expect(world).not.toHaveProperty('simulationContext');
 });
 
 it('processes feed events: reply into chat, commands executed and narrated', async () => {

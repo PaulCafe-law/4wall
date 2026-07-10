@@ -11,6 +11,7 @@ export interface AgvRoute {
   distance: number;
   picks: number;
   finishMinute: number;
+  completedOrders: number;
 }
 
 export interface RoutingResult {
@@ -21,6 +22,9 @@ export interface RoutingResult {
   completionMinutes: number;
   averageQueueMinutes: number;
   picksPerHour: number;
+  completedOrders: number;
+  lateOrders: number;
+  serviceLevelPercent: number;
   slotPickCounts: Map<string, number>;
   cellPickCounts: Map<string, number>;
 }
@@ -29,6 +33,19 @@ interface OrderTrip {
   orderId: string;
   slots: StorageSlot[];
   picks: number;
+  releaseMinute: number;
+  dueMinute: number;
+}
+
+export interface WorkstationOutage {
+  workstationId: string;
+  startMinute: number;
+  durationMinutes: number;
+}
+
+export interface RoutingOptions {
+  planningHorizonMinutes?: number;
+  workstationOutages?: WorkstationOutage[];
 }
 
 function manhattan(a: WarehousePoint, b: WarehousePoint): number {
@@ -73,21 +90,22 @@ function twoOpt(
   slots: StorageSlot[],
   end: WarehousePoint,
   maxIterations = 14,
-  maxMs = 1.2,
+  maxCandidates = 240,
 ): StorageSlot[] {
   if (slots.length < 4) return slots;
-  const started = performance.now();
   let best = [...slots];
   let bestDistance = routeDistance(start, best, end);
   let improved = true;
   let iteration = 0;
+  let evaluated = 0;
 
-  while (improved && iteration < maxIterations && performance.now() - started < maxMs) {
+  while (improved && iteration < maxIterations && evaluated < maxCandidates) {
     improved = false;
     iteration += 1;
     for (let i = 0; i < best.length - 2; i += 1) {
       for (let k = i + 2; k < best.length; k += 1) {
-        if (performance.now() - started >= maxMs) return best;
+        if (evaluated >= maxCandidates) return best;
+        evaluated += 1;
         const candidate = [...best.slice(0, i), ...best.slice(i, k + 1).reverse(), ...best.slice(k + 1)];
         const candidateDistance = routeDistance(start, candidate, end);
         if (candidateDistance + 0.001 < bestDistance) {
@@ -144,7 +162,13 @@ function buildTrip(order: WarehouseOrder, slotting: SlottingResult): OrderTrip |
     picks += line.qty;
   }
   if (!slots.length) return null;
-  return { orderId: order.id, slots, picks };
+  return {
+    orderId: order.id,
+    slots,
+    picks,
+    releaseMinute: order.releaseMinute,
+    dueMinute: order.dueMinute,
+  };
 }
 
 export function routeOrders(
@@ -153,6 +177,7 @@ export function routeOrders(
   slotting: SlottingResult,
   agvCount: number,
   optimizer: RouteOptimizer = 'nn-2opt',
+  options: RoutingOptions = {},
 ): RoutingResult {
   const safeAgvCount = Math.max(1, Math.min(16, Math.floor(agvCount)));
   const agvs = Array.from({ length: safeAgvCount }, (_, index) => ({
@@ -162,17 +187,33 @@ export function routeOrders(
     orderIds: [] as string[],
     waypoints: [layout.agvStart] as WarehousePoint[],
     picks: 0,
+    completedOrders: 0,
   }));
   const slotPickCounts = new Map<string, number>();
   const cellPickCounts = new Map<string, number>();
-  const workstationAvailable = layout.workstations.map(() => 0);
+  const planningHorizonMinutes = Math.max(1, options.planningHorizonMinutes ?? 480);
+  const workstationAvailable = layout.workstations.map((_, index) => {
+    const id = `WS-${(index + 1).toString().padStart(2, '0')}`;
+    return (options.workstationOutages ?? [])
+      .filter((outage) => outage.workstationId === id && outage.startMinute <= 0)
+      .reduce((availableAt, outage) => Math.max(availableAt, outage.startMinute + outage.durationMinutes), 0);
+  });
   let totalQueueMinutes = 0;
   let queueEvents = 0;
   let totalPicks = 0;
+  let completedOrders = 0;
+  let completedPicks = 0;
+  let lateOrders = 0;
 
-  const trips = orders.map((order) => buildTrip(order, slotting)).filter(Boolean) as OrderTrip[];
+  const trips = orders
+    .map((order) => buildTrip(order, slotting))
+    .filter(Boolean)
+    .sort((a, b) => (a?.releaseMinute ?? 0) - (b?.releaseMinute ?? 0) || String(a?.orderId).localeCompare(String(b?.orderId))) as OrderTrip[];
   for (const trip of trips) {
-    const agv = agvs.reduce((best, candidate) => (candidate.minute < best.minute ? candidate : best), agvs[0]);
+    const agv = agvs.reduce((best, candidate) =>
+      Math.max(candidate.minute, trip.releaseMinute) < Math.max(best.minute, trip.releaseMinute) ? candidate : best,
+    agvs[0]);
+    agv.minute = Math.max(agv.minute, trip.releaseMinute);
     const start = agv.waypoints[agv.waypoints.length - 1] ?? layout.agvStart;
     const { ordered, distance } = optimizeOrder(start, trip.slots, layout.dock, optimizer);
     const travelMinutes = distance / 42;
@@ -195,6 +236,12 @@ export function routeOrders(
     appendManhattanLeg(agv.waypoints, layout.dock);
     agv.picks += trip.picks;
     totalPicks += trip.picks;
+    if (agv.minute <= planningHorizonMinutes) {
+      completedOrders += 1;
+      completedPicks += trip.picks;
+      agv.completedOrders += 1;
+    }
+    if (agv.minute > trip.dueMinute) lateOrders += 1;
 
     for (const slot of ordered) {
       slotPickCounts.set(slot.id, (slotPickCounts.get(slot.id) ?? 0) + 1);
@@ -212,7 +259,10 @@ export function routeOrders(
     distance: agv.distance,
     picks: agv.picks,
     finishMinute: agv.minute,
+    completedOrders: agv.completedOrders,
   }));
+
+  const throughputWindowMinutes = Math.max(1, Math.min(planningHorizonMinutes, completionMinutes));
 
   return {
     routes,
@@ -221,7 +271,10 @@ export function routeOrders(
     averageDistancePerPick: totalDistance / Math.max(1, totalPicks),
     completionMinutes,
     averageQueueMinutes: totalQueueMinutes / Math.max(1, queueEvents) + congestionQueueMinutes,
-    picksPerHour: totalPicks / (completionMinutes / 60),
+    picksPerHour: completedPicks / (throughputWindowMinutes / 60),
+    completedOrders,
+    lateOrders,
+    serviceLevelPercent: ((trips.length - lateOrders) / Math.max(1, trips.length)) * 100,
     slotPickCounts,
     cellPickCounts,
   };

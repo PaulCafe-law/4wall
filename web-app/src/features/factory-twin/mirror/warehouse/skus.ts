@@ -5,6 +5,7 @@ export type TurnoverClass = 'high' | 'mid' | 'low';
 export interface WarehouseSku {
   id: string;
   name: string;
+  familyId: string;
   turnover: TurnoverClass;
   demandWeight: number;
   volume: number;
@@ -26,6 +27,7 @@ export function generateSkus(count = 12480, seed = 42): WarehouseSku[] {
     skus.push({
       id: `SKU-${(100000 + i).toString()}`,
       name: `${PART_NAMES[i % PART_NAMES.length]} ${String.fromCharCode(65 + (i % 26))}-${(i % 97).toString().padStart(2, '0')}`,
+      familyId: String.fromCharCode(65 + (i % 26)),
       turnover,
       demandWeight: demandBase * variance,
       volume,

@@ -12,7 +12,7 @@ export interface WarehouseMetrics {
 }
 
 export function buildMetrics(layout: WarehouseLayout, routing: RoutingResult, skuCount: number): WarehouseMetrics {
-  const storageCapacity = layout.slotCount * 8;
+  const storageCapacity = layout.logicalBinCount;
   return {
     totalAgvDistance: routing.totalDistance,
     averageAgvDistance: routing.averageDistancePerPick,

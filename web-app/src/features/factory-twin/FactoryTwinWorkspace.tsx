@@ -1,10 +1,23 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  Component,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ErrorInfo,
+  type ReactNode,
+} from 'react';
 import { ChatPanel } from './mirror/components/ChatPanel';
 import { AgentFeed } from './mirror/components/AgentFeed';
 import { DebugPanel } from './mirror/components/DebugPanel';
 import { DetailPanel } from './mirror/components/DetailPanel';
 import { SimControlPanel } from './mirror/components/SimControlPanel';
 import { WarehouseSimulator } from './mirror/components/warehouse/WarehouseSimulator';
+import { WarehouseDecisionControls } from './mirror/components/warehouse/WarehouseDecisionControls';
+import { WarehouseDecisionInspector } from './mirror/components/warehouse/WarehouseDecisionInspector';
 import { buildLiveFactoryEntities, buildMockEntities } from './mirror/domain/mockData';
 import {
   buildDemoScenarioEntities,
@@ -22,11 +35,42 @@ import {
 } from './mirror/hooks/useTwinAgentBridge';
 import { useSimEngine } from './mirror/sim/simEngine';
 import { uid, useFactoryStore } from './mirror/store/factoryStore';
+import { useWarehouseDemoStore } from './mirror/store/warehouseDemoStore';
 import { FactoryScene } from './mirror/three/FactoryScene';
 import { WorkOrderOverlay } from './mirror/three/WorkOrderOverlay';
 import './mirror/styles.css';
 
 type FactoryMode = 'factory' | 'warehouse';
+
+const WarehouseDecisionScene = lazy(() => import('./mirror/three/WarehouseDecisionScene'));
+
+class WarehouseSceneBoundary extends Component<
+  { children: ReactNode; onReturn: () => void },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error('[WarehouseScene] Failed to render the demo warehouse.', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="warehouse-scene-failure" role="alert">
+          <span>3D 智慧倉儲暫時無法載入</span>
+          <strong>成型工廠仍可正常使用，模擬資料未被修改。</strong>
+          <button type="button" onClick={this.props.onReturn}>← 返回成型工廠</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function FactoryDemo({
   liveOnly,
@@ -47,7 +91,42 @@ function FactoryDemo({
   const rightOpen = useFactoryStore((s) => s.rightOpen);
   const toggleLeft = useFactoryStore((s) => s.toggleLeft);
   const toggleRight = useFactoryStore((s) => s.toggleRight);
+  const facilitySpace = useWarehouseDemoStore((s) => s.space);
+  const warehouseEnabled = useWarehouseDemoStore((s) => s.enabled);
+  const transition = useWarehouseDemoStore((s) => s.transition);
+  const initializeWarehouse = useWarehouseDemoStore((s) => s.initialize);
+  const disableWarehouse = useWarehouseDemoStore((s) => s.disable);
+  const beginWarehouseTransition = useWarehouseDemoStore((s) => s.beginTransition);
+  const completeWarehouseTransition = useWarehouseDemoStore((s) => s.completeTransition);
   const centerRef = useRef<HTMLElement>(null);
+  const compactWarehouseLeftState = useRef<boolean | null>(null);
+  const warehousePresentation = demoPresentation && facilitySpace === 'warehouse';
+
+  const restoreCompactWarehousePanels = useCallback(() => {
+    const previousLeftOpen = compactWarehouseLeftState.current;
+    if (previousLeftOpen === null) return;
+    const factoryState = useFactoryStore.getState();
+    if (factoryState.leftOpen !== previousLeftOpen) factoryState.toggleLeft();
+    compactWarehouseLeftState.current = null;
+  }, []);
+
+  const prepareCompactWarehousePanels = useCallback(() => {
+    if (compactWarehouseLeftState.current !== null) return;
+    if (window.innerWidth <= 1440) {
+      const factoryState = useFactoryStore.getState();
+      compactWarehouseLeftState.current = factoryState.leftOpen;
+      if (factoryState.leftOpen) factoryState.toggleLeft();
+    }
+  }, []);
+
+  const enterWarehouse = useCallback(() => {
+    beginWarehouseTransition('warehouse');
+  }, [beginWarehouseTransition]);
+
+  const returnToFactory = useCallback(() => {
+    restoreCompactWarehousePanels();
+    beginWarehouseTransition('factory');
+  }, [beginWarehouseTransition, restoreCompactWarehousePanels]);
 
   useSimEngine(!liveOnly);
   useLocalAgent(!liveOnly);
@@ -57,6 +136,26 @@ function FactoryDemo({
     includeLiveEvidence: !demoPresentation,
     demoScenarioId: demoPresentation ? demoScenarioId : undefined,
   });
+
+  useEffect(() => {
+    if (demoPresentation) initializeWarehouse();
+    else disableWarehouse();
+    return () => {
+      restoreCompactWarehousePanels();
+      if (demoPresentation) disableWarehouse();
+    };
+  }, [demoPresentation, disableWarehouse, initializeWarehouse, restoreCompactWarehousePanels]);
+
+  useEffect(() => {
+    if (!transition) return;
+    const timer = window.setTimeout(completeWarehouseTransition, 920);
+    return () => window.clearTimeout(timer);
+  }, [completeWarehouseTransition, transition]);
+
+  useEffect(() => {
+    if (transition === 'to_warehouse') prepareCompactWarehousePanels();
+    if (transition === 'to_factory') restoreCompactWarehousePanels();
+  }, [prepareCompactWarehousePanels, restoreCompactWarehousePanels, transition]);
 
   // 3D 內滾輪縮放只進 OrbitControls，不冒泡到頁面捲動。React onWheel 預設是 passive，
   // 擋不住頁面捲動，需在容器上掛非被動監聽並 preventDefault（標準 R3F 作法）。
@@ -73,7 +172,12 @@ function FactoryDemo({
   const gridCols = `${leftOpen ? '340px' : ''} 1fr ${rightOpen ? '348px' : ''}`.trim();
 
   return (
-    <div className="layout" style={{ gridTemplateColumns: gridCols }}>
+    <div
+      className="layout"
+      style={{ gridTemplateColumns: gridCols }}
+      data-facility-space={facilitySpace}
+      data-warehouse-enabled={warehouseEnabled ? 'true' : 'false'}
+    >
       {leftOpen ? (
         <aside className="col col-left">
           <ChatPanel
@@ -81,21 +185,41 @@ function FactoryDemo({
             demoPresentation={demoPresentation}
             demoScenarioId={demoScenarioId}
             sessionId={demoPresentation ? demoSessionId : undefined}
+            warehousePresentation={warehousePresentation}
           />
         </aside>
       ) : null}
       <main className="col col-center" ref={centerRef}>
-        <FactoryScene />
+        {warehousePresentation ? (
+          <WarehouseSceneBoundary onReturn={returnToFactory}>
+            <Suspense fallback={<div className="warehouse-scene-loading">載入 3D 智慧倉儲…</div>}>
+              <WarehouseDecisionScene />
+            </Suspense>
+          </WarehouseSceneBoundary>
+        ) : (
+          <FactoryScene
+            showWarehousePortal={demoPresentation}
+            onEnterWarehouse={demoPresentation ? enterWarehouse : undefined}
+          />
+        )}
         {!demoPresentation ? <WorkOrderOverlay /> : null}
-        {!liveOnly ? (
+        {warehousePresentation ? (
+          <WarehouseDecisionControls />
+        ) : !liveOnly ? (
           <SimControlPanel
             demoPresentation={demoPresentation}
             scenarioId={demoScenarioId}
             onScenarioChange={onDemoScenarioChange}
           />
         ) : null}
-        {!liveOnly ? <AgentFeed /> : null}
-        {!liveOnly ? <DebugPanel /> : null}
+        {!liveOnly && !warehousePresentation ? <AgentFeed /> : null}
+        {!liveOnly && !warehousePresentation ? <DebugPanel /> : null}
+        {transition ? (
+          <div className={`facility-transition ${transition}`} role="status" aria-live="polite">
+            <span>{transition === 'to_warehouse' ? '前往智慧倉儲區' : '返回成型工廠'}</span>
+            <i />
+          </div>
+        ) : null}
         <button
           className={`edge-handle left ${leftOpen ? 'open' : ''}`}
           onClick={toggleLeft}
@@ -117,7 +241,7 @@ function FactoryDemo({
       </main>
       {rightOpen ? (
         <aside className="col col-right">
-          <DetailPanel />
+          {warehousePresentation ? <WarehouseDecisionInspector /> : <DetailPanel />}
         </aside>
       ) : null}
     </div>
@@ -216,13 +340,18 @@ export function FactoryTwinWorkspace({
 
   const activeMode: FactoryMode = liveOnly || demoPresentation ? 'factory' : mode;
   const onlineCameraCount = platformCameras.filter((camera) => camera.online).length;
+  const demoFacilitySpace = useWarehouseDemoStore((state) => state.space);
 
   return (
     <div className="factory-twin-shell">
       <div className="app">
         <div className="factory-twin-modebar">
           <div>
-            <span className="factory-twin-kicker">{demoPresentation ? 'Accelerator Demo' : 'Mirror Factory'}</span>
+            <span className="factory-twin-kicker">
+              {demoPresentation
+                ? `Accelerator Demo / ${demoFacilitySpace === 'warehouse' ? '智慧倉儲' : '成型產線'}`
+                : 'Mirror Factory'}
+            </span>
             <strong>
               {demoPresentation
                 ? '4WALL 展示工廠'
@@ -233,7 +362,7 @@ export function FactoryTwinWorkspace({
           </div>
           {demoPresentation ? (
             <div className="demo-source-status" aria-label="展示資料來源">
-              <span className="simulation">模擬營運數據</span>
+              <span className="simulation">{demoFacilitySpace === 'warehouse' ? '倉儲模擬提案' : '模擬營運數據'}</span>
               <span className="live-evidence">
                 {platformCameras.length > 0
                   ? `靚程授權影像 ${onlineCameraCount}/${platformCameras.length} 在線`

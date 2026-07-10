@@ -2,11 +2,27 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { buildDemoScenarioEntities } from '../domain/demoScenarios';
 import { useFactoryStore } from '../store/factoryStore';
+import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
 import { runConversation } from './runConversation';
 
 describe('local accelerator demo assistant', () => {
   beforeEach(() => {
     useFactoryStore.setState(useFactoryStore.getInitialState(), true);
+    useWarehouseDemoStore.getState().disable();
+  });
+
+  it('answers warehouse proposal questions only from the internal simulation', async () => {
+    useWarehouseDemoStore.getState().initialize();
+
+    await runConversation('哪個提案搬遷最少？', {
+      labelSimulation: true,
+      demoScenarioId: 'normal',
+      warehousePresentation: true,
+    });
+
+    const reply = useFactoryStore.getState().messages.at(-1)?.text ?? '';
+    expect(reply).toContain('模擬情境：已切換為「最少搬遷」提案');
+    expect(reply).toContain('需搬遷 18 個 SKU');
   });
 
   it('answers simulated reconciliation with an explicit simulation label', async () => {

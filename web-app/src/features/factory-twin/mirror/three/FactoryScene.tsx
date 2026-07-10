@@ -13,8 +13,15 @@ import { FitToGlb } from './FitToGlb';
 import { CoordProbe } from './CoordProbe';
 import { CalloutOverlay } from './CalloutOverlay';
 import { FACTORY_THEME, ISO_CAMERA } from './factoryTheme';
+import { WarehousePortal } from './WarehousePortal';
 
-export function FactoryScene() {
+export function FactoryScene({
+  showWarehousePortal = false,
+  onEnterWarehouse,
+}: {
+  showWarehousePortal?: boolean;
+  onEnterWarehouse?: () => void;
+} = {}) {
   const entities = useFactoryStore((s) => s.entities);
   const select = useFactoryStore((s) => s.select);
   const glbLoadState = useFactoryStore((s) => s.glbLoadState);
@@ -68,6 +75,10 @@ export function FactoryScene() {
       <FitToGlb />
       <CoordProbe />
       <CameraRig />
+
+      {showRuntimeOverlays && showWarehousePortal && onEnterWarehouse ? (
+        <WarehousePortal onActivate={onEnterWarehouse} />
+      ) : null}
 
       <OrbitControls
         makeDefault

@@ -19,6 +19,8 @@ import {
 } from '../domain/demoScenarios';
 import { machineIdForCamera } from '../domain/machineCameras';
 import { uid, useFactoryStore } from '../store/factoryStore';
+import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
+import { buildWarehouseAssistantSummary } from '../warehouse/decision';
 
 export const TWIN_AGENT_SESSION_ID = uid('twin-session');
 export const DEMO_TWIN_AGENT_SESSION_ID = uid('demo-twin-session');
@@ -425,14 +427,21 @@ function buildDataAvailability(
 
 export function buildWorldSnapshot(
   liveDataStatus?: TwinAgentLiveDataStatus,
-  options: Pick<TwinAgentBridgeOptions, 'includeLiveEvidence' | 'demoScenarioId'> = {},
+  options: Pick<TwinAgentBridgeOptions, 'includeLiveEvidence' | 'demoScenarioId' | 'snapshotScope'> = {},
 ): Record<string, unknown> {
   const s = useFactoryStore.getState();
+  const warehouse = useWarehouseDemoStore.getState();
   const includeLiveEvidence = options.includeLiveEvidence ?? true;
+  const scopedDemoScenarioId = options.snapshotScope === 'accelerator_demo' ? options.demoScenarioId : undefined;
+  const includeWarehouseDecision = Boolean(scopedDemoScenarioId && warehouse.enabled && warehouse.planSet);
   const snapshotEntities = includeLiveEvidence
     ? s.entities
     : Object.fromEntries(Object.entries(s.entities).filter(([, entity]) => entity.source === 'sim'));
   return {
+    experience: {
+      snapshotScope: options.snapshotScope ?? 'web_only',
+      facilitySpace: includeWarehouseDecision ? warehouse.space : 'factory',
+    },
     dataAvailability: buildDataAvailability(
       snapshotEntities,
       includeLiveEvidence ? s.platformCameras : [],
@@ -447,8 +456,20 @@ export function buildWorldSnapshot(
     machineRealData: includeLiveEvidence
       ? buildMachineRealData(s.entities, s.platformCameras, s.livePersons)
       : [],
-    ...(options.demoScenarioId
-      ? { simulationContext: buildDemoSimulationContext(options.demoScenarioId, snapshotEntities) }
+    ...(scopedDemoScenarioId
+      ? {
+          simulationContext: {
+            ...buildDemoSimulationContext(scopedDemoScenarioId, snapshotEntities),
+            ...(includeWarehouseDecision && warehouse.planSet
+              ? {
+                  warehouseDecision: buildWarehouseAssistantSummary(
+                    warehouse.planSet,
+                    warehouse.selectedPlanId,
+                  ),
+                }
+              : {}),
+          },
+        }
       : {}),
   };
 }
@@ -492,6 +513,10 @@ export function useTwinAgentBridge(
   const bindOrganization = snapshotScope === 'organization_live';
   const includeLiveEvidence = options.includeLiveEvidence ?? true;
   const demoScenarioId = options.demoScenarioId;
+  const warehousePlanSetId = useWarehouseDemoStore((state) => state.planSet?.id ?? null);
+  const warehouseSummaryHash = useWarehouseDemoStore((state) => state.planSet?.summaryHash ?? null);
+  const warehouseSelectedPlanId = useWarehouseDemoStore((state) => state.selectedPlanId);
+  const warehouseFacilitySpace = useWarehouseDemoStore((state) => state.space);
   const cursorRef = useRef<number | null>(null);
   const processedSeqsRef = useRef(new Set<number>());
 
@@ -504,7 +529,11 @@ export function useTwinAgentBridge(
         api.postTwinAgentSnapshot(token, {
           sessionId,
           capturedAt: new Date().toISOString(),
-          world: buildWorldSnapshot(liveDataStatus, { includeLiveEvidence, demoScenarioId }),
+          world: buildWorldSnapshot(liveDataStatus, {
+            includeLiveEvidence,
+            demoScenarioId,
+            snapshotScope,
+          }),
           snapshotScope,
           ...(organizationId ? { organizationId } : {}),
         }),
@@ -523,6 +552,10 @@ export function useTwinAgentBridge(
     liveDataStatus,
     sessionId,
     snapshotScope,
+    warehouseFacilitySpace,
+    warehousePlanSetId,
+    warehouseSelectedPlanId,
+    warehouseSummaryHash,
   ]);
 
   const updatesQuery = useAuthedQuery({

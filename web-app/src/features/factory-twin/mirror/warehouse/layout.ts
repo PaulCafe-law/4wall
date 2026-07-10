@@ -28,12 +28,15 @@ export interface WarehouseLayout {
   dock: WarehousePoint;
   workstations: WarehousePoint[];
   slotCount: number;
+  logicalBinsPerSlot: number;
+  logicalBinCount: number;
 }
 
 export interface WarehouseLayoutConfig {
   columns?: number;
   rows?: number;
   levels?: number;
+  logicalBinsPerSlot?: number;
   source?: WarehouseSource;
 }
 
@@ -42,15 +45,17 @@ function manhattan(a: WarehousePoint, b: WarehousePoint): number {
 }
 
 export function createWarehouseLayout(config: WarehouseLayoutConfig = {}): WarehouseLayout {
-  const columns = config.columns ?? 14;
-  const rows = config.rows ?? 10;
-  const levels = config.levels ?? 13;
+  const columns = config.columns ?? 12;
+  const rows = config.rows ?? 8;
+  const levels = config.levels ?? 4;
+  const logicalBinsPerSlot = config.logicalBinsPerSlot ?? 40;
   const dock: WarehousePoint = { x: Math.floor(columns / 2), y: rows + 0.9 };
   const agvStart: WarehousePoint = { x: 0.5, y: rows + 0.75 };
   const chargeStation: WarehousePoint = { x: columns - 1.5, y: rows + 0.75 };
   const workstations: WarehousePoint[] = [
-    { x: Math.floor(columns / 2) - 1.2, y: rows + 0.65 },
-    { x: Math.floor(columns / 2) + 1.2, y: rows + 0.65 },
+    { x: Math.floor(columns / 2) - 2.4, y: rows + 0.65 },
+    { x: Math.floor(columns / 2), y: rows + 0.65 },
+    { x: Math.floor(columns / 2) + 2.4, y: rows + 0.65 },
   ];
   const mainAisleCols = [Math.floor(columns / 2) - 1, Math.floor(columns / 2)];
   const cells: WarehouseLayout['cells'] = [];
@@ -90,5 +95,7 @@ export function createWarehouseLayout(config: WarehouseLayoutConfig = {}): Wareh
     dock,
     workstations,
     slotCount: slots.length,
+    logicalBinsPerSlot,
+    logicalBinCount: slots.length * logicalBinsPerSlot,
   };
 }

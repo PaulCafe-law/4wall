@@ -4,6 +4,8 @@ import type { AmrEntity, Entity, MachineEntity, PersonEntity } from '../domain/e
 import { machineUsesLiveMetricsOnly, statusLabel } from '../domain/entities';
 import { buildDemoSimulationContext, type DemoScenarioId } from '../domain/demoScenarios';
 import { useFactoryStore, uid } from '../store/factoryStore';
+import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
+import { readyWarehousePlans } from '../warehouse/decision';
 
 function textIncludesAny(text: string, terms: string[]): boolean {
   return terms.some((term) => text.includes(term.toLowerCase()));
@@ -63,7 +65,7 @@ function statusText(machine: MachineEntity): string {
 
 export async function runConversation(
   userText: string,
-  options: { labelSimulation?: boolean; demoScenarioId?: DemoScenarioId } = {},
+  options: { labelSimulation?: boolean; demoScenarioId?: DemoScenarioId; warehousePresentation?: boolean } = {},
 ): Promise<void> {
   const store = useFactoryStore.getState();
   store.addMessage({ id: uid('msg'), role: 'user', text: userText });
@@ -75,7 +77,57 @@ export async function runConversation(
   const person = personFromText(text, entities);
   const replies: string[] = [];
 
-  if (textIncludesAny(normalized, ['clear', '清除', '取消標記'])) {
+  if (options.warehousePresentation) {
+    const warehouse = useWarehouseDemoStore.getState();
+    const plans = readyWarehousePlans(warehouse.planSet);
+    const selected = plans.find((plan) => plan.id === warehouse.selectedPlanId) ?? plans[0];
+    const percent = Number(text.match(/(?:增加|\+)?\s*(\d{1,3})\s*%/)?.[1]);
+    const outage = Number(text.match(/停機\s*(\d{1,3})/)?.[1]);
+
+    if (textIncludesAny(normalized, ['需求', '停機', '重跑', '產生', '情境'])) {
+      runTool(
+        {
+          name: 'run_warehouse_scenario',
+          arguments: {
+            ...(Number.isFinite(percent) ? { familyDemandIncreasePercent: percent } : {}),
+            ...(Number.isFinite(outage) ? { workstationOutageMinutes: outage } : {}),
+          },
+        },
+        replies,
+      );
+      const updated = useWarehouseDemoStore.getState().planSet;
+      replies.push(updated ? `提案編號 ${updated.id}，所有數值皆為展示工廠模擬結果。` : '目前沒有可比較的倉儲提案。');
+    } else if (textIncludesAny(normalized, ['搬遷最少', '最少搬遷'])) {
+      const plan = plans.find((candidate) => candidate.objective === 'minimum_moves');
+      if (plan) {
+        runTool({ name: 'select_warehouse_plan', arguments: { objective: 'minimum_moves' } }, replies);
+        replies.push(`需搬遷 ${plan.relocationCount} 個 SKU，AMR 總距離 ${Math.round(plan.kpis.totalAgvDistance)} 公尺。`);
+      }
+    } else if (textIncludesAny(normalized, ['比較', '三套', '方案', '提案'])) {
+      replies.push(
+        plans.length
+          ? plans
+              .map(
+                (plan) =>
+                  `${plan.label}：搬遷 ${plan.relocationCount} 個 SKU、距離 ${Math.round(plan.kpis.totalAgvDistance)} 公尺、完成 ${plan.kpis.completedOrders} 單`,
+              )
+              .join('；')
+          : '目前沒有可比較的倉儲提案。',
+      );
+    } else if (textIncludesAny(normalized, ['壅塞', '排隊'])) {
+      replies.push(
+        selected
+          ? `${selected.label}提案的工作站平均排隊 ${selected.kpis.averageQueueMinutes.toFixed(1)} 分鐘；本情境的主要限制是 WS-03 停機 ${warehouse.scenario.workstationOutageMinutes} 分鐘。`
+          : '目前沒有可用的排隊模擬結果。',
+      );
+    } else {
+      replies.push(
+        selected
+          ? `目前顯示「${selected.label}」提案：搬遷 ${selected.relocationCount} 個 SKU，完成 ${selected.kpis.completedOrders} 單，服務水準 ${selected.kpis.serviceLevelPercent.toFixed(1)}%。`
+          : '倉儲模擬資料正在建立中。',
+      );
+    }
+  } else if (textIncludesAny(normalized, ['clear', '清除', '取消標記'])) {
     runTool({ name: 'clear_overlays', arguments: {} }, replies);
   } else if (
     options.demoScenarioId &&

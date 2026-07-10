@@ -35,11 +35,13 @@ export function ChatPanel({
   demoPresentation = false,
   demoScenarioId,
   sessionId = TWIN_AGENT_SESSION_ID,
+  warehousePresentation = false,
 }: {
   liveOnly?: boolean;
   demoPresentation?: boolean;
   demoScenarioId?: DemoScenarioId;
   sessionId?: string;
+  warehousePresentation?: boolean;
 }) {
   const messages = useFactoryStore((s) => s.messages);
   const cloudAgentOnline = useFactoryStore((s) => s.cloudAgentOnline);
@@ -58,7 +60,9 @@ export function ChatPanel({
   }, [messages]);
 
   const thinking = busy || pendingAgentReplies > 0;
-  const suggestions = liveOnly
+  const suggestions = warehousePresentation
+    ? ['A 系列需求增加 40%，WS-03 停機 120 分鐘', '比較三套倉儲提案', '哪個提案搬遷最少？', '目前最壅塞在哪裡？']
+    : liveOnly
     ? LIVE_FACTORY_SUGGESTIONS
     : demoPresentation
       ? ACCELERATOR_DEMO_SUGGESTIONS
@@ -89,7 +93,11 @@ export function ChatPanel({
     setBusy(true);
     try {
       if (demoPresentation) {
-        await runConversation(t, { labelSimulation: true, demoScenarioId: demoScenarioId ?? 'normal' });
+        await runConversation(t, {
+          labelSimulation: true,
+          demoScenarioId: demoScenarioId ?? 'normal',
+          ...(warehousePresentation ? { warehousePresentation: true } : {}),
+        });
       } else {
         await runConversation(t);
       }

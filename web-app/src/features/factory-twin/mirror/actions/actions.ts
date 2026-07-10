@@ -12,6 +12,8 @@ import { movementAreaFromAttrs } from '../domain/movementArea';
 import { findWalkPath } from '../domain/pathfinding';
 import { formatSimTime } from '../sim/simClock';
 import { pathBetween } from '../sim/simHelpers';
+import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
+import { readyWarehousePlans, type WarehousePlanObjective } from '../warehouse/decision';
 
 export interface ActionResult {
   ok: boolean;
@@ -247,6 +249,70 @@ export function clear_overlays(): ActionResult {
   return { ok: true, message: '已清除所有標記、連線與選取' };
 }
 
+function warehouseStore() {
+  return useWarehouseDemoStore.getState();
+}
+
+function requireWarehouseDemo(): ActionResult | null {
+  return warehouseStore().enabled
+    ? null
+    : { ok: false, message: '倉儲模擬只在 4WALL 內部展示工廠開放' };
+}
+
+export function enter_warehouse(): ActionResult {
+  const blocked = requireWarehouseDemo();
+  if (blocked) return blocked;
+  warehouseStore().beginTransition('warehouse');
+  return { ok: true, message: '已前往智慧倉儲模擬區' };
+}
+
+export function return_to_factory(): ActionResult {
+  const blocked = requireWarehouseDemo();
+  if (blocked) return blocked;
+  warehouseStore().beginTransition('factory');
+  return { ok: true, message: '已返回成型工廠' };
+}
+
+export function run_warehouse_scenario({
+  familyDemandIncreasePercent,
+  workstationOutageMinutes,
+  agvCount,
+  maxRelocations,
+}: {
+  familyDemandIncreasePercent?: number;
+  workstationOutageMinutes?: number;
+  agvCount?: number;
+  maxRelocations?: number;
+}): ActionResult {
+  const blocked = requireWarehouseDemo();
+  if (blocked) return blocked;
+  warehouseStore().updateScenario({
+    ...(typeof familyDemandIncreasePercent === 'number' ? { familyDemandIncreasePercent } : {}),
+    ...(typeof workstationOutageMinutes === 'number' ? { workstationOutageMinutes } : {}),
+    ...(typeof agvCount === 'number' ? { agvCount } : {}),
+    ...(typeof maxRelocations === 'number' ? { maxRelocations } : {}),
+  });
+  warehouseStore().runScenario();
+  const planSet = warehouseStore().planSet;
+  return {
+    ok: Boolean(planSet),
+    message: planSet
+      ? `已產生 ${readyWarehousePlans(planSet).length} 套倉儲模擬提案`
+      : '倉儲提案產生失敗',
+    data: planSet ? { planSetId: planSet.id, summaryHash: planSet.summaryHash } : undefined,
+  };
+}
+
+export function select_warehouse_plan({ objective }: { objective: WarehousePlanObjective }): ActionResult {
+  const blocked = requireWarehouseDemo();
+  if (blocked) return blocked;
+  const warehouse = warehouseStore();
+  const plan = readyWarehousePlans(warehouse.planSet).find((candidate) => candidate.objective === objective);
+  if (!plan) return { ok: false, message: '找不到指定的倉儲提案' };
+  warehouse.selectPlan(plan.id);
+  return { ok: true, message: `已切換為「${plan.label}」提案`, data: { planId: plan.id } };
+}
+
 function normalizedKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, '');
 }
@@ -304,5 +370,9 @@ export const ACTIONS = {
   set_machine_state,
   trigger_demo_incident,
   clear_overlays,
+  enter_warehouse,
+  return_to_factory,
+  run_warehouse_scenario,
+  select_warehouse_plan,
 };
 export type ActionName = keyof typeof ACTIONS;
