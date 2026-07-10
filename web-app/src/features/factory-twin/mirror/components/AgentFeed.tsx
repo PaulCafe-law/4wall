@@ -66,9 +66,9 @@ function TracePanel({ trace }: { trace: ReasoningTrace }) {
   );
 }
 
-export function AgentFeed() {
+export function AgentFeed({ initiallyMinimized = false }: { initiallyMinimized?: boolean }) {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [minimized, setMinimized] = useState(false);
+  const [minimized, setMinimized] = useState(initiallyMinimized);
   const connected = useFactoryStore((s) => s.agentConnected);
   const notifications = useFactoryStore((s) => s.agentNotifications);
   const dismiss = useFactoryStore((s) => s.dismissAgentNotification);

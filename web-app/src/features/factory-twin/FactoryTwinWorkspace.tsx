@@ -224,7 +224,7 @@ function FactoryDemo({
             onScenarioChange={onDemoScenarioChange}
           />
         ) : null}
-        {!liveOnly && !warehousePresentation ? <AgentFeed /> : null}
+        {!liveOnly && !warehousePresentation ? <AgentFeed initiallyMinimized={demoPresentation} /> : null}
         {!liveOnly && !warehousePresentation ? <DebugPanel /> : null}
         {transition ? (
           <div className={`facility-transition ${transition}`} role="status" aria-live="polite">
