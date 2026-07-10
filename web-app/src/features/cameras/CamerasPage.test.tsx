@@ -428,4 +428,32 @@ describe('CamerasPage', () => {
     expect(await screen.findByText('尚無攝影機')).toBeInTheDocument()
     expect(apiMock.fetchCameraLatestFrameBlob).not.toHaveBeenCalled()
   })
+
+  it('shows loading in summary metrics instead of initial zero values', () => {
+    apiMock.listCameras.mockReturnValueOnce(new Promise(() => {}))
+
+    renderWithProviders(
+      <Routes><Route path="/cameras" element={<CamerasPage />} /></Routes>,
+      { route: '/cameras' },
+    )
+
+    expect(screen.getAllByText('載入中').length).toBeGreaterThanOrEqual(4)
+    expect(screen.queryByText(/^0$/)).not.toBeInTheDocument()
+  })
+
+  it('marks an old frame as stale and states when it last updated', async () => {
+    const staleAt = new Date(Date.now() - 5 * 60_000).toISOString()
+    const camera = cameraFixture('camera-stale', 'PoE Camera 192.168.1.31')
+    camera.lastHeartbeatAt = staleAt
+    camera.lastFrameAt = staleAt
+    if (camera.latestFrame) camera.latestFrame.capturedAt = staleAt
+    apiMock.listCameras.mockResolvedValueOnce({ cameras: [camera] })
+
+    renderWithProviders(
+      <Routes><Route path="/cameras" element={<CamerasPage />} /></Routes>,
+      { route: '/cameras' },
+    )
+
+    expect((await screen.findAllByText('資料已過期，最近一次在 5 分鐘前')).length).toBeGreaterThan(0)
+  })
 })

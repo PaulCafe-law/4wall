@@ -958,6 +958,25 @@ export interface TwinAgentUpdates {
   cursor: number
 }
 
+export interface TwinAgentRuntimeStatus {
+  enabled: boolean
+  workerOnline: boolean
+  workerLastSeenSeconds: number | null
+  snapshotAvailable: boolean
+  snapshotAgeSeconds: number | null
+  snapshotCapturedAt: string | null
+}
+
+export interface PlatformHealthStatus {
+  status: 'ok' | 'degraded'
+  dependencies: {
+    database: {
+      status: 'ok' | 'error'
+      error?: string
+    }
+  }
+}
+
 export interface TwinAgentSnapshotPayload {
   sessionId: string
   capturedAt: string

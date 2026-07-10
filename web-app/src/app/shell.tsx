@@ -16,12 +16,14 @@ const customerLinks = [
   { to: '/incidents', label: '異常事件' },
   { to: '/industrial-data-engine', label: '資料引擎' },
   { to: '/billing', label: '帳務' },
+  { to: '/system-status', label: '系統狀態' },
 ]
 
 const factoryCustomerLinks = [
   { to: '/factory-twin', label: '工廠戰情室' },
   { to: '/cameras', label: '即時攝影機' },
   { to: '/incidents', label: '異常事件' },
+  { to: '/system-status', label: '系統狀態' },
 ]
 
 const internalLinks = [

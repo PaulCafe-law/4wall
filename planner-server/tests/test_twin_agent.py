@@ -81,6 +81,7 @@ def test_endpoints_return_503_when_disabled(test_settings) -> None:
             client.post("/v1/twin-agent/snapshot", json=_snapshot_body()),
             client.post("/v1/twin-agent/messages", json={"sessionId": SESSION_ID, "text": "hi"}),
             client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}&cursor=0"),
+            client.get("/v1/twin-agent/status"),
             client.get("/v1/twin-agent/jobs", headers=_worker_headers()),
             client.post("/v1/twin-agent/jobs/unknown/result", json={"text": "hi"}, headers=_worker_headers()),
         ]
@@ -124,6 +125,42 @@ def test_customer_web_endpoints_are_scoped_to_snapshot_owner(test_settings) -> N
         assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers_a).status_code == 200
         assert client.post("/v1/twin-agent/messages", json={"sessionId": SESSION_ID, "text": "hi"}, headers=headers_b).status_code == 404
         assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers_b).status_code == 404
+
+
+def test_status_reports_worker_and_only_readable_snapshot_health(test_settings) -> None:
+    app = build_app(settings=_twin_settings(test_settings))
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            org_a = seed_organization(session, name="Status Org A")
+            org_b = seed_organization(session, name="Status Org B")
+            seed_user(session, email="status-a@twin.test", password=PASSWORD, org_roles=[(org_a.id, "customer_admin")])
+            seed_user(session, email="status-b@twin.test", password=PASSWORD, org_roles=[(org_b.id, "customer_viewer")])
+            session.commit()
+            org_a_id = org_a.id
+        headers_a, _ = login_web(client, email="status-a@twin.test", password=PASSWORD)
+        headers_b, _ = login_web(client, email="status-b@twin.test", password=PASSWORD)
+
+        assert client.get("/v1/twin-agent/status").status_code == 401
+        initial = client.get("/v1/twin-agent/status", headers=headers_a).json()
+        assert initial["workerOnline"] is False
+        assert initial["snapshotAvailable"] is False
+
+        snapshot = {**_snapshot_body({"entities": [{"id": "org-a-machine"}]}), "organizationId": org_a_id}
+        assert client.post("/v1/twin-agent/snapshot", json=snapshot, headers=headers_a).status_code == 204
+        client.get("/v1/twin-agent/jobs", headers=_worker_headers())
+
+        own_status = client.get("/v1/twin-agent/status", headers=headers_a).json()
+        other_status = client.get("/v1/twin-agent/status", headers=headers_b).json()
+
+    assert own_status["enabled"] is True
+    assert own_status["workerOnline"] is True
+    assert own_status["workerLastSeenSeconds"] >= 0
+    assert own_status["snapshotAvailable"] is True
+    assert own_status["snapshotAgeSeconds"] >= 0
+    assert own_status["snapshotCapturedAt"]
+    assert other_status["workerOnline"] is True
+    assert other_status["snapshotAvailable"] is False
+    assert other_status["snapshotCapturedAt"] is None
 
 
 def test_snapshot_size_guard(test_settings) -> None:

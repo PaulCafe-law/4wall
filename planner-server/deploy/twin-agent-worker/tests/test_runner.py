@@ -7,7 +7,13 @@ import pytest
 from agent_worker.bridge import BridgeResult, FakeAgentBridge
 from agent_worker.config import AgentConfig, AppConfig, DebugConfig, PlatformConfig
 from agent_worker.job_source import PolledJob, parse_poll_payload
-from agent_worker.main import FALLBACK_TEXT, TwinAgentRunner, build_agent_prompt, build_result_payload
+from agent_worker.main import (
+    FALLBACK_TEXT,
+    TwinAgentRunner,
+    build_agent_prompt,
+    build_result_payload,
+    enforce_response_trust_labels,
+)
 
 
 def test_prompt_includes_world_tools_and_language_rule() -> None:
@@ -33,6 +39,10 @@ def test_prompt_includes_world_tools_and_language_rule() -> None:
     assert "plan-vs-actual reconciliation" in prompt
     assert "machineRealData" in prompt
     assert "nearbyLivePersons" in prompt
+    assert "最近一次在多久前" in prompt
+    assert "資料載入中" in prompt
+    assert "pending_confirmation" in prompt
+    assert "no live AMR feed" in prompt
     assert "focus_camera" in prompt
     assert "dispatch_amr" in prompt
     assert "set_machine_state" in prompt
@@ -95,6 +105,92 @@ def test_result_payload_caps_tool_calls_and_truncates_text() -> None:
 
     assert len(payload["toolCalls"]) == 10
     assert payload["text"] == "x" * 10
+
+
+def test_runner_returns_grounded_jingcheng_amr_answer_without_calling_bridge(tmp_path) -> None:
+    bridge = FakeAgentBridge([BridgeResult(status="ok", text="不應使用這個回答")])
+    runner = TwinAgentRunner(_config(tmp_path), bridge=bridge, publish=False)
+    polled = PolledJob(
+        job={"jobId": "j-amr", "source": "line", "text": "現在AMR情況", "siteSlug": "jingcheng"},
+        world={"entities": [], "dataAvailability": {"amr": {"state": "not_connected"}}},
+        world_age_seconds=1.0,
+        ledger_context=None,
+    )
+
+    result = runner.process_job(polled)
+
+    assert result["result"]["text"] == (
+        "靚程工廠目前沒有接入真實 AMR 資料，因此無法提供即時位置、任務或電量。"
+        "畫面中的 AMR 模擬不代表現場狀態。"
+    )
+    assert result["result"]["toolCalls"] == []
+    assert bridge.prompts == []
+
+
+def test_pending_work_order_answer_is_always_marked_for_confirmation() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "派工單顯示模具 GM096LC，總計 420 PCS。", "toolCalls": []},
+        job={"text": "現在派工單內容？"},
+        world={
+            "cameraSummary": [
+                {
+                    "hmiOcr": {
+                        "workOrderReview": {"status": "pending_confirmation"},
+                        "workOrder": {"stabilized": False},
+                    }
+                }
+            ]
+        },
+        max_output_chars=4000,
+    )
+
+    assert payload["text"].startswith("派工單辨識待確認；")
+
+
+def test_confirmed_work_order_answer_is_not_relabelled() -> None:
+    original = {"text": "派工單顯示模具 GM096LC。", "toolCalls": []}
+    payload = enforce_response_trust_labels(
+        original,
+        job={"text": "現在派工單內容？"},
+        world={
+            "cameraSummary": [
+                {
+                    "hmiOcr": {
+                        "workOrderReview": {"status": "confirmed"},
+                        "workOrder": {"stabilized": True},
+                    }
+                }
+            ]
+        },
+        max_output_chars=4000,
+    )
+
+    assert payload == original
+
+
+def test_pending_work_order_value_is_labelled_even_without_work_order_words() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "目前辨識到 GM096LC。", "toolCalls": []},
+        job={"text": "01機現在狀況？"},
+        world={
+            "cameraSummary": [
+                {
+                    "hmiOcr": {
+                        "workOrderReview": {"status": "pending_confirmation"},
+                        "workOrder": {
+                            "stabilized": False,
+                            "fields": {
+                                "moldNo": {"value": "GM096LC", "confidence": 0.62, "rawText": "GM096LC"}
+                            },
+                        },
+                    }
+                }
+            ]
+        },
+        max_output_chars=4000,
+    )
+
+    assert payload["text"].startswith("派工單辨識待確認；")
 
 
 def test_runner_posts_fallback_when_bridge_fails(tmp_path) -> None:

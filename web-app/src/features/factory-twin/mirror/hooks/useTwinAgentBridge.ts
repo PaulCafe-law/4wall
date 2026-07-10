@@ -5,6 +5,11 @@ import { api } from '../../../../lib/api';
 import { useAuth } from '../../../../lib/auth';
 import { useAuthedQuery } from '../../../../lib/auth-query';
 import type { TwinAgentFeedEvent } from '../../../../lib/types';
+import {
+  WORK_ORDER_CONFIDENCE_THRESHOLD,
+  isWorkOrderCellKnown,
+  parseWorkOrderSheet,
+} from '../../../../lib/work-order';
 import { executeToolCall } from '../agent/tools';
 import type { CameraEntity, Entity, MachineEntity, PersonEntity } from '../domain/entities';
 import { machineUsesLiveMetricsOnly } from '../domain/entities';
@@ -17,12 +22,49 @@ const SNAPSHOT_INTERVAL_MS = 3000;
 const UPDATES_INTERVAL_MS = 2000;
 const MAX_SNAPSHOT_ENTITIES = 150;
 const NEARBY_PERSON_RADIUS_M = 5;
+const LIVE_SOURCE_FRESH_MS = 90_000;
+
+export interface TwinAgentLiveDataStatus {
+  mode: 'live' | 'simulation';
+  cameraState: 'loading' | 'ready' | 'error';
+  cameraCount: number | null;
+  cameraLatestAt: string | null;
+  personState: 'loading' | 'current' | 'stale' | 'unavailable' | 'error';
+  personLatestAt: string | null;
+}
 
 const cursorRef = { current: null as number | null };
 const processedSeqs = new Set<number>();
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+function ageSeconds(value: unknown): number | null {
+  if (typeof value !== 'string' || !value) return null;
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return null;
+  return Math.max(0, Math.round((Date.now() - timestamp) / 1000));
+}
+
+function ageText(seconds: number | null): string {
+  if (seconds === null) return '尚無更新時間';
+  if (seconds < 10) return '剛剛';
+  if (seconds < 60) return `${seconds} 秒前`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分鐘前`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} 小時前`;
+  return `${Math.round(hours / 24)} 天前`;
+}
+
+function freshness(value: unknown, freshMs = LIVE_SOURCE_FRESH_MS): Record<string, unknown> {
+  const seconds = ageSeconds(value);
+  return {
+    state: seconds === null ? 'unavailable' : seconds * 1000 <= freshMs ? 'current' : 'stale',
+    ageSeconds: seconds,
+    ageText: ageText(seconds),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,7 +133,12 @@ function compactEntity(e: Entity): Record<string, unknown> {
         alarms: e.alarms,
       };
     case 'amr':
-      return { ...base, battery: e.battery, task: e.task };
+      return {
+        ...base,
+        dataSource: e.source === 'live' ? 'live' : 'simulation',
+        battery: e.battery,
+        task: e.task,
+      };
     case 'person':
       return { ...base, role: e.source === 'live' ? '現場人員' : e.role, station: e.station };
     case 'zone':
@@ -129,7 +176,38 @@ function compactPersonObservation(value: unknown): Record<string, unknown> | nul
     capturedAt: value.capturedAt,
     receivedAt: value.receivedAt,
     detectorName: value.detectorName ?? null,
+    freshness: freshness(value.receivedAt ?? value.capturedAt),
     detections,
+  };
+}
+
+function workOrderReview(structuredFields: Record<string, unknown>): Record<string, unknown> | null {
+  if (!isRecord(structuredFields.workOrder)) return null;
+  const sheet = parseWorkOrderSheet(structuredFields);
+  if (!sheet) {
+    return {
+      status: 'pending_confirmation',
+      statusText: '待確認',
+      reasons: ['派工單結構尚未完整'],
+    };
+  }
+
+  const leaves = [
+    ...Object.values(sheet.fields),
+    ...Object.values(sheet.quantities).flatMap((row) => [row.left, row.right]),
+  ].filter(isWorkOrderCellKnown);
+  const confidences = leaves.map((leaf) => leaf.confidence).filter(Number.isFinite);
+  const lowConfidence = confidences.some((value) => value < WORK_ORDER_CONFIDENCE_THRESHOLD);
+  const reasons: string[] = [];
+  if (!sheet.stabilized) reasons.push('尚未完成多幀確認');
+  if (lowConfidence) reasons.push('部分欄位辨識信心不足');
+  const pending = reasons.length > 0;
+  return {
+    status: pending ? 'pending_confirmation' : 'confirmed',
+    statusText: pending ? '待確認' : '已確認',
+    stabilized: sheet.stabilized,
+    minimumConfidence: confidences.length > 0 ? Math.min(...confidences) : null,
+    reasons,
   };
 }
 
@@ -147,13 +225,15 @@ function compactScreenVisibility(value: unknown): Record<string, unknown> | null
 
 function compactCameraRealData(camera: CameraEntity): Record<string, unknown> {
   const attrs = camera.attrs ?? {};
+  const capturedAt = attrs.latestFrameCapturedAt ?? attrs.lastFrameAt ?? null;
   const summary: Record<string, unknown> = {
     id: camera.id,
     name: camera.name,
     siteLabel: camera.siteLabel,
     machineId: machineIdForCamera(camera.id),
     online: camera.online,
-    capturedAt: attrs.latestFrameCapturedAt ?? attrs.lastFrameAt ?? null,
+    capturedAt,
+    freshness: freshness(capturedAt ?? attrs.lastHeartbeatAt),
   };
 
   const readings = attrs.latestGaugeReadings;
@@ -168,6 +248,7 @@ function compactCameraRealData(camera: CameraEntity): Record<string, unknown> {
         status: r.status,
         statusText: gaugeStatusText(r.status),
         capturedAt: r.capturedAt,
+        freshness: freshness(r.receivedAt ?? r.capturedAt),
       }));
   }
 
@@ -176,12 +257,16 @@ function compactCameraRealData(camera: CameraEntity): Record<string, unknown> {
     const structured = isRecord(observation.structuredFields) ? observation.structuredFields : {};
     const gpt = isRecord(observation.gptSummary) ? observation.gptSummary : {};
     const screenVisibility = compactScreenVisibility(structured.screenVisibility);
+    const review = workOrderReview(structured);
     summary.hmiOcr = {
       mode: observation.mode,
       modeText: ocrModeText(observation.mode),
       capturedAt: observation.capturedAt,
+      receivedAt: observation.receivedAt ?? null,
+      freshness: freshness(observation.receivedAt ?? observation.capturedAt),
       summary: typeof gpt.summary === 'string' ? gpt.summary : null,
       workOrder: structured.workOrder ?? null,
+      ...(review ? { workOrderReview: review } : {}),
       ...(screenVisibility ? { screenVisibility } : {}),
     };
   }
@@ -230,6 +315,7 @@ function screenPowerInferenceFor(cameraSummaries: Record<string, unknown>[]): Re
         sourceCamera: camera.name ?? null,
         capturedAt: hmiOcr?.capturedAt ?? null,
         confidence: visibility.confidence ?? null,
+        freshness: hmiOcr?.freshness ?? freshness(hmiOcr?.capturedAt),
       };
     }
   }
@@ -270,9 +356,52 @@ function buildMachineRealData(
   });
 }
 
-function buildWorldSnapshot(): Record<string, unknown> {
+function buildDataAvailability(
+  entities: Record<string, Entity>,
+  platformCameras: CameraEntity[],
+  liveDataStatus?: TwinAgentLiveDataStatus,
+): Record<string, unknown> {
+  const liveAmrCount = Object.values(entities).filter(
+    (entity) => entity.type === 'amr' && entity.source === 'live',
+  ).length;
+  const simulatedAmrCount = Object.values(entities).filter(
+    (entity) => entity.type === 'amr' && entity.source !== 'live',
+  ).length;
+  const cameraLatestAt = liveDataStatus?.cameraLatestAt ?? null;
+  const personLatestAt = liveDataStatus?.personLatestAt ?? null;
+
+  return {
+    camera: {
+      state: liveDataStatus?.cameraState ?? 'ready',
+      count: liveDataStatus ? liveDataStatus.cameraCount : platformCameras.length,
+      latestAt: cameraLatestAt,
+      freshness: freshness(cameraLatestAt),
+    },
+    people: {
+      state: liveDataStatus?.personState ?? 'unavailable',
+      latestAt: personLatestAt,
+      freshness: freshness(personLatestAt),
+    },
+    amr:
+      liveAmrCount > 0
+        ? { state: 'current', source: 'live', count: liveAmrCount }
+        : liveDataStatus?.mode === 'live'
+          ? {
+              state: 'not_connected',
+              source: 'live',
+              count: 0,
+              text: '靚程工廠目前沒有接入真實 AMR 資料',
+            }
+          : simulatedAmrCount > 0
+            ? { state: 'simulation', source: 'simulation', count: simulatedAmrCount }
+            : { state: 'unavailable', count: 0 },
+  };
+}
+
+function buildWorldSnapshot(liveDataStatus?: TwinAgentLiveDataStatus): Record<string, unknown> {
   const s = useFactoryStore.getState();
   return {
+    dataAvailability: buildDataAvailability(s.entities, s.platformCameras, liveDataStatus),
     entities: compactEntities(s.entities),
     recentEvents: s.simEvents
       .slice(0, 20)
@@ -311,7 +440,7 @@ function handleFeedEvent(event: TwinAgentFeedEvent): void {
   }
 }
 
-export function useTwinAgentBridge() {
+export function useTwinAgentBridge(liveDataStatus?: TwinAgentLiveDataStatus) {
   const auth = useAuth();
 
   useEffect(() => {
@@ -323,7 +452,7 @@ export function useTwinAgentBridge() {
         api.postTwinAgentSnapshot(token, {
           sessionId: TWIN_AGENT_SESSION_ID,
           capturedAt: new Date().toISOString(),
-          world: buildWorldSnapshot(),
+          world: buildWorldSnapshot(liveDataStatus),
           ...(organizationId ? { organizationId } : {}),
         }),
       ).catch(() => {});
@@ -333,7 +462,7 @@ export function useTwinAgentBridge() {
       publishSnapshot();
     }, SNAPSHOT_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [auth.session?.accessToken]);
+  }, [auth.session?.accessToken, liveDataStatus]);
 
   const updatesQuery = useAuthedQuery({
     queryKey: ['factory-twin', 'twin-agent-updates', TWIN_AGENT_SESSION_ID],

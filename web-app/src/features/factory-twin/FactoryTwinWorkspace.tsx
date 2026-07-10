@@ -10,7 +10,10 @@ import { SPATIAL_ZONES } from './mirror/domain/spatialZones';
 import { livePersonAnchorForCamera, readStoredLivePersonAnchor } from './mirror/domain/machineCameras';
 import type { CameraEntity, PersonEntity } from './mirror/domain/entities';
 import { useLocalAgent } from './mirror/hooks/useLocalAgent';
-import { useTwinAgentBridge } from './mirror/hooks/useTwinAgentBridge';
+import {
+  useTwinAgentBridge,
+  type TwinAgentLiveDataStatus,
+} from './mirror/hooks/useTwinAgentBridge';
 import { useSimEngine } from './mirror/sim/simEngine';
 import { useFactoryStore, uid } from './mirror/store/factoryStore';
 import { FactoryScene } from './mirror/three/FactoryScene';
@@ -19,7 +22,13 @@ import './mirror/styles.css';
 
 type FactoryMode = 'factory' | 'warehouse';
 
-function FactoryDemo({ liveOnly }: { liveOnly: boolean }) {
+function FactoryDemo({
+  liveOnly,
+  liveDataStatus,
+}: {
+  liveOnly: boolean;
+  liveDataStatus?: TwinAgentLiveDataStatus;
+}) {
   const leftOpen = useFactoryStore((s) => s.leftOpen);
   const rightOpen = useFactoryStore((s) => s.rightOpen);
   const toggleLeft = useFactoryStore((s) => s.toggleLeft);
@@ -28,7 +37,7 @@ function FactoryDemo({ liveOnly }: { liveOnly: boolean }) {
 
   useSimEngine(!liveOnly);
   useLocalAgent(!liveOnly);
-  useTwinAgentBridge();
+  useTwinAgentBridge(liveDataStatus);
 
   // 3D 內滾輪縮放只進 OrbitControls，不冒泡到頁面捲動。React onWheel 預設是 passive，
   // 擋不住頁面捲動，需在容器上掛非被動監聽並 preventDefault（標準 R3F 作法）。
@@ -89,10 +98,12 @@ export function FactoryTwinWorkspace({
   platformCameras,
   livePersons,
   liveOnly = false,
+  liveDataStatus,
 }: {
   platformCameras: CameraEntity[];
   livePersons: PersonEntity[];
   liveOnly?: boolean;
+  liveDataStatus?: TwinAgentLiveDataStatus;
 }) {
   const [mode, setMode] = useState<FactoryMode>('factory');
   const seededMode = useRef<boolean | null>(null);
@@ -159,7 +170,11 @@ export function FactoryTwinWorkspace({
             </div>
           ) : null}
         </div>
-        {activeMode === 'warehouse' ? <WarehouseSimulator /> : <FactoryDemo liveOnly={liveOnly} />}
+        {activeMode === 'warehouse' ? (
+          <WarehouseSimulator />
+        ) : (
+          <FactoryDemo liveOnly={liveOnly} liveDataStatus={liveDataStatus} />
+        )}
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import { useAuthedQuery } from '../../lib/auth-query';
 import type { CameraDevice } from '../../lib/types';
 import { FactoryTwinWorkspace } from './FactoryTwinWorkspace';
 import type { CameraEntity, PersonEntity, Vec3 } from './mirror/domain/entities';
+import type { TwinAgentLiveDataStatus } from './mirror/hooks/useTwinAgentBridge';
 import {
   HC600_01_LIVE_PERSON_ANCHOR_CHANGED_EVENT,
   livePersonAnchorForCamera,
@@ -21,7 +22,7 @@ const LIVE_PERSON_FRESH_MS = 90_000;
 // Allow observations that look slightly "in the future" from the client's clock.
 const LIVE_PERSON_FUTURE_SKEW_MS = 60_000;
 const LIVE_PERSON_BOUNDS_MARGIN_M = 2;
-const CAMERA_SIGNAL_FRESH_MS = 75_000;
+const CAMERA_SIGNAL_FRESH_MS = 90_000;
 
 const FACTORY_CAMERA_LABELS: Array<{ ip: string; label: string; order: number }> = [
   { ip: '192.168.1.31', label: '機台周遭', order: 0 },
@@ -48,6 +49,41 @@ function hasFreshCameraSignal(camera: CameraDevice): boolean {
     .filter(Number.isFinite);
   if (timestamps.length === 0) return false;
   return Date.now() - Math.max(...timestamps) <= CAMERA_SIGNAL_FRESH_MS;
+}
+
+function latestTimestamp(values: Array<string | null | undefined>): string | null {
+  let latestValue: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (!value) continue;
+    const parsed = Date.parse(value);
+    if (!Number.isFinite(parsed) || parsed <= latestMs) continue;
+    latestMs = parsed;
+    latestValue = value;
+  }
+  return latestValue;
+}
+
+function relativeAge(value: string | null, nowMs: number): string {
+  if (!value) return '尚無更新時間';
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return '更新時間不明';
+  const seconds = Math.max(0, Math.round(((nowMs || Date.now()) - parsed) / 1000));
+  if (seconds < 10) return '剛剛';
+  if (seconds < 60) return `${seconds} 秒前`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} 分鐘前`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} 小時前`;
+  return `${Math.round(hours / 24)} 天前`;
+}
+
+function timestampIsFresh(value: string | null, nowMs: number, freshMs: number): boolean {
+  if (!value) return false;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return false;
+  const age = (nowMs || Date.now()) - parsed;
+  return age >= -LIVE_PERSON_FUTURE_SKEW_MS && age <= freshMs;
 }
 
 function toFactoryCamera(camera: CameraDevice): CameraEntity {
@@ -265,12 +301,13 @@ export function FactoryTwinPage() {
     };
   }, []);
 
-  const platformCameras = useMemo(() => {
+  const factoryCameraRecords = useMemo(() => {
     return [...(camerasQuery.data?.cameras ?? [])]
       .filter((camera) => Boolean(matchingFactoryCamera(camera)))
-      .sort((a, b) => cameraSortOrder(a) - cameraSortOrder(b) || a.name.localeCompare(b.name))
-      .map(toFactoryCamera);
+      .sort((a, b) => cameraSortOrder(a) - cameraSortOrder(b) || a.name.localeCompare(b.name));
   }, [camerasQuery.data?.cameras]);
+
+  const platformCameras = useMemo(() => factoryCameraRecords.map(toFactoryCamera), [factoryCameraRecords]);
 
   const livePersons = useMemo(() => {
     const people = toLivePersons(camerasQuery.data?.cameras ?? [], nowMs, livePersonAnchorOverride);
@@ -302,6 +339,70 @@ export function FactoryTwinPage() {
     const count = person.attrs?.personCount;
     return total + (typeof count === 'number' && Number.isFinite(count) && count > 0 ? count : 1);
   }, 0);
+  const initialLoading = camerasQuery.isLoading && !camerasQuery.data;
+  const initialError = camerasQuery.isError && !camerasQuery.data;
+  const cameraLatestAt = latestTimestamp(
+    factoryCameraRecords.flatMap((camera) => [camera.lastFrameAt, camera.latestFrame?.capturedAt]),
+  );
+  const latestPersonObservation = factoryCameraRecords
+    .map((camera) => camera.latestPersonObservation)
+    .filter((observation): observation is NonNullable<CameraDevice['latestPersonObservation']> => Boolean(observation))
+    .sort(
+      (a, b) =>
+        Date.parse(b.receivedAt || b.capturedAt) - Date.parse(a.receivedAt || a.capturedAt),
+    )[0] ?? null;
+  const personLatestAt = latestPersonObservation
+    ? latestPersonObservation.receivedAt || latestPersonObservation.capturedAt
+    : null;
+  const personFresh = timestampIsFresh(personLatestAt, nowMs, LIVE_PERSON_FRESH_MS);
+  const personState: TwinAgentLiveDataStatus['personState'] = initialLoading
+    ? 'loading'
+    : initialError
+      ? 'error'
+      : !personLatestAt
+        ? 'unavailable'
+        : personFresh
+          ? 'current'
+          : 'stale';
+  const liveDataStatus = useMemo<TwinAgentLiveDataStatus>(
+    () => ({
+      mode: liveOnly ? 'live' : 'simulation',
+      cameraState: initialLoading ? 'loading' : initialError ? 'error' : 'ready',
+      cameraCount: initialLoading ? null : platformCameras.length,
+      cameraLatestAt,
+      personState,
+      personLatestAt,
+    }),
+    [cameraLatestAt, initialError, initialLoading, liveOnly, personLatestAt, personState, platformCameras.length],
+  );
+
+  const cameraStatusText = initialLoading
+    ? '攝影機載入中'
+    : initialError
+      ? '攝影機資料無法讀取'
+      : platformCameras.length === 0
+        ? '尚無攝影機資料'
+        : onlineCount > 0
+          ? `${onlineCount}/${platformCameras.length} 攝影機在線`
+          : `攝影機資料最近一次在 ${relativeAge(cameraLatestAt, nowMs)}`;
+  const cameraEvidenceText =
+    !initialLoading && !initialError && cameraLatestAt
+      ? timestampIsFresh(cameraLatestAt, nowMs, CAMERA_SIGNAL_FRESH_MS)
+        ? `現場資料 ${relativeAge(cameraLatestAt, nowMs)}`
+        : `現場資料最近一次在 ${relativeAge(cameraLatestAt, nowMs)}`
+      : null;
+  const personStatusText = initialLoading
+    ? '人員資料載入中'
+    : initialError
+      ? '人員資料無法讀取'
+      : livePersonCount > 0
+        ? `現場 ${livePersonCount} 人`
+        : latestPersonObservation && personFresh && latestPersonObservation.personCount === 0
+          ? '現場 0 人（最近一次辨識）'
+          : personLatestAt
+            ? `人員資料最近一次在 ${relativeAge(personLatestAt, nowMs)}`
+            : '人員資料尚無';
+  const statusParts = [cameraStatusText, cameraEvidenceText, personStatusText, '真實資料'].filter(Boolean);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -310,8 +411,7 @@ export function FactoryTwinPage() {
           靚程工廠即時戰情室
         </h1>
         <p className="font-mono text-[11px] text-chrome-600">
-          {onlineCount} 攝影機在線・現場 {livePersonCount} 人・
-          {platformCameras[0]?.samplingIntervalSeconds ?? 10}s・真實資料
+          {statusParts.join('・')}
         </p>
       </div>
 
@@ -322,7 +422,12 @@ export function FactoryTwinPage() {
       ) : null}
 
       <div className="min-h-0 flex-1">
-        <FactoryTwinWorkspace platformCameras={platformCameras} livePersons={livePersons} liveOnly={liveOnly} />
+        <FactoryTwinWorkspace
+          platformCameras={platformCameras}
+          livePersons={livePersons}
+          liveOnly={liveOnly}
+          liveDataStatus={liveDataStatus}
+        />
       </div>
     </div>
   );

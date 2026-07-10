@@ -36,11 +36,13 @@ import type {
   SupportQueueItem,
   SupportQueueAction,
   CameraDeviceList,
+  PlatformHealthStatus,
   TelemetryBatchRecord,
   TwinAgentMessagePayload,
   TwinAgentMessageResponse,
   TwinAgentSnapshotPayload,
   TwinAgentUpdates,
+  TwinAgentRuntimeStatus,
   WebSession,
 } from './types'
 
@@ -497,6 +499,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  getHealth: () => apiFetch<PlatformHealthStatus>('/healthz'),
   getOverview: (token: string) => apiFetch<Overview>('/v1/web/overview', { token }),
   listCameras: (token: string) => apiFetch<CameraDeviceList>('/v1/cameras', { token }),
   getControlPlaneDashboard: (token: string) =>
@@ -812,6 +815,8 @@ export const api = {
       `/v1/twin-agent/updates?sessionId=${encodeURIComponent(sessionId)}${cursor == null ? '' : `&cursor=${cursor}`}`,
       { token },
     ),
+  getTwinAgentStatus: (token: string) =>
+    apiFetch<TwinAgentRuntimeStatus>('/v1/twin-agent/status', { token }),
 }
 
 export function absoluteArtifactUrl(path: string): string {

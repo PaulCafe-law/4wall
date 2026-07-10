@@ -242,6 +242,29 @@ def is_worker_online() -> bool:
     return last_seen is not None and time.monotonic() - last_seen <= WORKER_ONLINE_WINDOW
 
 
+def get_twin_agent_runtime_status(*, readable_organization_ids: set[str] | None) -> dict:
+    """Return health metadata without exposing any world-snapshot content."""
+
+    now = time.monotonic()
+    with _STATE.lock:
+        last_seen = _STATE.last_worker_seen_monotonic
+        candidates = [
+            slot
+            for slot in _STATE.world_slots.values()
+            if readable_organization_ids is None or slot.organization_id in readable_organization_ids
+        ]
+        slot = max(candidates, key=lambda item: item.received_at_monotonic) if candidates else None
+    worker_age = None if last_seen is None else max(0.0, now - last_seen)
+    snapshot_age = None if slot is None else max(0.0, now - slot.received_at_monotonic)
+    return {
+        "workerOnline": worker_age is not None and worker_age <= WORKER_ONLINE_WINDOW,
+        "workerLastSeenSeconds": worker_age,
+        "snapshotAvailable": slot is not None,
+        "snapshotAgeSeconds": snapshot_age,
+        "snapshotCapturedAt": slot.captured_at if slot is not None else None,
+    }
+
+
 def sweep_twin_agent_jobs(settings) -> None:
     now = time.monotonic()
     expired_line_jobs: list[TwinAgentJob] = []

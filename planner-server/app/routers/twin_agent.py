@@ -23,6 +23,7 @@ from app.twin_agent import (
     enqueue_twin_agent_job,
     get_active_session_id,
     get_owned_session_organization,
+    get_twin_agent_runtime_status,
     get_world_snapshot,
     is_worker_online,
     record_worker_heartbeat,
@@ -133,6 +134,21 @@ def get_twin_agent_updates(
         "workerOnline": is_worker_online(),
         "events": [_feed_event_payload(event) for event in events],
         "cursor": tail,
+    }
+
+
+@router.get("/v1/twin-agent/status")
+def get_twin_agent_status(
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+) -> dict:
+    readable_organization_ids = (
+        None
+        if current_user.global_roles.intersection({"platform_admin", "ops"})
+        else set(current_user.readable_org_ids)
+    )
+    return {
+        "enabled": True,
+        **get_twin_agent_runtime_status(readable_organization_ids=readable_organization_ids),
     }
 
 

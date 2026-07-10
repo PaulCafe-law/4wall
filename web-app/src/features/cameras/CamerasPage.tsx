@@ -14,6 +14,9 @@ import {
   type WorkOrderSheet,
 } from '../../lib/work-order'
 
+const CAMERA_DATA_FRESH_SECONDS = 90
+const RECOGNITION_DATA_FRESH_SECONDS = 180
+
 function secondsSince(value: string | null): number | null {
   if (!value) return null
   const timestamp = new Date(value).getTime()
@@ -39,6 +42,13 @@ function heartbeatLabel(camera: CameraDevice): string {
   if (camera.lastError) return '異常'
   if (age === null) return '未知'
   return age <= 90 ? '連線中' : '逾時'
+}
+
+function dataAgeLabel(value: string | null, freshSeconds: number): string {
+  const seconds = secondsSince(value)
+  if (seconds === null) return '尚無更新資料'
+  if (seconds <= freshSeconds) return `更新於 ${formatAge(value)}`
+  return `資料已過期，最近一次在 ${formatAge(value)}`
 }
 
 const CAMERA_STATUS_LABELS: Record<string, string> = {
@@ -220,7 +230,16 @@ function GaugeReadingList({ readings }: { readings: CameraGaugeReading[] }) {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="break-words text-sm font-semibold text-chrome-950">{reading.label || reading.gaugeId}</p>
-              <p className="mt-1 text-xs text-chrome-500">{formatNullableDateTime(reading.capturedAt)}</p>
+              <p
+                className={`mt-1 text-xs ${
+                  (secondsSince(reading.receivedAt || reading.capturedAt) ?? Number.POSITIVE_INFINITY) >
+                  RECOGNITION_DATA_FRESH_SECONDS
+                    ? 'font-medium text-amber-800'
+                    : 'text-chrome-500'
+                }`}
+              >
+                {dataAgeLabel(reading.receivedAt || reading.capturedAt, RECOGNITION_DATA_FRESH_SECONDS)}
+              </p>
             </div>
             <Badge value={reading.status} />
           </div>
@@ -366,6 +385,9 @@ function HmiOcrPanel({ observation }: { observation: CameraOcrObservation | null
   }
 
   const text = summaryText(observation)
+  const observationTimestamp = observation.receivedAt || observation.capturedAt
+  const observationStale =
+    (secondsSince(observationTimestamp) ?? Number.POSITIVE_INFINITY) > RECOGNITION_DATA_FRESH_SECONDS
 
   return (
     <Panel>
@@ -375,7 +397,9 @@ function HmiOcrPanel({ observation }: { observation: CameraOcrObservation | null
           <h2 className="mt-2 font-display text-2xl font-semibold text-chrome-950">
             {ocrModeLabel(observation.mode)}
           </h2>
-          <p className="mt-1 text-sm text-chrome-500">{formatNullableDateTime(observation.capturedAt)}</p>
+          <p className={`mt-1 text-sm ${observationStale ? 'font-medium text-amber-800' : 'text-chrome-500'}`}>
+            {dataAgeLabel(observationTimestamp, RECOGNITION_DATA_FRESH_SECONDS)}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge value={observation.mode} />
@@ -436,6 +460,7 @@ export function CamerasPage() {
   const onlineCount = visibleCameras.filter((camera) => heartbeatLabel(camera) === '連線中').length
   const queuedCount = visibleCameras.reduce((sum, camera) => sum + camera.queuedFrameCount, 0)
   const failedCount = visibleCameras.reduce((sum, camera) => sum + camera.failedFrameCount, 0)
+  const initialLoading = camerasQuery.isLoading && !camerasQuery.data
 
   return (
     <div className="space-y-6">
@@ -446,10 +471,10 @@ export function CamerasPage() {
       />
 
       <div className="grid gap-4 md:grid-cols-4">
-        <Metric label="攝影機" value={visibleCameras.length} />
-        <Metric label="連線中" value={onlineCount} hint="最近 90 秒內有連線回報" />
-        <Metric label="待分析" value={queuedCount} hint="已上傳，等待系統分析" />
-        <Metric label="異常" value={failedCount} hint="上傳或分析失敗的截圖" />
+        <Metric label="攝影機" value={initialLoading ? '載入中' : visibleCameras.length} />
+        <Metric label="連線中" value={initialLoading ? '載入中' : onlineCount} hint="最近 90 秒內有連線回報" />
+        <Metric label="待分析" value={initialLoading ? '載入中' : queuedCount} hint="已上傳，等待系統分析" />
+        <Metric label="異常" value={initialLoading ? '載入中' : failedCount} hint="上傳或分析失敗的截圖" />
       </div>
 
       {camerasQuery.isLoading ? (
@@ -535,7 +560,15 @@ export function CamerasPage() {
                           </div>
                           <div>
                             <p className="break-words text-sm font-semibold text-chrome-950">{cameraDisplayName(camera, selectedCameraGroup.cameras)}</p>
-                            <p className="mt-1 text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</p>
+                            <p
+                              className={`mt-1 text-xs ${
+                                (secondsSince(camera.lastFrameAt) ?? Number.POSITIVE_INFINITY) > CAMERA_DATA_FRESH_SECONDS
+                                  ? 'font-medium text-amber-800'
+                                  : 'text-chrome-500'
+                              }`}
+                            >
+                              {dataAgeLabel(camera.lastFrameAt, CAMERA_DATA_FRESH_SECONDS)}
+                            </p>
                           </div>
                           {camera.latestGaugeReadings.length > 0 ? (
                             <div className="grid gap-2 text-xs text-chrome-700">
@@ -582,6 +615,15 @@ export function CamerasPage() {
                   displayName={cameraDisplayName(selectedCamera, selectedCameraGroup?.cameras ?? visibleCameras)}
                 />
               </div>
+              <p
+                className={`border-t px-5 py-3 text-sm ${
+                  (secondsSince(selectedCamera.lastFrameAt) ?? Number.POSITIVE_INFINITY) > CAMERA_DATA_FRESH_SECONDS
+                    ? 'border-amber-200 bg-amber-50 text-amber-900'
+                    : 'border-chrome-200 bg-white/70 text-chrome-600'
+                }`}
+              >
+                {dataAgeLabel(selectedCamera.lastFrameAt, CAMERA_DATA_FRESH_SECONDS)}
+              </p>
             </Panel>
 
             <Panel>
@@ -641,7 +683,15 @@ export function CamerasPage() {
                               <Badge value={heartbeatLabel(camera)} />
                               {camera.latestFrame ? <Badge value={camera.latestFrame.analysisStatus} /> : null}
                             </span>
-                            <span className="mt-2 block text-xs text-chrome-500">最新畫面 {formatAge(camera.lastFrameAt)}</span>
+                            <span
+                              className={`mt-2 block text-xs ${
+                                (secondsSince(camera.lastFrameAt) ?? Number.POSITIVE_INFINITY) > CAMERA_DATA_FRESH_SECONDS
+                                  ? 'font-medium text-amber-800'
+                                  : 'text-chrome-500'
+                              }`}
+                            >
+                              {dataAgeLabel(camera.lastFrameAt, CAMERA_DATA_FRESH_SECONDS)}
+                            </span>
                           </button>
                         )
                       })}

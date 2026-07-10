@@ -198,7 +198,7 @@ describe('FactoryTwinPage', () => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('platform cameras: 3');
     });
     // 統計卡已改為 3D 區塊上方的一行狀態列。
-    expect(await screen.findByText(/3 攝影機在線・現場 0 人・10s・真實資料/)).toBeInTheDocument();
+    expect(await screen.findByText(/3\/3 攝影機在線.*人員資料尚無.*真實資料/)).toBeInTheDocument();
     expect(screen.queryByText('快照更新')).not.toBeInTheDocument();
     expect(screen.queryByText('已綁定至數位分身的平台攝影機')).not.toBeInTheDocument();
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('gauge readings: 2');
@@ -259,7 +259,7 @@ describe('FactoryTwinPage', () => {
 
     renderFactoryRoute(createAuthValue(), '/factory-twin?anchorPicker=1');
 
-    expect(await screen.findByText(/現場 0 人/)).toBeInTheDocument();
+    expect(await screen.findByText(/人員資料尚無/)).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 1');
     });
@@ -328,6 +328,34 @@ describe('FactoryTwinPage', () => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 1');
     });
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('現場人員 ×2');
+  });
+
+  it('shows loading instead of zero before the first camera response', () => {
+    apiMock.listCameras.mockReturnValueOnce(new Promise(() => {}));
+
+    renderFactoryRoute();
+
+    expect(screen.getByText(/攝影機載入中・人員資料載入中・真實資料/)).toBeInTheDocument();
+    expect(screen.queryByText(/現場 0 人|0 攝影機/)).not.toBeInTheDocument();
+  });
+
+  it('labels stale camera and person evidence with the last update age', async () => {
+    const staleAt = new Date(Date.now() - 5 * 60_000).toISOString();
+    const camera = cameraFixture(
+      'stale-camera',
+      'PoE Camera 192.168.1.31',
+      'dd6cbdd3aa744736ad96d2791d689fce',
+      [],
+      personObservation('stale-camera', { capturedAt: staleAt, receivedAt: staleAt }),
+    );
+    camera.lastHeartbeatAt = staleAt;
+    camera.lastFrameAt = staleAt;
+    apiMock.listCameras.mockResolvedValueOnce({ cameras: [camera] });
+
+    renderFactoryRoute();
+
+    expect(await screen.findByText(/攝影機資料最近一次在 5 分鐘前/)).toBeInTheDocument();
+    expect(screen.getByText(/人員資料最近一次在 5 分鐘前/)).toBeInTheDocument();
   });
 });
 

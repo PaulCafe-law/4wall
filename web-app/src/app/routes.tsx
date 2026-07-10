@@ -25,6 +25,7 @@ import { OverviewPage } from '../features/overview/OverviewPage'
 import { SiteMapPage } from '../features/site-map/SiteMapPage'
 import { SitesPage } from '../features/sites/SitesPage'
 import { SupportPage } from '../features/support/SupportPage'
+import { SystemStatusPage } from '../features/system-status/SystemStatusPage'
 import { AuthProvider, isFactoryOpsCustomer, useAuth } from '../lib/auth'
 
 const queryClient = new QueryClient()
@@ -69,6 +70,7 @@ export function AppRoutes() {
                 />
                 <Route path="/cameras" element={<CamerasPage />} />
                 <Route path="/factory-twin" element={<FactoryTwinPage />} />
+                <Route path="/system-status" element={<SystemStatusPage />} />
                 <Route
                   path="/site-map"
                   element={

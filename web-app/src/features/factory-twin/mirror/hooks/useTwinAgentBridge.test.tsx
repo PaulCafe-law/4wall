@@ -6,7 +6,12 @@ import { beforeEach, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../../../test/utils';
 import type { MachineEntity, PersonEntity } from '../domain/entities';
 import { useFactoryStore } from '../store/factoryStore';
-import { compactEntities, TWIN_AGENT_SESSION_ID, useTwinAgentBridge } from './useTwinAgentBridge';
+import {
+  compactEntities,
+  TWIN_AGENT_SESSION_ID,
+  useTwinAgentBridge,
+  type TwinAgentLiveDataStatus,
+} from './useTwinAgentBridge';
 
 const apiMock = vi.hoisted(() => ({
   postTwinAgentSnapshot: vi.fn(),
@@ -33,8 +38,8 @@ const toolsMock = vi.hoisted(() => ({
 
 vi.mock('../agent/tools', () => ({ executeToolCall: toolsMock.executeToolCall }));
 
-function Harness() {
-  useTwinAgentBridge();
+function Harness({ liveDataStatus }: { liveDataStatus?: TwinAgentLiveDataStatus }) {
+  useTwinAgentBridge(liveDataStatus);
   return null;
 }
 
@@ -246,6 +251,36 @@ it('pushes a compact world snapshot every 3 seconds', () => {
   }
 });
 
+it('publishes loading and unavailable AMR states without turning them into zero live data', () => {
+  apiMock.getTwinAgentUpdates.mockResolvedValue({ workerOnline: false, events: [], cursor: 0 });
+  apiMock.postTwinAgentSnapshot.mockResolvedValue(undefined);
+
+  renderWithProviders(
+    <Harness
+      liveDataStatus={{
+        mode: 'live',
+        cameraState: 'loading',
+        cameraCount: null,
+        cameraLatestAt: null,
+        personState: 'loading',
+        personLatestAt: null,
+      }}
+    />,
+  );
+
+  const [, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
+  expect(payload.world.dataAvailability).toMatchObject({
+    camera: { state: 'loading', count: null },
+    people: { state: 'loading' },
+    amr: {
+      state: 'not_connected',
+      source: 'live',
+      count: 0,
+      text: '靚程工廠目前沒有接入真實 AMR 資料',
+    },
+  });
+});
+
 it('includes real gauge readings and the 派工單 sheet in the camera summary', () => {
   vi.useFakeTimers();
   try {
@@ -309,17 +344,22 @@ it('includes real gauge readings and the 派工單 sheet in the camera summary',
     const camera = payload.world.cameraSummary[0];
     expect(camera.name).toBe('PoE Camera 192.168.1.10');
     expect(camera.actualGaugeReadings).toEqual([
-      {
+      expect.objectContaining({
         label: 'PRESS AM METER',
         value: 0,
         unit: 'A',
         status: 'ok',
         statusText: '正常',
         capturedAt: '2026-07-05T19:35:59+08:00',
-      },
+        freshness: expect.objectContaining({ state: 'stale' }),
+      }),
     ]);
     expect(camera.hmiOcr.summary).toBe('HC600 保溫中。');
     expect(camera.hmiOcr.workOrder).toEqual(workOrder);
+    expect(camera.hmiOcr.workOrderReview).toMatchObject({
+      status: 'pending_confirmation',
+      statusText: '待確認',
+    });
     expect(camera.hmiOcr.screenVisibility).toMatchObject({
       status: 'lit',
       statusText: '螢幕有亮，代表目前有開機跡象',
@@ -519,6 +559,7 @@ it('uses dark HMI screen visibility as the machine power evidence', () => {
       sourceCamera: '操作側',
       capturedAt: '2026-07-05T20:00:00+08:00',
       confidence: 0.88,
+      freshness: expect.objectContaining({ state: 'stale' }),
     });
   } finally {
     vi.useRealTimers();

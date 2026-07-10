@@ -23,7 +23,10 @@ TOOL_NAMES = (
     "clear_overlays",
 )
 MAX_TOOL_CALLS = 10
-FALLBACK_TEXT = "AI 助理暫時無法回應，請稍後再試 / The AI assistant cannot respond right now."
+FALLBACK_TEXT = "4WALL AI 助手暫時無法回應，請稍後再試。"
+AMR_QUERY_TERMS = ("amr", "自主移動機器人", "自走搬運車", "搬運機器人")
+WORK_ORDER_TERMS = ("派工單", "工單", "模具", "模號", "材質", "顏色", "總計", "生產數", "計畫數", "pcs")
+WORK_ORDER_CONFIDENCE_THRESHOLD = 0.75
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,22 +96,38 @@ class TwinAgentRunner:
             self._processed_job_ids.append(job_id)
             self._processed_job_ids = self._processed_job_ids[-100:]
 
-        prompt = build_agent_prompt(
-            job,
-            polled.world,
-            world_age_seconds=polled.world_age_seconds,
-            ledger_context=polled.ledger_context,
-        )
-        bridge_result = self.bridge.run(prompt)
-        if bridge_result.status != "ok":
-            print(
-                json.dumps(
-                    {"status": "degraded", "bridgeStatus": bridge_result.status, "bridgeError": bridge_result.error},
-                    ensure_ascii=False,
-                ),
-                file=sys.stderr,
+        grounded_reply = build_grounded_reply(job, polled.world)
+        if grounded_reply is not None:
+            bridge_status = "ok"
+            result_payload = {"text": grounded_reply[: self.config.agent.max_output_chars], "toolCalls": []}
+        else:
+            prompt = build_agent_prompt(
+                job,
+                polled.world,
+                world_age_seconds=polled.world_age_seconds,
+                ledger_context=polled.ledger_context,
             )
-        result_payload = build_result_payload(bridge_result, max_output_chars=self.config.agent.max_output_chars)
+            bridge_result = self.bridge.run(prompt)
+            bridge_status = bridge_result.status
+            if bridge_result.status != "ok":
+                print(
+                    json.dumps(
+                        {
+                            "status": "degraded",
+                            "bridgeStatus": bridge_result.status,
+                            "bridgeError": bridge_result.error,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    file=sys.stderr,
+                )
+            result_payload = build_result_payload(bridge_result, max_output_chars=self.config.agent.max_output_chars)
+            result_payload = enforce_response_trust_labels(
+                result_payload,
+                job=job,
+                world=polled.world,
+                max_output_chars=self.config.agent.max_output_chars,
+            )
         if self.publish_enabled and job_id:
             self.result_sink.submit_job_result(job_id, result_payload)
             if self.result_sink.state.last_error:
@@ -119,7 +138,7 @@ class TwinAgentRunner:
         return {
             "skipped": False,
             "jobId": job_id,
-            "bridgeStatus": bridge_result.status,
+            "bridgeStatus": bridge_status,
             "result": result_payload,
             "platformQueuedCount": self.result_sink.state.queued_count,
         }
@@ -146,6 +165,10 @@ def build_agent_prompt(
         "Do not say the machine on/off state signal is not connected. For HC600-01, the HMI screen visibility is the practical power evidence.",
         "After the screen status, summarize live gauge readings, HMI/OCR work order, and nearby live people in plain Chinese when present.",
         "If a live-only machine has no related camera/HMI/person data in machineRealData, say the live feed is unavailable instead of using simulated placeholder metrics.",
+        "For current-state questions, inspect dataAvailability and each source freshness field. If a source is stale, say 最近一次在多久前 and never describe stale evidence as current.",
+        "If dataAvailability says a source is loading, say 資料載入中. Do not translate loading into zero or no people/cameras.",
+        "For Jingcheng AMR questions, use only live AMR entities. If dataAvailability.amr is not_connected, state that no live AMR feed is connected; never quote simulated AMR state.",
+        "If hmiOcr.workOrderReview.status is pending_confirmation, every statement using that work order must explicitly include 待確認 and must not present its values as confirmed.",
         "For plan-vs-actual reconciliation, use ONLY ledgerContext.text and ledgerContext.planVsActual.",
         "If ledgerContext is unavailable or empty, say 今日尚無派工單對帳資料 / no reconciliation data yet.",
         "Reply in the SAME LANGUAGE as the question.",
@@ -169,6 +192,166 @@ def build_agent_prompt(
         json.dumps(job_payload, ensure_ascii=False),
     ]
     return "\n".join(lines)
+
+
+def build_grounded_reply(job: dict[str, Any], world: dict[str, Any] | None) -> str | None:
+    """Return deterministic answers for facts that must never be model-inferred."""
+
+    question = str(job.get("text") or "")
+    normalized = question.casefold()
+    if not any(term in normalized for term in AMR_QUERY_TERMS):
+        return None
+    if _world_has_live_amr(world):
+        return None
+
+    amr_state = None
+    if isinstance(world, dict):
+        availability = world.get("dataAvailability")
+        if isinstance(availability, dict):
+            amr = availability.get("amr")
+            if isinstance(amr, dict):
+                amr_state = amr.get("state")
+    is_jingcheng = str(job.get("siteSlug") or "").casefold() == "jingcheng"
+    if amr_state != "not_connected" and not is_jingcheng:
+        return None
+
+    if _contains_cjk(question):
+        return "靚程工廠目前沒有接入真實 AMR 資料，因此無法提供即時位置、任務或電量。畫面中的 AMR 模擬不代表現場狀態。"
+    return "No live AMR feed is connected at Jingcheng, so current position, task, and battery cannot be verified. Simulated AMRs do not represent the factory floor."
+
+
+def enforce_response_trust_labels(
+    payload: dict[str, Any],
+    *,
+    job: dict[str, Any],
+    world: dict[str, Any] | None,
+    max_output_chars: int,
+) -> dict[str, Any]:
+    text = str(payload.get("text") or "")
+    if not text or "待確認" in text or not _world_has_pending_work_order(world):
+        return payload
+    combined = f"{job.get('text') or ''} {text}".casefold()
+    pending_values = _pending_work_order_values(world)
+    references_work_order = any(term in combined for term in WORK_ORDER_TERMS) or any(
+        value in combined for value in pending_values
+    )
+    if not references_work_order:
+        return payload
+    prefix = "派工單辨識待確認；" if _contains_cjk(combined) else "Work-order recognition is pending confirmation; "
+    return {**payload, "text": f"{prefix}{text}"[:max_output_chars]}
+
+
+def _world_has_live_amr(world: dict[str, Any] | None) -> bool:
+    if not isinstance(world, dict):
+        return False
+    entities = world.get("entities")
+    if not isinstance(entities, list):
+        return False
+    return any(
+        isinstance(entity, dict)
+        and entity.get("type") == "amr"
+        and entity.get("dataSource") == "live"
+        for entity in entities
+    )
+
+
+def _world_has_pending_work_order(world: dict[str, Any] | None) -> bool:
+    for camera in _world_camera_summaries(world):
+        hmi = camera.get("hmiOcr")
+        if not isinstance(hmi, dict):
+            continue
+        review = hmi.get("workOrderReview")
+        if isinstance(review, dict) and review.get("status") == "pending_confirmation":
+            return True
+        work_order = hmi.get("workOrder")
+        if isinstance(work_order, dict) and _raw_work_order_is_pending(work_order):
+            return True
+    return False
+
+
+def _pending_work_order_values(world: dict[str, Any] | None) -> set[str]:
+    values: set[str] = set()
+    for camera in _world_camera_summaries(world):
+        hmi = camera.get("hmiOcr")
+        if not isinstance(hmi, dict):
+            continue
+        review = hmi.get("workOrderReview")
+        work_order = hmi.get("workOrder")
+        review_pending = isinstance(review, dict) and review.get("status") == "pending_confirmation"
+        if not isinstance(work_order, dict) or (not review_pending and not _raw_work_order_is_pending(work_order)):
+            continue
+        _collect_recognized_values(work_order, values)
+    return values
+
+
+def _collect_recognized_values(value: Any, target: set[str]) -> None:
+    if isinstance(value, dict):
+        recognized_value = value.get("value")
+        if recognized_value not in (None, "unknown"):
+            normalized = str(recognized_value).strip().casefold()
+            if len(normalized) >= 2:
+                target.add(normalized)
+        for child in value.values():
+            _collect_recognized_values(child, target)
+    elif isinstance(value, list):
+        for child in value:
+            _collect_recognized_values(child, target)
+
+
+def _world_camera_summaries(world: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(world, dict):
+        return []
+    cameras: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    def append_camera(value: Any) -> None:
+        if not isinstance(value, dict):
+            return
+        key = str(value.get("id") or id(value))
+        if key in seen:
+            return
+        seen.add(key)
+        cameras.append(value)
+
+    for camera in world.get("cameraSummary") or []:
+        append_camera(camera)
+    for machine in world.get("machineRealData") or []:
+        if not isinstance(machine, dict):
+            continue
+        for camera in machine.get("relatedCameras") or []:
+            append_camera(camera)
+    return cameras
+
+
+def _raw_work_order_is_pending(work_order: dict[str, Any]) -> bool:
+    if work_order.get("stabilized") is not True:
+        return True
+    for group_name in ("fields", "quantities"):
+        group = work_order.get(group_name)
+        if isinstance(group, dict) and _contains_low_confidence_leaf(group):
+            return True
+    return False
+
+
+def _contains_low_confidence_leaf(value: Any) -> bool:
+    if isinstance(value, dict):
+        confidence = value.get("confidence")
+        recognized_value = value.get("value")
+        if (
+            isinstance(confidence, (int, float))
+            and not isinstance(confidence, bool)
+            and recognized_value not in (None, "unknown")
+            and confidence < WORK_ORDER_CONFIDENCE_THRESHOLD
+        ):
+            return True
+        return any(_contains_low_confidence_leaf(child) for child in value.values())
+    if isinstance(value, list):
+        return any(_contains_low_confidence_leaf(child) for child in value)
+    return False
+
+
+def _contains_cjk(value: str) -> bool:
+    return any("\u3400" <= character <= "\u9fff" for character in value)
 
 
 def build_result_payload(bridge_result: BridgeResult, *, max_output_chars: int) -> dict[str, Any]:
