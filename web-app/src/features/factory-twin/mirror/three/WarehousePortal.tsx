@@ -71,10 +71,10 @@ export function WarehousePortal({
           type="button"
           onPointerDown={(event) => {
             event.stopPropagation();
-            onActivate();
           }}
           onClick={(event) => {
             event.stopPropagation();
+            onActivate();
           }}
         >
           <span>{label}</span>
