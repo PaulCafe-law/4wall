@@ -124,7 +124,7 @@ it('isolates accelerator demo snapshots from Jingcheng live evidence and organiz
       }}
       options={{
         sessionId: DEMO_TWIN_AGENT_SESSION_ID,
-        bindOrganization: false,
+        snapshotScope: 'accelerator_demo',
         includeLiveEvidence: false,
         demoScenarioId: 'plan_gap',
       }}
@@ -134,6 +134,7 @@ it('isolates accelerator demo snapshots from Jingcheng live evidence and organiz
   await waitFor(() => expect(apiMock.postTwinAgentSnapshot).toHaveBeenCalled());
   const [, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
   expect(payload.sessionId).toBe(DEMO_TWIN_AGENT_SESSION_ID);
+  expect(payload.snapshotScope).toBe('accelerator_demo');
   expect(payload).not.toHaveProperty('organizationId');
   expect(payload.world.dataAvailability).toMatchObject({
     mode: 'simulation',

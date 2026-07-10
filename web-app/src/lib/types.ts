@@ -982,6 +982,7 @@ export interface TwinAgentSnapshotPayload {
   capturedAt: string
   world: Record<string, unknown>
   organizationId?: string
+  snapshotScope?: 'organization_live' | 'web_only' | 'accelerator_demo'
 }
 
 export interface TwinAgentMessagePayload {

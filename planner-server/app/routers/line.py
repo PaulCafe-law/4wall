@@ -68,7 +68,12 @@ from app.line_floorplan.links import liveview_url_for_binding
 from app.models import CameraFrame, IncidentRecord, LineGroupBinding, LineWebhookEventRecord, utc_now
 from app.rate_limit import RateLimitRule, RateLimiter, client_identity
 from app.storage import ArtifactStorage
-from app.twin_agent import count_pending_line_jobs, enqueue_twin_agent_job, sweep_twin_agent_jobs
+from app.twin_agent import (
+    count_pending_line_jobs,
+    enqueue_twin_agent_job,
+    get_fresh_demo_session_id,
+    sweep_twin_agent_jobs,
+)
 
 
 router = APIRouter(tags=["line"])
@@ -81,6 +86,8 @@ FLOORPLAN_STATE_CACHE_SECONDS = 5
 TWIN_AGENT_LINE_RATE_LIMIT = RateLimitRule(max_attempts=6, window_seconds=60)
 TWIN_AGENT_LINE_PENDING_MAX = 3
 TWIN_AGENT_LINE_BUSY_TEXT = "訊息較多，AI 助理稍後回覆，請稍等再問一次。"
+TWIN_AGENT_DEMO_UNAVAILABLE_TEXT = "展示工廠目前未連線，請先在投影電腦開啟 4WALL 展示工廠頁面後再試。"
+_TWIN_AGENT_DEMO_PREFIX_RE = re.compile(r"^展示工廠(?:\s*[：:]\s*|\s+)(.*)$")
 RICH_MENU_ACTIONS = {"floorplan", "machines", "gauges", "daily_incidents"}
 INCIDENT_POSTBACK_ACTIONS = {
     "confirm_incident",
@@ -508,6 +515,8 @@ def _handle_twin_agent_message(
     text: str,
 ) -> None:
     sweep_twin_agent_jobs(settings)
+    demo_question = _demo_agent_question(text)
+    demo_session_id = None
     if count_pending_line_jobs(binding.group_id) >= TWIN_AGENT_LINE_PENDING_MAX:
         _reply_messages_if_possible(settings, event, [build_text_message(TWIN_AGENT_LINE_BUSY_TEXT)])
         return
@@ -516,14 +525,34 @@ def _handle_twin_agent_message(
     except HTTPException:
         _reply_messages_if_possible(settings, event, [build_text_message(TWIN_AGENT_LINE_BUSY_TEXT)])
         return
+    if demo_question is not None:
+        demo_session_id = get_fresh_demo_session_id()
+        if demo_session_id is None:
+            _reply_messages_if_possible(
+                settings,
+                event,
+                [build_text_message(TWIN_AGENT_DEMO_UNAVAILABLE_TEXT)],
+            )
+            return
     enqueue_twin_agent_job(
         source="line",
-        text=text,
-        organization_id=binding.organization_id,
+        text=demo_question if demo_question is not None else text,
+        session_id=demo_session_id,
+        organization_id=None if demo_session_id else binding.organization_id,
         group_id=binding.group_id,
         reply_token=event.get("replyToken"),
-        site_slug=binding.site_slug,
+        site_slug=None if demo_session_id else binding.site_slug,
     )
+
+
+def _demo_agent_question(text: str) -> str | None:
+    stripped = text.strip()
+    if stripped == "展示工廠":
+        return "目前展示工廠狀況"
+    match = _TWIN_AGENT_DEMO_PREFIX_RE.fullmatch(stripped)
+    if match is None:
+        return None
+    return match.group(1).strip() or "目前展示工廠狀況"
 
 
 def _reply_rich_menu_action(

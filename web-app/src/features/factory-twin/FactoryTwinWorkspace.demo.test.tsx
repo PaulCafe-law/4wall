@@ -78,7 +78,7 @@ it('keeps the accelerator workspace labelled and rotates the assistant session o
     expect.objectContaining({ mode: 'simulation' }),
     expect.objectContaining({
       sessionId: 'demo-session-initial',
-      bindOrganization: false,
+      snapshotScope: 'accelerator_demo',
       includeLiveEvidence: false,
       demoScenarioId: 'normal',
     }),

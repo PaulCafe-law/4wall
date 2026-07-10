@@ -41,6 +41,7 @@ export interface TwinAgentLiveDataStatus {
 export interface TwinAgentBridgeOptions {
   sessionId?: string;
   bindOrganization?: boolean;
+  snapshotScope?: 'organization_live' | 'web_only' | 'accelerator_demo';
   includeLiveEvidence?: boolean;
   demoScenarioId?: DemoScenarioId;
 }
@@ -487,7 +488,8 @@ export function useTwinAgentBridge(
 ) {
   const auth = useAuth();
   const sessionId = options.sessionId ?? TWIN_AGENT_SESSION_ID;
-  const bindOrganization = options.bindOrganization ?? true;
+  const snapshotScope = options.snapshotScope ?? (options.bindOrganization === false ? 'web_only' : 'organization_live');
+  const bindOrganization = snapshotScope === 'organization_live';
   const includeLiveEvidence = options.includeLiveEvidence ?? true;
   const demoScenarioId = options.demoScenarioId;
   const cursorRef = useRef<number | null>(null);
@@ -503,6 +505,7 @@ export function useTwinAgentBridge(
           sessionId,
           capturedAt: new Date().toISOString(),
           world: buildWorldSnapshot(liveDataStatus, { includeLiveEvidence, demoScenarioId }),
+          snapshotScope,
           ...(organizationId ? { organizationId } : {}),
         }),
       ).catch(() => {});
@@ -519,6 +522,7 @@ export function useTwinAgentBridge(
     includeLiveEvidence,
     liveDataStatus,
     sessionId,
+    snapshotScope,
   ]);
 
   const updatesQuery = useAuthedQuery({

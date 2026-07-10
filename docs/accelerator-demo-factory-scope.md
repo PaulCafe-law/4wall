@@ -15,8 +15,11 @@ but simulated operating data must never be presented as Jingcheng production dat
   field evidence. They are labelled as authorized live images.
 - Camera OCR, gauges, detected people, and decision-ledger data are excluded from
   the demo assistant snapshot.
-- The demo assistant uses its own session without a Jingcheng organization ID.
-  LINE jobs bound to Jingcheng therefore cannot select the demo snapshot.
+- Twin snapshots have an explicit scope: `organization_live`, `web_only`, or
+  `accelerator_demo`. A Jingcheng LINE job without a demo prefix may select only
+  an `organization_live` snapshot; internal simulations are never eligible.
+- The demo assistant uses its own `accelerator_demo` session without a Jingcheng
+  organization ID. LINE may select it only for an explicit `展示工廠：` question.
 - Every cloud or local assistant answer in this workspace begins with
   `模擬情境：`.
 
@@ -44,6 +47,19 @@ ledger.
 - Suggested questions cover AMR status, plan-versus-actual, machine alarms, and
   dispatch.
 
+## LINE Routing
+
+- A normal LINE question such as `現在 AMR 情況` remains scoped to the group's
+  bound Jingcheng organization and its latest live snapshot.
+- A one-shot question beginning with `展示工廠：` uses the freshest
+  `accelerator_demo` snapshot. Example: `展示工廠：現在 AMR 情況`.
+- Demo routing is one-shot rather than a sticky group mode. This prevents a
+  forgotten setting from making later production questions look simulated.
+- If no demo page has published a fresh snapshot, LINE asks the operator to open
+  `/demo-factory`; it does not reuse stale demo data.
+- Demo LINE jobs do not carry a Jingcheng organization ID, site slug, or ledger
+  context. Every answer remains prefixed with `模擬情境：`.
+
 ## Acceptance
 
 - A customer-only account cannot open `/demo-factory`.
@@ -57,3 +73,7 @@ ledger.
 - Jingcheng cameras remain visible as live evidence, while their OCR, gauges, and
   person observations are absent from the demo assistant snapshot.
 - Existing Jingcheng live-only behavior and customer navigation remain unchanged.
+- Plain Jingcheng LINE questions never select `web_only` or `accelerator_demo`
+  snapshots.
+- `展示工廠：現在 AMR 情況` answers from the currently projected scenario while
+  the demo page is fresh, and refuses cleanly when it is not.

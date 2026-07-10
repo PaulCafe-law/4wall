@@ -15,12 +15,16 @@ from app.twin_agent import (
     JOB_CLAIMED_TTL,
     JOB_PENDING_TTL,
     REPLY_TOKEN_MAX_AGE,
+    SNAPSHOT_SCOPE_ACCELERATOR_DEMO,
+    SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
+    SNAPSHOT_SCOPE_WEB_ONLY,
     TWIN_AGENT_OFFLINE_TEXT,
     WORKER_ONLINE_WINDOW,
     append_feed_event,
     clear_twin_agent_state,
     collect_feed_events,
     enqueue_twin_agent_job,
+    get_fresh_demo_session_id,
 )
 from tests.helpers import login_web, seed_organization, seed_user
 
@@ -125,6 +129,84 @@ def test_customer_web_endpoints_are_scoped_to_snapshot_owner(test_settings) -> N
         assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers_a).status_code == 200
         assert client.post("/v1/twin-agent/messages", json={"sessionId": SESSION_ID, "text": "hi"}, headers=headers_b).status_code == 404
         assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}", headers=headers_b).status_code == 404
+
+        forbidden_demo = client.post(
+            "/v1/twin-agent/snapshot",
+            json={**_snapshot_body(), "snapshotScope": SNAPSHOT_SCOPE_ACCELERATOR_DEMO},
+            headers=headers_a,
+        )
+        assert forbidden_demo.status_code == 403
+
+
+def test_line_job_ignores_newer_web_only_snapshot_for_same_runtime(test_settings) -> None:
+    app = build_app(settings=_twin_settings(test_settings))
+    with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            org = seed_organization(session, name="LINE Live Scope Org")
+            session.commit()
+            org_id = org.id
+        headers = _internal_headers(app, client)
+
+        live_snapshot = {
+            **_snapshot_body({"dataAvailability": {"mode": "live"}, "entities": [{"id": "live-machine"}]}),
+            "organizationId": org_id,
+            "snapshotScope": SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
+        }
+        assert client.post("/v1/twin-agent/snapshot", json=live_snapshot, headers=headers).status_code == 204
+
+        web_only_snapshot = {
+            **_snapshot_body({"dataAvailability": {"mode": "simulation"}, "entities": [{"id": "sim-machine"}]}),
+            "sessionId": "internal-simulation-session",
+            "snapshotScope": SNAPSHOT_SCOPE_WEB_ONLY,
+        }
+        assert client.post("/v1/twin-agent/snapshot", json=web_only_snapshot, headers=headers).status_code == 204
+
+        enqueue_twin_agent_job(source="line", text="現在狀況", organization_id=org_id, group_id="Cgroup")
+        claimed = client.get("/v1/twin-agent/jobs", headers=_worker_headers()).json()
+
+    assert claimed["world"]["entities"] == [{"id": "live-machine"}]
+    assert claimed["world"]["dataAvailability"]["mode"] == "live"
+
+
+def test_internal_demo_snapshot_is_fresh_and_unbound(test_settings) -> None:
+    app = build_app(settings=_twin_settings(test_settings))
+    with TestClient(app) as client:
+        headers = _internal_headers(app, client)
+        demo_snapshot = {
+            **_snapshot_body({"dataAvailability": {"mode": "simulation"}, "simulationContext": {"scenarioId": "normal"}}),
+            "sessionId": "accelerator-demo-session",
+            "snapshotScope": SNAPSHOT_SCOPE_ACCELERATOR_DEMO,
+        }
+        response = client.post("/v1/twin-agent/snapshot", json=demo_snapshot, headers=headers)
+        enqueue_twin_agent_job(
+            source="line",
+            text="現在 AMR 情況",
+            session_id="accelerator-demo-session",
+            group_id="Cdemo",
+        )
+        claimed = client.get("/v1/twin-agent/jobs", headers=_worker_headers()).json()
+
+    assert response.status_code == 204, response.text
+    assert get_fresh_demo_session_id() == "accelerator-demo-session"
+    assert claimed["world"]["simulationContext"]["scenarioId"] == "normal"
+    assert claimed["ledgerContext"] == {"available": False, "reason": "organization_scope_missing"}
+
+
+def test_explicit_live_scope_rejects_simulation_world(test_settings) -> None:
+    app = build_app(settings=_twin_settings(test_settings))
+    with TestClient(app) as client:
+        headers = _internal_headers(app, client)
+        response = client.post(
+            "/v1/twin-agent/snapshot",
+            json={
+                **_snapshot_body({"dataAvailability": {"mode": "simulation"}, "entities": []}),
+                "snapshotScope": SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
+            },
+            headers=headers,
+        )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "snapshot_scope_mode_mismatch"
 
 
 def test_status_reports_worker_and_only_readable_snapshot_health(test_settings) -> None:
@@ -446,13 +528,27 @@ def test_line_job_result_uses_reply_token_and_routes_commands_to_active_session(
 
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
+        with app.state.session_factory() as session:
+            org = seed_organization(session, name="LINE Command Org")
+            session.commit()
+            org_id = org.id
         headers = _internal_headers(app, client)
-        assert client.post("/v1/twin-agent/snapshot", json=_snapshot_body(), headers=headers).status_code == 204
+        active_snapshot = {
+            **_snapshot_body({"dataAvailability": {"mode": "live"}}),
+            "organizationId": org_id,
+            "snapshotScope": SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
+        }
+        assert client.post("/v1/twin-agent/snapshot", json=active_snapshot, headers=headers).status_code == 204
         append_feed_event(SESSION_ID, kind="reply", job_id="seed", source="web", text="seed")
         assert client.get(f"/v1/twin-agent/updates?sessionId={SESSION_ID}&cursor=0", headers=headers).json()["cursor"] == 1
 
         job = enqueue_twin_agent_job(
-            source="line", text="機況？", group_id="Cgroup", reply_token="reply-1", site_slug="jingcheng"
+            source="line",
+            text="機況？",
+            organization_id=org_id,
+            group_id="Cgroup",
+            reply_token="reply-1",
+            site_slug="jingcheng",
         )
         claimed = client.get("/v1/twin-agent/jobs", headers=_worker_headers()).json()
         assert claimed["job"]["jobId"] == job.job_id
@@ -503,6 +599,14 @@ def test_line_job_result_without_active_session_skips_commands(test_settings, mo
     pushes = _capture_line_push(monkeypatch)
     app = build_app(settings=_twin_settings(test_settings))
     with TestClient(app) as client:
+        twin_agent.store_world_snapshot(
+            session_id="other-org-session",
+            owner_user_id="other-user",
+            organization_id="other-org",
+            snapshot_scope=SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
+            world={"dataAvailability": {"mode": "live"}},
+            captured_at=datetime.now(timezone.utc),
+        )
         job = enqueue_twin_agent_job(source="line", text="hi", group_id="Cgroup")
         client.get("/v1/twin-agent/jobs", headers=_worker_headers())
         result = client.post(

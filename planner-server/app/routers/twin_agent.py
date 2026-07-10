@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import hmac
 import json
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials
@@ -15,6 +15,9 @@ from app.rate_limit import RateLimitRule, RateLimiter
 from app.twin_agent import (
     TwinAgentFeedEvent,
     TwinAgentJob,
+    SNAPSHOT_SCOPE_ACCELERATOR_DEMO,
+    SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
+    SNAPSHOT_SCOPE_WEB_ONLY,
     append_feed_event,
     claim_next_job,
     collect_feed_events,
@@ -61,6 +64,7 @@ class TwinAgentSnapshotDto(BaseModel):
     capturedAt: datetime
     world: dict[str, Any]
     organizationId: str | None = Field(default=None, min_length=1, max_length=80)
+    snapshotScope: Literal["organization_live", "web_only", "accelerator_demo"] | None = None
 
 
 class TwinAgentMessageDto(BaseModel):
@@ -86,11 +90,15 @@ def post_twin_agent_snapshot(
 ) -> Response:
     if len(json.dumps(payload.world)) > SNAPSHOT_MAX_JSON_CHARS:
         raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="twin_agent_snapshot_too_large")
-    organization_id = _resolve_snapshot_organization(current_user, payload.organizationId)
+    snapshot_scope = payload.snapshotScope or _infer_legacy_snapshot_scope(payload)
+    organization_id = _resolve_snapshot_organization(current_user, payload.organizationId, snapshot_scope)
+    if payload.snapshotScope is not None:
+        _validate_explicit_snapshot_scope(payload, snapshot_scope)
     store_world_snapshot(
         session_id=payload.sessionId,
         owner_user_id=current_user.user.id,
         organization_id=organization_id,
+        snapshot_scope=snapshot_scope,
         world=payload.world,
         captured_at=payload.capturedAt,
     )
@@ -164,6 +172,11 @@ def get_twin_agent_job(
     world, world_age_seconds = get_world_snapshot(
         session_id=job.session_id if job is not None else None,
         organization_id=job.organization_id if job is not None else None,
+        snapshot_scope=(
+            None
+            if job is None or job.session_id
+            else SNAPSHOT_SCOPE_ORGANIZATION_LIVE
+        ),
     )
     return {
         "job": _job_payload(job) if job is not None else None,
@@ -194,7 +207,7 @@ def post_twin_agent_job_result(
     elif job.source == "line":
         deliver_line_job_text(settings, job, payload.text)
         if tool_calls:
-            active_session_id = get_active_session_id(job.organization_id)
+            active_session_id = job.session_id or get_active_session_id(job.organization_id)
             if active_session_id:
                 append_feed_event(
                     active_session_id,
@@ -236,7 +249,38 @@ def _ledger_context_payload(session, job: TwinAgentJob | None) -> dict | None:
     return build_daily_brief_context(session, organization_id=job.organization_id, target_date=job.created_at)
 
 
-def _resolve_snapshot_organization(current_user: CurrentWebUser, requested_organization_id: str | None) -> str | None:
+def _infer_legacy_snapshot_scope(payload: TwinAgentSnapshotDto) -> str:
+    availability = payload.world.get("dataAvailability")
+    mode = availability.get("mode") if isinstance(availability, dict) else None
+    if mode == "simulation":
+        return SNAPSHOT_SCOPE_WEB_ONLY
+    if payload.organizationId is not None or mode == "live":
+        return SNAPSHOT_SCOPE_ORGANIZATION_LIVE
+    return SNAPSHOT_SCOPE_WEB_ONLY
+
+
+def _validate_explicit_snapshot_scope(payload: TwinAgentSnapshotDto, snapshot_scope: str) -> None:
+    availability = payload.world.get("dataAvailability")
+    mode = availability.get("mode") if isinstance(availability, dict) else None
+    if snapshot_scope == SNAPSHOT_SCOPE_ORGANIZATION_LIVE and mode != "live":
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="snapshot_scope_mode_mismatch")
+    if snapshot_scope == SNAPSHOT_SCOPE_ACCELERATOR_DEMO:
+        simulation_context = payload.world.get("simulationContext")
+        if mode != "simulation" or not isinstance(simulation_context, dict):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="snapshot_scope_mode_mismatch")
+
+
+def _resolve_snapshot_organization(
+    current_user: CurrentWebUser,
+    requested_organization_id: str | None,
+    snapshot_scope: str,
+) -> str | None:
+    if snapshot_scope in {SNAPSHOT_SCOPE_WEB_ONLY, SNAPSHOT_SCOPE_ACCELERATOR_DEMO}:
+        if not current_user.global_roles.intersection({"platform_admin", "ops"}):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")
+        if requested_organization_id is not None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="snapshot_scope_conflict")
+        return None
     if requested_organization_id is not None:
         if not current_user.can_read_org(requested_organization_id):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="forbidden_role")

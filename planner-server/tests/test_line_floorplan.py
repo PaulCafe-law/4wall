@@ -656,7 +656,11 @@ def _message_event(
 
 
 from app import twin_agent  # noqa: E402
-from app.routers.line import TWIN_AGENT_LINE_BUSY_TEXT, TWIN_AGENT_LINE_RATE_LIMIT  # noqa: E402
+from app.routers.line import (  # noqa: E402
+    TWIN_AGENT_DEMO_UNAVAILABLE_TEXT,
+    TWIN_AGENT_LINE_BUSY_TEXT,
+    TWIN_AGENT_LINE_RATE_LIMIT,
+)
 from app.twin_agent import TWIN_AGENT_OFFLINE_TEXT, clear_twin_agent_state, count_pending_line_jobs  # noqa: E402
 
 
@@ -694,6 +698,70 @@ def test_twin_agent_fallthrough_enqueues_job_without_sync_reply(test_settings, m
     assert job.reply_token == "reply-twin-nl"
     assert job.site_slug == "jingcheng"
     assert job.organization_id is not None
+
+
+def test_twin_agent_demo_prefix_routes_to_fresh_demo_session(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    twin_agent.store_world_snapshot(
+        session_id="line-demo-session",
+        owner_user_id="internal-operator",
+        organization_id=None,
+        snapshot_scope=twin_agent.SNAPSHOT_SCOPE_ACCELERATOR_DEMO,
+        world={"dataAvailability": {"mode": "simulation"}, "simulationContext": {"scenarioId": "amr_delay"}},
+        captured_at=datetime.now(timezone.utc),
+    )
+    settings = _line_settings(test_settings, twin_agent_enabled=True)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        response = _post_line_events(
+            client,
+            settings,
+            [_message_event("展示工廠：現在 AMR 情況", event_id="evt-twin-demo", reply_token="reply-twin-demo")],
+        )
+
+    assert response.status_code == 200, response.text
+    assert replies == []
+    job = twin_agent._STATE.jobs[0]
+    assert job.text == "現在 AMR 情況"
+    assert job.session_id == "line-demo-session"
+    assert job.organization_id is None
+    assert job.site_slug is None
+
+
+def test_twin_agent_demo_prefix_refuses_stale_demo_snapshot(test_settings, monkeypatch) -> None:
+    clear_twin_agent_state()
+    twin_agent.store_world_snapshot(
+        session_id="stale-line-demo-session",
+        owner_user_id="internal-operator",
+        organization_id=None,
+        snapshot_scope=twin_agent.SNAPSHOT_SCOPE_ACCELERATOR_DEMO,
+        world={"dataAvailability": {"mode": "simulation"}},
+        captured_at=datetime.now(timezone.utc),
+    )
+    twin_agent._STATE.world_slots["stale-line-demo-session"].received_at_monotonic -= (
+        twin_agent.DEMO_SNAPSHOT_FRESH_WINDOW + 1
+    )
+    settings = _line_settings(test_settings, twin_agent_enabled=True)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        response = _post_line_events(
+            client,
+            settings,
+            [_message_event("展示工廠：現在 AMR 情況", event_id="evt-twin-demo-stale")],
+        )
+
+    assert response.status_code == 200, response.text
+    assert replies == [
+        {
+            "replyToken": "reply-message",
+            "messages": [{"type": "text", "text": TWIN_AGENT_DEMO_UNAVAILABLE_TEXT}],
+        }
+    ]
+    assert twin_agent._STATE.jobs == []
 
 
 def test_twin_agent_disabled_falls_back_to_help_reply(test_settings, monkeypatch) -> None:

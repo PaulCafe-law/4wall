@@ -23,6 +23,10 @@ REPLY_TOKEN_MAX_AGE = 50
 FEED_MAX_EVENTS = 100
 MAX_TRACKED_JOBS = 200
 TWIN_AGENT_OFFLINE_TEXT = "4WALL AI 助理暫時離線，請稍後再試。"
+SNAPSHOT_SCOPE_ORGANIZATION_LIVE = "organization_live"
+SNAPSHOT_SCOPE_WEB_ONLY = "web_only"
+SNAPSHOT_SCOPE_ACCELERATOR_DEMO = "accelerator_demo"
+DEMO_SNAPSHOT_FRESH_WINDOW = 20
 
 
 @dataclass
@@ -30,6 +34,7 @@ class TwinAgentWorldSlot:
     session_id: str
     owner_user_id: str
     organization_id: str | None
+    snapshot_scope: str
     world: dict
     captured_at: datetime
     received_at_monotonic: float
@@ -89,6 +94,7 @@ def store_world_snapshot(
     session_id: str,
     owner_user_id: str,
     organization_id: str | None,
+    snapshot_scope: str = SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
     world: dict,
     captured_at: datetime,
 ) -> None:
@@ -97,6 +103,7 @@ def store_world_snapshot(
             session_id=session_id,
             owner_user_id=owner_user_id,
             organization_id=organization_id,
+            snapshot_scope=snapshot_scope,
             world=world,
             captured_at=captured_at,
             received_at_monotonic=time.monotonic(),
@@ -116,25 +123,49 @@ def get_world_snapshot(
     *,
     session_id: str | None = None,
     organization_id: str | None = None,
+    snapshot_scope: str | None = None,
 ) -> tuple[dict | None, float | None]:
     with _STATE.lock:
-        slot = _STATE.world_slots.get(session_id) if session_id else _latest_world_slot(organization_id)
+        slot = (
+            _STATE.world_slots.get(session_id)
+            if session_id
+            else _latest_world_slot(organization_id, snapshot_scope=snapshot_scope)
+        )
         if slot is None:
             return None, None
         return slot.world, time.monotonic() - slot.received_at_monotonic
 
 
-def get_active_session_id(organization_id: str | None = None) -> str | None:
+def get_active_session_id(
+    organization_id: str | None = None,
+    *,
+    snapshot_scope: str = SNAPSHOT_SCOPE_ORGANIZATION_LIVE,
+) -> str | None:
+    if organization_id is None:
+        return None
     with _STATE.lock:
-        slot = _latest_world_slot(organization_id)
+        slot = _latest_world_slot(organization_id, snapshot_scope=snapshot_scope)
         return slot.session_id if slot is not None else None
 
 
-def _latest_world_slot(organization_id: str | None) -> TwinAgentWorldSlot | None:
+def get_fresh_demo_session_id(*, max_age_seconds: float = DEMO_SNAPSHOT_FRESH_WINDOW) -> str | None:
+    with _STATE.lock:
+        slot = _latest_world_slot(None, snapshot_scope=SNAPSHOT_SCOPE_ACCELERATOR_DEMO)
+        if slot is None or time.monotonic() - slot.received_at_monotonic > max_age_seconds:
+            return None
+        return slot.session_id
+
+
+def _latest_world_slot(
+    organization_id: str | None,
+    *,
+    snapshot_scope: str | None = None,
+) -> TwinAgentWorldSlot | None:
     candidates = [
         slot
         for slot in _STATE.world_slots.values()
-        if organization_id is None or slot.organization_id == organization_id
+        if (organization_id is None or slot.organization_id == organization_id)
+        and (snapshot_scope is None or slot.snapshot_scope == snapshot_scope)
     ]
     if not candidates:
         return None

@@ -53,7 +53,7 @@ function FactoryDemo({
   useLocalAgent(!liveOnly);
   useTwinAgentBridge(liveDataStatus, {
     sessionId: demoPresentation ? demoSessionId : undefined,
-    bindOrganization: !demoPresentation,
+    snapshotScope: demoPresentation ? 'accelerator_demo' : liveOnly ? 'organization_live' : 'web_only',
     includeLiveEvidence: !demoPresentation,
     demoScenarioId: demoPresentation ? demoScenarioId : undefined,
   });
