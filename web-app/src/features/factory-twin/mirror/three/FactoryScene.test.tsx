@@ -30,6 +30,11 @@ vi.mock('./MeshHighlighter', () => ({ MeshHighlighter: () => null }));
 vi.mock('./FitToGlb', () => ({ FitToGlb: () => null }));
 vi.mock('./CoordProbe', () => ({ CoordProbe: () => null }));
 vi.mock('./CalloutOverlay', () => ({ CalloutOverlay: () => null }));
+vi.mock('./WarehousePortal', () => ({
+  WarehousePortal: ({ onActivate }: { onActivate: () => void }) => (
+    <button type="button" onClick={onActivate}>倉庫入口</button>
+  ),
+}));
 
 beforeEach(() => {
   useFactoryStore.setState(useFactoryStore.getInitialState(), true);
@@ -47,4 +52,14 @@ it('disables orbit controls while dragging the HC600-01 live person anchor', () 
   render(<FactoryScene />);
 
   expect(screen.getByTestId('orbit-controls')).toHaveAttribute('data-enabled', 'false');
+});
+
+it('keeps the warehouse portal available while the large factory model is loading', () => {
+  const onEnterWarehouse = vi.fn();
+  expect(useFactoryStore.getState().glbLoadState).toBe('loading');
+
+  render(<FactoryScene showWarehousePortal onEnterWarehouse={onEnterWarehouse} />);
+  screen.getByRole('button', { name: '倉庫入口' }).click();
+
+  expect(onEnterWarehouse).toHaveBeenCalledTimes(1);
 });

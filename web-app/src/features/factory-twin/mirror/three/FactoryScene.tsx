@@ -76,7 +76,7 @@ export function FactoryScene({
       <CoordProbe />
       <CameraRig />
 
-      {showRuntimeOverlays && showWarehousePortal && onEnterWarehouse ? (
+      {showWarehousePortal && onEnterWarehouse ? (
         <WarehousePortal onActivate={onEnterWarehouse} />
       ) : null}
 
