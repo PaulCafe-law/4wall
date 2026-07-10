@@ -12,6 +12,7 @@ from agent_worker.main import (
     TwinAgentRunner,
     build_agent_prompt,
     build_result_payload,
+    enforce_tool_scope,
     enforce_response_trust_labels,
 )
 
@@ -61,6 +62,70 @@ def test_prompt_handles_missing_world() -> None:
     assert "age seconds: unknown" in prompt
     assert "{}" in prompt
     assert "no reconciliation data yet" in prompt
+    assert "Warehouse decision tools are unavailable" in prompt
+
+
+def test_prompt_exposes_warehouse_tools_only_for_web_accelerator_snapshot() -> None:
+    world = {
+        "experience": {"snapshotScope": "accelerator_demo", "facilitySpace": "warehouse"},
+        "simulationContext": {
+            "warehouseDecision": {
+                "source": "simulation",
+                "planSetId": "warehouse-plan-set-1234",
+                "summaryHash": "abcd1234",
+                "plans": [],
+            }
+        },
+    }
+
+    web_prompt = build_agent_prompt({"source": "web", "text": "比較三套提案"}, world)
+    line_prompt = build_agent_prompt({"source": "line", "text": "比較三套提案"}, world)
+
+    assert "run_warehouse_scenario" in web_prompt
+    assert "select_warehouse_plan" in web_prompt
+    assert "planSetId and summaryHash" in web_prompt
+    assert "run_warehouse_scenario" not in line_prompt
+    assert "Warehouse decision tools are unavailable" in line_prompt
+
+
+def test_tool_scope_drops_warehouse_commands_outside_web_accelerator_demo() -> None:
+    payload = {
+        "text": "回答",
+        "toolCalls": [
+            {"name": "select_warehouse_plan", "arguments": {"objective": "minimum_moves"}},
+            {"name": "focus_camera", "arguments": {"id": "m-1"}},
+            "malformed",
+        ],
+    }
+
+    filtered = enforce_tool_scope(payload, job={"source": "line"}, world={})
+
+    assert filtered["toolCalls"] == [{"name": "focus_camera", "arguments": {"id": "m-1"}}]
+
+
+def test_tool_scope_keeps_only_one_expensive_warehouse_run_per_reply() -> None:
+    world = {
+        "experience": {"snapshotScope": "accelerator_demo"},
+        "simulationContext": {
+            "warehouseDecision": {
+                "source": "simulation",
+                "planSetId": "warehouse-plan-set-1234",
+                "summaryHash": "abcd1234",
+            }
+        },
+    }
+    payload = {
+        "text": "已要求重算",
+        "toolCalls": [
+            {"name": "run_warehouse_scenario", "arguments": {"agvCount": 4}},
+            {"name": "run_warehouse_scenario", "arguments": {"agvCount": 8}},
+            {"name": "select_warehouse_plan", "arguments": {"objective": "maximum_throughput"}},
+        ],
+    }
+
+    filtered = enforce_tool_scope(payload, job={"source": "web"}, world=world)
+
+    assert filtered["toolCalls"] == [payload["toolCalls"][0], payload["toolCalls"][2]]
 
 
 def test_parse_poll_payload_preserves_ledger_context() -> None:

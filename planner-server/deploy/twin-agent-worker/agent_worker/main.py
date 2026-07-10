@@ -21,7 +21,17 @@ TOOL_NAMES = (
     "set_machine_state",
     "trigger_demo_incident",
     "clear_overlays",
+    "enter_warehouse",
+    "return_to_factory",
+    "run_warehouse_scenario",
+    "select_warehouse_plan",
 )
+WAREHOUSE_TOOL_NAMES = {
+    "enter_warehouse",
+    "return_to_factory",
+    "run_warehouse_scenario",
+    "select_warehouse_plan",
+}
 MAX_TOOL_CALLS = 10
 FALLBACK_TEXT = "4WALL AI 助手暫時無法回應，請稍後再試。"
 AMR_QUERY_TERMS = ("amr", "自主移動機器人", "自走搬運車", "搬運機器人")
@@ -122,6 +132,7 @@ class TwinAgentRunner:
                     file=sys.stderr,
                 )
             result_payload = build_result_payload(bridge_result, max_output_chars=self.config.agent.max_output_chars)
+            result_payload = enforce_tool_scope(result_payload, job=job, world=polled.world)
             result_payload = enforce_response_trust_labels(
                 result_payload,
                 job=job,
@@ -155,6 +166,20 @@ def build_agent_prompt(
     if job.get("siteSlug"):
         job_payload["siteSlug"] = job.get("siteSlug")
     world_age = "unknown" if world_age_seconds is None else round(float(world_age_seconds), 1)
+    warehouse_allowed = warehouse_tools_allowed(job, world)
+    warehouse_rules = [
+        "Use world.simulationContext.warehouseDecision only for the internal accelerator demo. Treat every value there as simulated, never as Jingcheng or customer live data.",
+        "When comparing warehouse plans, cite planSetId and summaryHash from the current snapshot so the explanation is bound to the displayed result.",
+        "If run_warehouse_scenario is called, do not explain metrics from the old snapshot in the same answer. State that a new simulation was requested and wait for the next snapshot before analysis.",
+    ] if warehouse_allowed else [
+        "Warehouse decision tools are unavailable in this context. Never emit warehouse tool calls or describe accelerator warehouse data for LINE or customer-live questions.",
+    ]
+    warehouse_tools = [
+        '- enter_warehouse {}: enter the internal demo warehouse space.',
+        '- return_to_factory {}: return to the internal demo molding factory.',
+        '- run_warehouse_scenario {"familyDemandIncreasePercent"?: number, "workstationOutageMinutes"?: number, "agvCount"?: number, "maxRelocations"?: number}: generate three simulated warehouse proposals.',
+        '- select_warehouse_plan {"objective": "minimum_moves"|"shortest_distance"|"maximum_throughput"}: select one displayed proposal.',
+    ] if warehouse_allowed else []
     lines = [
         "You are the 4WALL AI factory-twin assistant and commander.",
         "Answer ONLY from the provided world snapshot and ledger context; if the data is absent say you don't know — never invent facts.",
@@ -174,6 +199,7 @@ def build_agent_prompt(
         "For plan-vs-actual reconciliation in simulation mode, use ONLY world.simulationContext.planVsActual and totals.",
         "For plan-vs-actual reconciliation in live mode, use ONLY ledgerContext.text and ledgerContext.planVsActual.",
         "If the applicable simulationContext or ledgerContext is unavailable or empty, say 今日尚無對帳資料 / no reconciliation data yet.",
+        *warehouse_rules,
         "Reply in the SAME LANGUAGE as the question.",
         "Keep replies <= 3 short sentences (LINE-friendly).",
         'For Chinese command replies, use only "指令已送出，請看大螢幕"; do not include the English phrase "instruction issued".',
@@ -187,6 +213,7 @@ def build_agent_prompt(
         '- set_machine_state {"machineId": string, "state": "running"|"idle"|"maintenance"|"alarm"}: change a sim machine state.',
         '- trigger_demo_incident {"machineId"?: string}: trigger a demo alarm with automatic repair dispatch.',
         '- clear_overlays {}: clear highlights and overlays.',
+        *warehouse_tools,
         f"World snapshot (age seconds: {world_age}):",
         json.dumps(world if world is not None else {}, ensure_ascii=False),
         "Ledger context:",
@@ -195,6 +222,55 @@ def build_agent_prompt(
         json.dumps(job_payload, ensure_ascii=False),
     ]
     return "\n".join(lines)
+
+
+def warehouse_tools_allowed(job: dict[str, Any], world: dict[str, Any] | None) -> bool:
+    if str(job.get("source") or "").casefold() != "web" or not isinstance(world, dict):
+        return False
+    experience = world.get("experience")
+    simulation_context = world.get("simulationContext")
+    if not isinstance(experience, dict) or experience.get("snapshotScope") != "accelerator_demo":
+        return False
+    if not isinstance(simulation_context, dict):
+        return False
+    warehouse = simulation_context.get("warehouseDecision")
+    return (
+        isinstance(warehouse, dict)
+        and warehouse.get("source") == "simulation"
+        and bool(warehouse.get("planSetId"))
+        and bool(warehouse.get("summaryHash"))
+    )
+
+
+def enforce_tool_scope(
+    payload: dict[str, Any],
+    *,
+    job: dict[str, Any],
+    world: dict[str, Any] | None,
+) -> dict[str, Any]:
+    calls = payload.get("toolCalls")
+    if not isinstance(calls, list):
+        return payload
+    if warehouse_tools_allowed(job, world):
+        filtered_calls: list[dict[str, Any]] = []
+        scenario_run_seen = False
+        for call in calls:
+            if not isinstance(call, dict):
+                continue
+            if call.get("name") == "run_warehouse_scenario":
+                if scenario_run_seen:
+                    continue
+                scenario_run_seen = True
+            filtered_calls.append(call)
+        return {**payload, "toolCalls": filtered_calls}
+    return {
+        **payload,
+        "toolCalls": [
+            call
+            for call in calls
+            if isinstance(call, dict) and call.get("name") not in WAREHOUSE_TOOL_NAMES
+        ],
+    }
 
 
 def build_grounded_reply(job: dict[str, Any], world: dict[str, Any] | None) -> str | None:
