@@ -121,6 +121,7 @@ FactoryTwinWorkspace (internal demo only)
 - 切換方案會同步更新 KPI、搬遷清單、貨架熱度與 AMR 路線。
 - 3090 助手只在 `accelerator_demo` 且具有模擬摘要時取得倉儲工具；客戶與 LINE 路徑不會取得倉儲工具。
 - 展示工廠預設縮小主動通知，避免遮住 3D 倉儲入口；1280 寬度進入倉庫時再暫時收起左側助手，返回時恢復。
+- 倉庫內的工作站、AMR 與區域文字只負責顯示，不攔截滑鼠，左右面板把手在 3D 標籤重疊時仍可操作。
 - 2026-07-11 驗證：Web 45 個測試檔、179 項測試通過；worker 36 項測試通過；typecheck、lint、production build 與高風險套件稽核通過。
 
 ## Deferred Hardening

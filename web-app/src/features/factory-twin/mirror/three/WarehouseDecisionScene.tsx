@@ -104,7 +104,7 @@ function Workstation({ index, x }: { index: number; x: number }) {
           emissiveIntensity={0.38}
         />
       </mesh>
-      <Html position={[0, 1.9, 0]} center>
+      <Html position={[0, 1.9, 0]} center style={{ pointerEvents: 'none' }}>
         <span className={`warehouse-scene-label ${unavailable ? 'warning' : ''}`}>
           WS-{String(index + 1).padStart(2, '0')}
         </span>
@@ -175,7 +175,7 @@ function WarehouseAmr({ points, index, agvId }: { points: THREE.Vector3[]; index
       </mesh>
       <AmrVisual />
       <pointLight position={[0, 0.4, 0.25]} color={ROUTE_COLORS[index % ROUTE_COLORS.length]} intensity={1.7} distance={2.5} />
-      <Html position={[0, 1.25, 0]} center zIndexRange={[30, 10]}>
+      <Html position={[0, 1.25, 0]} center zIndexRange={[30, 10]} style={{ pointerEvents: 'none' }}>
         <span className="warehouse-amr-label" style={{ borderColor: ROUTE_COLORS[index % ROUTE_COLORS.length] }}>
           {agvId}
         </span>
@@ -258,7 +258,7 @@ function WarehouseWorld() {
           <boxGeometry args={[3.2, 0.08, 2.2]} />
           <meshStandardMaterial color="#e4b549" roughness={0.78} />
         </mesh>
-        <Html position={[0, 0.2, 0]} center>
+        <Html position={[0, 0.2, 0]} center style={{ pointerEvents: 'none' }}>
           <span className="warehouse-scene-label">AMR 充電區</span>
         </Html>
       </group>
@@ -267,7 +267,7 @@ function WarehouseWorld() {
           <boxGeometry args={[4.4, 0.08, 2.4]} />
           <meshStandardMaterial color="#5c8685" roughness={0.78} />
         </mesh>
-        <Html position={[0, 0.2, 0]} center>
+        <Html position={[0, 0.2, 0]} center style={{ pointerEvents: 'none' }}>
           <span className="warehouse-scene-label">收貨與緩衝區</span>
         </Html>
       </group>
@@ -330,7 +330,7 @@ export default function WarehouseDecisionScene() {
     >
       <Suspense
         fallback={
-          <Html center>
+          <Html center style={{ pointerEvents: 'none' }}>
             <div className="glb-loading">載入 3D 智慧倉儲…</div>
           </Html>
         }
