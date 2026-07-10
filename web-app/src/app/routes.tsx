@@ -10,7 +10,7 @@ import { LoginPage } from '../features/auth/LoginPage'
 import { BillingPage } from '../features/billing/BillingPage'
 import { CamerasPage } from '../features/cameras/CamerasPage'
 import { ControlPlanePage } from '../features/controlplane/ControlPlanePage'
-import { FactoryTwinPage } from '../features/factory-twin/FactoryTwinPage'
+import { DemoFactoryPage, FactoryTwinPage } from '../features/factory-twin/FactoryTwinPage'
 import { IncidentCenterPage } from '../features/incidents/IncidentCenterPage'
 import { IncidentDetailPage } from '../features/incidents/IncidentDetailPage'
 import { IndustrialDataEnginePage } from '../features/industrial-data-engine/IndustrialDataEnginePage'
@@ -70,6 +70,14 @@ export function AppRoutes() {
                 />
                 <Route path="/cameras" element={<CamerasPage />} />
                 <Route path="/factory-twin" element={<FactoryTwinPage />} />
+                <Route
+                  path="/demo-factory"
+                  element={
+                    <RequireInternal>
+                      <DemoFactoryPage />
+                    </RequireInternal>
+                  }
+                />
                 <Route path="/system-status" element={<SystemStatusPage />} />
                 <Route
                   path="/site-map"

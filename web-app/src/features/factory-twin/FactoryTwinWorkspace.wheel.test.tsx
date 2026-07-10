@@ -17,7 +17,10 @@ vi.mock('./mirror/components/warehouse/WarehouseSimulator', () => ({
 }));
 vi.mock('./mirror/sim/simEngine', () => ({ useSimEngine: () => undefined }));
 vi.mock('./mirror/hooks/useLocalAgent', () => ({ useLocalAgent: () => undefined }));
-vi.mock('./mirror/hooks/useTwinAgentBridge', () => ({ useTwinAgentBridge: () => undefined }));
+vi.mock('./mirror/hooks/useTwinAgentBridge', () => ({
+  DEMO_TWIN_AGENT_SESSION_ID: 'demo-session',
+  useTwinAgentBridge: () => undefined,
+}));
 
 import { FactoryTwinWorkspace } from './FactoryTwinWorkspace';
 

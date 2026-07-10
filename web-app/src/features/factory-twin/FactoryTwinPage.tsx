@@ -267,9 +267,16 @@ export function toLivePersons(
   });
 }
 
-export function FactoryTwinPage() {
+export type FactoryTwinExperience = 'standard' | 'accelerator-demo';
+
+export function DemoFactoryPage() {
+  return <FactoryTwinPage experience="accelerator-demo" />;
+}
+
+export function FactoryTwinPage({ experience = 'standard' }: { experience?: FactoryTwinExperience }) {
   const auth = useAuth();
-  const liveOnly = isFactoryOpsCustomer(auth.user);
+  const acceleratorDemo = experience === 'accelerator-demo';
+  const liveOnly = !acceleratorDemo && isFactoryOpsCustomer(auth.user);
   const [nowMs, setNowMs] = useState(0);
   const [anchorPickerMode] = useState(() => new URLSearchParams(window.location.search).get('anchorPicker') === '1');
   const [livePersonAnchorOverride, setLivePersonAnchorOverride] = useState<Vec3 | null>(() =>
@@ -402,13 +409,32 @@ export function FactoryTwinPage() {
           : personLatestAt
             ? `人員資料最近一次在 ${relativeAge(personLatestAt, nowMs)}`
             : '人員資料尚無';
-  const statusParts = [cameraStatusText, cameraEvidenceText, personStatusText, '真實資料'].filter(Boolean);
+  const statusParts = acceleratorDemo
+    ? [
+        '展示模式',
+        '營運數據皆為模擬',
+        initialLoading
+          ? '靚程授權影像載入中'
+          : initialError
+            ? '靚程授權影像暫時無法載入'
+            : platformCameras.length > 0
+              ? `靚程授權影像 ${onlineCount}/${platformCameras.length} 在線`
+              : '靚程授權影像尚無資料',
+        cameraLatestAt ? `影像最近更新 ${relativeAge(cameraLatestAt, nowMs)}` : null,
+      ].filter(Boolean)
+    : [cameraStatusText, cameraEvidenceText, personStatusText, '真實資料'].filter(Boolean);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-chrome-200/80 bg-chrome-50/90 px-4 py-1.5 md:px-6">
+      <div
+        className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b px-4 py-1.5 md:px-6 ${
+          acceleratorDemo
+            ? 'border-amber-300 bg-amber-50 text-amber-950'
+            : 'border-chrome-200/80 bg-chrome-50/90'
+        }`}
+      >
         <h1 className="font-display text-sm font-semibold tracking-[-0.02em] text-chrome-950">
-          靚程工廠即時戰情室
+          {acceleratorDemo ? '4WALL 展示工廠' : '靚程工廠即時戰情室'}
         </h1>
         <p className="font-mono text-[11px] text-chrome-600">
           {statusParts.join('・')}
@@ -417,16 +443,19 @@ export function FactoryTwinPage() {
 
       {camerasQuery.isError ? (
         <div className="border-b border-amber-200 bg-amber-50/90 px-4 py-1.5 text-xs text-amber-900 md:px-6">
-          暫時無法讀取攝影機資料，目前不會顯示最新現場資訊。
+          {acceleratorDemo
+            ? '靚程授權影像暫時無法載入，展示情境與模擬助手仍可正常使用。'
+            : '暫時無法讀取攝影機資料，目前不會顯示最新現場資訊。'}
         </div>
       ) : null}
 
       <div className="min-h-0 flex-1">
         <FactoryTwinWorkspace
           platformCameras={platformCameras}
-          livePersons={livePersons}
+          livePersons={acceleratorDemo ? [] : livePersons}
           liveOnly={liveOnly}
           liveDataStatus={liveDataStatus}
+          demoPresentation={acceleratorDemo}
         />
       </div>
     </div>

@@ -5,11 +5,14 @@ import { beforeEach, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../../test/utils';
 import type { MachineEntity, PersonEntity } from '../domain/entities';
+import { buildDemoScenarioEntities } from '../domain/demoScenarios';
 import { useFactoryStore } from '../store/factoryStore';
 import {
   compactEntities,
+  DEMO_TWIN_AGENT_SESSION_ID,
   TWIN_AGENT_SESSION_ID,
   useTwinAgentBridge,
+  type TwinAgentBridgeOptions,
   type TwinAgentLiveDataStatus,
 } from './useTwinAgentBridge';
 
@@ -38,8 +41,14 @@ const toolsMock = vi.hoisted(() => ({
 
 vi.mock('../agent/tools', () => ({ executeToolCall: toolsMock.executeToolCall }));
 
-function Harness({ liveDataStatus }: { liveDataStatus?: TwinAgentLiveDataStatus }) {
-  useTwinAgentBridge(liveDataStatus);
+function Harness({
+  liveDataStatus,
+  options,
+}: {
+  liveDataStatus?: TwinAgentLiveDataStatus;
+  options?: TwinAgentBridgeOptions;
+}) {
+  useTwinAgentBridge(liveDataStatus, options);
   return null;
 }
 
@@ -73,6 +82,74 @@ const livePerson: PersonEntity = {
 beforeEach(() => {
   vi.clearAllMocks();
   useFactoryStore.setState(useFactoryStore.getInitialState(), true);
+});
+
+it('isolates accelerator demo snapshots from Jingcheng live evidence and organization routing', async () => {
+  apiMock.getTwinAgentUpdates.mockResolvedValue({ workerOnline: true, events: [], cursor: 0 });
+  apiMock.postTwinAgentSnapshot.mockResolvedValue(undefined);
+  useFactoryStore.getState().setEntities({
+    ...buildDemoScenarioEntities('plan_gap'),
+    [livePerson.id]: livePerson,
+  });
+  useFactoryStore.getState().setLivePersons([livePerson]);
+  useFactoryStore.getState().setPlatformCameras([
+    {
+      id: 'fw-camera-live',
+      type: 'camera',
+      name: '靚程授權攝影機',
+      position: { x: 0, y: 0, z: 0 },
+      status: 'active',
+      source: 'live',
+      siteLabel: '靚程工廠',
+      online: true,
+      samplingIntervalSeconds: 10,
+      feedMode: 'snapshot',
+      attrs: {
+        platformOrganizationId: 'jingcheng-org',
+        latestOcrObservation: { gptSummary: { summary: '不得送進展示助手' } },
+        latestPersonObservation: { personCount: 1 },
+      },
+    },
+  ]);
+
+  renderWithProviders(
+    <Harness
+      liveDataStatus={{
+        mode: 'simulation',
+        cameraState: 'ready',
+        cameraCount: 1,
+        cameraLatestAt: new Date().toISOString(),
+        personState: 'current',
+        personLatestAt: new Date().toISOString(),
+      }}
+      options={{
+        sessionId: DEMO_TWIN_AGENT_SESSION_ID,
+        bindOrganization: false,
+        includeLiveEvidence: false,
+        demoScenarioId: 'plan_gap',
+      }}
+    />,
+  );
+
+  await waitFor(() => expect(apiMock.postTwinAgentSnapshot).toHaveBeenCalled());
+  const [, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
+  expect(payload.sessionId).toBe(DEMO_TWIN_AGENT_SESSION_ID);
+  expect(payload).not.toHaveProperty('organizationId');
+  expect(payload.world.dataAvailability).toMatchObject({
+    mode: 'simulation',
+    camera: { state: 'out_of_scope', count: 0 },
+    people: { state: 'simulation' },
+    amr: { state: 'simulation' },
+  });
+  expect(payload.world.entities.every((entity: { dataSource?: string; type: string }) => entity.dataSource !== 'live')).toBe(true);
+  expect(payload.world.cameraSummary).toEqual([]);
+  expect(payload.world.machineRealData).toEqual([]);
+  expect(payload.world.simulationContext).toMatchObject({
+    scenarioId: 'plan_gap',
+    totals: { plan: 2460, actual: 1704, delta: -756 },
+  });
+  expect(JSON.stringify(payload.world)).not.toContain('不得送進展示助手');
+  expect(JSON.stringify(payload.world)).not.toContain('jingcheng-org');
 });
 
 it('processes feed events: reply into chat, commands executed and narrated', async () => {
@@ -109,7 +186,7 @@ it('processes feed events: reply into chat, commands executed and narrated', asy
   });
 });
 
-it('never re-executes an already-processed seq and keeps the cursor across mounts', async () => {
+it('processes each event once within its isolated session cursor', async () => {
   apiMock.getTwinAgentUpdates.mockResolvedValue({
     workerOnline: true,
     events: [
@@ -134,9 +211,13 @@ it('never re-executes an already-processed seq and keeps the cursor across mount
   renderWithProviders(<Harness />);
 
   await waitFor(() => {
-    expect(toolsMock.executeToolCall).toHaveBeenCalledTimes(1);
+    expect(toolsMock.executeToolCall).toHaveBeenCalledTimes(2);
   });
-  expect(apiMock.getTwinAgentUpdates).toHaveBeenCalledWith('test-token', TWIN_AGENT_SESSION_ID, 2);
+  expect(apiMock.getTwinAgentUpdates).toHaveBeenCalledWith('test-token', TWIN_AGENT_SESSION_ID, null);
+  expect(toolsMock.executeToolCall).toHaveBeenCalledWith({
+    name: 'highlight_entity',
+    arguments: { ids: ['m-1'] },
+  });
   expect(toolsMock.executeToolCall).toHaveBeenCalledWith({
     name: 'focus_camera',
     arguments: { id: 'm-2' },

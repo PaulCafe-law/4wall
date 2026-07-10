@@ -1,7 +1,8 @@
 import { executeToolCall } from './tools';
 import type { ToolCall } from '../api/types';
-import type { Entity, MachineEntity, PersonEntity } from '../domain/entities';
+import type { AmrEntity, Entity, MachineEntity, PersonEntity } from '../domain/entities';
 import { machineUsesLiveMetricsOnly, statusLabel } from '../domain/entities';
+import { buildDemoSimulationContext, type DemoScenarioId } from '../domain/demoScenarios';
 import { useFactoryStore, uid } from '../store/factoryStore';
 
 function textIncludesAny(text: string, terms: string[]): boolean {
@@ -60,7 +61,10 @@ function statusText(machine: MachineEntity): string {
   return `${machine.name} 目前狀態 ${machine.status}，OEE ${machine.oee}%，溫度 ${machine.temperature}°C，今日產量 ${machine.todayCount}，告警 ${machine.alarms} 次。`;
 }
 
-export async function runConversation(userText: string): Promise<void> {
+export async function runConversation(
+  userText: string,
+  options: { labelSimulation?: boolean; demoScenarioId?: DemoScenarioId } = {},
+): Promise<void> {
   const store = useFactoryStore.getState();
   store.addMessage({ id: uid('msg'), role: 'user', text: userText });
 
@@ -73,6 +77,28 @@ export async function runConversation(userText: string): Promise<void> {
 
   if (textIncludesAny(normalized, ['clear', '清除', '取消標記'])) {
     runTool({ name: 'clear_overlays', arguments: {} }, replies);
+  } else if (
+    options.demoScenarioId &&
+    textIncludesAny(normalized, ['計畫', '實際', '對帳', '達成率'])
+  ) {
+    const context = buildDemoSimulationContext(options.demoScenarioId, useFactoryStore.getState().entities);
+    replies.push(
+      `今日模擬計畫 ${context.totals.plan} 件，實際 ${context.totals.actual} 件，差異 ${context.totals.delta} 件，達成率 ${context.totals.attainmentRate}%。`,
+    );
+  } else if (textIncludesAny(normalized, ['amr', '自主移動機器人', '搬運機器人'])) {
+    const amrs = entities.filter(
+      (entity): entity is AmrEntity => entity.type === 'amr' && entity.source === 'sim',
+    );
+    replies.push(
+      amrs.length > 0
+        ? amrs
+            .map(
+              (amr) =>
+                `${amr.name} ${statusLabel(amr.status)}、電量 ${amr.battery}%${amr.task ? `、任務 ${amr.task}` : '、目前無任務'}`,
+            )
+            .join('；')
+        : '目前模擬情境中沒有 AMR 資料。',
+    );
   } else if (textIncludesAny(normalized, ['派', '指派', '維修', '處理', 'repair', 'assign']) && machine) {
     const worker = person ?? personFromText('志強', entities);
     runTool(
@@ -101,7 +127,10 @@ export async function runConversation(userText: string): Promise<void> {
     replies.push('我可以在本機 demo 模式下協助查人員位置、查 HC600 狀態、指派人員維修，以及清除標記。');
   }
 
-  useFactoryStore
-    .getState()
-    .addMessage({ id: uid('msg'), role: 'assistant', text: replies.filter(Boolean).join('\n') });
+  const reply = replies.filter(Boolean).join('\n');
+  useFactoryStore.getState().addMessage({
+    id: uid('msg'),
+    role: 'assistant',
+    text: options.labelSimulation && !reply.startsWith('模擬情境：') ? `模擬情境：${reply}` : reply,
+  });
 }

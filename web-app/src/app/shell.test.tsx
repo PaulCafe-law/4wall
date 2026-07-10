@@ -39,6 +39,7 @@ describe('AppShell', () => {
     expect(screen.getByRole('link', { name: '任務' })).toBeVisible()
     expect(screen.getByRole('link', { name: '帳務' })).toBeVisible()
     expect(screen.getByRole('link', { name: '系統狀態' })).toBeVisible()
+    expect(screen.getByRole('link', { name: '4WALL 展示工廠' })).toBeVisible()
     expect(screen.getByRole('link', { name: '控制平面' })).toBeVisible()
     expect(screen.getByRole('link', { name: '即時營運' })).toBeVisible()
     expect(screen.getByRole('link', { name: '組織' })).toBeVisible()
@@ -76,6 +77,7 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: '控制平面' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '即時營運' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '支援工作台' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '4WALL 展示工廠' })).not.toBeInTheDocument()
   })
 
   it('shows a factory customer only live factory navigation', () => {
@@ -113,6 +115,7 @@ describe('AppShell', () => {
     expect(screen.queryByRole('link', { name: '倉儲模擬' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '任務' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '資料引擎' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '4WALL 展示工廠' })).not.toBeInTheDocument()
   })
 
   it('collapses the sidebar into a narrow rail and persists the choice in localStorage', async () => {

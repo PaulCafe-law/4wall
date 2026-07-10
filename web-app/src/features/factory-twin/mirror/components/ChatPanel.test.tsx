@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 
 function typeAndSend(text: string) {
-  const textarea = screen.getByPlaceholderText('請輸入想了解的現場狀況…');
+  const textarea = screen.getByRole('textbox');
   fireEvent.change(textarea, { target: { value: text } });
   fireEvent.keyDown(textarea, { key: 'Enter' });
 }
@@ -117,4 +117,39 @@ it('never uses simulated local replies for a live-only customer factory', () => 
   expect(screen.getByText('4WALL AI 助理暫時離線，請稍後再試。')).toBeInTheDocument();
   expect(screen.getByText('今天計畫與實際對帳')).toBeInTheDocument();
   expect(screen.queryByText('Send an AMR to the dock')).not.toBeInTheDocument();
+});
+
+it('uses the isolated demo session and simulation-only suggestions', async () => {
+  apiMock.postTwinAgentMessage.mockResolvedValue({ jobId: 'demo-job-1' });
+  useFactoryStore.getState().setCloudAgentOnline(true);
+
+  renderWithProviders(<ChatPanel demoPresentation demoScenarioId="plan_gap" sessionId="demo-session-1" />);
+
+  expect(screen.getByText('4WALL AI 展示助手')).toBeInTheDocument();
+  expect(screen.getByText('目前模擬 AMR 情況')).toBeInTheDocument();
+  expect(screen.getByText('今天模擬計畫與實際差多少')).toBeInTheDocument();
+  expect(screen.queryByText('Send an AMR to the dock')).not.toBeInTheDocument();
+  expect(screen.getByPlaceholderText('請輸入想了解的模擬情境…')).toBeInTheDocument();
+
+  typeAndSend('目前模擬 AMR 情況');
+
+  await waitFor(() => {
+    expect(apiMock.postTwinAgentMessage).toHaveBeenCalledWith('test-token', {
+      sessionId: 'demo-session-1',
+      text: '目前模擬 AMR 情況',
+    });
+  });
+});
+
+it('forces a simulation label when the demo falls back to local rules', async () => {
+  renderWithProviders(<ChatPanel demoPresentation demoScenarioId="plan_gap" sessionId="demo-session-1" />);
+
+  typeAndSend('HC600-03 今天狀況？');
+
+  await waitFor(() => {
+    expect(runConversationMock).toHaveBeenCalledWith('HC600-03 今天狀況？', {
+      labelSimulation: true,
+      demoScenarioId: 'plan_gap',
+    });
+  });
 });

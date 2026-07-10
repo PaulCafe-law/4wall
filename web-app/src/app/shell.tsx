@@ -27,6 +27,7 @@ const factoryCustomerLinks = [
 ]
 
 const internalLinks = [
+  { to: '/demo-factory', label: '4WALL 展示工廠' },
   { to: '/attribution', label: '歸因工作台' },
   { to: '/control-plane', label: '控制平面' },
   { to: '/live-ops', label: '即時營運' },
@@ -92,7 +93,8 @@ export function AppShell() {
   const factoryMembership = getFactoryOpsMembership(auth.user)
   const activeCustomerLinks = factoryCustomer ? factoryCustomerLinks : customerLinks
   // 工廠數位分身頁以 3D 為主體：拿掉頁首文案、讓內容區撐滿可視高度。
-  const immersive = location.pathname.startsWith('/factory-twin')
+  const immersive =
+    location.pathname.startsWith('/factory-twin') || location.pathname.startsWith('/demo-factory')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed)
 
   const toggleSidebar = () => {

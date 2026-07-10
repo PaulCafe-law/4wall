@@ -4,6 +4,7 @@ import { useAuthedMutation } from '../../../../lib/auth-query';
 import { useFactoryStore, uid } from '../store/factoryStore';
 import { runConversation } from '../agent/runConversation';
 import { TWIN_AGENT_SESSION_ID } from '../hooks/useTwinAgentBridge';
+import type { DemoScenarioId } from '../domain/demoScenarios';
 import { AuthControl } from './AuthControl';
 
 const DEMO_SUGGESTIONS = [
@@ -22,7 +23,24 @@ const LIVE_FACTORY_SUGGESTIONS = [
   '現場有人嗎',
 ];
 
-export function ChatPanel({ liveOnly = false }: { liveOnly?: boolean }) {
+const ACCELERATOR_DEMO_SUGGESTIONS = [
+  '目前模擬 AMR 情況',
+  '今天模擬計畫與實際差多少',
+  'HC600-03 為什麼告警',
+  '派志強去處理 HC600-03',
+];
+
+export function ChatPanel({
+  liveOnly = false,
+  demoPresentation = false,
+  demoScenarioId,
+  sessionId = TWIN_AGENT_SESSION_ID,
+}: {
+  liveOnly?: boolean;
+  demoPresentation?: boolean;
+  demoScenarioId?: DemoScenarioId;
+  sessionId?: string;
+}) {
   const messages = useFactoryStore((s) => s.messages);
   const cloudAgentOnline = useFactoryStore((s) => s.cloudAgentOnline);
   const pendingAgentReplies = useFactoryStore((s) => s.pendingAgentReplies);
@@ -32,7 +50,7 @@ export function ChatPanel({ liveOnly = false }: { liveOnly?: boolean }) {
 
   const sendCloudMessage = useAuthedMutation({
     mutationFn: ({ token, payload }: { token: string; payload: string }) =>
-      api.postTwinAgentMessage(token, { sessionId: TWIN_AGENT_SESSION_ID, text: payload }),
+      api.postTwinAgentMessage(token, { sessionId, text: payload }),
   });
 
   useEffect(() => {
@@ -40,7 +58,11 @@ export function ChatPanel({ liveOnly = false }: { liveOnly?: boolean }) {
   }, [messages]);
 
   const thinking = busy || pendingAgentReplies > 0;
-  const suggestions = liveOnly ? LIVE_FACTORY_SUGGESTIONS : DEMO_SUGGESTIONS;
+  const suggestions = liveOnly
+    ? LIVE_FACTORY_SUGGESTIONS
+    : demoPresentation
+      ? ACCELERATOR_DEMO_SUGGESTIONS
+      : DEMO_SUGGESTIONS;
 
   const send = async (text?: string) => {
     const t = (text ?? input).trim();
@@ -66,7 +88,11 @@ export function ChatPanel({ liveOnly = false }: { liveOnly?: boolean }) {
     }
     setBusy(true);
     try {
-      await runConversation(t);
+      if (demoPresentation) {
+        await runConversation(t, { labelSimulation: true, demoScenarioId: demoScenarioId ?? 'normal' });
+      } else {
+        await runConversation(t);
+      }
     } finally {
       setBusy(false);
     }
@@ -75,7 +101,7 @@ export function ChatPanel({ liveOnly = false }: { liveOnly?: boolean }) {
   return (
     <div className="chat">
       <div className="chat-head">
-        <span className="chat-title">4WALL AI 工廠助手</span>
+        <span className="chat-title">{demoPresentation ? '4WALL AI 展示助手' : '4WALL AI 工廠助手'}</span>
         {!liveOnly ? <AuthControl /> : null}
       </div>
 
@@ -102,7 +128,7 @@ export function ChatPanel({ liveOnly = false }: { liveOnly?: boolean }) {
         <textarea
           value={input}
           rows={1}
-          placeholder="請輸入想了解的現場狀況…"
+          placeholder={demoPresentation ? '請輸入想了解的模擬情境…' : '請輸入想了解的現場狀況…'}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {

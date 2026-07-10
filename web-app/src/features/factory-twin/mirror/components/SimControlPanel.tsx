@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DEMO_SCENARIOS, getDemoScenario, type DemoScenarioId } from '../domain/demoScenarios';
 import { buildMockEntities } from '../domain/mockData';
 import { SPATIAL_ZONES } from '../domain/spatialZones';
 import { useFactoryStore, uid, type SimSpeed } from '../store/factoryStore';
@@ -6,7 +7,15 @@ import { formatSimTime } from '../sim/simClock';
 
 const SPEEDS: SimSpeed[] = [1, 2, 4];
 
-export function SimControlPanel() {
+export function SimControlPanel({
+  demoPresentation = false,
+  scenarioId = 'normal',
+  onScenarioChange,
+}: {
+  demoPresentation?: boolean;
+  scenarioId?: DemoScenarioId;
+  onScenarioChange?: (scenarioId: DemoScenarioId) => void;
+}) {
   const [scenarioBusy, setScenarioBusy] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const paused = useFactoryStore((s) => s.simPaused);
@@ -24,6 +33,10 @@ export function SimControlPanel() {
   const preferredMachine = machines.find((machine) => machine.status === 'running') ?? machines[0];
 
   const resetDemo = () => {
+    if (demoPresentation) {
+      onScenarioChange?.(scenarioId);
+      return;
+    }
     const s = useFactoryStore.getState();
     const seeded = buildMockEntities();
     for (const zone of SPATIAL_ZONES) seeded[zone.id] = zone;
@@ -68,9 +81,11 @@ export function SimControlPanel() {
       <section className="sim-console minimized" aria-label="模擬控制已最小化">
         <div className="sim-console-head">
           <div>
-            <div className="sim-title">即時模擬</div>
+            <div className="sim-title">{demoPresentation ? '展示情境' : '即時模擬'}</div>
             <div className="sim-time">
-              {formatSimTime(simTimeMs)} 班別時間 · {events.length} 事件
+              {demoPresentation
+                ? `${getDemoScenario(scenarioId).label} · ${formatSimTime(simTimeMs)}`
+                : `${formatSimTime(simTimeMs)} 班別時間 · ${events.length} 事件`}
             </div>
           </div>
           <button
@@ -94,8 +109,12 @@ export function SimControlPanel() {
     <section className="sim-console" aria-label="模擬控制">
       <div className="sim-console-head">
         <div>
-          <div className="sim-title">即時模擬</div>
-          <div className="sim-time">{formatSimTime(simTimeMs)} 班別時間</div>
+          <div className="sim-title">{demoPresentation ? '展示情境' : '即時模擬'}</div>
+          <div className="sim-time">
+            {demoPresentation
+              ? `${getDemoScenario(scenarioId).label} · ${formatSimTime(simTimeMs)} 模擬時間`
+              : `${formatSimTime(simTimeMs)} 班別時間`}
+          </div>
         </div>
         <div className="sim-head-actions">
           <button className={`sim-play ${paused ? 'paused' : ''}`} onClick={() => setPaused(!paused)} type="button">
@@ -116,27 +135,56 @@ export function SimControlPanel() {
         </div>
       </div>
 
-      <div className="sim-controls">
-        <div className="sim-segment" role="group" aria-label="模擬速度">
-          {SPEEDS.map((s) => (
-            <button key={s} className={speed === s ? 'active' : ''} onClick={() => setSpeed(s)} type="button">
-              {s}x
+      {demoPresentation ? (
+        <>
+          <div className="demo-scenario-selector" role="group" aria-label="展示情境">
+            {DEMO_SCENARIOS.map((scenario) => (
+              <button
+                key={scenario.id}
+                className={scenarioId === scenario.id ? 'active' : ''}
+                onClick={() => onScenarioChange?.(scenario.id)}
+                type="button"
+              >
+                {scenario.shortLabel}
+              </button>
+            ))}
+          </div>
+          <div className="sim-controls demo-controls">
+            <div className="sim-segment" role="group" aria-label="模擬速度">
+              {SPEEDS.map((s) => (
+                <button key={s} className={speed === s ? 'active' : ''} onClick={() => setSpeed(s)} type="button">
+                  {s}x
+                </button>
+              ))}
+            </div>
+            <button className="sim-trigger ghost" onClick={resetDemo} type="button">
+              重設目前情境
             </button>
-          ))}
+          </div>
+        </>
+      ) : (
+        <div className="sim-controls">
+          <div className="sim-segment" role="group" aria-label="模擬速度">
+            {SPEEDS.map((s) => (
+              <button key={s} className={speed === s ? 'active' : ''} onClick={() => setSpeed(s)} type="button">
+                {s}x
+              </button>
+            ))}
+          </div>
+          <button className="sim-trigger" onClick={() => triggerAlarm(preferredMachine?.id ?? null)} type="button">
+            指定告警
+          </button>
+          <button className="sim-trigger ghost" onClick={() => triggerAlarm(null)} type="button">
+            隨機告警
+          </button>
+          <button className="sim-trigger wide" onClick={triggerCoverageScenario} type="button" disabled={scenarioBusy}>
+            覆蓋缺口 → 良率下降
+          </button>
+          <button className="sim-trigger ghost" onClick={resetDemo} type="button">
+            重置演示
+          </button>
         </div>
-        <button className="sim-trigger" onClick={() => triggerAlarm(preferredMachine?.id ?? null)} type="button">
-          指定告警
-        </button>
-        <button className="sim-trigger ghost" onClick={() => triggerAlarm(null)} type="button">
-          隨機告警
-        </button>
-        <button className="sim-trigger wide" onClick={triggerCoverageScenario} type="button" disabled={scenarioBusy}>
-          覆蓋缺口 → 良率下降
-        </button>
-        <button className="sim-trigger ghost" onClick={resetDemo} type="button">
-          重置演示
-        </button>
-      </div>
+      )}
 
       <div className="sim-events" aria-label="模擬事件流">
         {events.length === 0 ? (

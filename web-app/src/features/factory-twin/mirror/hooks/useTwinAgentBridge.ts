@@ -1,6 +1,6 @@
 // Cloud-agent bridge: pushes compact world snapshots to planner-server and polls
 // the per-session feed, executing tool calls decided by the laptop worker LLM.
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { api } from '../../../../lib/api';
 import { useAuth } from '../../../../lib/auth';
 import { useAuthedQuery } from '../../../../lib/auth-query';
@@ -13,10 +13,15 @@ import {
 import { executeToolCall } from '../agent/tools';
 import type { CameraEntity, Entity, MachineEntity, PersonEntity } from '../domain/entities';
 import { machineUsesLiveMetricsOnly } from '../domain/entities';
+import {
+  buildDemoSimulationContext,
+  type DemoScenarioId,
+} from '../domain/demoScenarios';
 import { machineIdForCamera } from '../domain/machineCameras';
 import { uid, useFactoryStore } from '../store/factoryStore';
 
 export const TWIN_AGENT_SESSION_ID = uid('twin-session');
+export const DEMO_TWIN_AGENT_SESSION_ID = uid('demo-twin-session');
 
 const SNAPSHOT_INTERVAL_MS = 3000;
 const UPDATES_INTERVAL_MS = 2000;
@@ -33,8 +38,12 @@ export interface TwinAgentLiveDataStatus {
   personLatestAt: string | null;
 }
 
-const cursorRef = { current: null as number | null };
-const processedSeqs = new Set<number>();
+export interface TwinAgentBridgeOptions {
+  sessionId?: string;
+  bindOrganization?: boolean;
+  includeLiveEvidence?: boolean;
+  demoScenarioId?: DemoScenarioId;
+}
 
 function round1(value: number): number {
   return Math.round(value * 10) / 10;
@@ -360,6 +369,7 @@ function buildDataAvailability(
   entities: Record<string, Entity>,
   platformCameras: CameraEntity[],
   liveDataStatus?: TwinAgentLiveDataStatus,
+  includeLiveEvidence = true,
 ): Record<string, unknown> {
   const liveAmrCount = Object.values(entities).filter(
     (entity) => entity.type === 'amr' && entity.source === 'live',
@@ -369,23 +379,37 @@ function buildDataAvailability(
   ).length;
   const cameraLatestAt = liveDataStatus?.cameraLatestAt ?? null;
   const personLatestAt = liveDataStatus?.personLatestAt ?? null;
+  const mode = liveDataStatus?.mode ?? 'simulation';
+  const simulatedPersonCount = Object.values(entities).filter(
+    (entity) => entity.type === 'person' && entity.source === 'sim',
+  ).length;
 
   return {
-    camera: {
-      state: liveDataStatus?.cameraState ?? 'ready',
-      count: liveDataStatus ? liveDataStatus.cameraCount : platformCameras.length,
-      latestAt: cameraLatestAt,
-      freshness: freshness(cameraLatestAt),
-    },
-    people: {
-      state: liveDataStatus?.personState ?? 'unavailable',
-      latestAt: personLatestAt,
-      freshness: freshness(personLatestAt),
-    },
+    mode,
+    camera: includeLiveEvidence
+      ? {
+          state: liveDataStatus?.cameraState ?? 'ready',
+          count: liveDataStatus ? liveDataStatus.cameraCount : platformCameras.length,
+          latestAt: cameraLatestAt,
+          freshness: freshness(cameraLatestAt),
+        }
+      : {
+          state: 'out_of_scope',
+          source: 'authorized_live_evidence',
+          count: 0,
+          text: '靚程授權影像只供畫面展示，不提供給模擬助手判讀',
+        },
+    people: includeLiveEvidence
+      ? {
+          state: liveDataStatus?.personState ?? 'unavailable',
+          latestAt: personLatestAt,
+          freshness: freshness(personLatestAt),
+        }
+      : { state: 'simulation', source: 'simulation', count: simulatedPersonCount },
     amr:
       liveAmrCount > 0
         ? { state: 'current', source: 'live', count: liveAmrCount }
-        : liveDataStatus?.mode === 'live'
+        : mode === 'live'
           ? {
               state: 'not_connected',
               source: 'live',
@@ -398,16 +422,33 @@ function buildDataAvailability(
   };
 }
 
-function buildWorldSnapshot(liveDataStatus?: TwinAgentLiveDataStatus): Record<string, unknown> {
+export function buildWorldSnapshot(
+  liveDataStatus?: TwinAgentLiveDataStatus,
+  options: Pick<TwinAgentBridgeOptions, 'includeLiveEvidence' | 'demoScenarioId'> = {},
+): Record<string, unknown> {
   const s = useFactoryStore.getState();
+  const includeLiveEvidence = options.includeLiveEvidence ?? true;
+  const snapshotEntities = includeLiveEvidence
+    ? s.entities
+    : Object.fromEntries(Object.entries(s.entities).filter(([, entity]) => entity.source === 'sim'));
   return {
-    dataAvailability: buildDataAvailability(s.entities, s.platformCameras, liveDataStatus),
-    entities: compactEntities(s.entities),
+    dataAvailability: buildDataAvailability(
+      snapshotEntities,
+      includeLiveEvidence ? s.platformCameras : [],
+      liveDataStatus,
+      includeLiveEvidence,
+    ),
+    entities: compactEntities(snapshotEntities),
     recentEvents: s.simEvents
       .slice(0, 20)
       .map((event) => ({ atMs: event.atMs, type: event.type, message: event.message })),
-    cameraSummary: s.platformCameras.map(compactCameraRealData),
-    machineRealData: buildMachineRealData(s.entities, s.platformCameras, s.livePersons),
+    cameraSummary: includeLiveEvidence ? s.platformCameras.map(compactCameraRealData) : [],
+    machineRealData: includeLiveEvidence
+      ? buildMachineRealData(s.entities, s.platformCameras, s.livePersons)
+      : [],
+    ...(options.demoScenarioId
+      ? { simulationContext: buildDemoSimulationContext(options.demoScenarioId, snapshotEntities) }
+      : {}),
   };
 }
 
@@ -440,19 +481,28 @@ function handleFeedEvent(event: TwinAgentFeedEvent): void {
   }
 }
 
-export function useTwinAgentBridge(liveDataStatus?: TwinAgentLiveDataStatus) {
+export function useTwinAgentBridge(
+  liveDataStatus?: TwinAgentLiveDataStatus,
+  options: TwinAgentBridgeOptions = {},
+) {
   const auth = useAuth();
+  const sessionId = options.sessionId ?? TWIN_AGENT_SESSION_ID;
+  const bindOrganization = options.bindOrganization ?? true;
+  const includeLiveEvidence = options.includeLiveEvidence ?? true;
+  const demoScenarioId = options.demoScenarioId;
+  const cursorRef = useRef<number | null>(null);
+  const processedSeqsRef = useRef(new Set<number>());
 
   useEffect(() => {
     const publishSnapshot = () => {
       const token = auth.session?.accessToken;
       if (!token) return;
-      const organizationId = snapshotOrganizationId();
+      const organizationId = bindOrganization ? snapshotOrganizationId() : undefined;
       void Promise.resolve(
         api.postTwinAgentSnapshot(token, {
-          sessionId: TWIN_AGENT_SESSION_ID,
+          sessionId,
           capturedAt: new Date().toISOString(),
-          world: buildWorldSnapshot(liveDataStatus),
+          world: buildWorldSnapshot(liveDataStatus, { includeLiveEvidence, demoScenarioId }),
           ...(organizationId ? { organizationId } : {}),
         }),
       ).catch(() => {});
@@ -462,11 +512,18 @@ export function useTwinAgentBridge(liveDataStatus?: TwinAgentLiveDataStatus) {
       publishSnapshot();
     }, SNAPSHOT_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [auth.session?.accessToken, liveDataStatus]);
+  }, [
+    auth.session?.accessToken,
+    bindOrganization,
+    demoScenarioId,
+    includeLiveEvidence,
+    liveDataStatus,
+    sessionId,
+  ]);
 
   const updatesQuery = useAuthedQuery({
-    queryKey: ['factory-twin', 'twin-agent-updates', TWIN_AGENT_SESSION_ID],
-    queryFn: (token) => api.getTwinAgentUpdates(token, TWIN_AGENT_SESSION_ID, cursorRef.current),
+    queryKey: ['factory-twin', 'twin-agent-updates', sessionId],
+    queryFn: (token) => api.getTwinAgentUpdates(token, sessionId, cursorRef.current),
     refetchInterval: UPDATES_INTERVAL_MS,
     retry: false,
   });
@@ -481,12 +538,12 @@ export function useTwinAgentBridge(liveDataStatus?: TwinAgentLiveDataStatus) {
     if (!updates) return;
     useFactoryStore.getState().setCloudAgentOnline(updates.workerOnline);
     if (cursorRef.current !== null && updates.cursor < cursorRef.current) {
-      processedSeqs.clear();
+      processedSeqsRef.current.clear();
     }
     cursorRef.current = updates.cursor;
     for (const event of updates.events) {
-      if (processedSeqs.has(event.seq)) continue;
-      processedSeqs.add(event.seq);
+      if (processedSeqsRef.current.has(event.seq)) continue;
+      processedSeqsRef.current.add(event.seq);
       handleFeedEvent(event);
     }
   }, [updates]);

@@ -3,10 +3,10 @@ import { Route, Routes } from 'react-router-dom';
 import { beforeEach, vi } from 'vitest';
 
 import { AppShell } from '../../app/shell';
-import { RequireAuthenticated } from '../../app/routes';
+import { RequireAuthenticated, RequireInternal } from '../../app/routes';
 import type { CameraDevice, CameraPersonObservation } from '../../lib/types';
-import { createAuthValue, renderWithProviders } from '../../test/utils';
-import { FactoryTwinPage, toLivePersons } from './FactoryTwinPage';
+import { createAuthValue, createSession, renderWithProviders } from '../../test/utils';
+import { DemoFactoryPage, FactoryTwinPage, toLivePersons } from './FactoryTwinPage';
 import {
   LIVE_PERSON_MACHINE_OFFSET_X_M,
   LIVE_PERSON_MACHINE_OFFSET_Z_M,
@@ -32,9 +32,11 @@ vi.mock('./FactoryTwinWorkspace', () => ({
   FactoryTwinWorkspace: ({
     platformCameras,
     livePersons,
+    demoPresentation,
   }: {
     platformCameras: Array<{ name: string; attrs?: { latestGaugeReadings?: unknown[]; latestOcrObservation?: unknown } }>;
     livePersons: Array<{ id: string; name: string }>;
+    demoPresentation?: boolean;
   }) => {
     const gaugeCount = platformCameras.reduce(
       (total, camera) => total + (camera.attrs?.latestGaugeReadings?.length ?? 0),
@@ -47,6 +49,7 @@ vi.mock('./FactoryTwinWorkspace', () => ({
         gauge readings: {gaugeCount}
         ocr observations: {ocrCount}
         live persons: {livePersons.length}
+        demo presentation: {String(Boolean(demoPresentation))}
         {platformCameras.map((camera) => (
           <span key={camera.name}>{camera.name}</span>
         ))}
@@ -170,6 +173,27 @@ function renderFactoryRoute(auth = createAuthValue(), route = '/factory-twin') {
   );
 }
 
+function renderDemoRoute(auth = createAuthValue({ session: createSession({ globalRoles: ['platform_admin'] }) })) {
+  return renderWithProviders(
+    <Routes>
+      <Route element={<RequireAuthenticated />}>
+        <Route element={<AppShell />}>
+          <Route
+            path="/demo-factory"
+            element={
+              <RequireInternal>
+                <DemoFactoryPage />
+              </RequireInternal>
+            }
+          />
+        </Route>
+      </Route>
+      <Route path="/login" element={<div>login page</div>} />
+    </Routes>,
+    { route: '/demo-factory', auth },
+  );
+}
+
 describe('FactoryTwinPage', () => {
   beforeEach(() => {
     window.history.pushState({}, '', '/');
@@ -247,6 +271,55 @@ describe('FactoryTwinPage', () => {
       expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 1');
     });
     expect(screen.getByTestId('factory-twin-workspace').textContent).toContain('×2');
+  });
+
+  it('renders an internal-only accelerator workspace with separated data labels', async () => {
+    apiMock.listCameras.mockResolvedValueOnce({
+      cameras: [
+        cameraFixture(
+          'factory-1',
+          'PoE Camera 192.168.1.10',
+          'dd6cbdd3aa744736ad96d2791d689fce',
+          [],
+          personObservation('factory-1'),
+        ),
+        cameraFixture('factory-2', 'PoE Camera 192.168.1.28', 'dd6cbdd3aa744736ad96d2791d689fce'),
+        cameraFixture('factory-3', 'PoE Camera 192.168.1.31', 'dd6cbdd3aa744736ad96d2791d689fce'),
+      ],
+    });
+
+    renderDemoRoute();
+
+    expect(await screen.findByRole('heading', { name: '4WALL 展示工廠' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '4WALL 展示工廠' })).toHaveAttribute('href', '/demo-factory');
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('platform cameras: 3');
+    });
+    expect(screen.getByText(/展示模式.*營運數據皆為模擬.*靚程授權影像 3\/3 在線/)).toBeInTheDocument();
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('demo presentation: true');
+  });
+
+  it('does not expose the accelerator workspace to customer-only accounts', async () => {
+    const session = createSession({
+      globalRoles: [],
+      memberships: [
+        {
+          membershipId: 'jingcheng-membership',
+          organizationId: 'jingcheng-org',
+          organizationName: '靚程企業',
+          organizationSlug: 'jingcheng',
+          productMode: 'factory_ops',
+          role: 'customer_viewer',
+          isActive: true,
+        },
+      ],
+    });
+
+    renderDemoRoute(createAuthValue({ session, isInternal: false }));
+
+    expect(await screen.findByText('這個頁面僅提供 internal 使用')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '4WALL 展示工廠' })).not.toBeInTheDocument();
   });
 
   it('shows a live-person anchor preview only in anchor picker mode', async () => {

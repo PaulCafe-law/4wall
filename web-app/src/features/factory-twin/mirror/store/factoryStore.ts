@@ -131,6 +131,7 @@ export interface FactoryState {
   probedCoord: { x: number; z: number } | null;
 
   setEntities: (e: Record<string, Entity>) => void;
+  resetWorkspace: (entities: Record<string, Entity>, introText: string) => void;
   patchEntity: (id: string, patch: Record<string, unknown>) => void;
   select: (id: string | null) => void;
   setHighlight: (id: string, h: Highlight | null) => void;
@@ -194,6 +195,24 @@ export const useFactoryStore = create<FactoryState>((set) => ({
   probedCoord: null,
 
   setEntities: (e) => set({ entities: e }),
+  resetWorkspace: (entities, introText) =>
+    set({
+      entities,
+      selectedId: null,
+      highlights: {},
+      links: [],
+      cameraTarget: null,
+      messages: [{ id: uid('msg'), role: 'assistant', text: introText }],
+      simPaused: false,
+      simSpeed: 1,
+      simTimeMs: 0,
+      simEvents: [],
+      manualAlarmTargetId: null,
+      manualAlarmNonce: 0,
+      agentNotifications: [],
+      cloudAgentOnline: false,
+      pendingAgentReplies: 0,
+    }),
   patchEntity: (id, patch) =>
     set((s) => {
       const cur = s.entities[id];
