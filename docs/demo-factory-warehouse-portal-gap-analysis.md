@@ -121,7 +121,7 @@ FactoryTwinWorkspace (internal demo only)
 - 切換方案會同步更新 KPI、搬遷清單、貨架熱度與 AMR 路線。
 - 3090 助手只在 `accelerator_demo` 且具有模擬摘要時取得倉儲工具；客戶與 LINE 路徑不會取得倉儲工具。
 - 1280 寬度進入倉庫會暫時收起助手，返回時恢復；1920 投影寬度維持完整助手、3D 與指標三欄。
-- 2026-07-11 驗證：Web 44 個測試檔、177 項測試通過；worker 36 項測試通過；typecheck、lint、production build 與高風險套件稽核通過。
+- 2026-07-11 驗證：Web 44 個測試檔、178 項測試通過；worker 36 項測試通過；typecheck、lint、production build 與高風險套件稽核通過。
 
 ## Deferred Hardening
 

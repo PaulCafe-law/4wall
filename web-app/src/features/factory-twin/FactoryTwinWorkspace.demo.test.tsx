@@ -97,8 +97,17 @@ it('does not expose or initialize the warehouse portal for the customer workspac
   );
 
   expect(screen.queryByRole('button', { name: '進入倉儲' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '立即進入智慧倉儲模擬區' })).not.toBeInTheDocument();
   expect(useWarehouseDemoStore.getState().enabled).toBe(false);
   expect(useWarehouseDemoStore.getState().planSet).toBeNull();
+});
+
+it('keeps a warehouse entry available while the factory model is loading', () => {
+  render(<FactoryTwinWorkspace platformCameras={[]} livePersons={[]} demoPresentation />);
+
+  fireEvent.click(screen.getByRole('button', { name: '立即進入智慧倉儲模擬區' }));
+
+  expect(useWarehouseDemoStore.getState().transition).toBe('to_warehouse');
 });
 
 it('enters the isolated warehouse space through the in-scene portal', async () => {

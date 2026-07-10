@@ -192,6 +192,12 @@
   background: rgba(29, 45, 49, 0.96);
   outline: none;
 }
+.warehouse-portal-loading-entry {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 45;
+}
 .facility-transition {
   position: absolute;
   inset: 0;

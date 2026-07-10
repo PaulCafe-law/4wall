@@ -91,6 +91,7 @@ function FactoryDemo({
   const rightOpen = useFactoryStore((s) => s.rightOpen);
   const toggleLeft = useFactoryStore((s) => s.toggleLeft);
   const toggleRight = useFactoryStore((s) => s.toggleRight);
+  const glbLoadState = useFactoryStore((s) => s.glbLoadState);
   const facilitySpace = useWarehouseDemoStore((s) => s.space);
   const warehouseEnabled = useWarehouseDemoStore((s) => s.enabled);
   const transition = useWarehouseDemoStore((s) => s.transition);
@@ -202,6 +203,17 @@ function FactoryDemo({
             onEnterWarehouse={demoPresentation ? enterWarehouse : undefined}
           />
         )}
+        {demoPresentation && !warehousePresentation && glbLoadState === 'loading' ? (
+          <button
+            aria-label="立即進入智慧倉儲模擬區"
+            className="warehouse-portal-label warehouse-portal-loading-entry"
+            type="button"
+            onClick={enterWarehouse}
+          >
+            <span>智慧倉儲模擬區</span>
+            <strong>立即進入 →</strong>
+          </button>
+        ) : null}
         {!demoPresentation ? <WorkOrderOverlay /> : null}
         {warehousePresentation ? (
           <WarehouseDecisionControls />
