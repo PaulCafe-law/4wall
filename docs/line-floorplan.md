@@ -60,7 +60,9 @@ Rules:
 - `width` must be one of `240`, `300`, `460`, `700`, `1040`.
 - The response is `image/png`; the URL intentionally has no `.png` suffix.
 - `render_token` is an HMAC token signed with `settings.auth_secret_key`.
-- The token payload signs `siteSlug`, `groupId`, and `issuedAt`, and expires after 10 minutes.
+- Current tokens sign `siteSlug`, `sourceType`, `sourceId`, `issuedAt`, and `purpose`; user-scoped
+  tokens also sign `destinationId`. Legacy group tokens containing `groupId` remain accepted, and
+  render tokens expire after 10 minutes.
 - The endpoint keeps a 60 second in-memory cache and applies rate limiting.
 - The PNG contains only the base map, camera status dots, machine status dots, and an Asia/Taipei timestamp. It must not contain screenshots, personal names, private identifiers, or internal URLs.
 
@@ -107,7 +109,11 @@ Text fallback:
 - `異常`
 - `機台 <id>`
 
-Unbound groups receive only `此群組尚未綁定場域` except for `綁定 靚程`, which logs the group id and instructs an administrator to run the binding script. Direct user and room conversations do not receive site data.
+Unbound groups receive only `此群組尚未綁定場域` except for `綁定 靚程`, which logs the group id
+and instructs an administrator to run the binding script. Unlinked direct users and all room
+conversations do not receive site data. Linked direct users can receive only the selected site's
+data after the verified [LINE one-to-one account-linking flow](line-user-account-linking.md), with
+current membership rechecked on every event.
 
 All P0 interactions use `reply`. No new push path is introduced. Existing incident push remains controlled by `LINE_INCIDENT_NOTIFY_ENABLED` and `LINE_DEFAULT_GROUP_ID`.
 
