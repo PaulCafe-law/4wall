@@ -40,7 +40,7 @@ jobs:
           fi
           echo "Deployment variables present."
       - name: Install smoke dependencies
-        run: python -m pip install -r planner-server/requirements.txt
+        run: python -m pip install --require-hashes -r planner-server/requirements.txt
       - name: API health
         env:
           BETA_API_BASE_URL: ${{ vars.BETA_API_BASE_URL }}
