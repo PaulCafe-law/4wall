@@ -9,6 +9,7 @@ import hmac
 import json
 from uuid import uuid4
 
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from PIL import Image
 import pytest
@@ -32,13 +33,16 @@ from app.models import (
     IncidentLineNotificationRecord,
     IncidentRecord,
     LineGroupBinding,
+    LineUserBinding,
     Site,
 )
-from tests.helpers import seed_organization
+from tests.helpers import seed_organization, seed_user
 
 
 JINGCHENG_SITE_ID = "dd6cbdd3aa744736ad96d2791d689fce"
 BOUND_GROUP_ID = "Cjingcheng-bound"
+LINE_DESTINATION_ID = "U00000000000000000000000000000000"
+LINE_USER_ID = "Ulineuser"
 
 
 class FakeStorage:
@@ -97,6 +101,32 @@ def test_floorplan_liveview_token_purpose_and_legacy_render_compatibility(test_s
         now=now,
     )
     assert legacy_payload.purpose == "render"
+    assert legacy_payload.source_type == "group"
+    assert legacy_payload.source_id == BOUND_GROUP_ID
+
+
+def test_floorplan_token_supports_user_scope_and_requires_destination(test_settings) -> None:
+    settings = _line_settings(test_settings)
+    token = create_floorplan_render_token(
+        settings,
+        site_slug="jingcheng",
+        source_type="user",
+        source_id="Uline-user",
+        destination_id="Uofficial-account",
+    )
+
+    payload = verify_floorplan_render_token(settings, site_slug="jingcheng", token=token)
+
+    assert payload.source_type == "user"
+    assert payload.source_id == "Uline-user"
+    assert payload.destination_id == "Uofficial-account"
+    with pytest.raises(FloorplanTokenError, match="invalid_floorplan_token_destination"):
+        create_floorplan_render_token(
+            settings,
+            site_slug="jingcheng",
+            source_type="user",
+            source_id="Uline-user",
+        )
 
 
 def test_floorplan_endpoint_token_cache_dimensions_and_rate_limit(test_settings) -> None:
@@ -183,6 +213,47 @@ def test_liveview_machine_endpoint_uses_short_presigned_thumbnail(test_settings)
     assert payload["thumbnailUrl"] == "https://signed.example.test/live-thumb.jpg"
     assert payload["thumbnailTtlSeconds"] == 600
     assert payload["gauges"][0]["gaugeId"] == "press_am_meter"
+
+
+def test_machine_thumbnail_ignores_newer_frame_from_another_site_on_same_camera(test_settings) -> None:
+    settings = _line_settings(test_settings, app_origin="https://app.example.test")
+    storage = FakeStorage(get_url="https://signed.example.test/live-thumb.jpg")
+    app = build_app(settings=settings, artifact_storage=storage)
+    with TestClient(app) as client:
+        _seed_scope(app)
+        with app.state.session_factory() as session:
+            camera = session.get(CameraDevice, "camera-gauge")
+            assert camera is not None
+            other_site = Site(
+                organization_id=camera.organization_id,
+                name="Other Site",
+                address="Other",
+                lat=24.0,
+                lng=120.0,
+            )
+            session.add(other_site)
+            session.flush()
+            session.add(
+                CameraFrame(
+                    id="frame-newer-other-site",
+                    camera_id=camera.id,
+                    organization_id=camera.organization_id,
+                    site_id=other_site.id,
+                    captured_at=datetime.now(timezone.utc),
+                    storage_key="camera-frames/org/camera/other-site.jpg",
+                    content_type="image/jpeg",
+                    upload_status="uploaded",
+                    analysis_status="complete",
+                    upload_expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+                )
+            )
+            session.commit()
+
+        token = create_floorplan_liveview_token(settings, site_slug="jingcheng", group_id=BOUND_GROUP_ID)
+        response = client.get(f"/v1/line/floorplan/jingcheng/machine/m-hc600?token={token}")
+
+    assert response.status_code == 200, response.text
+    assert storage.get_url_calls == [{"key": "camera-frames/org/camera/frame.jpg", "expires_in_seconds": 600}]
 
 
 def test_liveview_state_endpoint_rate_limits(test_settings) -> None:
@@ -400,13 +471,18 @@ def test_unbound_group_direct_chat_and_bind_request_do_not_leak_site_data(test_s
     assert response.status_code == 200, response.text
     texts = [reply["messages"][0]["text"] for reply in replies]
     assert texts[0] == "此群組尚未綁定場域"
-    assert texts[1] == "請在已綁定的 LINE 值班群組使用廠區圖功能。"
+    assert texts[1] == "一對一帳號連結尚未開放，請先在已綁定的 LINE 值班群組使用。"
     assert "已收到綁定請求" in texts[2]
     assert all(reply["messages"][0]["type"] == "text" for reply in replies)
 
 
 def test_report_machine_incident_creates_pending_review_without_push(test_settings, monkeypatch) -> None:
-    settings = _line_settings(test_settings, line_incident_notify_enabled=True, line_default_group_id="Cpush")
+    settings = _line_settings(
+        test_settings,
+        account_linking=True,
+        line_incident_notify_enabled=True,
+        line_default_group_id="Cpush",
+    )
     replies = _capture_replies(monkeypatch)
 
     def fail_push(*_args, **_kwargs):
@@ -429,6 +505,25 @@ def test_report_machine_incident_creates_pending_review_without_push(test_settin
     assert incidents[0].location_json["equipmentId"] == "m-hc600"
     assert line_notifications == []
     assert "已建立待確認異常" in replies[0]["messages"][0]["text"]
+
+
+def test_unlinked_group_writer_cannot_report_machine_incident(test_settings, monkeypatch) -> None:
+    settings = _line_settings(test_settings, account_linking=True)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+
+    with TestClient(app) as client:
+        _seed_scope(app, with_writer_binding=False)
+        response = _post_line_events(
+            client,
+            settings,
+            [_postback_event("report_machine_incident", machine_id="m-hc600", event_id="evt-unlinked-writer")],
+        )
+
+    assert response.status_code == 200, response.text
+    with app.state.session_factory() as session:
+        assert session.exec(select(IncidentRecord).where(IncidentRecord.source == "line")).all() == []
+    assert "沒有此場域的寫入權限" in replies[0]["messages"][0]["text"]
 
 
 def test_incident_push_message_adds_liveview_link_without_extra_push(test_settings, monkeypatch) -> None:
@@ -463,7 +558,7 @@ def test_incident_push_message_adds_liveview_link_without_extra_push(test_settin
     assert notification_message == message_text
 
 
-def _line_settings(test_settings, **overrides):
+def _line_settings(test_settings, *, account_linking: bool = False, **overrides):
     values = {
         "line_channel_access_token": "test-token",
         "line_channel_secret": "test-secret",
@@ -473,6 +568,15 @@ def _line_settings(test_settings, **overrides):
         "line_public_base_url": "https://api.example.test",
         "app_origin": None,
     }
+    if account_linking:
+        values.update(
+            {
+                "app_origin": "https://app.example.test",
+                "line_account_linking_enabled": True,
+                "line_account_link_encryption_keys": (Fernet.generate_key().decode("ascii"),),
+                "line_destination_id": LINE_DESTINATION_ID,
+            }
+        )
     values.update(overrides)
     return replace(test_settings, **values)
 
@@ -489,7 +593,7 @@ def _floorplan_token_signature(secret: str, body: str) -> str:
     ).decode("ascii").rstrip("=")
 
 
-def _seed_scope(app, *, with_incident: bool = False) -> None:
+def _seed_scope(app, *, with_incident: bool = False, with_writer_binding: bool = True) -> None:
     now = datetime.now(timezone.utc)
     with app.state.session_factory() as session:
         org = seed_organization(session, name="Jingcheng Org")
@@ -502,6 +606,22 @@ def _seed_scope(app, *, with_incident: bool = False) -> None:
             lng=121.0,
         )
         session.add(site)
+        writer = seed_user(
+            session,
+            email="line-writer@jingcheng.test",
+            password="Password123!",
+            org_roles=[(org.id, "customer_admin")],
+        )
+        if with_writer_binding:
+            session.add(
+                LineUserBinding(
+                    destination_id=LINE_DESTINATION_ID,
+                    line_user_id=LINE_USER_ID,
+                    user_id=writer.id,
+                    site_id=site.id,
+                    is_active=True,
+                )
+            )
         camera = CameraDevice(
             id="camera-gauge",
             organization_id=org.id,
@@ -600,7 +720,7 @@ def _capture_replies(monkeypatch) -> list[dict]:
 
 
 def _post_line_events(client: TestClient, settings, events: list[dict]):
-    payload = {"destination": "U00000000000000000000000000000000", "events": events}
+    payload = {"destination": LINE_DESTINATION_ID, "events": events}
     raw_body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     signature = base64.b64encode(
         hmac.new(settings.line_channel_secret.encode("utf-8"), raw_body, hashlib.sha256).digest()
@@ -628,7 +748,7 @@ def _postback_event(
         "type": "postback",
         "webhookEventId": event_id,
         "replyToken": reply_token or f"reply-{action}",
-        "source": {"type": "group", "groupId": group_id, "userId": "Ulineuser"},
+        "source": {"type": "group", "groupId": group_id, "userId": LINE_USER_ID},
         "timestamp": 1770000000000,
         "postback": {"data": data},
     }
@@ -642,7 +762,7 @@ def _message_event(
     group_id: str = BOUND_GROUP_ID,
     source_type: str = "group",
 ) -> dict:
-    source = {"type": source_type, "userId": "Ulineuser"}
+    source = {"type": source_type, "userId": LINE_USER_ID}
     if source_type == "group":
         source["groupId"] = group_id
     return {
@@ -656,26 +776,11 @@ def _message_event(
 
 
 from app import twin_agent  # noqa: E402
-from app.routers.line import (  # noqa: E402
-    TWIN_AGENT_DEMO_UNAVAILABLE_TEXT,
-    TWIN_AGENT_LINE_BUSY_TEXT,
-    TWIN_AGENT_LINE_RATE_LIMIT,
-)
-from app.twin_agent import TWIN_AGENT_OFFLINE_TEXT, clear_twin_agent_state, count_pending_line_jobs  # noqa: E402
+from app.twin_agent import clear_twin_agent_state  # noqa: E402
 
 
-def _capture_twin_agent_pushes(monkeypatch) -> list[dict]:
-    pushes: list[dict] = []
-
-    def fake_push_line_message(_settings, target_id, message):
-        pushes.append({"target": target_id, "message": message})
-        return {"status": "ok"}
-
-    monkeypatch.setattr("app.twin_agent.push_line_message", fake_push_line_message)
-    return pushes
-
-
-def test_twin_agent_fallthrough_enqueues_job_without_sync_reply(test_settings, monkeypatch) -> None:
+@pytest.mark.parametrize("text", ["HC600 現在狀態如何？", "展示工廠：現在 AMR 情況"])
+def test_line_external_text_never_enters_local_twin_agent(test_settings, monkeypatch, text: str) -> None:
     clear_twin_agent_state()
     settings = _line_settings(test_settings, twin_agent_enabled=True)
     replies = _capture_replies(monkeypatch)
@@ -685,93 +790,8 @@ def test_twin_agent_fallthrough_enqueues_job_without_sync_reply(test_settings, m
         response = _post_line_events(
             client,
             settings,
-            [_message_event("HC600 現在狀態如何？", event_id="evt-twin-nl", reply_token="reply-twin-nl")],
+            [_message_event(text, event_id="evt-external-help", reply_token="reply-external-help")],
         )
-
-    assert response.status_code == 200, response.text
-    assert replies == []
-    assert count_pending_line_jobs(BOUND_GROUP_ID) == 1
-    job = twin_agent._STATE.jobs[0]
-    assert job.source == "line"
-    assert job.text == "HC600 現在狀態如何？"
-    assert job.group_id == BOUND_GROUP_ID
-    assert job.reply_token == "reply-twin-nl"
-    assert job.site_slug == "jingcheng"
-    assert job.organization_id is not None
-
-
-def test_twin_agent_demo_prefix_routes_to_fresh_demo_session(test_settings, monkeypatch) -> None:
-    clear_twin_agent_state()
-    twin_agent.store_world_snapshot(
-        session_id="line-demo-session",
-        owner_user_id="internal-operator",
-        organization_id=None,
-        snapshot_scope=twin_agent.SNAPSHOT_SCOPE_ACCELERATOR_DEMO,
-        world={"dataAvailability": {"mode": "simulation"}, "simulationContext": {"scenarioId": "amr_delay"}},
-        captured_at=datetime.now(timezone.utc),
-    )
-    settings = _line_settings(test_settings, twin_agent_enabled=True)
-    replies = _capture_replies(monkeypatch)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
-    with TestClient(app) as client:
-        _seed_scope(app)
-        response = _post_line_events(
-            client,
-            settings,
-            [_message_event("展示工廠：現在 AMR 情況", event_id="evt-twin-demo", reply_token="reply-twin-demo")],
-        )
-
-    assert response.status_code == 200, response.text
-    assert replies == []
-    job = twin_agent._STATE.jobs[0]
-    assert job.text == "現在 AMR 情況"
-    assert job.session_id == "line-demo-session"
-    assert job.organization_id is None
-    assert job.site_slug is None
-
-
-def test_twin_agent_demo_prefix_refuses_stale_demo_snapshot(test_settings, monkeypatch) -> None:
-    clear_twin_agent_state()
-    twin_agent.store_world_snapshot(
-        session_id="stale-line-demo-session",
-        owner_user_id="internal-operator",
-        organization_id=None,
-        snapshot_scope=twin_agent.SNAPSHOT_SCOPE_ACCELERATOR_DEMO,
-        world={"dataAvailability": {"mode": "simulation"}},
-        captured_at=datetime.now(timezone.utc),
-    )
-    twin_agent._STATE.world_slots["stale-line-demo-session"].received_at_monotonic -= (
-        twin_agent.DEMO_SNAPSHOT_FRESH_WINDOW + 1
-    )
-    settings = _line_settings(test_settings, twin_agent_enabled=True)
-    replies = _capture_replies(monkeypatch)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
-    with TestClient(app) as client:
-        _seed_scope(app)
-        response = _post_line_events(
-            client,
-            settings,
-            [_message_event("展示工廠：現在 AMR 情況", event_id="evt-twin-demo-stale")],
-        )
-
-    assert response.status_code == 200, response.text
-    assert replies == [
-        {
-            "replyToken": "reply-message",
-            "messages": [{"type": "text", "text": TWIN_AGENT_DEMO_UNAVAILABLE_TEXT}],
-        }
-    ]
-    assert twin_agent._STATE.jobs == []
-
-
-def test_twin_agent_disabled_falls_back_to_help_reply(test_settings, monkeypatch) -> None:
-    clear_twin_agent_state()
-    settings = _line_settings(test_settings)
-    replies = _capture_replies(monkeypatch)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
-    with TestClient(app) as client:
-        _seed_scope(app)
-        response = _post_line_events(client, settings, [_message_event("HC600 現在狀態如何？", event_id="evt-twin-off")])
 
     assert response.status_code == 200, response.text
     assert replies[0]["messages"][0]["type"] == "flex"
@@ -796,102 +816,3 @@ def test_twin_agent_enabled_keeps_existing_command_replies(test_settings, monkey
     assert replies[0]["messages"][0]["type"] == "flex"
     assert replies[0]["messages"][0]["contents"]["type"] == "carousel"
     assert twin_agent._STATE.jobs == []
-
-
-def test_twin_agent_pending_cap_replies_busy(test_settings, monkeypatch) -> None:
-    clear_twin_agent_state()
-    settings = _line_settings(test_settings, twin_agent_enabled=True)
-    replies = _capture_replies(monkeypatch)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
-    with TestClient(app) as client:
-        _seed_scope(app)
-        events = [
-            _message_event(f"問題 {index}", event_id=f"evt-twin-cap-{index}", reply_token=f"reply-twin-cap-{index}")
-            for index in range(4)
-        ]
-        response = _post_line_events(client, settings, events)
-
-    assert response.status_code == 200, response.text
-    assert count_pending_line_jobs(BOUND_GROUP_ID) == 3
-    assert replies == [
-        {"replyToken": "reply-twin-cap-3", "messages": [{"type": "text", "text": TWIN_AGENT_LINE_BUSY_TEXT}]}
-    ]
-
-
-def test_twin_agent_rate_limited_replies_busy(test_settings, monkeypatch) -> None:
-    clear_twin_agent_state()
-    settings = _line_settings(test_settings, twin_agent_enabled=True)
-    replies = _capture_replies(monkeypatch)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
-    with TestClient(app) as client:
-        _seed_scope(app)
-        for _ in range(TWIN_AGENT_LINE_RATE_LIMIT.max_attempts):
-            app.state.rate_limiter.check(f"twin-agent-line:{BOUND_GROUP_ID}", TWIN_AGENT_LINE_RATE_LIMIT)
-        response = _post_line_events(
-            client,
-            settings,
-            [_message_event("被限流的問題", event_id="evt-twin-rate", reply_token="reply-twin-rate")],
-        )
-
-    assert response.status_code == 200, response.text
-    assert count_pending_line_jobs(BOUND_GROUP_ID) == 0
-    assert replies == [
-        {"replyToken": "reply-twin-rate", "messages": [{"type": "text", "text": TWIN_AGENT_LINE_BUSY_TEXT}]}
-    ]
-
-
-def test_twin_agent_expired_line_job_pushes_canned_reply(test_settings, monkeypatch) -> None:
-    clear_twin_agent_state()
-    settings = _line_settings(test_settings, twin_agent_enabled=True)
-    replies = _capture_replies(monkeypatch)
-    pushes = _capture_twin_agent_pushes(monkeypatch)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
-    with TestClient(app) as client:
-        _seed_scope(app)
-        _post_line_events(
-            client,
-            settings,
-            [_message_event("第一個問題", event_id="evt-twin-exp-1", reply_token="reply-twin-exp-1")],
-        )
-        twin_agent._STATE.jobs[0].created_monotonic -= twin_agent.JOB_PENDING_TTL + twin_agent.REPLY_TOKEN_MAX_AGE + 1
-        _post_line_events(
-            client,
-            settings,
-            [_message_event("第二個問題", event_id="evt-twin-exp-2", reply_token="reply-twin-exp-2")],
-        )
-
-    assert replies == []
-    assert twin_agent._STATE.jobs[0].status == "expired"
-    assert twin_agent._STATE.jobs[1].status == "pending"
-    assert pushes == [{"target": BOUND_GROUP_ID, "message": {"type": "text", "text": TWIN_AGENT_OFFLINE_TEXT}}]
-
-
-def test_twin_agent_line_result_with_stale_token_pushes_to_group(test_settings, monkeypatch) -> None:
-    clear_twin_agent_state()
-    settings = _line_settings(test_settings, twin_agent_enabled=True, twin_agent_worker_token="twin-worker-secret")
-    pushes = _capture_twin_agent_pushes(monkeypatch)
-
-    def fail_reply(*_args, **_kwargs):
-        raise AssertionError("stale reply token must not be used")
-
-    monkeypatch.setattr("app.twin_agent.reply_line_messages", fail_reply)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
-    with TestClient(app) as client:
-        _seed_scope(app)
-        _post_line_events(
-            client,
-            settings,
-            [_message_event("HC600 狀態？", event_id="evt-twin-stale", reply_token="reply-twin-stale")],
-        )
-        worker_headers = {"Authorization": "Bearer twin-worker-secret"}
-        claimed = client.get("/v1/twin-agent/jobs", headers=worker_headers).json()
-        job_id = claimed["job"]["jobId"]
-        twin_agent._STATE.jobs[0].created_monotonic -= twin_agent.REPLY_TOKEN_MAX_AGE + 1
-        result = client.post(
-            f"/v1/twin-agent/jobs/{job_id}/result",
-            json={"text": "HC600 正常運轉"},
-            headers=worker_headers,
-        )
-
-    assert result.status_code == 204, result.text
-    assert pushes == [{"target": BOUND_GROUP_ID, "message": {"type": "text", "text": "HC600 正常運轉"}}]

@@ -1,19 +1,30 @@
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+from uuid import uuid4
 
 from PIL import Image
+import pytest
 from sqlmodel import select
 
 from app.dispatch import (
     build_daily_brief,
     bump_mold_counter,
     create_dispatch_point,
+    push_brief_to_bound_groups,
     record_machine_actual,
     reconcile_work_orders,
     reset_mold_counter,
     suggest_assignees,
     zone_occupancy_summary,
+)
+from app.line_bot import LineBotDeliveryError
+from app.line_identity import line_group_scope_from_binding
+from app.line_dispatch_ticket import (
+    DispatchTicketCropError,
+    crop_dispatch_ticket_png,
+    find_latest_work_order_capture,
+    frame_is_stale,
 )
 from app.models import (
     CameraDevice,
@@ -23,10 +34,12 @@ from app.models import (
     DecisionPointRecord,
     IncidentRecord,
     LineGroupBinding,
+    LineUserBinding,
     MoldMaintenanceRuleRecord,
     SemanticZoneRecord,
     ShiftRosterEntryRecord,
     SkillMatrixEntryRecord,
+    Site,
 )
 from tests.helpers import login_web, seed_organization, seed_site, seed_user
 
@@ -34,6 +47,9 @@ PASSWORD = "Password123!"
 DAY = datetime(2026, 7, 7, 10, 0, tzinfo=timezone.utc)
 SITE_TZ = timezone(timedelta(hours=8))
 TODAY_LOCAL = datetime.now(timezone.utc).astimezone(SITE_TZ).date().isoformat()
+DESTINATION_ID = "U00000000000000000000000000000000"
+JINGCHENG_SITE_ID = "dd6cbdd3aa744736ad96d2791d689fce"
+LINE_USER_ID = "U-1"
 
 
 def _seed_org_with_user(session, email="boss@ledger.test"):
@@ -160,12 +176,20 @@ def test_dispatch_point_shadow_consistency(client, session_factory) -> None:
         assert mismatch.consistent is False
 
 
-def _seed_camera_with_work_order(session, org_id: str, site_id: str | None, captured_at: datetime):
+def _seed_camera_with_work_order(
+    session,
+    org_id: str,
+    site_id: str | None,
+    captured_at: datetime,
+    *,
+    machine_no: str = "HC600",
+    planned_total: int = 1000,
+):
     camera = CameraDevice(
         organization_id=org_id,
         site_id=site_id,
         name="poe-cam-1",
-        device_token_hash=f"hash-{org_id}",
+        device_token_hash=f"hash-{org_id}-{uuid4().hex}",
     )
     session.add(camera)
     session.flush()
@@ -173,12 +197,12 @@ def _seed_camera_with_work_order(session, org_id: str, site_id: str | None, capt
         "template": "hc600_dispatch_sheet_v1",
         "stabilized": True,
         "fields": {
-            "machineNo": {"value": "HC600", "confidence": 0.9},
+            "machineNo": {"value": machine_no, "confidence": 0.9},
             "moldNo": {"value": "GM096LC", "confidence": 0.9},
         },
         "quantities": {
             "plannedWithHanger": {"left": {"value": 200}, "right": {"value": None}},
-            "total": {"left": {"value": 1000}, "right": {"value": None}},
+            "total": {"left": {"value": planned_total}, "right": {"value": None}},
         },
     }
     observation = CameraOcrObservation(
@@ -217,6 +241,7 @@ def test_reconcile_work_orders_and_line_report(client, session_factory) -> None:
         point = record_machine_actual(
             session,
             organization_id=org_id,
+            site_id=None,
             machine_no="HC600",
             actual_total=980,
             reported_by="line-user",
@@ -229,6 +254,71 @@ def test_reconcile_work_orders_and_line_report(client, session_factory) -> None:
         brief = build_daily_brief(session, organization_id=org_id, target_date=DAY)
         assert "HC600" in brief
         assert "980" in brief
+
+
+def test_reconcile_and_actual_report_are_isolated_by_site_for_duplicate_machine_numbers(
+    client,
+    session_factory,
+) -> None:
+    with session_factory() as session:
+        org = _seed_org_with_user(session, email="two-site-reconcile@ledger.test")
+        user = seed_user(
+            session,
+            email="two-site-owner@ledger.test",
+            password=PASSWORD,
+            org_roles=[(org.id, "customer_admin")],
+        )
+        site_a = seed_site(session, organization_id=org.id, name="Site A", created_by_user_id=user.id)
+        site_b = seed_site(session, organization_id=org.id, name="Site B", created_by_user_id=user.id)
+        _seed_camera_with_work_order(
+            session,
+            org.id,
+            site_a.id,
+            DAY,
+            machine_no="SHARED-01",
+            planned_total=100,
+        )
+        _seed_camera_with_work_order(
+            session,
+            org.id,
+            site_b.id,
+            DAY,
+            machine_no="SHARED-01",
+            planned_total=900,
+        )
+        session.commit()
+
+        created = reconcile_work_orders(session, organization_id=org.id, target_date=DAY)
+        session.commit()
+        assert len(created) == 2
+        points = session.exec(
+            select(DecisionPointRecord).where(
+                DecisionPointRecord.organization_id == org.id,
+                DecisionPointRecord.subject_ref == "SHARED-01",
+            )
+        ).all()
+        assert {point.site_id: point.plan_json["plannedTotal"] for point in points} == {
+            site_a.id: 100,
+            site_b.id: 900,
+        }
+
+        updated = record_machine_actual(
+            session,
+            organization_id=org.id,
+            site_id=site_a.id,
+            machine_no="SHARED-01",
+            actual_total=100,
+            reported_by="site-a-line-user",
+            reported_at=DAY + timedelta(hours=2),
+        )
+        session.commit()
+
+        assert updated is not None and updated.site_id == site_a.id
+        refreshed = {point.site_id: point for point in points}
+        session.refresh(refreshed[site_a.id])
+        session.refresh(refreshed[site_b.id])
+        assert refreshed[site_a.id].actual_json["actualTotal"] == 100
+        assert refreshed[site_b.id].actual_json == {}
 
 
 def test_daily_brief_uses_site_local_date_label(client, session_factory) -> None:
@@ -399,6 +489,174 @@ def test_mold_sentinel_threshold_and_reset(client, session_factory, test_setting
         assert alerted is True
 
 
+def test_mold_sentinel_retries_after_configured_line_delivery_failure(
+    client,
+    session_factory,
+    test_settings,
+    monkeypatch,
+) -> None:
+    settings = replace(
+        test_settings,
+        line_channel_access_token="channel-token",
+        line_channel_secret="channel-secret",
+    )
+    attempts: list[dict] = []
+
+    def flaky_push(_settings, target_id, message):
+        attempts.append({"target": target_id, "message": message})
+        if len(attempts) == 1:
+            raise LineBotDeliveryError("temporary_failure")
+        return {"status": "ok"}
+
+    monkeypatch.setattr("app.dispatch.push_line_message", flaky_push)
+    with session_factory() as session:
+        org = _seed_org_with_user(session, email="mold-retry@ledger.test")
+        user = seed_user(
+            session,
+            email="mold-retry-owner@ledger.test",
+            password=PASSWORD,
+            org_roles=[(org.id, "customer_admin")],
+        )
+        site = seed_site(session, organization_id=org.id, name="Mold Site", created_by_user_id=user.id)
+        session.add(
+            LineGroupBinding(
+                group_id="G-mold-retry",
+                organization_id=org.id,
+                site_id=site.id,
+                site_slug="mold-site",
+            )
+        )
+        session.add(
+            MoldMaintenanceRuleRecord(
+                organization_id=org.id,
+                mold_no="MOLD-RETRY",
+                threshold_count=10,
+            )
+        )
+        session.commit()
+
+        rule, first_alerted = bump_mold_counter(
+            session,
+            settings,
+            organization_id=org.id,
+            mold_no="MOLD-RETRY",
+            set_count=10,
+        )
+        session.commit()
+        assert first_alerted is True
+        assert rule is not None and rule.last_alert_at is None
+
+        rule, second_alerted = bump_mold_counter(
+            session,
+            settings,
+            organization_id=org.id,
+            mold_no="MOLD-RETRY",
+            increment=0,
+        )
+        session.commit()
+
+        assert second_alerted is True
+        assert rule is not None and rule.last_alert_at is not None
+        assert len(attempts) == 2
+        assert attempts[1]["target"] == "G-mold-retry"
+        assert attempts[1]["message"]["type"] == "text"
+
+
+def test_daily_brief_push_isolated_per_site_and_uses_single_message_payload(
+    client,
+    session_factory,
+    test_settings,
+    monkeypatch,
+) -> None:
+    settings = replace(
+        test_settings,
+        line_channel_access_token="channel-token",
+        line_channel_secret="channel-secret",
+    )
+    pushes: list[dict] = []
+
+    def capture_push(_settings, target_id, message):
+        pushes.append({"target": target_id, "message": message})
+        return {"status": "ok"}
+
+    monkeypatch.setattr("app.dispatch.push_line_message", capture_push)
+    with session_factory() as session:
+        org = _seed_org_with_user(session, email="brief-sites@ledger.test")
+        user = seed_user(
+            session,
+            email="brief-sites-owner@ledger.test",
+            password=PASSWORD,
+            org_roles=[(org.id, "customer_admin")],
+        )
+        site_a = seed_site(session, organization_id=org.id, name="Brief A", created_by_user_id=user.id)
+        site_b = seed_site(session, organization_id=org.id, name="Brief B", created_by_user_id=user.id)
+        other_org = seed_organization(session, name="Other Brief Org")
+        other_user = seed_user(
+            session,
+            email="other-brief-owner@ledger.test",
+            password=PASSWORD,
+            org_roles=[(other_org.id, "customer_admin")],
+        )
+        other_site = seed_site(
+            session,
+            organization_id=other_org.id,
+            name="Other Brief Site",
+            created_by_user_id=other_user.id,
+        )
+        session.add_all(
+            [
+                LineGroupBinding(group_id="G-brief-a", organization_id=org.id, site_id=site_a.id, site_slug="a"),
+                LineGroupBinding(group_id="G-brief-b", organization_id=org.id, site_id=site_b.id, site_slug="b"),
+                LineGroupBinding(
+                    group_id="G-brief-inactive",
+                    organization_id=org.id,
+                    site_id=site_a.id,
+                    site_slug="a",
+                    is_active=False,
+                ),
+                LineGroupBinding(
+                    group_id="G-brief-other",
+                    organization_id=other_org.id,
+                    site_id=other_site.id,
+                    site_slug="other",
+                ),
+                DecisionPointRecord(
+                    organization_id=org.id,
+                    site_id=site_a.id,
+                    event_type="plan_vs_actual",
+                    subject_ref="ONLY-A",
+                    occurred_at=DAY,
+                    plan_json={"plannedTotal": 100},
+                ),
+                DecisionPointRecord(
+                    organization_id=org.id,
+                    site_id=site_b.id,
+                    event_type="plan_vs_actual",
+                    subject_ref="ONLY-B",
+                    occurred_at=DAY,
+                    plan_json={"plannedTotal": 200},
+                ),
+            ]
+        )
+        session.commit()
+
+        sent = push_brief_to_bound_groups(
+            session,
+            settings,
+            organization_id=org.id,
+            target_date=DAY,
+        )
+
+    assert sent == 2
+    by_target = {item["target"]: item["message"] for item in pushes}
+    assert set(by_target) == {"G-brief-a", "G-brief-b"}
+    assert isinstance(by_target["G-brief-a"], dict)
+    assert "ONLY-A" in by_target["G-brief-a"]["text"]
+    assert "ONLY-B" not in by_target["G-brief-a"]["text"]
+    assert "ONLY-B" in by_target["G-brief-b"]["text"]
+    assert "ONLY-A" not in by_target["G-brief-b"]["text"]
+
+
 def test_zone_occupancy_summary(client, session_factory) -> None:
     with session_factory() as session:
         org = _seed_org_with_user(session, email="zone@ledger.test")
@@ -463,6 +721,7 @@ def test_zone_occupancy_summary(client, session_factory) -> None:
 def test_line_dispatch_commands(client, session_factory, test_settings) -> None:
     from app.routers.line import _handle_dispatch_command
 
+    line_settings = replace(test_settings, line_account_linking_enabled=True)
     with session_factory() as session:
         org = _seed_org_with_user(session, email="line@ledger.test")
         org_id = org.id
@@ -472,7 +731,26 @@ def test_line_dispatch_commands(client, session_factory, test_settings) -> None:
             password=PASSWORD,
             org_roles=[(org_id, "customer_admin")],
         )
-        site = seed_site(session, organization_id=org_id, name="Jingcheng", created_by_user_id=user.id)
+        site = Site(
+            id=JINGCHENG_SITE_ID,
+            organization_id=org_id,
+            name="Jingcheng",
+            address="Jingcheng address",
+            lat=25.0,
+            lng=121.0,
+            created_by_user_id=user.id,
+            updated_by_user_id=user.id,
+        )
+        session.add(site)
+        session.add(
+            LineUserBinding(
+                destination_id=DESTINATION_ID,
+                line_user_id=LINE_USER_ID,
+                user_id=user.id,
+                site_id=site.id,
+                is_active=True,
+            )
+        )
         _seed_roster_and_skills(session, org_id)
         _seed_camera_with_work_order(session, org_id, site.id, datetime.now(timezone.utc))
         session.add(
@@ -497,14 +775,43 @@ def test_line_dispatch_commands(client, session_factory, test_settings) -> None:
         reconcile_work_orders(session, organization_id=org_id, target_date=datetime.now(timezone.utc))
         session.commit()
 
-        event = {"source": {"type": "group", "groupId": "G-test", "userId": "U-1"}}
-        consumed = _handle_dispatch_command(session, test_settings, event, binding, "回報 HC600 數量 1000")
+        scope = line_group_scope_from_binding(DESTINATION_ID, binding)
+        event = {"source": {"type": "group", "groupId": "G-test", "userId": LINE_USER_ID}}
+        consumed = _handle_dispatch_command(
+            session,
+            line_settings,
+            event,
+            scope,
+            "回報 HC600 數量 1000",
+            destination_id=DESTINATION_ID,
+        )
         assert consumed is True
-        consumed = _handle_dispatch_command(session, test_settings, event, binding, "派工 HC600-01 阿華")
+        consumed = _handle_dispatch_command(
+            session,
+            line_settings,
+            event,
+            scope,
+            "派工 HC600-01 阿華",
+            destination_id=DESTINATION_ID,
+        )
         assert consumed is True
-        consumed = _handle_dispatch_command(session, test_settings, event, binding, "保養完成 GM096LC")
+        consumed = _handle_dispatch_command(
+            session,
+            line_settings,
+            event,
+            scope,
+            "保養完成 GM096LC",
+            destination_id=DESTINATION_ID,
+        )
         assert consumed is True
-        consumed = _handle_dispatch_command(session, test_settings, event, binding, "今天狀況如何?")
+        consumed = _handle_dispatch_command(
+            session,
+            line_settings,
+            event,
+            scope,
+            "今天狀況如何?",
+            destination_id=DESTINATION_ID,
+        )
         assert consumed is False
 
     with session_factory() as session:
@@ -596,6 +903,96 @@ def _ticket_frame_jpeg(width: int = 1280, height: int = 720) -> bytes:
     return buffer.getvalue()
 
 
+def test_find_latest_work_order_capture_is_scoped_to_exact_site(
+    client,
+    session_factory,
+) -> None:
+    now = datetime.now(timezone.utc)
+
+    with session_factory() as session:
+        org = seed_organization(session, name="Two-site dispatch org")
+        user = seed_user(
+            session,
+            email="two-site-ticket@ledger.test",
+            password=PASSWORD,
+            org_roles=[(org.id, "customer_admin")],
+        )
+        target_site = seed_site(
+            session,
+            organization_id=org.id,
+            name="Target site",
+            created_by_user_id=user.id,
+        )
+        other_site = seed_site(
+            session,
+            organization_id=org.id,
+            name="Other site",
+            created_by_user_id=user.id,
+        )
+        target_camera = _seed_camera_with_work_order(
+            session,
+            org.id,
+            target_site.id,
+            now - timedelta(minutes=10),
+        )
+        other_camera = CameraDevice(
+            organization_id=org.id,
+            site_id=other_site.id,
+            name="poe-cam-other-site",
+            device_token_hash=f"hash-{org.id}-other-site",
+        )
+        session.add(other_camera)
+        session.flush()
+        session.add(
+            CameraOcrObservation(
+                camera_id=other_camera.id,
+                organization_id=org.id,
+                site_id=other_site.id,
+                mode="machine_monitor",
+                mode_confidence=0.9,
+                captured_at=now - timedelta(minutes=1),
+                structured_fields_json={
+                    "workOrder": {
+                        "fields": {"machineNo": {"value": "OTHER-SITE"}},
+                    }
+                },
+            )
+        )
+        _seed_ticket_frame(
+            session,
+            camera_id=target_camera.id,
+            org_id=org.id,
+            site_id=target_site.id,
+            captured_at=now - timedelta(minutes=9),
+            frame_id="frame-target-site",
+            storage_key="camera-frames/test/target-site.jpg",
+        )
+        # Deliberately inconsistent legacy row: the same camera has a newer
+        # uploaded frame assigned to another site. The lookup must reject it.
+        _seed_ticket_frame(
+            session,
+            camera_id=target_camera.id,
+            org_id=org.id,
+            site_id=other_site.id,
+            captured_at=now - timedelta(minutes=2),
+            frame_id="frame-other-site",
+            storage_key="camera-frames/test/other-site.jpg",
+        )
+        session.commit()
+
+        capture = find_latest_work_order_capture(
+            session,
+            organization_id=org.id,
+            site_id=target_site.id,
+        )
+
+    assert capture is not None
+    assert capture.observation.site_id == target_site.id
+    assert capture.frame is not None
+    assert capture.frame.id == "frame-target-site"
+    assert capture.frame.site_id == target_site.id
+
+
 def _seed_ticket_frame(
     session,
     *,
@@ -620,6 +1017,32 @@ def _seed_ticket_frame(
             upload_expires_at=captured_at + timedelta(minutes=10),
         )
     )
+
+
+def test_dispatch_ticket_crop_rejects_non_jpeg_png_decoder() -> None:
+    output = BytesIO()
+    Image.new("RGB", (64, 48), (120, 80, 40)).save(output, format="GIF")
+
+    with pytest.raises(DispatchTicketCropError, match="invalid_dispatch_ticket_image"):
+        crop_dispatch_ticket_png(output.getvalue())
+
+
+def test_dispatch_ticket_future_frame_is_not_treated_as_fresh() -> None:
+    now = datetime.now(timezone.utc)
+    frame = CameraFrame(
+        id="future-ticket-frame",
+        camera_id="camera-future",
+        organization_id="org-future",
+        site_id="site-future",
+        captured_at=now + timedelta(days=1),
+        storage_key="future.jpg",
+        content_type="image/jpeg",
+        upload_status="uploaded",
+        analysis_status="complete",
+        upload_expires_at=now + timedelta(days=1, minutes=10),
+    )
+
+    assert frame_is_stale(frame, now=now) is True
 
 
 def _capture_line_replies(monkeypatch) -> list[dict]:
@@ -664,12 +1087,24 @@ def test_line_dispatch_ticket_replies_cropped_image_and_summary(
         session.commit()
 
     storage = _DispatchTicketStorage({"camera-frames/test/ticket.jpg": _ticket_frame_jpeg()})
-    event = {"replyToken": "reply-ticket", "source": {"type": "group", "groupId": "G-ticket", "userId": "U-1"}}
+    event = {
+        "replyToken": "reply-ticket",
+        "source": {"type": "group", "groupId": "G-ticket", "userId": LINE_USER_ID},
+    }
     with session_factory() as session:
         binding = session.exec(
             select(LineGroupBinding).where(LineGroupBinding.group_id == "G-ticket")
         ).first()
-        consumed = _handle_dispatch_command(session, settings, event, binding, "派工單", storage=storage)
+        scope = line_group_scope_from_binding(DESTINATION_ID, binding)
+        consumed = _handle_dispatch_command(
+            session,
+            settings,
+            event,
+            scope,
+            "派工單",
+            storage=storage,
+            destination_id=DESTINATION_ID,
+        )
 
     assert consumed is True
     messages = replies[0]["messages"]
@@ -720,14 +1155,26 @@ def test_line_dispatch_ticket_without_fresh_frame_replies_honest_text(
         session.commit()
 
     storage = _DispatchTicketStorage({"camera-frames/test/stale.jpg": _ticket_frame_jpeg()})
-    event = {"replyToken": "reply-stale", "source": {"type": "group", "groupId": "G-stale", "userId": "U-1"}}
+    event = {
+        "replyToken": "reply-stale",
+        "source": {"type": "group", "groupId": "G-stale", "userId": LINE_USER_ID},
+    }
     with session_factory() as session:
         binding = session.exec(
             select(LineGroupBinding).where(LineGroupBinding.group_id == "G-stale")
         ).first()
 
         # No uploaded frame at all -> honest fallback.
-        consumed = _handle_dispatch_command(session, settings, event, binding, "派工單", storage=storage)
+        scope = line_group_scope_from_binding(DESTINATION_ID, binding)
+        consumed = _handle_dispatch_command(
+            session,
+            settings,
+            event,
+            scope,
+            "派工單",
+            storage=storage,
+            destination_id=DESTINATION_ID,
+        )
         assert consumed is True
         assert replies[-1]["messages"] == [{"type": "text", "text": "目前沒有新的派工單畫面"}]
 
@@ -742,7 +1189,15 @@ def test_line_dispatch_ticket_without_fresh_frame_replies_honest_text(
             storage_key="camera-frames/test/stale.jpg",
         )
         session.commit()
-        consumed = _handle_dispatch_command(session, settings, event, binding, "派工單", storage=storage)
+        consumed = _handle_dispatch_command(
+            session,
+            settings,
+            event,
+            scope,
+            "派工單",
+            storage=storage,
+            destination_id=DESTINATION_ID,
+        )
         assert consumed is True
         assert replies[-1]["messages"] == [{"type": "text", "text": "目前沒有新的派工單畫面"}]
 

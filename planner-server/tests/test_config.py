@@ -1,3 +1,6 @@
+from cryptography.fernet import Fernet
+import pytest
+
 from app.config import Settings
 
 
@@ -21,6 +24,9 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     monkeypatch.setenv("LINE_DEFAULT_GROUP_ID", " group-1 ")
     monkeypatch.setenv("LINE_INCIDENT_NOTIFY_ENABLED", " true ")
     monkeypatch.setenv("LINE_PUBLIC_BASE_URL", " https://four-wall-api-staging.onrender.com/ ")
+    monkeypatch.setenv("LINE_ACCOUNT_LINKING_ENABLED", " true ")
+    monkeypatch.setenv("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS", " key-new , key-old ")
+    monkeypatch.setenv("LINE_DESTINATION_ID", " Uofficial-account ")
     monkeypatch.setenv("CODEX_CLI_PATH", " /usr/local/bin/codex ")
     monkeypatch.setenv("CODEX_TEXT_MODEL", " gpt-test ")
     monkeypatch.setenv("CODEX_TEXT_TIMEOUT_SECONDS", " 321 ")
@@ -73,6 +79,9 @@ def test_settings_from_env_trims_string_values(monkeypatch):
     assert settings.line_default_group_id == "group-1"
     assert settings.line_incident_notify_enabled is True
     assert settings.line_public_base_url == "https://four-wall-api-staging.onrender.com/"
+    assert settings.line_account_linking_enabled is True
+    assert settings.line_account_link_encryption_keys == ("key-new", "key-old")
+    assert settings.line_destination_id == "Uofficial-account"
     assert settings.codex_cli_path == "/usr/local/bin/codex"
     assert settings.codex_text_model == "gpt-test"
     assert settings.codex_text_timeout_seconds == 321
@@ -114,3 +123,84 @@ def test_codex_text_model_defaults_to_chatgpt_oauth_supported_model(monkeypatch)
     settings = Settings.from_env()
 
     assert settings.codex_text_model == "gpt-5.5"
+
+
+def test_account_linking_requires_dedicated_encryption_keys(monkeypatch):
+    monkeypatch.setenv("LINE_ACCOUNT_LINKING_ENABLED", "true")
+    monkeypatch.setenv("LINE_DESTINATION_ID", "Uofficial-account")
+    monkeypatch.delenv("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS", raising=False)
+
+    settings = Settings.from_env()
+
+    try:
+        settings.validate_runtime()
+    except ValueError as exc:
+        assert str(exc) == "LINE_ACCOUNT_LINK_ENCRYPTION_KEYS must be set when account linking is enabled"
+    else:
+        raise AssertionError("enabled account linking must fail closed without encryption keys")
+
+
+def test_account_linking_requires_destination_and_valid_fernet_keys(monkeypatch):
+    valid_key = Fernet.generate_key().decode("ascii")
+    monkeypatch.setenv("LINE_ACCOUNT_LINKING_ENABLED", "true")
+    monkeypatch.setenv("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS", valid_key)
+    monkeypatch.delenv("LINE_DESTINATION_ID", raising=False)
+
+    missing_destination = Settings.from_env()
+    with_destination_error = None
+    try:
+        missing_destination.validate_runtime()
+    except ValueError as exc:
+        with_destination_error = str(exc)
+    assert with_destination_error == "LINE_DESTINATION_ID must be set when account linking is enabled"
+
+    monkeypatch.setenv("LINE_DESTINATION_ID", "Uofficial-account")
+    monkeypatch.setenv("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS", f"{valid_key},not-a-fernet-key")
+    invalid_keys = Settings.from_env()
+    with_key_error = None
+    try:
+        invalid_keys.validate_runtime()
+    except ValueError as exc:
+        with_key_error = str(exc)
+    assert with_key_error == "LINE_ACCOUNT_LINK_ENCRYPTION_KEYS contains an invalid Fernet key"
+
+
+@pytest.mark.parametrize(
+    ("missing_env", "expected_error"),
+    [
+        ("LINE_WEBHOOK_ENABLED", "LINE_WEBHOOK_ENABLED must be true when account linking is enabled"),
+        (
+            "LINE_CHANNEL_ACCESS_TOKEN",
+            "LINE_CHANNEL_ACCESS_TOKEN must be set when account linking is enabled",
+        ),
+        ("LINE_CHANNEL_SECRET", "LINE_CHANNEL_SECRET must be set when account linking is enabled"),
+        (
+            "BUILDING_ROUTE_APP_ORIGIN",
+            "BUILDING_ROUTE_APP_ORIGIN must be set when account linking is enabled",
+        ),
+        ("LINE_PUBLIC_BASE_URL", "LINE_PUBLIC_BASE_URL must be set when account linking is enabled"),
+    ],
+)
+def test_account_linking_requires_all_runtime_prerequisites(monkeypatch, missing_env, expected_error):
+    _set_valid_account_linking_env(monkeypatch)
+    monkeypatch.delenv(missing_env)
+
+    with pytest.raises(ValueError, match=f"^{expected_error}$"):
+        Settings.from_env().validate_runtime()
+
+
+def test_account_linking_accepts_complete_runtime_configuration(monkeypatch):
+    _set_valid_account_linking_env(monkeypatch)
+
+    Settings.from_env().validate_runtime()
+
+
+def _set_valid_account_linking_env(monkeypatch) -> None:
+    monkeypatch.setenv("LINE_ACCOUNT_LINKING_ENABLED", "true")
+    monkeypatch.setenv("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS", Fernet.generate_key().decode("ascii"))
+    monkeypatch.setenv("LINE_DESTINATION_ID", "Uofficial-account")
+    monkeypatch.setenv("LINE_WEBHOOK_ENABLED", "true")
+    monkeypatch.setenv("LINE_CHANNEL_ACCESS_TOKEN", "channel-token")
+    monkeypatch.setenv("LINE_CHANNEL_SECRET", "channel-secret")
+    monkeypatch.setenv("BUILDING_ROUTE_APP_ORIGIN", "https://app.example.test")
+    monkeypatch.setenv("LINE_PUBLIC_BASE_URL", "https://api.example.test")

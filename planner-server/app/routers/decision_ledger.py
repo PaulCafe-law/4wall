@@ -238,7 +238,12 @@ def push_daily_brief(
 ) -> dict:
     ensure_org_write_access(session, current_user, organizationId, action="decision_ledger.write")
     text = build_daily_brief(session, organization_id=organizationId, target_date=_day_start(date))
-    sent = push_brief_to_bound_groups(session, settings, organization_id=organizationId, text=text)
+    sent = push_brief_to_bound_groups(
+        session,
+        settings,
+        organization_id=organizationId,
+        target_date=_day_start(date),
+    )
     session.commit()
     return {"sentGroups": sent, "text": text}
 

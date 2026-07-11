@@ -102,6 +102,22 @@ class WebLoginRequestDto(BaseModel):
     password: str = Field(min_length=8)
 
 
+class LineAccountLinkCompleteRequestDto(BaseModel):
+    flowToken: str = Field(min_length=20, max_length=255)
+    siteId: str = Field(min_length=1, max_length=128)
+
+
+class LineAccountLinkCompleteResponseDto(BaseModel):
+    accountLinkUrl: str
+
+
+class LineAccountLinkSiteDto(BaseModel):
+    siteId: str
+    organizationId: str
+    name: str
+    address: str
+
+
 class OperatorAdminDto(BaseModel):
     operatorId: str
     username: str

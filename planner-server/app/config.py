@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 
+from cryptography.fernet import Fernet
+
 
 def _env_str(name: str, default: str | None = None) -> str | None:
     value = os.getenv(name)
@@ -22,6 +24,13 @@ def _env_bool(name: str, default: bool) -> bool:
 def _env_int(name: str, default: int) -> int:
     value = os.getenv(name)
     return int(value.strip()) if value is not None else default
+
+
+def _env_csv(name: str) -> tuple[str, ...]:
+    value = os.getenv(name)
+    if value is None:
+        return ()
+    return tuple(item.strip() for item in value.split(",") if item.strip())
 
 
 @dataclass(frozen=True)
@@ -57,6 +66,9 @@ class Settings:
     line_default_group_id: str | None
     line_incident_notify_enabled: bool
     line_public_base_url: str | None
+    line_account_linking_enabled: bool = False
+    line_account_link_encryption_keys: tuple[str, ...] = ()
+    line_destination_id: str | None = None
     web_signup_rate_limit_attempts: int = 5
     web_signup_rate_limit_window_seconds: int = 300
     codex_cli_path: str = "codex"
@@ -137,6 +149,9 @@ class Settings:
             line_default_group_id=_env_str("LINE_DEFAULT_GROUP_ID"),
             line_incident_notify_enabled=_env_bool("LINE_INCIDENT_NOTIFY_ENABLED", False),
             line_public_base_url=_env_str("LINE_PUBLIC_BASE_URL"),
+            line_account_linking_enabled=_env_bool("LINE_ACCOUNT_LINKING_ENABLED", False),
+            line_account_link_encryption_keys=_env_csv("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS"),
+            line_destination_id=_env_str("LINE_DESTINATION_ID"),
             codex_cli_path=_env_str("CODEX_CLI_PATH", "codex") or "codex",
             codex_text_model=_env_str("CODEX_TEXT_MODEL", "gpt-5.5") or "gpt-5.5",
             codex_text_timeout_seconds=_env_int("CODEX_TEXT_TIMEOUT_SECONDS", 600),
@@ -191,6 +206,26 @@ class Settings:
         return self.database_url.startswith("sqlite")
 
     def validate_runtime(self) -> None:
+        if self.line_account_linking_enabled:
+            if not self.line_destination_id:
+                raise ValueError("LINE_DESTINATION_ID must be set when account linking is enabled")
+            if not self.line_account_link_encryption_keys:
+                raise ValueError("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS must be set when account linking is enabled")
+            try:
+                for key in self.line_account_link_encryption_keys:
+                    Fernet(key.encode("ascii"))
+            except (TypeError, ValueError, UnicodeEncodeError) as exc:
+                raise ValueError("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS contains an invalid Fernet key") from exc
+            if not self.line_webhook_enabled:
+                raise ValueError("LINE_WEBHOOK_ENABLED must be true when account linking is enabled")
+            if not self.line_channel_access_token:
+                raise ValueError("LINE_CHANNEL_ACCESS_TOKEN must be set when account linking is enabled")
+            if not self.line_channel_secret:
+                raise ValueError("LINE_CHANNEL_SECRET must be set when account linking is enabled")
+            if not self.app_origin:
+                raise ValueError("BUILDING_ROUTE_APP_ORIGIN must be set when account linking is enabled")
+            if not self.line_public_base_url:
+                raise ValueError("LINE_PUBLIC_BASE_URL must be set when account linking is enabled")
         if self.environment.lower() not in {"development", "dev", "test"}:
             if not self.app_origin:
                 raise ValueError("BUILDING_ROUTE_APP_ORIGIN must be set outside development/test")

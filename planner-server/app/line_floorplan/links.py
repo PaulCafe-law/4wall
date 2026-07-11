@@ -22,10 +22,20 @@ def liveview_url_for_binding(
     settings,
     *,
     site_slug: str,
-    group_id: str,
+    group_id: str | None = None,
+    source_type: str = "group",
+    source_id: str | None = None,
+    destination_id: str | None = None,
     focus: str | None = None,
 ) -> str | None:
-    token = create_floorplan_liveview_token(settings, site_slug=site_slug, group_id=group_id)
+    token = create_floorplan_liveview_token(
+        settings,
+        site_slug=site_slug,
+        group_id=group_id,
+        source_type=source_type,
+        source_id=source_id,
+        destination_id=destination_id,
+    )
     return build_liveview_url(settings, site_slug=site_slug, token=token, focus=focus)
 
 

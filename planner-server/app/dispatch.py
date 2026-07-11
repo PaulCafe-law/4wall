@@ -267,6 +267,8 @@ def reconcile_work_orders(
             select(CameraOcrObservation)
             .where(
                 CameraOcrObservation.camera_id == camera.id,
+                CameraOcrObservation.organization_id == organization_id,
+                CameraOcrObservation.site_id == camera.site_id,
                 CameraOcrObservation.captured_at >= day_start,
                 CameraOcrObservation.captured_at < day_end,
             )
@@ -294,6 +296,7 @@ def reconcile_work_orders(
         existing = session.exec(
             select(DecisionPointRecord).where(
                 DecisionPointRecord.organization_id == organization_id,
+                DecisionPointRecord.site_id == camera.site_id,
                 DecisionPointRecord.event_type == "plan_vs_actual",
                 DecisionPointRecord.subject_ref == str(machine_no),
                 DecisionPointRecord.occurred_at >= day_start,
@@ -323,6 +326,7 @@ def record_machine_actual(
     session: Session,
     *,
     organization_id: str,
+    site_id: str | None,
     machine_no: str,
     actual_total: int,
     reported_by: str,
@@ -338,6 +342,7 @@ def record_machine_actual(
         select(DecisionPointRecord)
         .where(
             DecisionPointRecord.organization_id == organization_id,
+            DecisionPointRecord.site_id == site_id,
             DecisionPointRecord.event_type == "plan_vs_actual",
             DecisionPointRecord.subject_ref == machine_no,
             DecisionPointRecord.occurred_at >= day_start,
@@ -361,14 +366,21 @@ def record_machine_actual(
 # ---------------------------------------------------------------------------
 
 
-def ledger_stats(session: Session, *, organization_id: str, days: int = 14) -> dict:
+def ledger_stats(
+    session: Session,
+    *,
+    organization_id: str,
+    days: int = 14,
+    site_id: str | None = None,
+) -> dict:
     since = utc_now() - timedelta(days=days)
-    points = session.exec(
-        select(DecisionPointRecord).where(
-            DecisionPointRecord.organization_id == organization_id,
-            DecisionPointRecord.occurred_at >= since,
-        )
-    ).all()
+    statement = select(DecisionPointRecord).where(
+        DecisionPointRecord.organization_id == organization_id,
+        DecisionPointRecord.occurred_at >= since,
+    )
+    if site_id is not None:
+        statement = statement.where(DecisionPointRecord.site_id == site_id)
+    points = session.exec(statement).all()
     total = len(points)
     judged = [p for p in points if p.consistent is not None]
     consistent = [p for p in judged if p.consistent]
@@ -385,15 +397,22 @@ def ledger_stats(session: Session, *, organization_id: str, days: int = 14) -> d
     }
 
 
-def build_daily_brief_context(session: Session, *, organization_id: str, target_date: datetime) -> dict:
+def build_daily_brief_context(
+    session: Session,
+    *,
+    organization_id: str,
+    target_date: datetime,
+    site_id: str | None = None,
+) -> dict:
     day_start, day_end, local_day = _site_day_window(target_date)
-    points = session.exec(
-        select(DecisionPointRecord).where(
-            DecisionPointRecord.organization_id == organization_id,
-            DecisionPointRecord.occurred_at >= day_start,
-            DecisionPointRecord.occurred_at < day_end,
-        )
-    ).all()
+    statement = select(DecisionPointRecord).where(
+        DecisionPointRecord.organization_id == organization_id,
+        DecisionPointRecord.occurred_at >= day_start,
+        DecisionPointRecord.occurred_at < day_end,
+    )
+    if site_id is not None:
+        statement = statement.where(DecisionPointRecord.site_id == site_id)
+    points = session.exec(statement).all()
     plan_points = [p for p in points if p.event_type == "plan_vs_actual"]
     items: list[dict] = []
     for point in sorted(plan_points, key=lambda p: p.subject_ref):
@@ -420,7 +439,7 @@ def build_daily_brief_context(session: Session, *, organization_id: str, target_
                 "source": point.source,
             }
         )
-    stats = ledger_stats(session, organization_id=organization_id, days=14)
+    stats = ledger_stats(session, organization_id=organization_id, days=14, site_id=site_id)
     lines = [f"【4WALL AI｜每日對帳 {local_day:%m/%d}】"]
     if not plan_points:
         lines.append("今日尚無派工單對帳資料。")
@@ -439,6 +458,7 @@ def build_daily_brief_context(session: Session, *, organization_id: str, target_
     return {
         "available": True,
         "organizationId": organization_id,
+        "siteId": site_id,
         "date": local_day.date().isoformat(),
         "timezone": SITE_TZ_NAME,
         "text": "\n".join(lines),
@@ -447,19 +467,48 @@ def build_daily_brief_context(session: Session, *, organization_id: str, target_
     }
 
 
-def build_daily_brief(session: Session, *, organization_id: str, target_date: datetime) -> str:
-    return str(build_daily_brief_context(session, organization_id=organization_id, target_date=target_date)["text"])
+def build_daily_brief(
+    session: Session,
+    *,
+    organization_id: str,
+    target_date: datetime,
+    site_id: str | None = None,
+) -> str:
+    return str(
+        build_daily_brief_context(
+            session,
+            organization_id=organization_id,
+            target_date=target_date,
+            site_id=site_id,
+        )["text"]
+    )
 
 
-def push_brief_to_bound_groups(session: Session, settings, *, organization_id: str, text: str) -> int:
+def push_brief_to_bound_groups(
+    session: Session,
+    settings,
+    *,
+    organization_id: str,
+    target_date: datetime,
+) -> int:
     if not line_is_configured(settings):
         logger.info("daily_brief_line_disabled", extra={"organization_id": organization_id})
         return 0
-    bindings = session.exec(select(LineGroupBinding)).all()
+    bindings = _active_line_group_bindings(session, organization_id=organization_id)
     sent = 0
+    site_briefs: dict[str, str] = {}
     for binding in bindings:
+        text = site_briefs.setdefault(
+            binding.site_id,
+            build_daily_brief(
+                session,
+                organization_id=organization_id,
+                site_id=binding.site_id,
+                target_date=target_date,
+            ),
+        )
         try:
-            push_line_message(settings, binding.group_id, [{"type": "text", "text": text}])
+            push_line_message(settings, binding.group_id, {"type": "text", "text": text})
             sent += 1
         except LineBotDeliveryError:
             logger.warning("daily_brief_push_failed", extra={"group_id": binding.group_id})
@@ -506,22 +555,41 @@ def bump_mold_counter(
         rule.last_reset_at is not None and rule.last_alert_at < rule.last_reset_at
     )
     if crossed and not_yet_alerted:
-        rule.last_alert_at = utc_now()
         alerted = True
         text = (
             f"【4WALL AI｜保養提醒】\n模具 {rule.mold_no} 累計 {rule.current_count} 模,"
             f"已達保養門檻 {rule.threshold_count}。\n保養完成後請輸入:「保養完成 {rule.mold_no}」"
         )
         if line_is_configured(settings):
-            for binding in session.exec(select(LineGroupBinding)).all():
+            bindings = _active_line_group_bindings(session, organization_id=organization_id)
+            all_delivered = bool(bindings)
+            for binding in bindings:
                 try:
-                    push_line_message(settings, binding.group_id, [{"type": "text", "text": text}])
+                    push_line_message(settings, binding.group_id, {"type": "text", "text": text})
                 except LineBotDeliveryError:
+                    all_delivered = False
                     logger.warning("mold_sentinel_push_failed", extra={"mold_no": rule.mold_no})
+            if all_delivered:
+                rule.last_alert_at = utc_now()
         else:
+            # Disabled deployments intentionally suppress the notification and
+            # retain the existing one-alert-per-reset counter semantics.
+            rule.last_alert_at = utc_now()
             logger.info("mold_sentinel_alert_line_disabled", extra={"mold_no": rule.mold_no})
     session.add(rule)
     return rule, alerted
+
+
+def _active_line_group_bindings(session: Session, *, organization_id: str) -> list[LineGroupBinding]:
+    return list(
+        session.exec(
+            select(LineGroupBinding).where(
+                LineGroupBinding.organization_id == organization_id,
+                LineGroupBinding.source_type == "group",
+                LineGroupBinding.is_active == True,  # noqa: E712
+            )
+        ).all()
+    )
 
 
 def reset_mold_counter(

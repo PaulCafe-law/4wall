@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, Column, Index
+from sqlalchemy import JSON, CheckConstraint, Column, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -504,6 +504,7 @@ class LineWebhookEventRecord(SQLModel, table=True):
     source_id: str | None = Field(default=None, index=True)
     event_type: str | None = Field(default=None, index=True)
     payload_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    encrypted_reply_messages: str | None = None
     processed_status: str = Field(default="received", index=True)
     error_message: str | None = None
     created_at: datetime = Field(default_factory=utc_now, index=True)
@@ -521,6 +522,68 @@ class LineGroupBinding(SQLModel, table=True):
     site_slug: str = Field(index=True)
     is_active: bool = Field(default=True, index=True)
     created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class LineUserBinding(SQLModel, table=True):
+    __tablename__ = "line_user_bindings"
+    __table_args__ = (
+        UniqueConstraint(
+            "destination_id",
+            "line_user_id",
+            name="uq_line_user_bindings_destination_line_user",
+        ),
+        UniqueConstraint(
+            "destination_id",
+            "user_id",
+            name="uq_line_user_bindings_destination_user",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    destination_id: str = Field(index=True)
+    line_user_id: str = Field(index=True)
+    user_id: str = Field(foreign_key="useraccount.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    is_active: bool = Field(default=True, index=True)
+    verified_at: datetime = Field(default_factory=utc_now, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class LineAccountLinkAttempt(SQLModel, table=True):
+    __tablename__ = "line_account_link_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "(status IN ('pending_web_confirmation', 'pending_line_confirmation') AND is_current IS TRUE) "
+            "OR (status NOT IN ('pending_web_confirmation', 'pending_line_confirmation') AND is_current IS NULL)",
+            name="ck_line_link_attempts_current_status",
+        ),
+        UniqueConstraint(
+            "destination_id",
+            "expected_line_user_id",
+            "is_current",
+            name="uq_line_link_attempts_destination_user_current",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    flow_token_hash: str = Field(index=True, unique=True)
+    expected_line_user_id: str = Field(index=True)
+    destination_id: str = Field(index=True)
+    # Pending attempts use True. Terminal attempts use NULL so the database
+    # permits audit history while enforcing one current attempt per identity.
+    is_current: bool | None = Field(default=None, index=True)
+    encrypted_link_token: str | None = None
+    user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    site_id: str | None = Field(default=None, foreign_key="site.id", index=True)
+    nonce_hash: str | None = Field(default=None, index=True, unique=True)
+    redirect_token_hash: str | None = Field(default=None, index=True, unique=True)
+    status: str = Field(default="pending_web_confirmation", index=True)
+    expires_at: datetime = Field(index=True)
+    consumed_at: datetime | None = Field(default=None, index=True)
+    redirected_at: datetime | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now, index=True)
 
 
 class InspectionReport(SQLModel, table=True):

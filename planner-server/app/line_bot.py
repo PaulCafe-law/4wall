@@ -4,13 +4,14 @@ import base64
 import hashlib
 import hmac
 from typing import Any
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, quote, urlencode
 
 import httpx
 
 
 LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 LINE_REPLY_URL = "https://api.line.me/v2/bot/message/reply"
+LINE_LINK_TOKEN_URL = "https://api.line.me/v2/bot/user/{line_user_id}/linkToken"
 
 
 class LineBotConfigurationError(RuntimeError):
@@ -18,11 +19,37 @@ class LineBotConfigurationError(RuntimeError):
 
 
 class LineBotDeliveryError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        retryable: bool = True,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.status_code = status_code
 
 
 def line_is_configured(settings) -> bool:
     return bool(settings.line_channel_access_token and settings.line_channel_secret)
+
+
+def issue_line_link_token(settings, line_user_id: str) -> str:
+    if not settings.line_channel_access_token:
+        raise LineBotConfigurationError("missing_line_channel_access_token")
+    normalized_user_id = line_user_id.strip()
+    if not normalized_user_id:
+        raise LineBotDeliveryError("missing_line_user_id", retryable=False)
+    response = _post_line(
+        settings.line_channel_access_token,
+        LINE_LINK_TOKEN_URL.format(line_user_id=quote(normalized_user_id, safe="")),
+        None,
+    )
+    link_token = str(response.get("linkToken") or "").strip()
+    if not link_token:
+        raise LineBotDeliveryError("line_link_token_missing", retryable=False)
+    return link_token
 
 
 def verify_line_signature(raw_body: bytes, signature: str | None, channel_secret: str | None) -> bool:
@@ -129,21 +156,26 @@ def line_event_key(event: dict[str, Any]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _post_line(access_token: str, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+def _post_line(access_token: str, url: str, payload: dict[str, Any] | None) -> dict[str, Any]:
+    request_kwargs: dict[str, Any] = {
+        "headers": {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        "timeout": 10,
+    }
+    if payload is not None:
+        request_kwargs["json"] = payload
     try:
-        response = httpx.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=10,
-        )
+        response = httpx.post(url, **request_kwargs)
     except httpx.HTTPError as exc:
         raise LineBotDeliveryError(exc.__class__.__name__) from exc
     if response.status_code >= 400:
-        raise LineBotDeliveryError(f"line_api_{response.status_code}:{response.text[:300]}")
+        raise LineBotDeliveryError(
+            f"line_api_{response.status_code}",
+            retryable=response.status_code == 429 or response.status_code >= 500,
+            status_code=response.status_code,
+        )
     if response.content:
         try:
             return response.json()

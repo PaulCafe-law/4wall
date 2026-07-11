@@ -6,6 +6,50 @@ from .layout import BASE_HEIGHT, BASE_WIDTH, FloorplanLayout
 from .service import GaugeReadingView, MachineDetailView
 
 
+def build_account_link_message(link_url: str) -> dict:
+    return {
+        "type": "flex",
+        "altText": "連結 4WALL 帳號後使用場域功能",
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "body": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    {"type": "text", "text": "連結你的 4WALL 帳號", "weight": "bold", "size": "lg", "wrap": True},
+                    {
+                        "type": "text",
+                        "text": "完成一次安全驗證後，這個一對一聊天室只會顯示你有權限的場域資料。",
+                        "size": "sm",
+                        "wrap": True,
+                    },
+                    {
+                        "type": "text",
+                        "text": "你可隨時在聊天室輸入「解除連結」。",
+                        "size": "xs",
+                        "color": "#6B7280",
+                        "wrap": True,
+                    },
+                ],
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {
+                        "type": "button",
+                        "style": "primary",
+                        "color": "#0E6B69",
+                        "action": {"type": "uri", "label": "連結帳號", "uri": link_url},
+                    }
+                ],
+            },
+        },
+    }
+
+
 def build_floorplan_imagemap_message(settings, *, layout: FloorplanLayout, group_id: str, render_token: str) -> dict:
     if not settings.line_public_base_url:
         raise ValueError("missing_line_public_base_url")
