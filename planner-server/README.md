@@ -62,7 +62,9 @@ Set-Location .\planner-server
 
 - `/healthz` is release-gating and returns `503` when DB connectivity is broken.
 - `BUILDING_ROUTE_APP_ORIGIN` is required outside development/test for web session origin enforcement.
+- LINE direct-message identity, authorization, feature flags, and rollout are documented in
+  [LINE One-to-One Account Linking](../docs/line-user-account-linking.md).
 - Render must run `python scripts/render_predeploy.py` before routing traffic to a new API image.
-- The repo-root [render.yaml](/D:/The%20Fourth%20Wall%20AI/codebase/render.yaml) is a desired-state
+- The repo-root [render.yaml](../render.yaml) is a desired-state
   reference. Verify the live image-backed topology and pre-deploy command in the Render dashboard
   before every release.
