@@ -6,6 +6,7 @@ import { AppShell } from './shell'
 import { AttributionWorkbenchPage } from '../features/attribution/AttributionWorkbenchPage'
 import { AuditPage } from '../features/audit/AuditPage'
 import { InvitePage } from '../features/auth/InvitePage'
+import { LineAccountLinkPage } from '../features/auth/LineAccountLinkPage'
 import { LoginPage } from '../features/auth/LoginPage'
 import { BillingPage } from '../features/billing/BillingPage'
 import { CamerasPage } from '../features/cameras/CamerasPage'
@@ -37,6 +38,7 @@ export function AppRoutes() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/line/link" element={<LineAccountLinkPage />} />
             <Route path="/invite" element={<InvitePage />} />
             <Route path="/official" element={<OfficialSitePage />} />
             <Route path="/official/en" element={<OfficialSitePage locale="en" />} />

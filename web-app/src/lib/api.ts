@@ -22,6 +22,8 @@ import type {
   IncidentSource,
   IncidentStatus,
   IndustrialEngineJob,
+  LineAccountLinkResult,
+  LineAccountLinkSite,
   LiveFlightDetail,
   LiveFlightSummary,
   MissionDetail,
@@ -47,6 +49,44 @@ import type {
 } from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000'
+const LINE_ACCOUNT_LINK_REDIRECT_PATH_PREFIX = '/v1/line/account-links/redirect/'
+
+export function getApiBaseOrigin(browserOrigin = window.location.origin): string {
+  return new URL(API_BASE_URL, browserOrigin).origin
+}
+
+export function isAllowedLineAccountLinkRedirectUrl(
+  value: string,
+  expectedApiOrigin = getApiBaseOrigin(),
+): boolean {
+  if (value !== value.trim() || value.includes('?') || value.includes('#')) {
+    return false
+  }
+
+  try {
+    const url = new URL(value)
+    const expectedOrigin = new URL(expectedApiOrigin).origin
+
+    if (
+      url.origin !== expectedOrigin ||
+      url.username ||
+      url.password ||
+      !url.pathname.startsWith(LINE_ACCOUNT_LINK_REDIRECT_PATH_PREFIX)
+    ) {
+      return false
+    }
+
+    const handle = url.pathname.slice(LINE_ACCOUNT_LINK_REDIRECT_PATH_PREFIX.length)
+    if (!handle || handle.includes('/')) {
+      return false
+    }
+
+    const decodedHandle = decodeURIComponent(handle)
+    return Boolean(decodedHandle) && !decodedHandle.includes('/') && !decodedHandle.includes('\\')
+  } catch {
+    return false
+  }
+}
 
 export class ApiError extends Error {
   status: number
@@ -135,6 +175,11 @@ export interface SignupPayload {
   displayName?: string
   organizationName: string
   organizationSlug?: string
+}
+
+export interface LineAccountLinkPayload {
+  flowToken: string
+  siteId: string
 }
 
 export interface SitePayload {
@@ -507,6 +552,14 @@ export const api = {
   listControlPlaneAlerts: (token: string) =>
     apiFetch<AlertCenterItem[]>('/v1/control-plane/alerts', { token }),
   listSites: (token: string) => apiFetch<Site[]>('/v1/sites', { token }),
+  listLineAccountLinkSites: (token: string) =>
+    apiFetch<LineAccountLinkSite[]>('/v1/line/account-links/sites', { token }),
+  completeLineAccountLink: (token: string, payload: LineAccountLinkPayload) =>
+    apiFetch<LineAccountLinkResult>('/v1/line/account-links/complete', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
   getSiteMapAssetManifest: (token: string, assetKey: string) =>
     apiFetch<SiteMapAssetManifest>(`/v1/site-map-assets/${assetKey}/manifest`, { token }),
   listIndustrialEngineJobs: (token: string) =>

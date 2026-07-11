@@ -58,7 +58,7 @@ for (const viewport of viewports) {
     })
 
     await page.goto('/login')
-    await page.locator('form input[type="email"]').fill('platform@prod.internal.test')
+    await page.locator('form input[name="email"]').fill('platform@prod.internal.test')
     await page.locator('form input[type="password"]').fill('Password123!')
     await page.locator('form button[type="submit"]').click()
 

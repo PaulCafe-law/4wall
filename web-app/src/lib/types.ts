@@ -86,6 +86,17 @@ export interface WebSession {
   user: SessionUser
 }
 
+export interface LineAccountLinkResult {
+  accountLinkUrl: string
+}
+
+export interface LineAccountLinkSite {
+  siteId: string
+  organizationId: string
+  name: string
+  address: string
+}
+
 export interface OrganizationSummary {
   organizationId: string
   name: string
