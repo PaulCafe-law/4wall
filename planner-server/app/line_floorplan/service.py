@@ -263,6 +263,66 @@ def build_hmi_screen_view(
     )
 
 
+def hmi_screen_is_overexposed(
+    session: Session,
+    *,
+    layout: FloorplanLayout,
+    binding: FloorplanBindingScope,
+    machine: MachineLayout,
+    now: datetime | None = None,
+) -> bool:
+    """Recognize only fresh, frame-linked overexposure evidence for one machine."""
+
+    if get_site_for_binding(session, layout, binding) is None:
+        return False
+    camera_ids = _camera_ids_for_matches(session, binding, machine.camera_matches)
+    if not camera_ids:
+        return False
+    observation = session.exec(
+        select(CameraOcrObservation)
+        .where(
+            CameraOcrObservation.organization_id == binding.organization_id,
+            CameraOcrObservation.site_id == binding.site_id,
+            CameraOcrObservation.camera_id.in_(camera_ids),
+        )
+        .order_by(CameraOcrObservation.created_at.desc())
+    ).first()
+    if observation is None or observation.source != "live" or not observation.frame_id:
+        return False
+    now_utc = _as_utc(now or datetime.now(timezone.utc))
+    captured_at = _as_utc(observation.captured_at)
+    if not _received_and_captured_are_fresh(
+        now_utc,
+        created_at=_as_utc(observation.created_at),
+        captured_at=captured_at,
+        max_age_seconds=HMI_FRESH_SECONDS,
+    ):
+        return False
+    frame = session.get(CameraFrame, observation.frame_id)
+    if (
+        frame is None
+        or frame.camera_id != observation.camera_id
+        or frame.organization_id != binding.organization_id
+        or frame.site_id != binding.site_id
+        or frame.upload_status != "uploaded"
+        or abs((_as_utc(frame.captured_at) - captured_at).total_seconds()) > 1
+    ):
+        return False
+    visibility = (observation.structured_fields_json or {}).get("screenVisibility") or {}
+    if not isinstance(visibility, dict):
+        return False
+    if visibility.get("status") == "overexposed":
+        return True
+    try:
+        return (
+            float(visibility.get("meanLuma")) >= 205.0
+            and float(visibility.get("p90Luma")) >= 248.0
+            and float(visibility.get("p98Luma")) >= 252.0
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def latest_machine_people_count(
     session: Session,
     *,

@@ -115,3 +115,12 @@ def test_detect_screen_visibility_distinguishes_dark_and_lit_lcd() -> None:
     lit_result = detect_screen_visibility(lit)
     assert lit_result.status == "lit"
     assert lit_result.confidence > 0.5
+
+
+def test_detect_screen_visibility_marks_blown_out_lcd_as_overexposed() -> None:
+    overexposed = np.full((325, 450, 3), 255, dtype=np.uint8)
+
+    result = detect_screen_visibility(overexposed)
+
+    assert result.status == "overexposed"
+    assert result.mean_luma == 255.0

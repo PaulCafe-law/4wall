@@ -192,16 +192,7 @@ def build_machine_detail_message(detail: MachineDetailView, *, liveview_url: str
                 {"type": "text", "text": "暫無可公開縮圖", "size": "sm", "color": "#6B7280", "wrap": True},
             ]
         )
-    footer_contents: list[dict] = []
-    if liveview_url:
-        footer_contents.append(
-            {
-                "type": "button",
-                "style": "secondary",
-                "action": {"type": "uri", "label": "即時圖", "uri": liveview_url},
-            }
-        )
-    footer_contents.append(
+    footer_contents: list[dict] = [
         {
             "type": "button",
             "style": "primary",
@@ -212,7 +203,7 @@ def build_machine_detail_message(detail: MachineDetailView, *, liveview_url: str
                 "data": urlencode({"action": "report_machine_incident", "machineId": detail.machine.id}),
             },
         }
-    )
+    ]
     bubble: dict = {
         "type": "bubble",
         "size": "mega",
