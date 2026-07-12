@@ -36,15 +36,17 @@ Allowed query intents:
 - `floorplan`
 - `machines`
 - `machine_detail`
-- `gauges`
+- `hmi_screen`
+- `machine_people`
 - `daily_incidents`
 
 Allowed navigation intents:
 
 - `project_progress`
-- `people_portal`
 - `official_site`
 - `contact_us`
+
+Legacy `gauges` and `people_portal` postbacks remain compatibility aliases for `hmi_screen` and `machine_people` respectively.
 
 The parser normalizes Unicode with NFKC, lowercase, punctuation, and whitespace. It returns only a typed intent plus an untrusted machine candidate. The scoped resolver gathers every layout id, label, and explicit alias match, converts matches to canonical machine ids, and proceeds only when exactly one canonical id remains.
 
@@ -61,9 +63,10 @@ Reply links are derived from `BUILDING_ROUTE_APP_ORIGIN`, never from user text. 
 
 Paths are joined as normalized fixed routes:
 
-- `/factory-twin` for engineering progress and the privacy-protected people portal.
+- `/factory-twin` for engineering progress.
 - `/official` for the public website.
-- `/official#contact` for contact details.
+
+Contact is a fixed text response, not a navigation URL.
 
 An invalid origin produces a text-only unavailable response.
 
@@ -77,12 +80,12 @@ All six cells use postbacks so every tap receives an observable bot response:
 | 檢視工程進度 | `action=project_progress` |
 | 前往官網 | `action=official_site` |
 | 找機台 | `action=machines` |
-| 找人 | `action=people_portal` |
+| 機台人員情況 | `action=machine_people` |
 | 聯絡我們 | `action=contact_us` |
 
-`people_portal` does not return occupancy, counts, coordinates, faces, identities, or tracks in LINE. It explains the privacy boundary and links to the authenticated Factory Twin.
+`machine_people` returns only HC600-01's fresh anonymous 0/N count. It never returns detections, coordinates, faces, identities, screenshots, or tracks. `contact_us` returns `聯絡我們：4wallaitech@gmail.com`.
 
-The repository script is the source of truth. Provisioning is create, upload, set default, then verify. The previous default id is retained for rollback. Before applying, bot info must match `4wallaitech` and basic id `@941wjxxe`.
+The repository script is the source of truth. Provisioning is create, upload, set default, then verify. The fixed, non-overridable identity guard requires `4wallaitech` and `@941wjxxe`. The previous default id is retained for rollback; if LINE reports a manager-owned default whose id cannot be restored, the script fails before creating or changing a menu.
 
 ## Controlled Rollout
 
