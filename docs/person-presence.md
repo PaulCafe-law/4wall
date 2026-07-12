@@ -89,6 +89,7 @@ Production logs contain only frame ID, detection/person counts, queue count, and
 
 Factory Twin renders live people only when:
 
+- the observation has `source: "live"`; `offline_file` observations are never rendered;
 - the observation `capturedAt` is no older than 60 seconds;
 - a detection has non-null `floorPosition`;
 - the projected `{x, z}` is finite and within real factory movement bounds plus 2 meters.

@@ -108,7 +108,7 @@ The worker polls every `platform.poll_interval_sec`, retries platform errors wit
 
 ## Degraded Modes
 
-- Worker offline or not polling: the booth chat falls back to the local rule engine; LINE questions get the canned offline reply once the job expires server-side.
+- Worker offline or not polling: the protected booth web chat falls back to the local rule engine. External LINE text never enters this worker.
 - Codex CLI missing, logged out, or bridge timeout (`auth_required` / `failed`): the worker still posts the fallback text 「AI 助理暫時無法回應，請稍後再試 / The AI assistant cannot respond right now.」 with no toolCalls, and logs the bridge error to stderr.
 - Platform unreachable: results queue locally (bounded at 20) and retry with backoff; 404/409 responses (expired or reclaimed jobs) are dropped instead of retried.
 

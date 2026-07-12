@@ -87,6 +87,32 @@ Git deploys after Render reports repository access failure.
      --group-id <bound-line-group-id>
    ```
 
+## LINE Live Status v3 Rollout
+
+When this release includes LINE live status v3, use this order after the normal
+staging checks and repeat it for production:
+
+1. Restore and fix the `192.168.1.10` camera view. Set a new explicit calibration
+   id and confirm HMI and dispatch-sheet pixel regions remain inside the full frame.
+2. Confirm the HMI worker production config has GPT summary and adjudication both
+   disabled, then deploy it. Require two consecutive valid live observations with
+   exact frame ids, source capture times, matching dimensions, calibration id, and
+   reliable OCR before accepting LINE output.
+3. Deploy the person worker for `192.168.1.31` and verify that both `detections: []`
+   and multi-person frames reach the scoped ingest endpoint.
+4. Deploy the API and Web from the same revision. Verify `/healthz`, database access,
+   OCR/person ingest, LINE webhook signature/destination handling, and the public
+   mobile floorplan.
+5. On a real phone, test dispatch ticket, HMI screen, HC600-01, HC600-02, machine
+   people, and contact email.
+6. Apply `factory-ops-v3` last. The provisioning script must confirm
+   `4wallaitech / @941wjxxe`, set and verify the default, and restore the prior
+   default if any step fails.
+
+If either edge worker fails, keep the v3 backend's honest no-data responses and
+roll back only the worker/config. Do not restore the old fixed dispatch crop or
+historical PRESS/FLOW LINE response.
+
 ## Live Ops Guardrail
 
 If Android is not yet emitting the expected telemetry, lease, video, or bridge-alert events:

@@ -1,5 +1,7 @@
 # Twin Agent Demo (StarFab SEA Pitch) Gap Analysis
 
+> Historical plan, superseded for LINE by live-status v3. Twin Agent remains available only to the authenticated web demo. External LINE text is handled by deterministic allowlisted intents or help and never creates a Twin Agent job. Do not deploy the LINE relay described below.
+
 ## Sprint Boundary
 
 This change stays inside the Sprint 3/4 shared boundary: `planner-server/`, `web-app/`, and `docs/`.

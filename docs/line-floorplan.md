@@ -180,9 +180,9 @@ Expected local acceptance:
 - `cd planner-server && python -m pytest tests -q`
 - Dry-run rich menu setup prints the six current postback actions.
 - `python scripts/line_floorplan_dry_run.py` prints the four webhook reply payloads and the `m-hc600` machine detail card JSON without calling LINE or the database.
-- Dry-run webhook payloads cover floorplan, machines, HMI screen information, anonymous people count, daily incidents, and machine detail.
+- Backend integration tests cover floorplan, machines, HMI screen information, anonymous people count, daily incidents, machine detail, and the legacy postback aliases.
 - `GET /v1/line/floorplan/jingcheng/<token>/1040` returns PNG and a second request inside 60 seconds reports cache hit.
-- Staging validates that the configured Jingcheng site id exists and real camera/gauge records appear in the card.
+- Staging validates that the configured Jingcheng site id exists, HC600-01 shows fresh `.10` HMI evidence and an allowed thumbnail, `.31` returns a fresh anonymous count, and legacy analog gauges remain absent from LINE cards.
 
 ## P0.5 Deployment Hardening
 

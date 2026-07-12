@@ -16,10 +16,10 @@ but simulated operating data must never be presented as Jingcheng production dat
 - Camera OCR, gauges, detected people, and decision-ledger data are excluded from
   the demo assistant snapshot.
 - Twin snapshots have an explicit scope: `organization_live`, `web_only`, or
-  `accelerator_demo`. A Jingcheng LINE job without a demo prefix may select only
-  an `organization_live` snapshot; internal simulations are never eligible.
+  `accelerator_demo`. Only authenticated web demo sessions may create Twin Agent
+  jobs; LINE never selects any snapshot or creates a job.
 - The demo assistant uses its own `accelerator_demo` session without a Jingcheng
-  organization ID. LINE may select it only for an explicit `展示工廠：` question.
+  organization ID.
 - Every cloud or local assistant answer in this workspace begins with
   `模擬情境：`.
 
@@ -47,33 +47,25 @@ ledger.
 - Suggested questions cover AMR status, plan-versus-actual, machine alarms, and
   dispatch.
 
-## LINE Routing
+## LINE Exclusion
 
-- A normal LINE question such as `現在 AMR 情況` remains scoped to the group's
-  bound Jingcheng organization and its latest live snapshot.
-- A one-shot question beginning with `展示工廠：` uses the freshest
-  `accelerator_demo` snapshot. Example: `展示工廠：現在 AMR 情況`.
-- Demo routing is one-shot rather than a sticky group mode. This prevents a
-  forgotten setting from making later production questions look simulated.
-- If no demo page has published a fresh snapshot, LINE asks the operator to open
-  `/demo-factory`; it does not reuse stale demo data.
-- Demo LINE jobs do not carry a Jingcheng organization ID, site slug, or ledger
-  context. Every answer remains prefixed with `模擬情境：`.
+- External LINE text is handled only by deterministic, allowlisted factory intents
+  or the fixed help response.
+- `展示工廠：` has no privileged meaning and never creates a Twin Agent job.
+- Demo snapshots, commands, simulated AMRs, and production ledger context never
+  cross into the LINE route.
 
 ## Acceptance
 
 - A customer-only account cannot open `/demo-factory`.
 - Switching among all four scenarios deterministically reseeds entities and the
   simulated daily brief.
-- Asking about AMRs in the demo returns simulated AMR state with a simulation
-  label; asking from Jingcheng live mode still reports that no live AMR feed is
-  connected.
+- Asking about AMRs in the authenticated web demo returns simulated AMR state with
+  a simulation label.
 - Asking for today's reconciliation in the demo uses simulated figures and does
   not query or quote the production ledger.
 - Jingcheng cameras remain visible as live evidence, while their OCR, gauges, and
   person observations are absent from the demo assistant snapshot.
 - Existing Jingcheng live-only behavior and customer navigation remain unchanged.
-- Plain Jingcheng LINE questions never select `web_only` or `accelerator_demo`
-  snapshots.
-- `展示工廠：現在 AMR 情況` answers from the currently projected scenario while
-  the demo page is fresh, and refuses cleanly when it is not.
+- LINE inputs, including `展示工廠：現在 AMR 情況`, create zero Twin Agent jobs and
+  cannot select `organization_live`, `web_only`, or `accelerator_demo` snapshots.

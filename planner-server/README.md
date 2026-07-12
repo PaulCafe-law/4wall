@@ -64,6 +64,10 @@ Set-Location .\planner-server
 - `BUILDING_ROUTE_APP_ORIGIN` is required outside development/test for web session origin enforcement.
 - LINE direct-message identity, authorization, feature flags, and rollout are documented in
   [LINE One-to-One Account Linking](../docs/line-user-account-linking.md).
+- LINE live HMI, dispatch-ticket, machine availability, and anonymous people contracts are
+  documented in [LINE Floorplan](../docs/line-floorplan.md),
+  [Factory Camera Ingest](../docs/factory-camera-ingest.md), and
+  [Person Presence](../docs/person-presence.md).
 - Render must run `python scripts/render_predeploy.py` before routing traffic to a new API image.
 - The repo-root [render.yaml](../render.yaml) is a desired-state
   reference. Verify the live image-backed topology and pre-deploy command in the Render dashboard

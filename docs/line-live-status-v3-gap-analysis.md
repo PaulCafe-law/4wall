@@ -17,7 +17,7 @@ The Jingcheng LINE experience must expose current, scoped factory information fo
 
 - URL/live OCR observations carry `frameId`, source capture time, resolved pixel ROIs, frame size, calibration ID, and alignment status.
 - LINE dispatch tickets use only the exact observation frame and observation ROI. Missing, stale, mismatched, or unaligned data fails closed.
-- Current OCR/dispatch data is at most three minutes old by server receive time. Current person data is at most sixty seconds old.
+- Current OCR/dispatch data is at most three minutes old by both source capture time and server receive time. Current person data is at most sixty seconds old by both clocks.
 - Historical consensus may improve confidence but may not create current-frame evidence. Three consecutive alignment failures clear locks; recovery requires two valid frames.
 - LINE HMI responses render reliable structured screen fields, then at most eight HMI-region OCR lines at confidence 0.55 or higher. Analog PRESS/FLOW data is not shown in LINE.
 - Only HC600-01 is LINE-enabled. HC600-02 through HC600-07 reply `尚未開通`.
@@ -27,4 +27,4 @@ The Jingcheng LINE experience must expose current, scoped factory information fo
 
 ## Safety and Rollout
 
-LINE text remains on the deterministic intent boundary and never enters the local twin-agent/Codex worker. The existing OCR endpoint already accepts optional `frameId` and arbitrary structured fields, so workers can publish the new contract before the LINE backend is deployed. Field calibration must restore and secure the original view when the HMI or dispatch sheet is outside the full frame; otherwise a versioned ROI may be calibrated to the current view. Backend, worker, rich-menu, tenancy, freshness, and fail-closed behavior must be regression-tested before production rollout.
+LINE text remains on the deterministic intent boundary and never enters the local twin-agent/Codex worker. The implemented OCR endpoint now requires `frameId` for live input and validates the linked uploaded frame, source time, frame size, calibration id, and bounded HMI/work-order regions; offline file tests may still omit `frameId`. Field calibration must restore and secure the original view when the HMI or dispatch sheet is outside the full frame; otherwise a versioned ROI may be calibrated to the current view. Backend, worker, rich-menu, tenancy, freshness, and fail-closed behavior are regression-tested before production rollout.
