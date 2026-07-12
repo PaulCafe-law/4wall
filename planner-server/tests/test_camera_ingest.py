@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+from io import BytesIO
 
 import app.routers.camera_ingest as camera_ingest
 from app.models import CameraDevice, CameraFrame, CameraGaugeReading, CameraOcrObservation, CameraPersonObservation
 from app.routers.camera_ingest import MAX_FRAME_SIZE_BYTES
 from app.security import hash_camera_device_token, verify_camera_device_token
+from PIL import Image
 from sqlmodel import select
 from tests.helpers import login_web, seed_organization, seed_site, seed_user
 
@@ -23,7 +25,7 @@ def test_camera_device_uploads_frame_through_local_intent(client, session_factor
         camera_id = camera.id
         session.commit()
 
-    frame_bytes = b"not-real-jpeg-but-good-enough-for-storage"
+    frame_bytes = _image_bytes("JPEG", size=(1280, 720))
     checksum = hashlib.sha256(frame_bytes).hexdigest()
     headers = {"Authorization": f"Bearer {token}"}
     intent = client.post(
@@ -189,6 +191,154 @@ def test_checksum_mismatch_fails_completion(client, session_factory) -> None:
     )
     assert mismatch.status_code == 422
     assert mismatch.json()["detail"] == "checksum_mismatch"
+
+
+def test_camera_device_uploads_valid_png_frame(client, session_factory) -> None:
+    token = "fwcam_valid_png"
+    with session_factory() as session:
+        org = seed_organization(session, name="PNG Camera Org")
+        _seed_camera(session, org.id, None, token=token)
+        session.commit()
+
+    frame_bytes = _image_bytes("PNG")
+    checksum = hashlib.sha256(frame_bytes).hexdigest()
+    headers = {"Authorization": f"Bearer {token}"}
+    intent = client.post(
+        "/v1/camera-ingest/upload-intents",
+        headers=headers,
+        json={
+            "frameId": "valid-png",
+            "capturedAt": "2026-06-19T02:00:00Z",
+            "contentType": "image/png",
+            "checksumSha256": checksum,
+            "sizeBytes": len(frame_bytes),
+        },
+    )
+    assert intent.status_code == 200, intent.text
+    assert client.put(intent.json()["uploadUrl"], headers=headers, content=frame_bytes).status_code == 204
+
+    complete = client.post(
+        "/v1/camera-ingest/frames/valid-png/complete",
+        headers=headers,
+        json={"checksumSha256": checksum, "sizeBytes": len(frame_bytes)},
+    )
+
+    assert complete.status_code == 200, complete.text
+    assert complete.json()["contentType"] == "image/png"
+    assert complete.json()["uploadStatus"] == "uploaded"
+    assert complete.json()["analysisStatus"] == "queued"
+
+
+def test_camera_frame_intent_rejects_far_future_capture_time(client, session_factory) -> None:
+    token = "fwcam_future_frame"
+    with session_factory() as session:
+        org = seed_organization(session, name="Future Camera Org")
+        _seed_camera(session, org.id, None, token=token)
+        session.commit()
+
+    response = client.post(
+        "/v1/camera-ingest/upload-intents",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "frameId": "future-frame",
+            "capturedAt": "2099-01-01T00:00:00Z",
+            "contentType": "image/jpeg",
+            "checksumSha256": "0" * 64,
+            "sizeBytes": 1,
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "frame_captured_at_in_future"
+    with session_factory() as session:
+        assert session.get(CameraFrame, "future-frame") is None
+
+
+def test_truncated_image_never_completes_or_queues(client, session_factory) -> None:
+    token = "fwcam_invalid_image"
+    with session_factory() as session:
+        org = seed_organization(session, name="Invalid Image Org")
+        camera = _seed_camera(session, org.id, None, token=token)
+        camera_id = camera.id
+        session.commit()
+
+    # JPEG verification alone accepts this truncated file; a full pixel decode must reject it.
+    frame_bytes = _image_bytes("JPEG")[:-10]
+    checksum = hashlib.sha256(frame_bytes).hexdigest()
+    headers = {"Authorization": f"Bearer {token}"}
+    intent = client.post(
+        "/v1/camera-ingest/upload-intents",
+        headers=headers,
+        json={
+            "frameId": "invalid-image",
+            "capturedAt": "2026-06-19T02:00:00Z",
+            "contentType": "image/jpeg",
+            "checksumSha256": checksum,
+            "sizeBytes": len(frame_bytes),
+        },
+    )
+    assert intent.status_code == 200, intent.text
+    assert client.put(intent.json()["uploadUrl"], headers=headers, content=frame_bytes).status_code == 204
+
+    complete = client.post(
+        "/v1/camera-ingest/frames/invalid-image/complete",
+        headers=headers,
+        json={"checksumSha256": checksum, "sizeBytes": len(frame_bytes)},
+    )
+
+    assert complete.status_code == 422
+    assert complete.json()["detail"] == "invalid_frame_image"
+    with session_factory() as session:
+        frame = session.get(CameraFrame, "invalid-image")
+        camera = session.get(CameraDevice, camera_id)
+        assert frame is not None
+        assert frame.upload_status == "failed"
+        assert frame.analysis_status == "pending"
+        assert frame.completed_at is None
+        assert frame.error_message == "invalid_frame_image"
+        assert camera is not None
+        assert camera.last_frame_at is None
+
+
+def test_image_content_type_mismatch_never_completes_or_queues(client, session_factory) -> None:
+    token = "fwcam_mismatched_image"
+    with session_factory() as session:
+        org = seed_organization(session, name="Mismatched Image Org")
+        _seed_camera(session, org.id, None, token=token)
+        session.commit()
+
+    frame_bytes = _image_bytes("PNG")
+    checksum = hashlib.sha256(frame_bytes).hexdigest()
+    headers = {"Authorization": f"Bearer {token}"}
+    intent = client.post(
+        "/v1/camera-ingest/upload-intents",
+        headers=headers,
+        json={
+            "frameId": "mismatched-image",
+            "capturedAt": "2026-06-19T02:00:00Z",
+            "contentType": "image/jpeg",
+            "checksumSha256": checksum,
+            "sizeBytes": len(frame_bytes),
+        },
+    )
+    assert intent.status_code == 200, intent.text
+    assert client.put(intent.json()["uploadUrl"], headers=headers, content=frame_bytes).status_code == 204
+
+    complete = client.post(
+        "/v1/camera-ingest/frames/mismatched-image/complete",
+        headers=headers,
+        json={"checksumSha256": checksum, "sizeBytes": len(frame_bytes)},
+    )
+
+    assert complete.status_code == 422
+    assert complete.json()["detail"] == "frame_content_type_mismatch"
+    with session_factory() as session:
+        frame = session.get(CameraFrame, "mismatched-image")
+        assert frame is not None
+        assert frame.upload_status == "failed"
+        assert frame.analysis_status == "pending"
+        assert frame.completed_at is None
+        assert frame.error_message == "frame_content_type_mismatch"
 
 
 def test_watch_zones_are_org_scoped(client, session_factory) -> None:
@@ -937,7 +1087,7 @@ def test_camera_device_token_rotation_is_org_scoped(client, session_factory) -> 
 
 def test_latest_frame_image_is_web_org_scoped(client, session_factory) -> None:
     token = "fwcam_latest_frame"
-    frame_bytes = b"\xff\xd8latest-frame\xff\xd9"
+    frame_bytes = _image_bytes("JPEG")
     checksum = hashlib.sha256(frame_bytes).hexdigest()
     with session_factory() as session:
         org_a = seed_organization(session, name="Latest Frame A")
@@ -986,7 +1136,7 @@ def test_latest_frame_image_is_web_org_scoped(client, session_factory) -> None:
 def test_latest_frame_image_is_available_to_same_camera_device_token(client, session_factory) -> None:
     token_a = "fwcam_latest_frame_device_a"
     token_b = "fwcam_latest_frame_device_b"
-    frame_bytes = b"\xff\xd8device-latest-frame\xff\xd9"
+    frame_bytes = _image_bytes("JPEG")
     checksum = hashlib.sha256(frame_bytes).hexdigest()
     with session_factory() as session:
         org = seed_organization(session, name="Latest Frame Device")
@@ -1170,6 +1320,12 @@ def _person_observation_payload(**overrides) -> dict:
     }
     payload.update(overrides)
     return payload
+
+
+def _image_bytes(image_format: str, *, size: tuple[int, int] = (64, 48)) -> bytes:
+    output = BytesIO()
+    Image.new("RGB", size, (120, 80, 40)).save(output, format=image_format)
+    return output.getvalue()
 
 
 def _seed_camera(session, organization_id: str, site_id: str | None, *, token: str) -> CameraDevice:

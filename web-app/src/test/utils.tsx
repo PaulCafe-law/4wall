@@ -51,18 +51,18 @@ export function renderWithProviders(
   {
     route = '/',
     auth = createAuthValue(),
+    queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    }),
   }: {
     route?: string
     auth?: AuthContextValue
+    queryClient?: QueryClient
   } = {},
 ) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  })
-
   function Wrapper({ children }: PropsWithChildren) {
     return (
       <QueryClientProvider client={queryClient}>

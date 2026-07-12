@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any
+from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
 from sqlmodel import Session, select
@@ -28,6 +28,12 @@ MACHINE_STATUS_YELLOW = "yellow"
 MACHINE_STATUS_GREEN = "green"
 MACHINE_STATUS_GRAY = "gray"
 UNRESOLVED_INCIDENT_STATUSES = {"pending_review", "confirmed", "in_progress"}
+
+
+class FloorplanBindingScope(Protocol):
+    organization_id: str
+    site_id: str
+    site_slug: str
 
 
 @dataclass(frozen=True)
@@ -71,7 +77,7 @@ def get_active_group_binding(session: Session, *, group_id: str) -> LineGroupBin
     ).first()
 
 
-def get_site_for_binding(session: Session, layout: FloorplanLayout, binding: LineGroupBinding) -> Site | None:
+def get_site_for_binding(session: Session, layout: FloorplanLayout, binding: FloorplanBindingScope) -> Site | None:
     if binding.site_slug != layout.site_slug or binding.site_id != layout.site_id:
         return None
     site = session.get(Site, binding.site_id)
@@ -84,7 +90,7 @@ def get_floorplan_snapshot(
     session: Session,
     *,
     layout: FloorplanLayout,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     now: datetime | None = None,
 ) -> FloorplanSnapshot:
     now_utc = _as_utc(now or datetime.now(timezone.utc))
@@ -110,7 +116,7 @@ def build_machine_detail_view(
     storage: ArtifactStorage,
     *,
     layout: FloorplanLayout,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     machine: MachineLayout,
     now: datetime | None = None,
 ) -> MachineDetailView | None:
@@ -139,7 +145,7 @@ def build_site_gauge_views(
     session: Session,
     *,
     layout: FloorplanLayout,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     now: datetime | None = None,
 ) -> dict[str, tuple[GaugeReadingView, ...]]:
     now_utc = _as_utc(now or datetime.now(timezone.utc))
@@ -154,7 +160,7 @@ def build_floorplan_state_payload(
     session: Session,
     *,
     layout: FloorplanLayout,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     now: datetime | None = None,
 ) -> dict[str, Any] | None:
     site = get_site_for_binding(session, layout, binding)
@@ -317,7 +323,7 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat()
 
 
-def _site_cameras(session: Session, binding: LineGroupBinding) -> list[CameraDevice]:
+def _site_cameras(session: Session, binding: FloorplanBindingScope) -> list[CameraDevice]:
     return list(
         session.exec(
             select(CameraDevice).where(
@@ -350,7 +356,7 @@ def _camera_status(cameras: list[CameraDevice], now_utc: datetime) -> str:
 
 def _machine_status(
     session: Session,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     machine: MachineLayout,
     today_incidents: list[IncidentRecord],
     now_utc: datetime,
@@ -369,7 +375,7 @@ def _machine_status(
 
 def _gauge_view(
     session: Session,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     machine: MachineLayout,
     gauge_id: str,
     now_utc: datetime,
@@ -408,7 +414,7 @@ def _gauge_view(
 
 def _latest_gauge_reading(
     session: Session,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     machine: MachineLayout,
     gauge_id: str,
 ) -> CameraGaugeReading | None:
@@ -429,7 +435,7 @@ def _latest_gauge_reading(
 
 def _comparison_gauge_reading(
     session: Session,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     machine: MachineLayout,
     gauge_id: str,
     target_at: datetime,
@@ -450,7 +456,7 @@ def _comparison_gauge_reading(
     return session.exec(statement).first()
 
 
-def _machine_camera_ids(session: Session, binding: LineGroupBinding, machine: MachineLayout) -> list[str]:
+def _machine_camera_ids(session: Session, binding: FloorplanBindingScope, machine: MachineLayout) -> list[str]:
     if not machine.camera_matches:
         return []
     cameras = _site_cameras(session, binding)
@@ -463,7 +469,7 @@ def _machine_camera_ids(session: Session, binding: LineGroupBinding, machine: Ma
 def _latest_machine_thumbnail_url(
     session: Session,
     storage: ArtifactStorage,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     layout: FloorplanLayout,
     machine: MachineLayout,
     *,
@@ -477,7 +483,12 @@ def _latest_machine_thumbnail_url(
         return None
     frame = session.exec(
         select(CameraFrame)
-        .where(CameraFrame.camera_id.in_(matched_ids), CameraFrame.upload_status == "uploaded")
+        .where(
+            CameraFrame.camera_id.in_(matched_ids),
+            CameraFrame.organization_id == binding.organization_id,
+            CameraFrame.site_id == binding.site_id,
+            CameraFrame.upload_status == "uploaded",
+        )
         .order_by(CameraFrame.captured_at.desc(), CameraFrame.created_at.desc())
     ).first()
     if frame is None:
@@ -485,7 +496,7 @@ def _latest_machine_thumbnail_url(
     return storage.create_presigned_get_url(key=frame.storage_key, expires_in_seconds=min(ttl_seconds, 600))
 
 
-def _today_incidents(session: Session, binding: LineGroupBinding, now_utc: datetime) -> list[IncidentRecord]:
+def _today_incidents(session: Session, binding: FloorplanBindingScope, now_utc: datetime) -> list[IncidentRecord]:
     start, end, _ = today_bounds_taipei(now_utc)
     return list(
         session.exec(

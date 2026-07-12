@@ -1,13 +1,13 @@
-# Web Beta RC deploy graph:
-#   main -> staging-api + staging-app (on commit)
-#        -> smoke-beta.yml validates the deployed staging revision
-#        -> pass -> promote prod-api + prod-app
-#        -> fail -> rollback previous healthy deploy
+# Desired-state blueprint for Git-backed service recreation.
+# The live services are image-backed, so the Render dashboard is authoritative:
+# deploy one immutable image with account linking disabled, run the API pre-deploy
+# migration and smoke checks, then manually promote/enable the feature.
 services:
   - type: web
     name: four-wall-api-staging
     runtime: docker
     rootDir: planner-server
+    preDeployCommand: python scripts/render_predeploy.py
     healthCheckPath: /healthz
     autoDeployTrigger: commit
     envVars:
@@ -46,6 +46,12 @@ services:
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
       - key: LINE_PUBLIC_BASE_URL
+        sync: false
+      - key: LINE_ACCOUNT_LINKING_ENABLED
+        value: "false"
+      - key: LINE_ACCOUNT_LINK_ENCRYPTION_KEYS
+        sync: false
+      - key: LINE_DESTINATION_ID
         sync: false
       - key: CODEX_CLI_PATH
         sync: false
@@ -90,6 +96,7 @@ services:
     name: four-wall-api
     runtime: docker
     rootDir: planner-server
+    preDeployCommand: python scripts/render_predeploy.py
     healthCheckPath: /healthz
     autoDeployTrigger: "off"
     envVars:
@@ -122,12 +129,18 @@ services:
       - key: LINE_CHANNEL_SECRET
         sync: false
       - key: LINE_WEBHOOK_ENABLED
-        value: "false"
+        value: "true"
       - key: LINE_DEFAULT_GROUP_ID
         sync: false
       - key: LINE_INCIDENT_NOTIFY_ENABLED
         value: "false"
       - key: LINE_PUBLIC_BASE_URL
+        sync: false
+      - key: LINE_ACCOUNT_LINKING_ENABLED
+        value: "false"
+      - key: LINE_ACCOUNT_LINK_ENCRYPTION_KEYS
+        sync: false
+      - key: LINE_DESTINATION_ID
         sync: false
       - key: CODEX_CLI_PATH
         sync: false

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 from functools import lru_cache
 from pathlib import Path
+import re
 from typing import Any
 
 
@@ -108,13 +109,34 @@ class FloorplanLayout:
 @lru_cache(maxsize=8)
 def load_floorplan_layout(site_slug: str) -> FloorplanLayout:
     safe_slug = site_slug.strip().lower()
-    if not safe_slug or safe_slug != "jingcheng":
+    if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", safe_slug):
         raise FloorplanLayoutError("floorplan_layout_not_found")
     path = Path(__file__).resolve().parent / "layouts" / f"{safe_slug}.json"
     if not path.exists():
         raise FloorplanLayoutError("floorplan_layout_not_found")
     data = json.loads(path.read_text(encoding="utf-8"))
-    return _parse_layout(data)
+    layout = _parse_layout(data)
+    if layout.site_slug.strip().lower() != safe_slug:
+        raise FloorplanLayoutError("floorplan_layout_slug_mismatch")
+    return layout
+
+
+@lru_cache(maxsize=32)
+def load_floorplan_layout_for_site(site_id: str) -> FloorplanLayout:
+    normalized_site_id = site_id.strip()
+    if not normalized_site_id:
+        raise FloorplanLayoutError("floorplan_layout_not_found")
+    layouts_dir = Path(__file__).resolve().parent / "layouts"
+    matches: list[FloorplanLayout] = []
+    for path in sorted(layouts_dir.glob("*.json")):
+        layout = load_floorplan_layout(path.stem)
+        if layout.site_id == normalized_site_id:
+            matches.append(layout)
+    if not matches:
+        raise FloorplanLayoutError("floorplan_layout_not_found")
+    if len(matches) > 1:
+        raise FloorplanLayoutError("floorplan_layout_site_ambiguous")
+    return matches[0]
 
 
 def validate_imagemap_width(width: int) -> int:

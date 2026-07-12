@@ -8,11 +8,9 @@ from threading import Lock
 from PIL import Image, ImageDraw, ImageFont
 from sqlmodel import Session
 
-from app.models import LineGroupBinding
-
 from .fonts import load_font
 from .layout import BASE_HEIGHT, BASE_WIDTH, FloorplanLayout, floorplan_asset_path
-from .service import FloorplanSnapshot, get_floorplan_snapshot
+from .service import FloorplanBindingScope, FloorplanSnapshot, get_floorplan_snapshot
 
 
 CACHE_SECONDS = 60
@@ -40,12 +38,12 @@ def render_floorplan_png(
     session: Session,
     *,
     layout: FloorplanLayout,
-    binding: LineGroupBinding,
+    binding: FloorplanBindingScope,
     width: int,
     now: datetime | None = None,
 ) -> RenderedFloorplan:
     current = _as_utc(now or datetime.now(timezone.utc))
-    cache_key = (layout.site_slug, binding.group_id, width)
+    cache_key = (layout.site_slug, _binding_cache_id(binding), width)
     with _CACHE_LOCK:
         cached = _CACHE.get(cache_key)
         if cached is not None:
@@ -69,6 +67,16 @@ def render_floorplan_png(
 def clear_floorplan_render_cache() -> None:
     with _CACHE_LOCK:
         _CACHE.clear()
+
+
+def _binding_cache_id(binding: FloorplanBindingScope) -> str:
+    source_id = getattr(binding, "source_id", None)
+    if source_id:
+        return str(source_id)
+    group_id = getattr(binding, "group_id", None)
+    if group_id:
+        return str(group_id)
+    return f"{binding.organization_id}:{binding.site_id}"
 
 
 def _draw_floorplan(layout: FloorplanLayout, snapshot: FloorplanSnapshot, width: int) -> RenderedFloorplan:

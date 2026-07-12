@@ -7,7 +7,7 @@ test.skip(!smokeEmail || !smokePassword, 'requires deployed smoke credentials')
 
 test('deployed beta login reaches the authenticated shell', async ({ page }) => {
   await page.goto('/login')
-  await page.locator('form input[type="email"]').fill(smokeEmail!)
+  await page.locator('form input[name="email"]').fill(smokeEmail!)
   await page.locator('form input[type="password"]').fill(smokePassword!)
   await page.locator('form button[type="submit"]').click()
 

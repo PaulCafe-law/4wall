@@ -36,6 +36,13 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "equipment_watch_zones" in table_names
     assert "equipment_state_observations" in table_names
     assert "line_group_bindings" in table_names
+    assert "line_user_bindings" in table_names
+    assert "line_account_link_attempts" in table_names
+
+    webhook_column_defs = {
+        column["name"]: column for column in inspector.get_columns("line_webhook_events")
+    }
+    assert webhook_column_defs["encrypted_reply_messages"]["nullable"] is True
 
     site_columns = {column["name"] for column in inspector.get_columns("site")}
     assert "map_config_json" in site_columns
@@ -88,3 +95,53 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     assert "site_id" in binding_columns
     assert "site_slug" in binding_columns
     assert "is_active" in binding_columns
+
+    user_binding_columns = {column["name"] for column in inspector.get_columns("line_user_bindings")}
+    assert {
+        "destination_id",
+        "line_user_id",
+        "user_id",
+        "site_id",
+        "is_active",
+        "verified_at",
+        "created_at",
+        "updated_at",
+    }.issubset(user_binding_columns)
+    user_binding_uniques = {
+        tuple(constraint["column_names"])
+        for constraint in inspector.get_unique_constraints("line_user_bindings")
+    }
+    assert ("destination_id", "line_user_id") in user_binding_uniques
+    assert ("destination_id", "user_id") in user_binding_uniques
+
+    link_attempt_column_defs = {
+        column["name"]: column for column in inspector.get_columns("line_account_link_attempts")
+    }
+    link_attempt_columns = set(link_attempt_column_defs)
+    assert {
+        "flow_token_hash",
+        "expected_line_user_id",
+        "destination_id",
+        "is_current",
+        "encrypted_link_token",
+        "user_id",
+        "site_id",
+        "nonce_hash",
+        "redirect_token_hash",
+        "status",
+        "expires_at",
+        "consumed_at",
+        "redirected_at",
+        "created_at",
+        "updated_at",
+    }.issubset(link_attempt_columns)
+    assert link_attempt_column_defs["encrypted_link_token"]["nullable"] is True
+    link_attempt_uniques = {
+        tuple(constraint["column_names"])
+        for constraint in inspector.get_unique_constraints("line_account_link_attempts")
+    }
+    assert ("destination_id", "expected_line_user_id", "is_current") in link_attempt_uniques
+    link_attempt_checks = {
+        constraint["name"] for constraint in inspector.get_check_constraints("line_account_link_attempts")
+    }
+    assert "ck_line_link_attempts_current_status" in link_attempt_checks

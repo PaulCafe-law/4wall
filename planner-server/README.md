@@ -25,9 +25,15 @@ FastAPI service for planning, tenancy, web auth, artifacts, billing, audit, and 
 Set-Location .\planner-server
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install --require-hashes -r requirements-dev.txt
 python -m uvicorn app.main:app --reload
 ```
+
+`requirements.in` is the human-edited production dependency policy. `requirements.txt` is the
+generated, exact, hash-locked production set. Tests use the separately locked
+`requirements-dev.in` / `requirements-dev.txt`, so production images do not include pytest.
+Refresh both locks with Python 3.13 and `uv pip compile --upgrade --generate-hashes`, then verify
+installation with `pip install --require-hashes -r requirements-dev.txt`.
 
 ## Test
 
@@ -56,4 +62,9 @@ Set-Location .\planner-server
 
 - `/healthz` is release-gating and returns `503` when DB connectivity is broken.
 - `BUILDING_ROUTE_APP_ORIGIN` is required outside development/test for web session origin enforcement.
-- Render service topology now lives in the repo-root [render.yaml](/D:/The%20Fourth%20Wall%20AI/codebase/render.yaml).
+- LINE direct-message identity, authorization, feature flags, and rollout are documented in
+  [LINE One-to-One Account Linking](../docs/line-user-account-linking.md).
+- Render must run `python scripts/render_predeploy.py` before routing traffic to a new API image.
+- The repo-root [render.yaml](../render.yaml) is a desired-state
+  reference. Verify the live image-backed topology and pre-deploy command in the Render dashboard
+  before every release.

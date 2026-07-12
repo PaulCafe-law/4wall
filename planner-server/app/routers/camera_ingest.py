@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 import hashlib
+from io import BytesIO
 import logging
 import math
 from pathlib import Path
 import re
 from typing import Any, Literal
+import warnings
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from PIL import Image
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -43,9 +46,12 @@ logger = logging.getLogger(__name__)
 
 FRAME_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 FRAME_UPLOAD_TTL_SECONDS = 15 * 60
+MAX_CAPTURE_FUTURE_SKEW_SECONDS = 5 * 60
 FRAME_CACHE_CONTROL = "private, max-age=300"
 MAX_FRAME_SIZE_BYTES = 5 * 1024 * 1024
 SUPPORTED_CONTENT_TYPES = {"image/jpeg": "jpg", "image/png": "png"}
+SUPPORTED_PILLOW_IMAGE_FORMATS = ("JPEG", "PNG")
+CONTENT_TYPE_BY_PILLOW_IMAGE_FORMAT = {"JPEG": "image/jpeg", "PNG": "image/png"}
 ALLOWED_SEVERITIES = {"low", "medium", "high", "critical"}
 GAUGE_SORT_ORDER = {"press_am_meter": 0, "flow_am_meter": 1}
 # The web camera list is a status feed: keep the payload lean by capping the
@@ -358,6 +364,12 @@ def create_camera_frame_upload_intent(
     storage: ArtifactStorage = Depends(get_artifact_storage),
 ) -> CameraFrameUploadIntentDto:
     _validate_frame_id(request.frameId)
+    captured_at = _as_utc(request.capturedAt)
+    if captured_at > _now() + timedelta(seconds=MAX_CAPTURE_FUTURE_SKEW_SECONDS):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="frame_captured_at_in_future",
+        )
     extension = _extension_for_content_type(request.contentType)
     checksum = _normalized_sha256(request.checksumSha256)
     existing = session.get(CameraFrame, request.frameId)
@@ -378,8 +390,8 @@ def create_camera_frame_upload_intent(
         camera_id=camera.id,
         organization_id=camera.organization_id,
         site_id=camera.site_id,
-        captured_at=_as_utc(request.capturedAt),
-        storage_key=_frame_storage_key(camera, request.frameId, _as_utc(request.capturedAt), extension),
+        captured_at=captured_at,
+        storage_key=_frame_storage_key(camera, request.frameId, captured_at, extension),
         content_type=request.contentType,
         checksum_sha256=checksum,
         size_bytes=request.sizeBytes,
@@ -450,25 +462,32 @@ def complete_camera_frame_upload(
     actual_checksum = hashlib.sha256(data).hexdigest()
     expected_checksum = _normalized_sha256(request.checksumSha256) or frame.checksum_sha256
     if expected_checksum and expected_checksum != actual_checksum:
-        frame.upload_status = "failed"
-        frame.error_message = "checksum_mismatch"
-        frame.updated_at = _now()
-        session.add(frame)
-        session.commit()
+        _mark_frame_upload_failed(session, frame, "checksum_mismatch")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="checksum_mismatch")
     expected_size = request.sizeBytes or frame.size_bytes
     if expected_size is not None and expected_size != len(data):
-        frame.upload_status = "failed"
-        frame.error_message = "size_mismatch"
-        frame.updated_at = _now()
-        session.add(frame)
-        session.commit()
+        _mark_frame_upload_failed(session, frame, "size_mismatch")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="size_mismatch")
+
+    try:
+        detected_content_type, image_width, image_height = _inspect_frame_image(data)
+    except ValueError:
+        _mark_frame_upload_failed(session, frame, "invalid_frame_image")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid_frame_image",
+        ) from None
+    if detected_content_type != frame.content_type:
+        _mark_frame_upload_failed(session, frame, "frame_content_type_mismatch")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="frame_content_type_mismatch",
+        )
 
     frame.checksum_sha256 = actual_checksum
     frame.size_bytes = len(data)
-    frame.width = request.width or frame.width
-    frame.height = request.height or frame.height
+    frame.width = image_width
+    frame.height = image_height
     frame.upload_status = "uploaded"
     frame.analysis_status = "queued"
     frame.completed_at = _now()
@@ -1280,6 +1299,38 @@ def _extension_for_content_type(content_type: str) -> str:
     if extension is None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unsupported_frame_content_type")
     return extension
+
+
+def _inspect_frame_image(data: bytes) -> tuple[str, int, int]:
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(BytesIO(data), formats=SUPPORTED_PILLOW_IMAGE_FORMATS) as image:
+                detected_format = image.format
+                image.verify()
+            with Image.open(BytesIO(data), formats=SUPPORTED_PILLOW_IMAGE_FORMATS) as image:
+                if image.format != detected_format:
+                    raise ValueError("image_format_changed_during_decode")
+                image.load()
+                width, height = image.size
+    except Exception as exc:
+        logger.info("Rejected camera frame image during validation: %s", type(exc).__name__)
+        raise ValueError("invalid_frame_image") from exc
+
+    detected_content_type = CONTENT_TYPE_BY_PILLOW_IMAGE_FORMAT.get(detected_format or "")
+    if detected_content_type is None:
+        raise ValueError("invalid_frame_image")
+    return detected_content_type, width, height
+
+
+def _mark_frame_upload_failed(session: Session, frame: CameraFrame, error: str) -> None:
+    frame.upload_status = "failed"
+    frame.analysis_status = "pending"
+    frame.completed_at = None
+    frame.error_message = error
+    frame.updated_at = _now()
+    session.add(frame)
+    session.commit()
 
 
 def _validate_zone(zone: EquipmentWatchZoneInputDto) -> None:

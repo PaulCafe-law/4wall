@@ -80,7 +80,7 @@ test('customer viewer can browse but cannot see site mutation controls', async (
   })
 
   await page.goto('/login')
-  await page.locator('form input[type="email"]').fill('viewer@test.dev')
+  await page.locator('form input[name="email"]').fill('viewer@test.dev')
   await page.locator('form input[type="password"]').fill('Password123!')
   await page.locator('form button[type="submit"]').click()
 

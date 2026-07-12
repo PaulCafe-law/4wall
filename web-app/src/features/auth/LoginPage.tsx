@@ -32,8 +32,11 @@ export function LoginPage() {
     },
   })
 
+  const lineLink = searchParams.get('lineLink') === '1'
+  const authenticatedDestination = lineLink ? '/line/link' : '/overview'
+
   if (auth.status === 'authenticated') {
-    return <Navigate to="/overview" replace />
+    return <Navigate to={authenticatedDestination} replace />
   }
 
   const expired = searchParams.get('expired') === '1' || auth.status === 'expired'
@@ -41,7 +44,7 @@ export function LoginPage() {
   const onSubmit = handleSubmit(async (values) => {
     try {
       await auth.login(values)
-      navigate('/overview', { replace: true })
+      navigate(authenticatedDestination, { replace: true })
     } catch (error) {
       const detail = error instanceof ApiError ? error.detail : undefined
       setError('root', { message: formatApiError(detail, '登入失敗，請稍後再試。') })

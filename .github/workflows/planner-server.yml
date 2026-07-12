@@ -44,7 +44,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: python -m pip install --require-hashes -r requirements-dev.txt
       - name: Validate migrations
         env:
           BUILDING_ROUTE_DATABASE_URL: sqlite:///./data/ci-migration.db

@@ -21,17 +21,59 @@ class FloorplanTokenError(RuntimeError):
 @dataclass(frozen=True)
 class FloorplanTokenPayload:
     site_slug: str
-    group_id: str
+    source_type: str
+    source_id: str
+    destination_id: str | None
     issued_at: datetime
     purpose: str
 
+    @property
+    def group_id(self) -> str:
+        """Backward-compatible accessor for legacy group-token callers."""
 
-def create_floorplan_render_token(settings, *, site_slug: str, group_id: str, now: datetime | None = None) -> str:
-    return _create_floorplan_token(settings, site_slug=site_slug, group_id=group_id, purpose="render", now=now)
+        return self.source_id
 
 
-def create_floorplan_liveview_token(settings, *, site_slug: str, group_id: str, now: datetime | None = None) -> str:
-    return _create_floorplan_token(settings, site_slug=site_slug, group_id=group_id, purpose="liveview", now=now)
+def create_floorplan_render_token(
+    settings,
+    *,
+    site_slug: str,
+    group_id: str | None = None,
+    source_type: str = "group",
+    source_id: str | None = None,
+    destination_id: str | None = None,
+    now: datetime | None = None,
+) -> str:
+    return _create_floorplan_token(
+        settings,
+        site_slug=site_slug,
+        source_type=source_type,
+        source_id=source_id or group_id or "",
+        destination_id=destination_id,
+        purpose="render",
+        now=now,
+    )
+
+
+def create_floorplan_liveview_token(
+    settings,
+    *,
+    site_slug: str,
+    group_id: str | None = None,
+    source_type: str = "group",
+    source_id: str | None = None,
+    destination_id: str | None = None,
+    now: datetime | None = None,
+) -> str:
+    return _create_floorplan_token(
+        settings,
+        site_slug=site_slug,
+        source_type=source_type,
+        source_id=source_id or group_id or "",
+        destination_id=destination_id,
+        purpose="liveview",
+        now=now,
+    )
 
 
 def verify_floorplan_render_token(
@@ -76,17 +118,28 @@ def _create_floorplan_token(
     settings,
     *,
     site_slug: str,
-    group_id: str,
+    source_type: str,
+    source_id: str,
+    destination_id: str | None,
     purpose: str,
     now: datetime | None = None,
 ) -> str:
+    if source_type not in {"group", "user"} or not source_id:
+        raise FloorplanTokenError("invalid_floorplan_token_scope")
+    if source_type == "user" and not destination_id:
+        raise FloorplanTokenError("invalid_floorplan_token_destination")
     issued_at = _as_utc(now or datetime.now(timezone.utc))
     payload = {
         "siteSlug": site_slug,
-        "groupId": group_id,
+        "sourceType": source_type,
+        "sourceId": source_id,
         "issuedAt": int(issued_at.timestamp()),
         "purpose": purpose,
     }
+    if source_type == "group":
+        payload["groupId"] = source_id
+    if destination_id:
+        payload["destinationId"] = destination_id
     body = _b64encode(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
     signature = _sign(settings.auth_secret_key, body)
     return f"{body}.{signature}"
@@ -133,9 +186,13 @@ def _validate_payload(
     allow_legacy_purpose: bool,
 ) -> FloorplanTokenPayload:
     site_slug = str(payload.get("siteSlug") or "")
-    group_id = str(payload.get("groupId") or "")
-    if site_slug != expected_site_slug or not group_id:
+    source_type = str(payload.get("sourceType") or ("group" if payload.get("groupId") else ""))
+    source_id = str(payload.get("sourceId") or payload.get("groupId") or "")
+    destination_id = str(payload.get("destinationId") or "") or None
+    if site_slug != expected_site_slug or source_type not in {"group", "user"} or not source_id:
         raise FloorplanTokenError("floorplan_token_scope_mismatch")
+    if source_type == "user" and not destination_id:
+        raise FloorplanTokenError("floorplan_token_destination_mismatch")
     purpose = str(payload.get("purpose") or "")
     if purpose != expected_purpose:
         if not (allow_legacy_purpose and not purpose and expected_purpose == "render"):
@@ -152,7 +209,14 @@ def _validate_payload(
         raise FloorplanTokenError("floorplan_token_expired")
     if age_seconds < -MAX_CLOCK_SKEW_SECONDS:
         raise FloorplanTokenError("floorplan_token_from_future")
-    return FloorplanTokenPayload(site_slug=site_slug, group_id=group_id, issued_at=issued_at, purpose=purpose)
+    return FloorplanTokenPayload(
+        site_slug=site_slug,
+        source_type=source_type,
+        source_id=source_id,
+        destination_id=destination_id,
+        issued_at=issued_at,
+        purpose=purpose,
+    )
 
 
 def _sign(secret: str, body: str) -> str:

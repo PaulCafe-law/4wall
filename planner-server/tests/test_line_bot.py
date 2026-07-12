@@ -5,17 +5,34 @@ from dataclasses import replace
 import hashlib
 import hmac
 import json
+from threading import get_ident
 
+from cryptography.fernet import Fernet
 from fastapi.testclient import TestClient
 from sqlmodel import select
 
 from app.line_bot import verify_line_signature
+from app.line_identity import LineConversationScope
 from app.main import build_app
-from app.models import IncidentHistoryRecord, IncidentRecord, LineWebhookEventRecord
+from app.models import IncidentHistoryRecord, IncidentRecord, LineUserBinding, LineWebhookEventRecord, Site
+import app.routers.line as line_router
 from tests.helpers import login_web, seed_organization, seed_user
 
 
 PASSWORD = "Password123!"
+DESTINATION_ID = "U00000000000000000000000000000000"
+JINGCHENG_SITE_ID = "dd6cbdd3aa744736ad96d2791d689fce"
+LINE_USER_ID = "Ulineuser"
+
+
+def _configured_line_settings(test_settings, **overrides):
+    values = {
+        "line_channel_access_token": "test-token",
+        "line_channel_secret": "test-secret",
+        "line_webhook_enabled": True,
+    }
+    values.update(overrides)
+    return replace(test_settings, **values)
 
 
 def test_line_signature_verification_uses_raw_body() -> None:
@@ -29,15 +46,138 @@ def test_line_signature_verification_uses_raw_body() -> None:
     assert verify_line_signature(raw_body + b"\n", signature, secret) is False
 
 
+def test_line_webhook_rejects_streamed_body_over_limit_before_signature(test_settings, monkeypatch) -> None:
+    settings = _configured_line_settings(test_settings)
+    app = build_app(settings=settings)
+
+    def fail_signature_check(*_args, **_kwargs):
+        raise AssertionError("oversized body must be rejected before signature verification")
+
+    monkeypatch.setattr(line_router, "verify_line_signature", fail_signature_check)
+
+    def oversized_chunks():
+        yield b"{" + (b"x" * (line_router.LINE_WEBHOOK_MAX_BODY_BYTES // 2))
+        yield b"x" * (line_router.LINE_WEBHOOK_MAX_BODY_BYTES // 2 + 1)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/line/webhook",
+            content=oversized_chunks(),
+            headers={"x-line-signature": "invalid", "content-type": "application/json"},
+        )
+
+    assert response.status_code == 413, response.text
+    assert response.json()["detail"] == "line_webhook_body_too_large"
+    with app.state.session_factory() as session:
+        assert session.exec(select(LineWebhookEventRecord)).all() == []
+
+
+def test_line_webhook_runs_sync_event_processing_in_threadpool(test_settings, monkeypatch) -> None:
+    settings = _configured_line_settings(test_settings)
+    app = build_app(settings=settings)
+    thread_ids: dict[str, int] = {}
+
+    def fake_verify_signature(*_args, **_kwargs) -> bool:
+        thread_ids["event_loop"] = get_ident()
+        return True
+
+    def fake_process(*_args, **_kwargs):
+        thread_ids["worker"] = get_ident()
+        return line_router.LineWebhookResponseDto(processed=0, skipped=0)
+
+    monkeypatch.setattr(line_router, "verify_line_signature", fake_verify_signature)
+    monkeypatch.setattr(line_router, "_process_line_webhook_events", fake_process)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/line/webhook",
+            content=b'{"destination":"Uofficial","events":[]}',
+            headers={"x-line-signature": "accepted", "content-type": "application/json"},
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"processed": 0, "skipped": 0}
+    assert thread_ids["event_loop"] != thread_ids["worker"]
+
+
+def test_line_webhook_event_claim_treats_savepoint_unique_conflict_as_duplicate(
+    test_settings,
+    monkeypatch,
+) -> None:
+    app = build_app(settings=test_settings)
+    with TestClient(app):
+        with app.state.session_factory() as session:
+            session.add(LineWebhookEventRecord(event_key="duplicate-event"))
+            session.commit()
+            original_exec = session.exec
+            exec_count = 0
+
+            class EmptyResult:
+                @staticmethod
+                def first():
+                    return None
+
+            def simulate_concurrent_insert(statement, *args, **kwargs):
+                nonlocal exec_count
+                exec_count += 1
+                if exec_count == 1:
+                    return EmptyResult()
+                return original_exec(statement, *args, **kwargs)
+
+            monkeypatch.setattr(session, "exec", simulate_concurrent_insert)
+            claimed, is_fresh = line_router._claim_line_webhook_event(
+                session,
+                event={"type": "message", "source": {"type": "user", "userId": LINE_USER_ID}},
+                event_key="duplicate-event",
+            )
+
+            assert claimed is None
+            assert is_fresh is False
+            assert exec_count == 2
+            assert len(original_exec(select(LineWebhookEventRecord)).all()) == 1
+
+
+def test_group_write_identity_is_disabled_with_account_linking_flag(test_settings, monkeypatch) -> None:
+    settings = _configured_line_settings(test_settings, line_account_linking_enabled=False)
+    replies: list[dict] = []
+
+    def fake_reply(_settings, _reply_token, messages):
+        replies.extend(messages)
+        return {"status": "ok"}
+
+    monkeypatch.setattr(line_router, "reply_line_messages", fake_reply)
+    binding = LineConversationScope(
+        destination_id=DESTINATION_ID,
+        source_type="group",
+        source_id="G-bound",
+        organization_id="org-1",
+        site_id=JINGCHENG_SITE_ID,
+        site_slug="jingcheng",
+        actor_user_id=None,
+        can_write=True,
+    )
+    event = {
+        "replyToken": "reply-disabled-write",
+        "source": {"type": "group", "groupId": "G-bound", "userId": LINE_USER_ID},
+    }
+
+    actor = line_router._write_actor_or_reply(None, settings, event, DESTINATION_ID, binding)
+
+    assert actor is False
+    assert len(replies) == 1
+    assert "沒有此場域的寫入權限" in replies[0]["text"]
+
+
 def test_line_webhook_postback_updates_incident_and_is_idempotent(test_settings, monkeypatch) -> None:
-    settings = replace(
+    settings = _configured_line_settings(
         test_settings,
-        line_channel_access_token="test-token",
-        line_channel_secret="test-secret",
-        line_webhook_enabled=True,
         line_incident_notify_enabled=False,
         line_default_group_id="group-1",
-        app_origin=None,
+        line_account_linking_enabled=True,
+        line_account_link_encryption_keys=(Fernet.generate_key().decode("ascii"),),
+        line_destination_id=DESTINATION_ID,
+        line_public_base_url="https://api.example.test",
+        app_origin="https://app.example.test",
     )
     app = build_app(settings=settings)
     replies: list[str] = []
@@ -48,11 +188,34 @@ def test_line_webhook_postback_updates_incident_and_is_idempotent(test_settings,
 
     monkeypatch.setattr("app.routers.line.reply_line_messages", fake_reply_line_messages)
 
-    with TestClient(app) as client:
+    with TestClient(app, headers={"Origin": "https://app.example.test"}) as client:
         with app.state.session_factory() as session:
             org = seed_organization(session, name="Line Org")
             org_id = org.id
-            seed_user(session, email="line@incident.test", password=PASSWORD, org_roles=[(org_id, "customer_admin")])
+            user = seed_user(
+                session,
+                email="line@incident.test",
+                password=PASSWORD,
+                org_roles=[(org_id, "customer_admin")],
+            )
+            site = Site(
+                id=JINGCHENG_SITE_ID,
+                organization_id=org_id,
+                name="靚程工廠",
+                address="Jingcheng",
+                lat=25.0,
+                lng=121.0,
+            )
+            session.add(site)
+            session.add(
+                LineUserBinding(
+                    destination_id=DESTINATION_ID,
+                    line_user_id=LINE_USER_ID,
+                    user_id=user.id,
+                    site_id=site.id,
+                    is_active=True,
+                )
+            )
             session.commit()
 
         headers, _ = login_web(client, email="line@incident.test", password=PASSWORD)
@@ -61,6 +224,7 @@ def test_line_webhook_postback_updates_incident_and_is_idempotent(test_settings,
             headers=headers,
             json={
                 "organizationId": org_id,
+                "siteId": JINGCHENG_SITE_ID,
                 "title": "馬達周邊疑似漏油",
                 "severity": "high",
                 "source": "camera",
@@ -69,13 +233,13 @@ def test_line_webhook_postback_updates_incident_and_is_idempotent(test_settings,
         )
         incident_id = create_response.json()["incidentId"]
         payload = {
-            "destination": "U00000000000000000000000000000000",
+            "destination": DESTINATION_ID,
             "events": [
                 {
                     "type": "postback",
                     "webhookEventId": "webhook-event-1",
                     "replyToken": "reply-token-1",
-                    "source": {"type": "user", "userId": "Ulineuser"},
+                    "source": {"type": "user", "userId": LINE_USER_ID},
                     "timestamp": 1770000000000,
                     "postback": {"data": f"action=confirm_incident&incidentId={incident_id}"},
                 }

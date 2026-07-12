@@ -320,7 +320,7 @@ def _should_skip_duplicate_frame(session: Session, frame: CameraFrame) -> bool:
 
 
 def _crop_frame_for_zone(frame_bytes: bytes, zone: EquipmentWatchZone) -> bytes:
-    with Image.open(BytesIO(frame_bytes)) as image:
+    with Image.open(BytesIO(frame_bytes), formats=("JPEG", "PNG")) as image:
         rgb_image = image.convert("RGB")
         box = _roi_crop_box(zone.roi_json, rgb_image.width, rgb_image.height)
         cropped = rgb_image.crop(box)

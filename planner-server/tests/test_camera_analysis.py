@@ -209,6 +209,38 @@ def test_roi_crop_bytes_are_sent_to_provider(app, client, session_factory) -> No
         assert provider.image_size == (30, 32)
 
 
+def test_unsupported_image_format_is_not_sent_to_provider(app, client, session_factory) -> None:
+    with session_factory() as session:
+        org = seed_organization(session, name="Unsupported Analysis Image Org")
+        camera = _seed_camera(session, org.id)
+        _seed_zone(session, camera, alert_on_states=["red"])
+        frame = _seed_uploaded_frame(
+            session,
+            app.state.artifact_storage,
+            camera,
+            frame_id="unsupported-image-frame",
+            payload=_image_bytes("GIF"),
+        )
+        session.commit()
+
+        provider = StaticProvider(EquipmentStateResult(state="red", confidence=0.95))
+        observations = analyze_camera_frame(
+            session=session,
+            storage=app.state.artifact_storage,
+            settings=app.state.settings,
+            frame=frame,
+            provider=provider,
+        )
+
+        refreshed = session.get(CameraFrame, frame.id)
+        assert provider.calls == 0
+        assert refreshed is not None
+        assert refreshed.analysis_status == "failed"
+        assert refreshed.error_message == "all_watch_zone_analysis_failed"
+        assert len(observations) == 1
+        assert observations[0].status == "failed"
+
+
 def test_duplicate_frame_within_heartbeat_window_skips_provider(app, client, session_factory) -> None:
     with session_factory() as session:
         org = seed_organization(session, name="Duplicate Org")
@@ -320,6 +352,15 @@ def _seed_uploaded_frame(
 
 
 def _jpeg_bytes(*, size: tuple[int, int] = (64, 48), color: tuple[int, int, int] = (120, 80, 40)) -> bytes:
+    return _image_bytes("JPEG", size=size, color=color)
+
+
+def _image_bytes(
+    image_format: str,
+    *,
+    size: tuple[int, int] = (64, 48),
+    color: tuple[int, int, int] = (120, 80, 40),
+) -> bytes:
     output = BytesIO()
-    Image.new("RGB", size, color).save(output, format="JPEG")
+    Image.new("RGB", size, color).save(output, format=image_format)
     return output.getvalue()
