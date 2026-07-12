@@ -333,7 +333,7 @@ def test_rich_menu_floorplan_postback_replies_imagemap(test_settings, monkeypatc
 
     assert response.status_code == 200, response.text
     message = replies[0]["messages"][0]
-    liveview = replies[0]["messages"][1]
+    assert len(replies[0]["messages"]) == 1
     assert message["type"] == "imagemap"
     assert message["baseUrl"].startswith("https://api.example.test/v1/line/floorplan/jingcheng/")
     assert message["baseSize"] == {"width": 1040, "height": 700}
@@ -343,8 +343,7 @@ def test_rich_menu_floorplan_postback_replies_imagemap(test_settings, monkeypatc
     assert first_action["area"] == {"x": 686, "y": 317, "width": 104, "height": 48}
     hc600_07_action = next(action for action in message["actions"] if action["text"].endswith("m-hc600-007"))
     assert hc600_07_action["area"] == {"x": 221, "y": 234, "width": 48, "height": 104}
-    assert liveview["type"] == "flex"
-    assert "https://app.example.test/m/floorplan/jingcheng?token=" in json.dumps(liveview)
+    assert "即時圖" not in json.dumps(replies[0]["messages"], ensure_ascii=False)
 
 
 def test_rich_menu_machines_gauges_and_daily_incidents(test_settings, monkeypatch) -> None:
@@ -797,8 +796,38 @@ def test_text_machine_detail_uses_presigned_thumbnail(test_settings, monkeypatch
     assert "PRESS" not in dumped
     assert "FLOW" not in dumped
     assert "今日異常" in dumped
-    assert "https://app.example.test/m/floorplan/jingcheng?token=" in dumped
-    assert "focus=machine%3Am-hc600" in dumped
+    assert "即時圖" not in dumped
+    assert "floorplan/jingcheng" not in dumped
+
+
+def test_text_machine_detail_appends_fresh_work_order_summary_without_liveview(test_settings, monkeypatch) -> None:
+    settings = _line_settings(test_settings, app_origin="https://app.example.test")
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _seed_work_order_observation(app)
+        response = _post_line_events(client, settings, [_message_event("機台 m-hc600")])
+
+    assert response.status_code == 200, response.text
+    dumped = json.dumps(replies[0]["messages"], ensure_ascii=False)
+    assert "派工單資訊" in dumped
+    assert "機台:HC600" in dumped
+    assert "總計:1000 PCS" in dumped
+    assert "即時圖" not in dumped
+
+
+def test_overexposed_hmi_replies_explicitly(test_settings, monkeypatch) -> None:
+    settings = _line_settings(test_settings)
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _seed_hmi_observation(app, visibility_status="overexposed", alignment_status="unverified")
+        response = _post_line_events(client, settings, [_postback_event("hmi_screen")])
+
+    assert response.status_code == 200, response.text
+    assert replies[0]["messages"] == [{"type": "text", "text": "螢幕現在過曝。"}]
 
 
 def test_text_machine_detail_degrades_without_public_thumbnail(test_settings, monkeypatch) -> None:

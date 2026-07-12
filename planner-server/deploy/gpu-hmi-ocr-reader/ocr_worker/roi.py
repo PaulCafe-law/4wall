@@ -160,7 +160,10 @@ def detect_screen_visibility(image: np.ndarray) -> ScreenVisibility:
     lit_score = max(0.0, min(1.0, (mean_luma - 45.0) / 90.0))
     highlight_score = max(0.0, min(1.0, (p90_luma - 70.0) / 120.0))
     confidence = round(max(lit_score, highlight_score), 3)
-    status = "lit" if mean_luma >= 80.0 and p90_luma >= 120.0 else "dark"
+    if mean_luma >= 205.0 and p90_luma >= 248.0 and p98_luma >= 252.0:
+        status = "overexposed"
+    else:
+        status = "lit" if mean_luma >= 80.0 and p90_luma >= 120.0 else "dark"
     return ScreenVisibility(
         status=status,
         confidence=confidence,

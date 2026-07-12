@@ -56,7 +56,6 @@ from app.line_floorplan.messages import (
     build_hmi_screen_message,
     build_image_message,
     build_intent_clarification_message,
-    build_liveview_button_message,
     build_machine_detail_message,
     build_machine_list_message,
     build_navigation_message,
@@ -67,6 +66,7 @@ from app.line_floorplan.render import render_floorplan_png
 from app.line_floorplan.service import (
     build_floorplan_state_payload,
     build_hmi_screen_view,
+    hmi_screen_is_overexposed,
     build_machine_detail_payload,
     build_machine_detail_view,
     camera_ids_for_matches,
@@ -81,7 +81,6 @@ from app.line_floorplan.tokens import (
     verify_floorplan_liveview_token,
     verify_floorplan_render_token,
 )
-from app.line_floorplan.links import liveview_url_for_binding
 from app.line_identity import (
     LineAccountLinkConflictError,
     LineAccountLinkError,
@@ -1195,17 +1194,7 @@ def _reply_floorplan(session: Session, settings, event: dict, binding: LineConve
         message = build_floorplan_imagemap_message(settings, layout=layout, group_id=binding.source_id, render_token=token)
     except ValueError:
         message = build_text_message("LINE_PUBLIC_BASE_URL 尚未設定，無法產生廠區圖。")
-    messages = [message]
-    liveview_url = liveview_url_for_binding(
-        settings,
-        site_slug=layout.site_slug,
-        source_type=binding.source_type,
-        source_id=binding.source_id,
-        destination_id=binding.destination_id,
-    )
-    if liveview_url:
-        messages.append(build_liveview_button_message(liveview_url=liveview_url))
-    _reply_messages_if_possible(settings, event, messages)
+    _reply_messages_if_possible(settings, event, [message])
 
 
 def _reply_machine_detail(
@@ -1235,15 +1224,24 @@ def _reply_machine_detail(
     if detail is None:
         _reply_messages_if_possible(settings, event, [build_text_message("此 LINE 對話的場域不存在或與廠區圖不一致。")])
         return
-    liveview_url = liveview_url_for_binding(
-        settings,
-        site_slug=layout.site_slug,
-        source_type=binding.source_type,
-        source_id=binding.source_id,
-        destination_id=binding.destination_id,
-        focus=f"machine:{machine.id}",
+    messages = [build_machine_detail_message(detail)]
+    if detail.hmi_screen is None and hmi_screen_is_overexposed(
+        session,
+        layout=layout,
+        binding=binding,
+        machine=machine,
+    ):
+        messages.append(build_text_message("螢幕現在過曝。"))
+    dispatch_camera_ids = camera_ids_for_matches(session, binding=binding, matches=machine.camera_matches)
+    capture = find_latest_work_order_capture(
+        session,
+        organization_id=binding.organization_id,
+        site_id=binding.site_id,
+        camera_ids=dispatch_camera_ids,
     )
-    _reply_messages_if_possible(settings, event, [build_machine_detail_message(detail, liveview_url=liveview_url)])
+    if capture is not None:
+        messages.append(build_text_message(f"派工單資訊\n{build_dispatch_ticket_summary(capture.observation)}"))
+    _reply_messages_if_possible(settings, event, messages)
 
 
 def _reply_hmi_screen(
@@ -1259,6 +1257,9 @@ def _reply_hmi_screen(
         return
     view = build_hmi_screen_view(session, layout=layout, binding=binding, machine=machine)
     if view is None:
+        if hmi_screen_is_overexposed(session, layout=layout, binding=binding, machine=machine):
+            _reply_messages_if_possible(settings, event, [build_text_message("螢幕現在過曝。")])
+            return
         _reply_messages_if_possible(
             settings,
             event,
