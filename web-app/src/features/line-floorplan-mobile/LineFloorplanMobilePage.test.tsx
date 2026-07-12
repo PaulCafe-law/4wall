@@ -52,13 +52,58 @@ describe('LineFloorplanMobilePage', () => {
     fireEvent.click(await screen.findByTestId('machine-m-hc600'))
 
     expect(await screen.findByText('今日異常 2 件')).toBeInTheDocument()
-    expect(screen.getByText('PRESS')).toBeInTheDocument()
+    expect(await screen.findByText('溫度監視')).toBeInTheDocument()
+    expect(screen.getByText('設定')).toBeInTheDocument()
+    expect(screen.getByText('一段')).toBeInTheDocument()
+    expect(screen.getByText('180 °C')).toBeInTheDocument()
+    expect(screen.getByText('模具保溫中')).toBeInTheDocument()
+    expect(screen.getByText(/拍攝/)).toHaveAttribute('datetime', '2026-07-04T09:19:30+08:00')
+    expect(screen.queryByText('PRESS')).not.toBeInTheDocument()
     const thumbnail = screen.getByRole('img', { name: /HC600-01/ })
     expect(thumbnail).toHaveAttribute('referrerpolicy', 'no-referrer')
     expect(screen.getByAltText('HC600-01 最新截圖')).toHaveAttribute(
       'src',
       'https://signed.example.test/thumb.jpg',
     )
+  })
+
+  it('shows a deterministic message when HC600-01 has no fresh HMI evidence', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('/machine/m-hc600')) {
+        return Promise.resolve(jsonResponse(machineDetailFixture({ hmiScreen: null, gauges: [gaugeFixture()] })))
+      }
+      return Promise.resolve(jsonResponse(stateFixture()))
+    })
+
+    renderPage('/m/floorplan/jingcheng?token=live-token')
+
+    fireEvent.click(await screen.findByTestId('machine-m-hc600'))
+
+    expect(
+      await screen.findByText('HC600-01 目前沒有 3 分鐘內可確認的螢幕資訊。'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('PRESS')).not.toBeInTheDocument()
+  })
+
+  it('shows unavailable machines without requesting their detail endpoint', async () => {
+    const state = stateFixture()
+    state.machines.push({
+      id: 'm-hc600-002',
+      label: 'HC600-02',
+      rect: { x: 580, y: 430, width: 110, height: 72 },
+      point: { x: 635, y: 466 },
+      status: 'gray',
+      gauges: [],
+      lineEnabled: false,
+    })
+    fetchMock.mockResolvedValueOnce(jsonResponse(state))
+
+    renderPage('/m/floorplan/jingcheng?token=live-token')
+
+    fireEvent.click(await screen.findByTestId('machine-m-hc600-002'))
+
+    expect(await screen.findByText('HC600-02 尚未開通。')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('polls state every ten seconds and updates machine status', async () => {
@@ -129,6 +174,7 @@ function stateFixture({ machineStatus = 'green' }: { machineStatus?: string } = 
         point: { x: 520, y: 466 },
         status: machineStatus,
         gauges: [gaugeFixture()],
+        lineEnabled: true,
       },
     ],
     cameras: [
@@ -155,15 +201,38 @@ function stateFixture({ machineStatus = 'green' }: { machineStatus?: string } = 
   }
 }
 
-function machineDetailFixture() {
+function machineDetailFixture({
+  hmiScreen = hmiScreenFixture(),
+  gauges = [],
+}: {
+  hmiScreen?: ReturnType<typeof hmiScreenFixture> | null
+  gauges?: ReturnType<typeof gaugeFixture>[]
+} = {}) {
   return {
     machineId: 'm-hc600',
     label: 'HC600-01',
     siteName: '靚程工廠',
-    gauges: [gaugeFixture()],
+    gauges,
     todayIncidentCount: 2,
     thumbnailUrl: 'https://signed.example.test/thumb.jpg',
     thumbnailFallbackText: null,
+    lineEnabled: true,
+    hmiScreen,
+  }
+}
+
+function hmiScreenFixture() {
+  return {
+    machineLabel: 'HC600-01',
+    modeLabel: '溫度監視',
+    capturedAt: '2026-07-04T09:19:30+08:00',
+    sections: [
+      {
+        label: '設定',
+        fields: [{ label: '一段', value: '180 °C', confidence: 0.93 }],
+      },
+    ],
+    rawLines: ['模具保溫中'],
   }
 }
 

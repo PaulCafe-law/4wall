@@ -273,6 +273,27 @@ describe('FactoryTwinPage', () => {
     expect(screen.getByTestId('factory-twin-workspace').textContent).toContain('×2');
   });
 
+  it('does not present offline-file person observations as live factory evidence', async () => {
+    apiMock.listCameras.mockResolvedValueOnce({
+      cameras: [
+        cameraFixture(
+          'factory-1',
+          'PoE Camera 192.168.1.31',
+          'dd6cbdd3aa744736ad96d2791d689fce',
+          [],
+          personObservation('factory-1', { source: 'offline_file' }),
+        ),
+      ],
+    });
+
+    renderFactoryRoute();
+
+    expect(await screen.findByText(/人員資料尚無/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
+    });
+  });
+
   it('renders an internal-only accelerator workspace with separated data labels', async () => {
     apiMock.listCameras.mockResolvedValueOnce({
       cameras: [

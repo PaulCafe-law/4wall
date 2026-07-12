@@ -152,7 +152,7 @@ export function toLivePersons(
   return cameras.flatMap((camera): PersonEntity[] => {
     const match = matchingFactoryCamera(camera);
     const observation = camera.latestPersonObservation;
-    if (!match || !observation) return [];
+    if (!match || !observation || observation.source !== 'live') return [];
     // Prefer platform receive time over camera capture time: the Pi's clock can lag,
     // which would otherwise push a just-received observation outside the window.
     const freshnessTimestamp = observation.receivedAt || observation.capturedAt;
@@ -353,7 +353,10 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
   );
   const latestPersonObservation = factoryCameraRecords
     .map((camera) => camera.latestPersonObservation)
-    .filter((observation): observation is NonNullable<CameraDevice['latestPersonObservation']> => Boolean(observation))
+    .filter(
+      (observation): observation is NonNullable<CameraDevice['latestPersonObservation']> =>
+        observation?.source === 'live',
+    )
     .sort(
       (a, b) =>
         Date.parse(b.receivedAt || b.capturedAt) - Date.parse(a.receivedAt || a.capturedAt),
