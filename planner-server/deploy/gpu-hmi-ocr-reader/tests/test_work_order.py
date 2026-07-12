@@ -130,12 +130,30 @@ def test_material_never_captures_stray_marker_when_total_row_marker_garbles() ->
     # If the total row's weak '|R' (conf 0.69) misreads, that row falls out of
     # quantity detection — its leftover '|L' must not become the material value.
     lines = [
-        _line("1R", 0.69, 355, 295) if (line.text == "|R" and line.box[0][1] == 295) else line
+        _line("1X", 0.69, 355, 295) if (line.text == "|R" and line.box[0][1] == 295) else line
         for line in REAL_LINES
     ]
     fields = build_work_order_fields(lines)["fields"]
     assert fields["material"]["value"] == "PC"
     assert fields["material"]["value"] != "L"
+
+
+def test_merged_r_marker_keeps_alignment_without_guessing_merged_value() -> None:
+    # Live 2026-07-12 OCR merged the printed R marker and handwritten value as
+    # ``R 1056``.  The row geometry is still valid evidence, but the merged
+    # right value must remain unknown rather than being guessed.
+    lines = _quantity_grid({0: [_line("1056", 0.95, 220, 180)]})
+    lines = [
+        _line("R 1056", 0.89, 361, 180)
+        if line.text == "R" and line.box[0][1] == 180
+        else line
+        for line in lines
+    ]
+    result = build_work_order_fields(lines)
+
+    assert result["alignmentStatus"] == "ok"
+    assert result["quantities"]["plannedWithHanger"]["left"]["value"] == 1056
+    assert result["quantities"]["plannedWithHanger"]["right"]["value"] == "unknown"
 
 
 def test_color_publishes_only_when_it_snaps_to_a_known_color() -> None:
