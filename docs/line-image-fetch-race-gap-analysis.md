@@ -24,3 +24,9 @@ The reply path and image-download path evaluated the same three-minute freshness
 - Keep the existing signed-token TTL, LINE binding, site/camera/frame scope, ROI validation, and stored-crop checks.
 - Add regression coverage for both dispatch-ticket and HMI endpoints across the three-minute boundary.
 
+## Full-image retention follow-up
+
+LINE can display a cached chat preview and later fetch `originalContentUrl` again when the user opens the image viewer. The shared render token originally expired after 10 minutes, so a message sent at 12:16 could still show its preview but fail to open at 12:28.
+
+The crop endpoints therefore use a seven-day signed-token lifetime. This does not add a CDN, database, storage tier, or paid service. The general floorplan endpoint keeps its existing 10-minute lifetime. Crop access still requires the signed token, active LINE binding, matching destination, site, camera, frame, calibration ROI, and stored crop.
+
