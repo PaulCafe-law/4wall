@@ -23,14 +23,16 @@
       "label": "HC600-01",
       "rect": [686, 317, 104, 48],
       "gaugeIds": ["press_am_meter", "flow_am_meter"],
-      "cameraMatches": ["192.168.1.10"]
+      "cameraMatches": ["192.168.1.10"],
+      "lineEnabled": true,
+      "personCameraMatches": ["192.168.1.31"]
     },
-    { "id": "m-hc600-002", "label": "HC600-02", "rect": [436, 317, 104, 48], "gaugeIds": [] },
-    { "id": "m-hc600-003", "label": "HC600-03", "rect": [295, 317, 104, 48], "gaugeIds": [] },
-    { "id": "m-hc600-004", "label": "HC600-04", "rect": [668, 153, 104, 48], "gaugeIds": [] },
-    { "id": "m-hc600-005", "label": "HC600-05", "rect": [576, 317, 104, 48], "gaugeIds": [] },
-    { "id": "m-hc600-006", "label": "HC600-06", "rect": [556, 153, 104, 48], "gaugeIds": [] },
-    { "id": "m-hc600-007", "label": "HC600-07", "rect": [221, 234, 48, 104], "gaugeIds": [] }
+    { "id": "m-hc600-002", "label": "HC600-02", "rect": [436, 317, 104, 48], "gaugeIds": [], "lineEnabled": false },
+    { "id": "m-hc600-003", "label": "HC600-03", "rect": [295, 317, 104, 48], "gaugeIds": [], "lineEnabled": false },
+    { "id": "m-hc600-004", "label": "HC600-04", "rect": [668, 153, 104, 48], "gaugeIds": [], "lineEnabled": false },
+    { "id": "m-hc600-005", "label": "HC600-05", "rect": [576, 317, 104, 48], "gaugeIds": [], "lineEnabled": false },
+    { "id": "m-hc600-006", "label": "HC600-06", "rect": [556, 153, 104, 48], "gaugeIds": [], "lineEnabled": false },
+    { "id": "m-hc600-007", "label": "HC600-07", "rect": [221, 234, 48, 104], "gaugeIds": [], "lineEnabled": false }
   ],
   "cameras": [
     { "nameContains": "192.168.1.10", "label": "儀表板", "asciiLabel": "Gauge", "point": [616, 421], "machineId": "m-hc600" },

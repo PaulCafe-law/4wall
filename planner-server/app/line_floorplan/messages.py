@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import urlencode
 
 from .layout import BASE_HEIGHT, BASE_WIDTH, FloorplanLayout
-from .service import GaugeReadingView, MachineDetailView
+from .service import GaugeReadingView, HmiScreenView, MachineDetailView
 
 
 def build_account_link_message(link_url: str) -> dict:
@@ -116,6 +116,12 @@ def build_machine_list_message(layout: FloorplanLayout) -> dict:
                 "contents": [
                     {"type": "text", "text": machine.label, "weight": "bold", "size": "sm", "wrap": True},
                     {"type": "text", "text": machine.id, "size": "xxs", "color": "#6B7280", "wrap": True},
+                    {
+                        "type": "text",
+                        "text": "已開通" if machine.line_enabled else "尚未開通",
+                        "size": "xxs",
+                        "color": "#0E6B69" if machine.line_enabled else "#6B7280",
+                    },
                 ],
             },
             "footer": {
@@ -126,8 +132,12 @@ def build_machine_list_message(layout: FloorplanLayout) -> dict:
                         "type": "button",
                         "height": "sm",
                         "style": "primary",
-                        "color": "#171B1F",
-                        "action": {"type": "message", "label": "詳情", "text": f"機台 {machine.id}"},
+                        "color": "#171B1F" if machine.line_enabled else "#6B7280",
+                        "action": {
+                            "type": "message",
+                            "label": "詳情" if machine.line_enabled else "尚未開通",
+                            "text": f"機台 {machine.id}",
+                        },
                     }
                 ],
             },
@@ -174,10 +184,7 @@ def build_machine_detail_message(detail: MachineDetailView, *, liveview_url: str
         {"type": "text", "text": f"今日異常 {detail.today_incident_count} 件", "size": "sm", "color": "#374151"},
         {"type": "separator", "margin": "md"},
     ]
-    if detail.gauges:
-        body_contents.extend(_gauge_text_row(gauge) for gauge in detail.gauges)
-    else:
-        body_contents.append({"type": "text", "text": "暫無指定儀表", "size": "sm", "color": "#6B7280"})
+    body_contents.extend(_hmi_contents(detail.hmi_screen))
     if not detail.thumbnail_url:
         body_contents.extend(
             [
@@ -242,7 +249,7 @@ def build_help_message() -> dict:
                 "contents": [
                     {"type": "text", "text": "你可以這樣問", "weight": "bold", "size": "lg"},
                     {"type": "text", "text": "給我現在機台狀況 / 今天有異常嗎", "size": "sm", "wrap": True},
-                    {"type": "text", "text": "查看廠區圖 / 現在儀表讀值", "size": "sm", "wrap": True},
+                    {"type": "text", "text": "查看廠區圖 / 現在螢幕資訊", "size": "sm", "wrap": True},
                     {"type": "text", "text": "查詢機台 m-hc600", "size": "sm", "wrap": True, "color": "#374151"},
                 ],
             },
@@ -253,7 +260,7 @@ def build_help_message() -> dict:
                 "contents": [
                     _postback_button("2D 圖", "floorplan"),
                     _postback_button("找機台", "machines"),
-                    _postback_button("儀表", "gauges"),
+                    _postback_button("螢幕資訊", "hmi_screen"),
                     _postback_button("今日異常", "daily_incidents"),
                 ],
             },
@@ -266,10 +273,12 @@ def build_intent_clarification_message(intents: tuple[str, ...]) -> dict:
         "floorplan": "2D 圖",
         "machines": "找機台",
         "machine_detail": "機台詳情",
-        "gauges": "儀表",
+        "hmi_screen": "螢幕資訊",
+        "gauges": "螢幕資訊",
         "daily_incidents": "今日異常",
         "project_progress": "工程進度",
-        "people_portal": "找人",
+        "machine_people": "機台人員情況",
+        "people_portal": "機台人員情況",
         "official_site": "前往官網",
         "contact_us": "聯絡我們",
     }
@@ -348,6 +357,26 @@ def build_text_message(text: str) -> dict:
     return {"type": "text", "text": text[:5000]}
 
 
+def build_hmi_screen_message(view: HmiScreenView) -> dict:
+    return {
+        "type": "flex",
+        "altText": f"{view.machine_label} 螢幕資訊",
+        "contents": {
+            "type": "bubble",
+            "size": "mega",
+            "header": {
+                "type": "box",
+                "layout": "vertical",
+                "contents": [
+                    {"type": "text", "text": f"{view.machine_label} 螢幕資訊", "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": view.mode_label, "size": "xs", "color": "#6B7280"},
+                ],
+            },
+            "body": {"type": "box", "layout": "vertical", "spacing": "sm", "contents": _hmi_contents(view)},
+        },
+    }
+
+
 def _postback_button(label: str, action: str) -> dict:
     return {
         "type": "button",
@@ -380,3 +409,35 @@ def _gauge_text_row(gauge: GaugeReadingView) -> dict:
             },
         ],
     }
+
+
+def _hmi_contents(view: HmiScreenView | None) -> list[dict]:
+    if view is None:
+        return [
+            {
+                "type": "text",
+                "text": "HC600-01 目前沒有 3 分鐘內可確認的螢幕資訊。",
+                "size": "sm",
+                "color": "#6B7280",
+                "wrap": True,
+            }
+        ]
+    contents: list[dict] = []
+    for section in view.sections:
+        contents.append({"type": "text", "text": section.label, "weight": "bold", "size": "sm"})
+        contents.extend(
+            {
+                "type": "text",
+                "text": f"{field.label}：{field.value}",
+                "size": "sm",
+                "wrap": True,
+            }
+            for field in section.fields
+        )
+    if view.raw_lines:
+        contents.append({"type": "text", "text": "螢幕辨識文字", "weight": "bold", "size": "sm"})
+        contents.extend(
+            {"type": "text", "text": line, "size": "sm", "wrap": True}
+            for line in view.raw_lines
+        )
+    return contents

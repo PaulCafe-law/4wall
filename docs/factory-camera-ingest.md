@@ -58,7 +58,10 @@ Device-authenticated endpoints:
 - `GET /v1/camera-ingest/frames/{frameId}`
 - `POST /v1/camera-ingest/frames/{frameId}/complete`
 - `POST /v1/camera-ingest/heartbeat`
+- `POST /v1/camera-ingest/ocr-observations`
 - `POST /v1/camera-ingest/person-observations`
+
+For both OCR and person observations, `source=live` requires an exact frame owned by the authenticated camera. The API verifies source capture time and frame dimensions; OCR additionally validates the calibration id, frame size, and bounded pixel ROIs in `structuredFields.captureRegions`. Offline files use `source=offline_file` and may omit `frameId`.
 
 Web-authenticated endpoints:
 
@@ -110,9 +113,10 @@ The doctor checks env, spool write access, ffmpeg, API device-token access, and 
 - `CameraFrame`: one captured image, storage key, checksum, upload expiry, dimensions, and analysis status.
 - `EquipmentWatchZone`: ROI and expected state policy for one piece of equipment in a camera view.
 - `EquipmentStateObservation`: provider result for one frame/zone, optional linked incident.
-- `CameraPersonObservation`: anonymous per-frame person detections, optional frame association, detector metadata, image-space bbox/foot point, optional Factory Twin floor projection, and server-computed `personCount`.
+- `CameraOcrObservation`: per-frame HMI/work-order evidence with source time, calibration version, actual frame size, and bounded HMI/work-order ROIs.
+- `CameraPersonObservation`: anonymous per-frame person detections, detector metadata, image-space bbox/foot point, optional Factory Twin floor projection, and server-computed `personCount`; live observations require a frame association.
 
-`CameraPersonObservation` is exposed only through existing device-token ingest and org-scoped camera read APIs. It is not exposed through LINE floorplan endpoints and is not used for control, alerts, identity, or tracking.
+Raw `CameraPersonObservation` detections are exposed only through existing device-token ingest and org-scoped camera read APIs. LINE can read only a fresh anonymous HC600-01 count from the configured `.31` camera; it never exposes geometry, screenshots, identity, or tracks and is not used for control or alerts.
 
 ## Cost Controls
 

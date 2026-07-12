@@ -609,7 +609,7 @@ export interface CameraPersonObservation {
   observationId: string
   cameraId: string
   frameId: string | null
-  source: 'live'
+  source: 'live' | 'offline_file'
   capturedAt: string
   receivedAt: string
   imageWidth: number

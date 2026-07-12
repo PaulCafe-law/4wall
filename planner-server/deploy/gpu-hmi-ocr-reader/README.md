@@ -48,6 +48,8 @@ Set these values in `config.yaml` or environment variables:
 - `platform.api_base_url`: `https://four-wall-api.onrender.com`
 - `platform.device_token`: the `fwcam_...` token for `PoE Camera 192.168.1.10`
 - `frame_source`: production default is `url` mode against `/v1/camera-ingest/latest-frame/image`
+- URL mode requires `X-Camera-Frame-Id` and `X-Camera-Captured-At`; they are sent unchanged to the ingest API. File mode is marked `offline_file` and may omit `frameId`.
+- `HMI_OCR_CALIBRATION_ID`: set this to the version of the currently fixed camera view, for example `jingcheng-hc600-20260712-v2`.
 - `reference_resolution`: frame size `[width, height]` the pixel ROIs were measured at. Baseline is `[2560, 1440]`. When the camera outputs another size (the 192.168.1.10 main stream now delivers 2880x1620), all pixel ROIs are scaled proportionally at runtime; without this key, pixel ROIs are applied unscaled (legacy behavior).
 - `hmi.roi`: full-frame ROI around the HC600 HMI screen. Baseline is `[925, 550, 450, 325]` in pixels at `reference_resolution` 2560x1440. Alternatively use fractional values (all in 0..1) of the actual frame.
 - `hmi.fields`: optional fixed numeric ROI fields. Their ROIs live inside the HMI crop, measured at the crop size `hmi.roi` yields at `reference_resolution`; fractional values are relative to the actual crop.
@@ -68,7 +70,8 @@ sudo tee /etc/fourwall/hmi-ocr-reader/env >/dev/null <<'EOF'
 HMI_OCR_ENABLED=true
 HMI_OCR_API_BASE_URL=https://four-wall-api.onrender.com
 HMI_OCR_DEVICE_TOKEN=fwcam_REPLACE_ME
-GPT_SUMMARIZER_ENABLED=true
+HMI_OCR_CALIBRATION_ID=jingcheng-hc600-20260712-v2
+GPT_SUMMARIZER_ENABLED=false
 GPT_AUTH_MODE=account_oauth_dev
 GPT_SUMMARY_MODEL=latest
 EOF
@@ -77,9 +80,11 @@ sudo chmod 0640 /etc/fourwall/hmi-ocr-reader/env
 
 Then copy `config.example.yaml` to `/etc/fourwall/hmi-ocr-reader/config.yaml` and keep the token reference as `${HMI_OCR_DEVICE_TOKEN}`.
 
+For production, set `GPT_SUMMARIZER_ENABLED=false` and keep both `gpt.enabled` and `gpt.adjudication_enabled` false. The live worker writes only frame ID, mode, counts, and alignment status to service logs; raw OCR and work-order contents are not logged.
+
 ## GPT Personal Dev Auth
 
-This is a personal development mode, not production auth.
+This is a personal development mode, not production auth. Do not enable the local Codex command bridge for live camera input: its read-only sandbox does not isolate host files or environment secrets from camera/OCR prompt injection. Use it only with trusted offline files on an isolated machine.
 
 Set:
 

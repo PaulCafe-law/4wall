@@ -4,19 +4,15 @@ Companion to `docs/twin-agent-demo-gap-analysis.md`. This is the operator runboo
 
 ## What It Is
 
-Two natural-language surfaces read and control the simulated 4WALL Demo Factory:
-
-- The `/demo-factory` chat panel on the management platform.
-- The bound LINE group on the operator's phone. Demo questions must begin with
-  `展示工廠：`; ordinary questions stay on the group's Jingcheng live scope.
+The authenticated `/demo-factory` chat panel on the management platform reads and
+controls the simulated 4WALL Demo Factory. LINE is not a Twin Agent surface.
 
 planner-server only relays jobs and world snapshots in memory. The LLM worker runs as the
 `fourwall-twin-agent` user service on the NCKU 3090 host, via
 `planner-server/deploy/twin-agent-worker/`.
 
 ```text
-demo factory -> accelerator_demo snapshot                               [internal web auth]
-LINE `展示工廠：...` -> fresh demo session -> job queue
+demo factory -> accelerator_demo snapshot -> job queue                  [internal web auth]
 3090 worker -> /v1/twin-agent/jobs + /jobs/{id}/result                  [worker bearer token]
 ```
 
@@ -32,9 +28,6 @@ LINE `展示工廠：...` -> fresh demo session -> job queue
    `TWIN_AGENT_WORKER_TOKEN`, and `TWIN_AGENT_ENABLED=true` in its protected config.
 3. OpenAI OAuth: the 3090 bridge uses its logged-in Codex CLI session. Verify that session before
    the presentation and confirm `systemctl --user is-active fourwall-twin-agent` returns `active`.
-4. LINE: the demo group must have an active `LineGroupBinding` (existing
-   `scripts/bind_line_group.py` flow). Existing commands (廠區圖/機台/儀表/異常) keep working;
-   any other text in the bound group goes to the agent.
 
 ## Booth-Day Checklist
 
@@ -43,25 +36,18 @@ LINE `展示工廠：...` -> fresh demo session -> job queue
 2. Confirm the 3090 `fourwall-twin-agent` service is active. Do not start the old laptop batch worker.
 3. Open the management platform in one browser tab, log in with the internal operator account,
    and open `/demo-factory`. The chat header must show 「AI 代理在線」 within about 15 seconds.
-4. Smoke the three paths:
+4. Smoke the protected web path:
    - Chat: `Send an AMR to the dock` -> AMR moves, reply arrives.
-   - LINE: ask `展示工廠：現在 AMR 情況` -> a reply beginning with `模擬情境：`.
-   - LINE command: `展示工廠：派一台 AMR 去出貨區` -> reply in group + demo AMR moves on screen.
-   - Plain LINE: ask `現在 AMR 情況` -> Jingcheng live scope only, never demo data.
+   - Security regression: LINE input such as `展示工廠：派一台 AMR 去出貨區` returns only a deterministic supported-intent/help response and creates no Twin Agent job.
 5. Between visitors: press 「重設目前情境」 in the simulation control panel.
 
-Keep one `/demo-factory` tab open and visible. LINE refuses demo routing when its snapshot is stale.
+Keep one `/demo-factory` tab open and visible while presenting the web demo.
 
 ## Degraded Modes (rehearse these)
 
-- 3090 worker not running / OAuth expired: LINE replies
-  「AI 助理暫時離線，請稍後再試 / AI assistant is temporarily offline…」; the chat panel chip
-  shows 「本機規則模式」 and falls back to the local Chinese rule engine (小明在哪 / 派工 /
-  查狀態 still demo fine). Sim, 3D, and camera snapshots are unaffected.
-- Venue network down: switch the projection computer + phone to a hotspot; LINE and the platform recover on
-  reconnect. The sim itself never stops.
-- Flooding: per-group limit 6 messages/min (busy reply), max 3 queued LINE jobs per group,
-  10 messages/min per twin session. Protects the operator's OpenAI quota.
+- 3090 worker not running / OAuth expired: the chat panel chip shows 「本機規則模式」 and falls back to the local Chinese rule engine (小明在哪 / 派工 / 查狀態 still demo fine). Sim, 3D, and camera snapshots are unaffected.
+- Venue network down: switch the projection computer to a hotspot; the platform recovers on reconnect. The sim itself never stops.
+- Flooding: the twin web session rate limit protects the operator's OpenAI quota. LINE never consumes that quota.
 
 ## Security Properties
 
@@ -72,10 +58,8 @@ Keep one `/demo-factory` tab open and visible. LINE refuses demo routing when it
   `TWIN_AGENT_WORKER_TOKEN`.
 - The demo page and `accelerator_demo` snapshots require platform admin/ops web sessions; worker endpoints require the
   dedicated bearer token (constant-time compare); everything else 401/503.
-- Normal LINE questions select only `organization_live` snapshots for the bound organization.
-  `web_only` internal simulations cannot enter the LINE live path.
-- Demo LINE jobs carry the selected demo session but no Jingcheng organization ID, site slug,
-  camera evidence, or production decision-ledger context.
+- External LINE text never creates Twin Agent jobs or selects `organization_live`,
+  `web_only`, or `accelerator_demo` snapshots.
 - Agent tool calls mutate the browser-side simulation only — machines, AMR, people in the sim.
   No planner-server data, no real devices, no flight paths.
 - `TWIN_AGENT_ENABLED=false` (default) restores pre-feature behavior byte-for-byte.

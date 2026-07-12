@@ -42,6 +42,7 @@ interface MachinePayload {
   point: PointPayload
   status: string
   gauges: GaugePayload[]
+  lineEnabled?: boolean
 }
 
 interface IncidentPayload {
@@ -82,6 +83,27 @@ interface MachineDetailPayload {
   todayIncidentCount: number
   thumbnailUrl: string | null
   thumbnailFallbackText: string | null
+  lineEnabled: boolean
+  hmiScreen: HmiScreenPayload | null
+}
+
+interface HmiFieldPayload {
+  label: string
+  value: string
+  confidence: number
+}
+
+interface HmiSectionPayload {
+  label: string
+  fields: HmiFieldPayload[]
+}
+
+interface HmiScreenPayload {
+  machineLabel: string
+  modeLabel: string
+  capturedAt: string
+  sections: HmiSectionPayload[]
+  rawLines: string[]
 }
 
 interface ViewState {
@@ -187,13 +209,20 @@ export function LineFloorplanMobilePage() {
       return
     }
     setSelectedMachineId(machineId)
+    setMachineDetail(null)
+    const machine = state?.machines.find((item) => item.id === machineId)
+    if (machine?.lineEnabled === false) {
+      if (focusAfterLoad) {
+        centerOnPoint(machine.point)
+      }
+      return
+    }
     try {
       const payload = await fetchJson<MachineDetailPayload>(
         `/v1/line/floorplan/${encodeURIComponent(siteSlug)}/machine/${encodeURIComponent(machineId)}?token=${encodeURIComponent(token)}`,
       )
       setMachineDetail(payload)
       if (focusAfterLoad) {
-        const machine = state?.machines.find((item) => item.id === machineId)
         if (machine) {
           centerOnPoint(machine.point)
         }
@@ -435,13 +464,14 @@ function MachineSheet({
   machine: MachinePayload
   onClose: () => void
 }) {
-  const gauges = detail?.gauges ?? machine.gauges
+  const machineLabel = detail?.label ?? machine.label
+  const unavailable = machine.lineEnabled === false || detail?.lineEnabled === false
   return (
     <aside className="fixed bottom-0 left-0 right-0 z-40 max-h-[58dvh] overflow-y-auto rounded-t-lg border-t border-[#171B1F]/15 bg-white px-4 pb-5 pt-4 shadow-2xl">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <p className="font-mono text-[11px] uppercase text-[#7A8697]">{machine.id}</p>
-          <h2 className="text-lg font-semibold text-[#171B1F]">{detail?.label ?? machine.label}</h2>
+          <h2 className="text-lg font-semibold text-[#171B1F]">{machineLabel}</h2>
           <p className="text-sm text-[#465262]">今日異常 {detail?.todayIncidentCount ?? 0} 件</p>
         </div>
         <button
@@ -453,32 +483,88 @@ function MachineSheet({
           ×
         </button>
       </div>
-      {detail?.thumbnailUrl ? (
-        <img
-          alt={`${detail.label} 最新截圖`}
-          className="mb-4 aspect-video w-full rounded-md object-cover"
-          referrerPolicy="no-referrer"
-          src={detail.thumbnailUrl}
-        />
-      ) : (
-        <div className="mb-4 grid aspect-video w-full place-items-center rounded-md bg-[#EBEFF4] text-sm text-[#465262]">
-          {detail?.thumbnailFallbackText ?? '載入縮圖'}
+      {unavailable ? (
+        <div className="rounded-md border border-[#DED5C8] bg-[#F4EFE7] px-4 py-4 text-sm font-semibold text-[#171B1F]" role="status">
+          {machineLabel} 尚未開通。
         </div>
-      )}
-      <div className="space-y-2">
-        {gauges.map((gauge) => (
-          <div key={gauge.gaugeId} className="rounded-md border border-[#EBEFF4] px-3 py-2">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-[#171B1F]">{gauge.label}</p>
-              <p className="text-sm text-[#171B1F]">{formatGaugeValue(gauge)}</p>
+      ) : (
+        <>
+          {detail?.thumbnailUrl ? (
+            <img
+              alt={`${detail.label} 最新截圖`}
+              className="mb-4 aspect-video w-full rounded-md object-cover"
+              referrerPolicy="no-referrer"
+              src={detail.thumbnailUrl}
+            />
+          ) : (
+            <div className="mb-4 grid aspect-video w-full place-items-center rounded-md bg-[#EBEFF4] text-sm text-[#465262]">
+              {detail?.thumbnailFallbackText ?? '載入縮圖'}
             </div>
-            <p className="mt-1 text-xs text-[#6B7280]">
-              信心 {Math.round(gauge.confidence * 100)}%・{formatMinutes(gauge.minutesAgo)}・{gauge.trend}
-            </p>
-          </div>
-        ))}
-      </div>
+          )}
+          {detail === null ? (
+            <div className="rounded-md border border-[#DED5C8] px-4 py-4 text-sm text-[#465262]" role="status">
+              載入機台資訊…
+            </div>
+          ) : detail.hmiScreen ? (
+            <HmiScreenPanel screen={detail.hmiScreen} />
+          ) : (
+            <div className="rounded-md border border-[#C4851C]/40 bg-[#FFF7E6] px-4 py-4 text-sm text-[#6A4510]" role="status">
+              {machineLabel} 目前沒有 3 分鐘內可確認的螢幕資訊。
+            </div>
+          )}
+        </>
+      )}
     </aside>
+  )
+}
+
+function HmiScreenPanel({ screen }: { screen: HmiScreenPayload }) {
+  return (
+    <section className="rounded-md border border-[#DED5C8] bg-[#F4EFE7] px-4 py-4" aria-label={`${screen.machineLabel} 螢幕資訊`}>
+      <div className="flex items-start justify-between gap-3 border-b border-[#DED5C8] pb-3">
+        <div>
+          <p className="font-mono text-[11px] uppercase tracking-wide text-[#7A8697]">HMI SCREEN</p>
+          <h3 className="mt-1 text-base font-semibold text-[#171B1F]">{screen.modeLabel}</h3>
+        </div>
+        <time className="font-mono text-[11px] text-[#465262]" dateTime={screen.capturedAt}>
+          拍攝 {formatTime(screen.capturedAt)}
+        </time>
+      </div>
+
+      {screen.sections.length > 0 ? (
+        <div className="mt-3 space-y-3">
+          {screen.sections.map((section) => (
+            <section key={section.label}>
+              <h4 className="mb-1.5 text-sm font-semibold text-[#171B1F]">{section.label}</h4>
+              <dl className="divide-y divide-[#DED5C8] border-y border-[#DED5C8]">
+                {section.fields.map((field) => (
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-2" key={`${field.label}:${field.value}`}>
+                    <dt className="min-w-0 text-sm text-[#465262]">{field.label}</dt>
+                    <dd className="text-right">
+                      <span className="font-mono text-sm font-semibold text-[#171B1F]">{field.value}</span>
+                      <span className="ml-2 font-mono text-[10px] text-[#7A8697]">
+                        {Math.round(field.confidence * 100)}%
+                      </span>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          ))}
+        </div>
+      ) : null}
+
+      {screen.rawLines.length > 0 ? (
+        <div className="mt-3 border-t border-[#DED5C8] pt-3">
+          <h4 className="mb-2 text-xs font-semibold text-[#465262]">畫面辨識文字</h4>
+          <ul className="space-y-1 font-mono text-xs text-[#171B1F]">
+            {screen.rawLines.map((line, index) => (
+              <li key={`${index}:${line}`}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </section>
   )
 }
 
@@ -516,17 +602,6 @@ function isAuthFailure(error: unknown) {
 
 function statusColor(status: string) {
   return STATUS_COLORS[status] ?? STATUS_COLORS.gray
-}
-
-function formatGaugeValue(gauge: GaugePayload) {
-  if (gauge.value === null) {
-    return '--'
-  }
-  return `${gauge.value.toLocaleString()} ${gauge.unit}`.trim()
-}
-
-function formatMinutes(minutes: number | null) {
-  return minutes === null ? '未知' : `${minutes} 分鐘前`
 }
 
 function formatTime(value: string) {

@@ -264,36 +264,52 @@ def stabilize_temperature_readings(
 ) -> list[FieldReading]:
     stabilized = []
     for reading in readings:
-        if reading.status == "ok" and reading.value is not None:
-            values = history.setdefault(reading.field.id, [])
-            values.append((float(reading.value), float(reading.confidence), reading.raw_text))
-            del values[:-window]
+        if reading.status != "ok" or reading.value is None:
+            # Consensus may increase confidence in evidence visible in this
+            # frame, but it must never manufacture a current value for an
+            # unreadable cell.
+            stabilized.append(reading)
+            continue
+
+        values = history.setdefault(reading.field.id, [])
+        values.append((float(reading.value), float(reading.confidence), reading.raw_text))
+        del values[:-window]
 
         stable = _stable_value(history.get(reading.field.id, []), required_matches=required_matches)
         if stable is None:
-            if reading.status == "ok":
-                stabilized.append(
-                    FieldReading(
-                        field=reading.field,
-                        value=reading.value,
-                        confidence=reading.confidence,
-                        raw_text=reading.raw_text,
-                        status="degraded",
-                        raw_position=reading.raw_position,
-                        message="temperature_consensus_pending",
-                    )
+            stabilized.append(
+                FieldReading(
+                    field=reading.field,
+                    value=reading.value,
+                    confidence=reading.confidence,
+                    raw_text=reading.raw_text,
+                    status="degraded",
+                    raw_position=reading.raw_position,
+                    message="temperature_consensus_pending",
                 )
-            else:
-                stabilized.append(reading)
+            )
             continue
 
-        value, confidence, raw_text = stable
+        value, confidence, _raw_text = stable
+        if int(round(float(reading.value))) != int(round(value)):
+            stabilized.append(
+                FieldReading(
+                    field=reading.field,
+                    value=reading.value,
+                    confidence=reading.confidence,
+                    raw_text=reading.raw_text,
+                    status="degraded",
+                    raw_position=reading.raw_position,
+                    message="temperature_consensus_mismatch",
+                )
+            )
+            continue
         stabilized.append(
             FieldReading(
                 field=reading.field,
-                value=value,
-                confidence=confidence,
-                raw_text=raw_text,
+                value=reading.value,
+                confidence=max(float(reading.confidence), confidence),
+                raw_text=reading.raw_text,
                 status="ok",
                 raw_position=reading.raw_position,
                 message=None,

@@ -66,8 +66,8 @@ other organizations must not appear in the response or page.
 
 - frontend tests cover loading labels, stale age labels, status aggregation, and
   customer navigation;
-- worker tests cover deterministic Jingcheng AMR replies and pending work-order
-  labels;
+- LINE tests cover deterministic HMI, anonymous people, HC600-01/02 availability,
+  contact replies, and the invariant that external text creates no Twin Agent job;
 - API tests cover assistant status authentication and organization scoping;
 - production verification checks the customer account, three cameras, status page,
-  and a LINE AMR question without changing production data.
+  HMI/person/contact LINE replies, and zero Twin Agent jobs from external LINE text.

@@ -36,15 +36,20 @@ Allowed query intents:
 - `floorplan`
 - `machines`
 - `machine_detail`
-- `gauges`
+- `hmi_screen`
+- `machine_people`
 - `daily_incidents`
 
 Allowed navigation intents:
 
 - `project_progress`
-- `people_portal`
 - `official_site`
+
+Fixed response intents:
+
 - `contact_us`
+
+Legacy `gauges` and `people_portal` postbacks remain compatibility aliases for `hmi_screen` and `machine_people` respectively.
 
 The parser normalizes Unicode with NFKC, lowercase, punctuation, and whitespace. It returns only a typed intent plus an untrusted machine candidate. The scoped resolver gathers every layout id, label, and explicit alias match, converts matches to canonical machine ids, and proceeds only when exactly one canonical id remains.
 
@@ -61,9 +66,10 @@ Reply links are derived from `BUILDING_ROUTE_APP_ORIGIN`, never from user text. 
 
 Paths are joined as normalized fixed routes:
 
-- `/factory-twin` for engineering progress and the privacy-protected people portal.
+- `/factory-twin` for engineering progress.
 - `/official` for the public website.
-- `/official#contact` for contact details.
+
+Contact is a fixed text response, not a navigation URL.
 
 An invalid origin produces a text-only unavailable response.
 
@@ -77,12 +83,12 @@ All six cells use postbacks so every tap receives an observable bot response:
 | 檢視工程進度 | `action=project_progress` |
 | 前往官網 | `action=official_site` |
 | 找機台 | `action=machines` |
-| 找人 | `action=people_portal` |
+| 機台人員情況 | `action=machine_people` |
 | 聯絡我們 | `action=contact_us` |
 
-`people_portal` does not return occupancy, counts, coordinates, faces, identities, or tracks in LINE. It explains the privacy boundary and links to the authenticated Factory Twin.
+`machine_people` returns only HC600-01's fresh anonymous 0/N count. It never returns detections, coordinates, faces, identities, screenshots, or tracks. `contact_us` returns `聯絡我們：4wallaitech@gmail.com`.
 
-The repository script is the source of truth. Provisioning is create, upload, set default, then verify. The previous default id is retained for rollback. Before applying, bot info must match `4wallaitech` and basic id `@941wjxxe`.
+The repository script is the source of truth. Provisioning is create, upload, set default, then verify. The fixed, non-overridable identity guard requires `4wallaitech` and `@941wjxxe`. The previous default id is retained for rollback; if LINE reports a manager-owned default whose id cannot be restored, the script fails before creating or changing a menu.
 
 ## Controlled Rollout
 
@@ -110,7 +116,7 @@ No planned failure mode is silent without both error handling and a test or prod
 ## What Already Exists
 
 - `LineConversationScope` and account-link membership rechecks are reused.
-- Existing floorplan, machine, gauge, incident, and machine-detail replies are reused.
+- Existing floorplan and incident replies are reused; machine detail now uses the same fresh HMI view as `hmi_screen`, and `machine_people` uses the scoped anonymous count.
 - Existing webhook signature, destination, body-size, deduplication, and reply delivery paths are preserved.
 - Existing `BUILDING_ROUTE_APP_ORIGIN` supplies the navigation origin.
 - Existing rich-menu provisioning script is upgraded instead of replaced.
@@ -118,7 +124,7 @@ No planned failure mode is silent without both error handling and a test or prod
 ## NOT In Scope
 
 - General-purpose LLM chat in LINE, because bounded factory intents meet the request without a tool-injection surface.
-- Named-person lookup or occupancy data in LINE, because the current data contract is anonymous and sensitive.
+- Named-person lookup, identity, faces, detection geometry, screenshots, or tracks in LINE; only a fresh anonymous HC600-01 count is allowed.
 - New project-progress aggregation, because the button only needs a working authenticated entry point in this sprint.
 - Changes to the Factory Twin UI, Android app, drone runtime, or flight-control boundaries.
 - Deleting old rich menus automatically; rollback ids remain available until production verification completes.
@@ -129,7 +135,7 @@ No planned failure mode is silent without both error handling and a test or prod
 - Common Chinese variants for all supported intents meet the versioned corpus threshold: precision at least 95%, recall at least 90%.
 - Adversarial text produces zero twin-agent jobs, tool calls, URL fetches, or server-control effects.
 - All six production menu cells reply successfully and none fall through to the help card.
-- Official/contact/progress/people links use only the validated configured origin.
+- Official and project-progress links use only the validated configured origin; contact returns the exact support email and people returns only the anonymous 0/N count.
 - Unlinked, revoked, cross-site, ambiguous, unknown, malformed, duplicate, and reply-failure paths remain fail-closed.
 
 ## Review Summary

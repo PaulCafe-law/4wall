@@ -17,10 +17,10 @@ The worktree was already dirty before this change, so a normal sprint git checkp
 
 P0 adds a LINE mobile 2D factory floorplan for Jingcheng only:
 
-- Current six-cell Rich Menu actions: floorplan, project progress, official site, machines, privacy-protected people portal, and contact.
+- Current `factory-ops-v3` Rich Menu actions: floorplan, project progress, official site, machines, HC600-01 anonymous people count, and contact email.
 - A LINE imagemap with the static factory map and live status dots.
 - Machine tap fallback through LINE message action text such as `機台 m-hc600`.
-- Machine detail Flex card with live gauge readings, latest public thumbnail if available, and today's incident count.
+- HC600-01 detail Flex card with fresh HMI screen evidence, an approved `.10` camera thumbnail if available, and today's incident count. Analog PRESS/FLOW readings never cross the LINE boundary.
 - One LINE group to one site binding through an administrator script.
 
 Out of scope:
@@ -95,8 +95,9 @@ Current Rich Menu postbacks:
 - `action=machines`: reply with machine carousel/list.
 - `action=project_progress`: reply with an authenticated Factory Twin navigation card.
 - `action=official_site`: reply with an allowlisted official-site navigation card.
-- `action=people_portal`: reply with a privacy notice and authenticated Factory Twin navigation card; no occupancy or identity data is returned in LINE.
-- `action=contact_us`: reply with an allowlisted official contact navigation card.
+- `action=hmi_screen`: show only a fresh, lit, aligned HMI observation tied to its exact frame. Legacy `action=gauges` is an alias.
+- `action=machine_people`: return only the latest fresh anonymous HC600-01 count from `.31`. Legacy `action=people_portal` is an alias.
+- `action=contact_us`: reply exactly `聯絡我們：4wallaitech@gmail.com`.
 - `action=report_machine_incident&machineId=...`: create one `pending_review` incident with `source=line`.
 
 Imagemap tap areas use LINE message actions, not postbacks:
@@ -107,7 +108,8 @@ Text fallback:
 
 - `廠區圖`
 - `機台`
-- `儀表`
+- `儀表` / `螢幕資訊` / `HMI`
+- `機台人員情況`
 - `異常`
 - `機台 <id>`
 
@@ -178,9 +180,9 @@ Expected local acceptance:
 - `cd planner-server && python -m pytest tests -q`
 - Dry-run rich menu setup prints the six current postback actions.
 - `python scripts/line_floorplan_dry_run.py` prints the four webhook reply payloads and the `m-hc600` machine detail card JSON without calling LINE or the database.
-- Dry-run webhook payloads cover floorplan, machines, gauges, daily incidents, and machine detail.
+- Backend integration tests cover floorplan, machines, HMI screen information, anonymous people count, daily incidents, machine detail, and the legacy postback aliases.
 - `GET /v1/line/floorplan/jingcheng/<token>/1040` returns PNG and a second request inside 60 seconds reports cache hit.
-- Staging validates that the configured Jingcheng site id exists and real camera/gauge records appear in the card.
+- Staging validates that the configured Jingcheng site id exists, HC600-01 shows fresh `.10` HMI evidence and an allowed thumbnail, `.31` returns a fresh anonymous count, and legacy analog gauges remain absent from LINE cards.
 
 ## P0.5 Deployment Hardening
 
@@ -245,11 +247,11 @@ LINE group
 
 `GET /v1/line/floorplan/{site_slug}/state?token=...`
 
-Returns JSON for layout geometry, machine statuses, camera heartbeat statuses, today's unresolved incidents, latest gauges, and Asia/Taipei server time. Incident entries expose generated public labels such as `HC600-01 未結異常`, coordinates, machine reverse lookup, severity, status, and created time; they do not expose raw incident titles, reporter names, assignees, evidence, or storage keys. It must reuse the floorplan service query/view builders. It has a 5 second server-side cache, rate limit, and returns `403` for invalid or expired tokens without leaking whether a site exists.
+Returns JSON for layout geometry, machine statuses, camera heartbeat statuses, today's unresolved incidents, and Asia/Taipei server time. Its `gauges` arrays are intentionally empty because analog PRESS/FLOW data is internal-only. Incident entries expose generated public labels such as `HC600-01 未結異常`, coordinates, machine reverse lookup, severity, status, and created time; they do not expose raw incident titles, reporter names, assignees, evidence, or storage keys. It has a 5 second server-side cache, rate limit, and returns `403` for invalid or expired tokens without leaking whether a site exists.
 
 `GET /v1/line/floorplan/{site_slug}/machine/{machine_id}?token=...`
 
-Returns machine detail JSON using the same data as the Flex card, including latest gauges, trend, today's incident count, and a thumbnail URL only through `storage.create_presigned_get_url` with TTL <= 600. Local storage returns `thumbnailUrl: null`.
+Returns HC600-01 detail JSON using the same fresh HMI evidence as the Flex card, with empty legacy gauges, today's incident count, and a thumbnail only from the machine's explicit `.10` camera matcher through `storage.create_presigned_get_url` with TTL <= 600. HC600-02 through HC600-07 return `404 machine_not_available`; person/overview camera frames are never selected as detail thumbnails.
 
 ### P1 Threat Model
 

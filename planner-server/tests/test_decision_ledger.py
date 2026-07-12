@@ -184,11 +184,12 @@ def _seed_camera_with_work_order(
     *,
     machine_no: str = "HC600",
     planned_total: int = 1000,
+    frame_id: str | None = None,
 ):
     camera = CameraDevice(
         organization_id=org_id,
         site_id=site_id,
-        name="poe-cam-1",
+        name="PoE Camera 192.168.1.10",
         device_token_hash=f"hash-{org_id}-{uuid4().hex}",
     )
     session.add(camera)
@@ -196,6 +197,8 @@ def _seed_camera_with_work_order(
     work_order = {
         "template": "hc600_dispatch_sheet_v1",
         "stabilized": True,
+        "alignmentStatus": "ok" if frame_id else "unknown",
+        "currentEvidence": frame_id is not None,
         "fields": {
             "machineNo": {"value": machine_no, "confidence": 0.9},
             "moldNo": {"value": "GM096LC", "confidence": 0.9},
@@ -205,14 +208,23 @@ def _seed_camera_with_work_order(
             "total": {"left": {"value": planned_total}, "right": {"value": None}},
         },
     }
+    structured_fields = {"workOrder": work_order}
+    if frame_id:
+        structured_fields["captureRegions"] = {
+            "calibrationId": "jingcheng-hc600-test-v2",
+            "frameSize": [1280, 720],
+            "hmi": {"roi": [462, 275, 225, 162], "alignmentStatus": "ok"},
+            "workOrder": {"roi": [450, 60, 275, 168], "alignmentStatus": "ok"},
+        }
     observation = CameraOcrObservation(
         camera_id=camera.id,
         organization_id=org_id,
         site_id=site_id,
+        frame_id=frame_id,
         mode="machine_monitor",
         mode_confidence=0.8,
         captured_at=captured_at,
-        structured_fields_json={"workOrder": work_order},
+        structured_fields_json=structured_fields,
     )
     session.add(observation)
     return camera
@@ -933,7 +945,8 @@ def test_find_latest_work_order_capture_is_scoped_to_exact_site(
             session,
             org.id,
             target_site.id,
-            now - timedelta(minutes=10),
+            now - timedelta(minutes=1),
+            frame_id="frame-target-site",
         )
         other_camera = CameraDevice(
             organization_id=org.id,
@@ -963,7 +976,7 @@ def test_find_latest_work_order_capture_is_scoped_to_exact_site(
             camera_id=target_camera.id,
             org_id=org.id,
             site_id=target_site.id,
-            captured_at=now - timedelta(minutes=9),
+            captured_at=now - timedelta(minutes=1),
             frame_id="frame-target-site",
             storage_key="camera-frames/test/target-site.jpg",
         )
@@ -1012,6 +1025,8 @@ def _seed_ticket_frame(
             captured_at=captured_at,
             storage_key=storage_key,
             content_type="image/jpeg",
+            width=1280,
+            height=720,
             upload_status="uploaded",
             analysis_status="complete",
             upload_expires_at=captured_at + timedelta(minutes=10),
@@ -1024,7 +1039,7 @@ def test_dispatch_ticket_crop_rejects_non_jpeg_png_decoder() -> None:
     Image.new("RGB", (64, 48), (120, 80, 40)).save(output, format="GIF")
 
     with pytest.raises(DispatchTicketCropError, match="invalid_dispatch_ticket_image"):
-        crop_dispatch_ticket_png(output.getvalue())
+        crop_dispatch_ticket_png(output.getvalue(), roi=(0, 0, 32, 24), frame_size=(64, 48))
 
 
 def test_dispatch_ticket_future_frame_is_not_treated_as_fresh() -> None:
@@ -1075,9 +1090,15 @@ def test_line_dispatch_ticket_replies_cropped_image_and_summary(
             org_roles=[(org_id, "customer_admin")],
         )
         site = seed_site(session, organization_id=org_id, name="Jingcheng", created_by_user_id=user.id)
-        camera = _seed_camera_with_work_order(session, org_id, site.id, now - timedelta(minutes=5))
+        camera = _seed_camera_with_work_order(
+            session,
+            org_id,
+            site.id,
+            now - timedelta(minutes=1),
+            frame_id="frame-ticket-1",
+        )
         _seed_ticket_frame(
-            session, camera_id=camera.id, org_id=org_id, site_id=site.id, captured_at=now - timedelta(minutes=3)
+            session, camera_id=camera.id, org_id=org_id, site_id=site.id, captured_at=now - timedelta(minutes=1)
         )
         session.add(
             LineGroupBinding(
@@ -1121,7 +1142,6 @@ def test_line_dispatch_ticket_replies_cropped_image_and_summary(
 
     written = storage.blobs["line-dispatch-tickets/frame-ticket-1.png"]
     cropped = Image.open(BytesIO(written))
-    # 1280x720 is half the 2560x1440 reference, so ROI [900,120,550,335] halves too.
     assert cropped.size == (275, 168)
 
 
@@ -1176,7 +1196,9 @@ def test_line_dispatch_ticket_without_fresh_frame_replies_honest_text(
             destination_id=DESTINATION_ID,
         )
         assert consumed is True
-        assert replies[-1]["messages"] == [{"type": "text", "text": "目前沒有新的派工單畫面"}]
+        assert replies[-1]["messages"] == [
+            {"type": "text", "text": "目前無法確認派工單畫面，請檢查攝影機位置並重新校正。"}
+        ]
 
         # A frame older than 2 hours must not be sent either.
         _seed_ticket_frame(
@@ -1199,6 +1221,8 @@ def test_line_dispatch_ticket_without_fresh_frame_replies_honest_text(
             destination_id=DESTINATION_ID,
         )
         assert consumed is True
-        assert replies[-1]["messages"] == [{"type": "text", "text": "目前沒有新的派工單畫面"}]
+        assert replies[-1]["messages"] == [
+            {"type": "text", "text": "目前無法確認派工單畫面，請檢查攝影機位置並重新校正。"}
+        ]
 
     assert storage.writes == []

@@ -24,7 +24,7 @@ Request shape:
 ```json
 {
   "capturedAt": "2026-07-04T10:00:00+08:00",
-  "frameId": "optional-camera-frame-id",
+  "frameId": "required-live-camera-frame-id",
   "source": "live",
   "imageWidth": 2560,
   "imageHeight": 1440,
@@ -43,9 +43,13 @@ Request shape:
 
 Server rules:
 
-- `source` must be `live`.
+- `source=live` requires `frameId`; the frame must belong to the authenticated camera, and `capturedAt`, `imageWidth`, and `imageHeight` must match it.
+- Offline file runs use `source=offline_file` and may omit `frameId`; LINE never consumes them.
 - `personCount` is computed as `detections.length`.
 - Empty detections are valid and stored.
+- The worker publishes every unique frame, including zero-person frames, so a
+  recent zero is distinguishable from unavailable or stale detector data.
+- Duplicate frame IDs and duplicate content hashes remain suppressed.
 - At most 50 detections are accepted.
 - Image dimensions must be positive.
 - Bboxes must be finite, inside the image, and have positive width/height.
@@ -53,6 +57,10 @@ Server rules:
 - Foot points must be finite and inside the image.
 - `floorPosition` may be null. When present, `x` and `z` must be finite.
 - A supplied `frameId` must belong to the authenticated camera token.
+
+## LINE HC600-01 Count
+
+The `machine_people` intent reads only the bound site's `192.168.1.31` camera. Both receipt time and source capture time must be within 60 seconds, the observation must be `live`, and its exact frame must still match the camera/org/site. LINE returns only `HC600-01 機台附近目前偵測到 N 人。` or the fixed no-fresh-data response. It never returns detections, coordinates, identities, screenshots, or tracks.
 
 ## Worker
 
@@ -75,10 +83,13 @@ PaddleDetection / PP-YOLOE+ is the primary detector path. RT-DETR is only a docu
 
 If homography is missing or invalid, the worker keeps the detection and sends `floorPosition: null`. Platform submit failures go into a bounded retry queue; the main loop keeps polling.
 
+Production logs contain only frame ID, detection/person counts, queue count, and status. Detection geometry remains in the authenticated ingest payload and is not printed to service logs.
+
 ## Factory Twin
 
 Factory Twin renders live people only when:
 
+- the observation has `source: "live"`; `offline_file` observations are never rendered;
 - the observation `capturedAt` is no older than 60 seconds;
 - a detection has non-null `floorPosition`;
 - the projected `{x, z}` is finite and within real factory movement bounds plus 2 meters.

@@ -160,7 +160,38 @@ def test_stabilize_temperature_readings_requires_repeated_value() -> None:
     assert first_result[0].message == "temperature_consensus_pending"
     assert second_result[0].status == "ok"
     assert second_result[0].value == 180
-    assert second_result[0].raw_text == "180 | 1B0"
+    assert second_result[0].raw_text == "1B0"
+
+
+def test_temperature_consensus_never_fills_an_unreadable_current_frame() -> None:
+    field = HmiFieldConfig(
+        id="hc600_temperature_current_barrel1",
+        label="HC600 現在 一段",
+        unit="C",
+        roi=(100, 148, 30, 17),
+        min_value=50,
+        max_value=350,
+        decimal_places=0,
+    )
+    history = {}
+    good = FieldReading(field=field, value=180, confidence=0.9, raw_text="180", status="ok", raw_position=None)
+    stabilize_temperature_readings([good], history)
+    stabilize_temperature_readings([good], history)
+
+    unreadable = FieldReading(
+        field=field,
+        value=None,
+        confidence=0.1,
+        raw_text="",
+        status="degraded",
+        raw_position=None,
+        message="ocr_numeric_value_not_found",
+    )
+    result = stabilize_temperature_readings([unreadable], history)[0]
+
+    assert result.status == "degraded"
+    assert result.value is None
+    assert result.message == "ocr_numeric_value_not_found"
 
 
 def test_apply_temperature_grid_readings_keeps_degraded_cells_unknown() -> None:

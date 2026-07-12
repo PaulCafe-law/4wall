@@ -13,6 +13,12 @@ This deploys the fixed factory camera path only:
 
 It does not connect to Industrial Data Engine and does not enter the Android flight-critical loop.
 
+For the separate HC600 LINE v3 HMI and anonymous-person edge workers, also follow
+[Factory Camera Ingest](factory-camera-ingest.md), [Person Presence](person-presence.md),
+and the ordered [LINE Live Status v3 rollout](web-beta-release-runbook.md#line-live-status-v3-rollout).
+Those workers consume exact uploaded frames; they do not replace the camera agent or
+the general camera-analysis worker described here.
+
 ## Cloud Storage
 
 Use Cloudflare R2 through the existing S3-compatible storage settings:

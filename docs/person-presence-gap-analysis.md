@@ -1,5 +1,7 @@
 # Person Presence Projection Gap Analysis
 
+> Superseded for LINE by live-status v3: raw detections, geometry, images, identities, and tracks remain prohibited, while LINE may read only the bound `.31` camera's anonymous 0/N count when both capture and receive times are within 60 seconds. Factory Twin also ignores `offline_file` observations.
+
 ## Sprint Boundary
 
 This change stays inside the Sprint 3/4 shared boundary: `planner-server/`, `web-app/`, and `docs/`.
@@ -36,7 +38,7 @@ Pi camera agent
 
 ## Red Lines
 
-- Do not expose person observations through LINE floorplan PNGs, LINE state JSON, or any unauthenticated route.
+- Do not expose person detections through LINE floorplan PNGs, LINE state JSON, or any unauthenticated route. The only LINE projection is the v3 fixed anonymous count response.
 - Do not store face crops, person crops, names, identities, `trackId`, trajectory ids, or cross-frame matching data.
 - Do not change the Pi capture loop or RTSP handling.
 - Do not let the server or web app issue safety or control actions from person detections.
@@ -54,5 +56,5 @@ Pi camera agent
 - Device-token submit accepts valid person observations, including 0-person frames, and rejects malformed geometry.
 - `/v1/cameras` returns `latestPersonObservation` only under existing org-scoped web auth.
 - Worker dry-run prints the exact `personObservation` payload without writing images outside local `runtime/`.
-- Factory Twin renders only fresh projected people and never sends them through simulated LINE or dispatch flows.
+- Factory Twin renders only fresh `source=live` projected people; LINE receives only the separate anonymous v3 count and never receives geometry or simulation data.
 - Existing HMI OCR, gauge, camera, and LINE floorplan behavior remains unchanged except for shared camera DTO expansion.

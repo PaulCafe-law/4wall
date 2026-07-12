@@ -8,9 +8,12 @@ from urllib.parse import urlsplit, urlunsplit
 from app.line_floorplan.layout import FloorplanLayout, MachineLayout
 
 
-QUERY_INTENTS = frozenset({"floorplan", "machines", "machine_detail", "gauges", "daily_incidents"})
-NAVIGATION_INTENTS = frozenset({"project_progress", "people_portal", "official_site", "contact_us"})
-ALLOWED_INTENTS = QUERY_INTENTS | NAVIGATION_INTENTS
+QUERY_INTENTS = frozenset(
+    {"floorplan", "machines", "machine_detail", "hmi_screen", "machine_people", "daily_incidents"}
+)
+NAVIGATION_INTENTS = frozenset({"project_progress", "official_site", "contact_us"})
+COMPATIBILITY_INTENTS = frozenset({"gauges", "people_portal"})
+ALLOWED_INTENTS = QUERY_INTENTS | NAVIGATION_INTENTS | COMPATIBILITY_INTENTS
 
 _EXACT_INTENTS = {
     "廠區圖": "floorplan",
@@ -19,8 +22,12 @@ _EXACT_INTENTS = {
     "機台": "machines",
     "machines": "machines",
     "找機台": "machines",
-    "儀表": "gauges",
-    "gauges": "gauges",
+    "儀表": "hmi_screen",
+    "螢幕資訊": "hmi_screen",
+    "螢幕數據": "hmi_screen",
+    "hmi": "hmi_screen",
+    "控制面板": "hmi_screen",
+    "gauges": "hmi_screen",
     "異常": "daily_incidents",
     "今日異常": "daily_incidents",
     "daily_incidents": "daily_incidents",
@@ -28,23 +35,26 @@ _EXACT_INTENTS = {
     "工程進度": "project_progress",
     "前往官網": "official_site",
     "官網": "official_site",
-    "找人": "people_portal",
+    "找人": "machine_people",
+    "機台人員情況": "machine_people",
+    "machine_people": "machine_people",
+    "people_portal": "machine_people",
     "聯絡我們": "contact_us",
 }
 
 _INTENT_PATTERNS = {
     "floorplan": ("廠區圖", "2d圖", "平面圖", "廠區地圖", "工廠地圖", "floorplan"),
     "machines": ("機台", "機器", "設備", "machines"),
-    "gauges": ("儀表", "讀值", "電流", "壓力", "流量", "gauges"),
+    "hmi_screen": ("螢幕資訊", "螢幕數據", "控制面板", "儀表", "讀值", "電流", "壓力", "流量", "hmi", "gauges"),
     "daily_incidents": ("異常", "警報", "告警", "故障", "alarm", "incidents"),
     "project_progress": ("工程進度", "施工進度", "目前進度", "專案進度"),
-    "people_portal": ("找人", "人員在哪", "人在哪", "人員位置", "現場有人"),
+    "machine_people": ("機台人員情況", "機台附近", "附近幾人", "找人", "人員在哪", "人在哪", "現場有人"),
     "official_site": ("官網", "官方網站"),
     "contact_us": ("聯絡我們", "聯絡方式", "客服", "信箱", "email"),
 }
 
 _NEGATED_CAPABILITY_RE = re.compile(
-    r"(?:不要|不用|別|無需).{0,6}(?:廠區圖|2d圖|機台|機器|設備|儀表|異常|警報|進度|官網|網站|找人|聯絡)"
+    r"(?:不要|不用|別|無需).{0,6}(?:廠區圖|2d圖|機台|機器|設備|儀表|螢幕|異常|警報|進度|官網|網站|找人|人員|聯絡)"
 )
 _MACHINE_CANDIDATE_RE = re.compile(r"(?<![a-z0-9])(?:m[-_ ]?)?hc\d+(?:[-_ ]?\d{1,3})?(?![a-z0-9])")
 _PUNCTUATION_RE = re.compile(r"[\s\u3000,，。.!！?？:：;；、/\\|()（）\[\]{}「」『』]+")
@@ -93,6 +103,8 @@ def parse_line_intent(text: str, *, natural_language_enabled: bool) -> ParsedLin
         for intent, patterns in _INTENT_PATTERNS.items()
         if any(pattern in normalized for pattern in patterns)
     }
+    if "hmi_screen" in matches or "machine_people" in matches:
+        matches.discard("machines")
 
     if machine_candidate:
         navigation_matches = matches & NAVIGATION_INTENTS

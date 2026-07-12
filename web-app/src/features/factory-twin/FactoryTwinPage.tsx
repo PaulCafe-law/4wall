@@ -15,8 +15,8 @@ import {
 import { REAL_FACTORY_MOVEMENT_AREA } from './mirror/domain/movementArea';
 
 const JINGCHENG_SITE_ID = 'dd6cbdd3aa744736ad96d2791d689fce';
-// 現場人員保留窗:人在時偵測器每 ~10 秒送一次正向觀測維持新鮮;偵測器不再送「0 人」空觀測
-// (見 gpu-person-presence main.py),所以人離開後由此窗自然老化清除。90 秒兼顧「不閃爍」與「離開後及時消失」。
+// 現場人員保留窗:偵測器每個新 frame 都送觀測，包含 0 人；90 秒視窗仍用來處理 edge 暫停、
+// 網路延遲或 worker 中斷，兼顧「不閃爍」與「資料中斷時及時標成過期」。
 const LIVE_PERSON_FRESH_MS = 90_000;
 // Clocks differ across the camera edge (Pi), the detector host, and the browser.
 // Allow observations that look slightly "in the future" from the client's clock.
@@ -152,7 +152,7 @@ export function toLivePersons(
   return cameras.flatMap((camera): PersonEntity[] => {
     const match = matchingFactoryCamera(camera);
     const observation = camera.latestPersonObservation;
-    if (!match || !observation) return [];
+    if (!match || !observation || observation.source !== 'live') return [];
     // Prefer platform receive time over camera capture time: the Pi's clock can lag,
     // which would otherwise push a just-received observation outside the window.
     const freshnessTimestamp = observation.receivedAt || observation.capturedAt;
@@ -353,7 +353,10 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
   );
   const latestPersonObservation = factoryCameraRecords
     .map((camera) => camera.latestPersonObservation)
-    .filter((observation): observation is NonNullable<CameraDevice['latestPersonObservation']> => Boolean(observation))
+    .filter(
+      (observation): observation is NonNullable<CameraDevice['latestPersonObservation']> =>
+        observation?.source === 'live',
+    )
     .sort(
       (a, b) =>
         Date.parse(b.receivedAt || b.capturedAt) - Date.parse(a.receivedAt || a.capturedAt),
