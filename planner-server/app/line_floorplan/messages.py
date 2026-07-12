@@ -240,13 +240,100 @@ def build_help_message() -> dict:
                 "layout": "vertical",
                 "spacing": "sm",
                 "contents": [
-                    {"type": "text", "text": "可用指令", "weight": "bold", "size": "lg"},
-                    {"type": "text", "text": "廠區圖 / 機台 / 儀表 / 異常", "size": "sm", "wrap": True},
-                    {"type": "text", "text": "機台 m-hc600", "size": "sm", "wrap": True, "color": "#374151"},
+                    {"type": "text", "text": "你可以這樣問", "weight": "bold", "size": "lg"},
+                    {"type": "text", "text": "給我現在機台狀況 / 今天有異常嗎", "size": "sm", "wrap": True},
+                    {"type": "text", "text": "查看廠區圖 / 現在儀表讀值", "size": "sm", "wrap": True},
+                    {"type": "text", "text": "查詢機台 m-hc600", "size": "sm", "wrap": True, "color": "#374151"},
+                ],
+            },
+            "footer": {
+                "type": "box",
+                "layout": "vertical",
+                "spacing": "sm",
+                "contents": [
+                    _postback_button("2D 圖", "floorplan"),
+                    _postback_button("找機台", "machines"),
+                    _postback_button("儀表", "gauges"),
+                    _postback_button("今日異常", "daily_incidents"),
                 ],
             },
         },
     }
+
+
+def build_intent_clarification_message(intents: tuple[str, ...]) -> dict:
+    labels = {
+        "floorplan": "2D 圖",
+        "machines": "找機台",
+        "machine_detail": "機台詳情",
+        "gauges": "儀表",
+        "daily_incidents": "今日異常",
+        "project_progress": "工程進度",
+        "people_portal": "找人",
+        "official_site": "前往官網",
+        "contact_us": "聯絡我們",
+    }
+    buttons = [
+        _postback_button(labels[intent], intent)
+        for intent in intents
+        if intent in labels and intent != "machine_detail"
+    ][:4]
+    contents: dict = {
+        "type": "bubble",
+        "size": "mega",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": [
+                {"type": "text", "text": "你想查哪一項？", "weight": "bold", "size": "lg"},
+                {"type": "text", "text": "請一次詢問一項，避免回錯資料。", "size": "sm", "wrap": True},
+            ],
+        },
+    }
+    if buttons:
+        contents["footer"] = {"type": "box", "layout": "vertical", "spacing": "sm", "contents": buttons}
+    return {"type": "flex", "altText": "請選擇要查詢的項目", "contents": contents}
+
+
+def build_navigation_message(
+    *,
+    title: str,
+    body: str,
+    button_label: str,
+    uri: str | None,
+) -> dict:
+    contents: dict = {
+        "type": "bubble",
+        "size": "mega",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "sm",
+            "contents": [
+                {"type": "text", "text": title, "weight": "bold", "size": "lg", "wrap": True},
+                {"type": "text", "text": body, "size": "sm", "wrap": True},
+            ],
+        },
+    }
+    if uri:
+        contents["footer"] = {
+            "type": "box",
+            "layout": "vertical",
+            "contents": [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "color": "#171B1F",
+                    "action": {"type": "uri", "label": button_label, "uri": uri},
+                }
+            ],
+        }
+    else:
+        contents["body"]["contents"].append(
+            {"type": "text", "text": "目前無法安全開啟連結，請稍後再試。", "size": "xs", "color": "#C93B2F", "wrap": True}
+        )
+    return {"type": "flex", "altText": title, "contents": contents}
 
 
 def build_image_message(original_url: str, preview_url: str | None = None) -> dict:
@@ -259,6 +346,14 @@ def build_image_message(original_url: str, preview_url: str | None = None) -> di
 
 def build_text_message(text: str) -> dict:
     return {"type": "text", "text": text[:5000]}
+
+
+def _postback_button(label: str, action: str) -> dict:
+    return {
+        "type": "button",
+        "height": "sm",
+        "action": {"type": "postback", "label": label, "data": urlencode({"action": action})},
+    }
 
 
 def _gauge_text_row(gauge: GaugeReadingView) -> dict:

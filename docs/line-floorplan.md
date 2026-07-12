@@ -17,7 +17,7 @@ The worktree was already dirty before this change, so a normal sprint git checkp
 
 P0 adds a LINE mobile 2D factory floorplan for Jingcheng only:
 
-- Rich Menu actions: floorplan, machines, gauges, daily incidents.
+- Current six-cell Rich Menu actions: floorplan, project progress, official site, machines, privacy-protected people portal, and contact.
 - A LINE imagemap with the static factory map and live status dots.
 - Machine tap fallback through LINE message action text such as `機台 m-hc600`.
 - Machine detail Flex card with live gauge readings, latest public thumbnail if available, and today's incident count.
@@ -89,12 +89,14 @@ All daily calculations and rendered timestamps use `Asia/Taipei`.
 
 Webhook HMAC verification remains mandatory.
 
-Rich Menu postbacks:
+Current Rich Menu postbacks:
 
 - `action=floorplan`: reply with imagemap.
 - `action=machines`: reply with machine carousel/list.
-- `action=gauges`: reply with current gauge card.
-- `action=daily_incidents`: reply with today's existing incident summary text.
+- `action=project_progress`: reply with an authenticated Factory Twin navigation card.
+- `action=official_site`: reply with an allowlisted official-site navigation card.
+- `action=people_portal`: reply with a privacy notice and authenticated Factory Twin navigation card; no occupancy or identity data is returned in LINE.
+- `action=contact_us`: reply with an allowlisted official contact navigation card.
 - `action=report_machine_incident&machineId=...`: create one `pending_review` incident with `source=line`.
 
 Imagemap tap areas use LINE message actions, not postbacks:
@@ -108,6 +110,12 @@ Text fallback:
 - `儀表`
 - `異常`
 - `機台 <id>`
+
+When `LINE_NATURAL_LANGUAGE_ENABLED=true`, or the bound organization is listed in
+`LINE_NATURAL_LANGUAGE_CANARY_ORG_IDS`, bounded natural-language variants map to the same fixed
+read/navigation intents. The parser never forwards LINE text to the local Codex worker, shell,
+filesystem, arbitrary SQL, URL fetch, or deployment tools. Multi-intent, negated, unsupported,
+and ambiguous machine requests fail closed to clarification/help.
 
 Unbound groups receive only `此群組尚未綁定場域` except for `綁定 靚程`, which logs the group id
 and instructs an administrator to run the binding script. Unlinked direct users and all room
@@ -168,7 +176,7 @@ Render environment variables to configure:
 Expected local acceptance:
 
 - `cd planner-server && python -m pytest tests -q`
-- Dry-run rich menu setup prints the four postback actions.
+- Dry-run rich menu setup prints the six current postback actions.
 - `python scripts/line_floorplan_dry_run.py` prints the four webhook reply payloads and the `m-hc600` machine detail card JSON without calling LINE or the database.
 - Dry-run webhook payloads cover floorplan, machines, gauges, daily incidents, and machine detail.
 - `GET /v1/line/floorplan/jingcheng/<token>/1040` returns PNG and a second request inside 60 seconds reports cache hit.
@@ -275,6 +283,9 @@ Additional Render env checks:
 
 - `LINE_PUBLIC_BASE_URL` is the API public origin.
 - `BUILDING_ROUTE_APP_ORIGIN` is the web app public origin.
+- `LINE_NAVIGATION_ALLOWED_HOSTS` contains the exact web app hostname used by navigation cards.
+- `LINE_NATURAL_LANGUAGE_ENABLED=true` enables bounded natural-language matching globally.
+- `LINE_NATURAL_LANGUAGE_CANARY_ORG_IDS` can enable matching for selected organizations first.
 
 No LIFF app, no LINE Login, and no new console registration are required.
 
@@ -286,3 +297,7 @@ No LIFF app, no LINE Login, and no new console registration are required.
 - On a 375 x 812 viewport, `/m/floorplan/jingcheng?token=<valid>` shows the SVG floorplan, live status dots, a machine bottom sheet, focus highlighting, and clear expired-token guidance.
 
 Security review before shipping should focus on public endpoints, token scope/TTL/purpose, presigned thumbnail TTL, incident push content-only changes, reply-only strategy, and no PII in state JSON.
+
+The current parser contract, six-cell menu mapping, origin validation, rollout controls, and
+production rollback procedure are documented in
+[LINE Safe Natural Language And Six-Cell Rich Menu](line-safe-natural-language-and-rich-menu.md).

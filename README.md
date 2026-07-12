@@ -87,6 +87,7 @@ Industrial Data Engine production runtime uses Gemini, World Labs / Marble, Olla
 - [api-spec.md](docs/api-spec.md)
 - [codex-auth.md](docs/codex-auth.md)
 - [industrial-data-engine.md](docs/industrial-data-engine.md)
+- [line-safe-natural-language-and-rich-menu.md](docs/line-safe-natural-language-and-rich-menu.md)
 - [PROD_READINESS_PLAN.md](docs/PROD_READINESS_PLAN.md)
 - [web-beta-scope.md](docs/web-beta-scope.md)
 - [web-threat-model.md](docs/web-threat-model.md)
