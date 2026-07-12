@@ -31,6 +31,7 @@ class WorkOrderCapture:
     observation: CameraOcrObservation
     frame: CameraFrame
     work_order_roi: tuple[int, int, int, int]
+    hmi_roi: tuple[int, int, int, int]
     frame_size: tuple[int, int]
     calibration_id: str
 
@@ -153,7 +154,7 @@ def _capture_from_observation(
     evidence = _validated_capture_evidence(observation.structured_fields_json or {})
     if evidence is None:
         return None
-    roi, frame_size, calibration_id = evidence
+    work_order_roi, hmi_roi, frame_size, calibration_id = evidence
 
     frame = session.get(CameraFrame, observation.frame_id)
     if (
@@ -174,7 +175,8 @@ def _capture_from_observation(
     return WorkOrderCapture(
         observation=observation,
         frame=frame,
-        work_order_roi=roi,
+        work_order_roi=work_order_roi,
+        hmi_roi=hmi_roi,
         frame_size=frame_size,
         calibration_id=calibration_id,
     )
@@ -212,6 +214,10 @@ def frame_is_stale(
 
 def dispatch_ticket_storage_key(frame_id: str) -> str:
     return f"line-dispatch-tickets/{frame_id}.png"
+
+
+def hmi_screen_storage_key(frame_id: str) -> str:
+    return f"line-hmi-screens/{frame_id}.png"
 
 
 def crop_dispatch_ticket_png(
@@ -257,7 +263,7 @@ def build_dispatch_ticket_summary(observation: CameraOcrObservation) -> str:
 
 def _validated_capture_evidence(
     structured_fields: dict[str, Any],
-) -> tuple[tuple[int, int, int, int], tuple[int, int], str] | None:
+) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int], tuple[int, int], str] | None:
     work_order = structured_fields.get("workOrder")
     regions = structured_fields.get("captureRegions")
     if not isinstance(work_order, dict) or not isinstance(regions, dict):
@@ -265,10 +271,12 @@ def _validated_capture_evidence(
     if work_order.get("alignmentStatus") != "ok" or work_order.get("currentEvidence") is not True:
         return None
     work_region = regions.get("workOrder")
+    hmi_region = regions.get("hmi")
     calibration_id = regions.get("calibrationId")
     frame_size_value = regions.get("frameSize")
     if (
         not isinstance(work_region, dict)
+        or not isinstance(hmi_region, dict)
         or work_region.get("alignmentStatus") != "ok"
         or not isinstance(calibration_id, str)
         or not calibration_id.strip()
@@ -279,10 +287,11 @@ def _validated_capture_evidence(
     if any(isinstance(part, bool) or not isinstance(part, int) or part <= 0 for part in frame_size_value):
         return None
     frame_size = (frame_size_value[0], frame_size_value[1])
-    roi = _validated_pixel_roi(work_region.get("roi"), frame_size)
-    if roi is None:
+    work_order_roi = _validated_pixel_roi(work_region.get("roi"), frame_size)
+    hmi_roi = _validated_pixel_roi(hmi_region.get("roi"), frame_size)
+    if work_order_roi is None or hmi_roi is None:
         return None
-    return roi, frame_size, calibration_id.strip()
+    return work_order_roi, hmi_roi, frame_size, calibration_id.strip()
 
 
 def _validated_pixel_roi(value: Any, frame_size: tuple[int, int]) -> tuple[int, int, int, int] | None:

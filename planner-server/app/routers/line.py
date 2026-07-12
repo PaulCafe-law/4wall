@@ -40,6 +40,7 @@ from app.line_dispatch_ticket import (
     build_dispatch_ticket_summary,
     crop_dispatch_ticket_png,
     dispatch_ticket_storage_key,
+    hmi_screen_storage_key,
     find_latest_work_order_capture,
     find_work_order_capture_for_frame,
 )
@@ -56,7 +57,6 @@ from app.line_floorplan.messages import (
     build_hmi_screen_message,
     build_image_message,
     build_intent_clarification_message,
-    build_machine_detail_message,
     build_machine_list_message,
     build_navigation_message,
     build_text_message,
@@ -304,6 +304,49 @@ def get_line_dispatch_ticket_image(
         media_type="image/png",
         headers={"Cache-Control": "private, max-age=600"},
     )
+
+
+@router.get("/v1/line/hmi-screen/{site_slug}/{render_token}/{frame_id}")
+def get_line_hmi_screen_image(
+    site_slug: str,
+    render_token: str,
+    frame_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+    settings=Depends(get_settings),
+    storage: ArtifactStorage = Depends(get_artifact_storage),
+    rate_limiter: RateLimiter = Depends(get_rate_limiter),
+) -> Response:
+    try:
+        token_payload = verify_floorplan_render_token(settings, site_slug=site_slug, token=render_token)
+    except FloorplanTokenError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    rate_limiter.check(
+        f"line-hmi-screen:{site_slug}:{client_identity(request, settings)}", FLOORPLAN_RENDER_RATE_LIMIT
+    )
+    binding = _scope_for_floorplan_token(session, settings, token_payload)
+    if binding is None or binding.site_slug != site_slug:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="hmi_screen_binding_not_found")
+    layout = load_floorplan_layout(binding.site_slug)
+    machine = next((item for item in layout.machines if item.line_enabled), None)
+    camera_ids = (
+        camera_ids_for_matches(session, binding=binding, matches=machine.camera_matches)
+        if machine is not None
+        else ()
+    )
+    capture = find_work_order_capture_for_frame(
+        session,
+        organization_id=binding.organization_id,
+        site_id=binding.site_id,
+        frame_id=frame_id,
+        camera_ids=camera_ids,
+    )
+    if capture is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="hmi_screen_not_found")
+    content = storage.read(hmi_screen_storage_key(capture.frame.id))
+    if content is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="hmi_screen_not_found")
+    return Response(content=content, media_type="image/png", headers={"Cache-Control": "private, max-age=600"})
 
 
 def _liveview_scope_or_403(session: Session, settings, site_slug: str, token: str):
@@ -1213,25 +1256,6 @@ def _reply_machine_detail(
     if not machine.line_enabled:
         _reply_messages_if_possible(settings, event, [build_text_message(f"{machine.label} 尚未開通。")])
         return
-    detail = build_machine_detail_view(
-        session,
-        storage,
-        layout=layout,
-        binding=binding,
-        machine=machine,
-        include_legacy_gauges=False,
-    )
-    if detail is None:
-        _reply_messages_if_possible(settings, event, [build_text_message("此 LINE 對話的場域不存在或與廠區圖不一致。")])
-        return
-    messages = [build_machine_detail_message(detail)]
-    if detail.hmi_screen is None and hmi_screen_is_overexposed(
-        session,
-        layout=layout,
-        binding=binding,
-        machine=machine,
-    ):
-        messages.append(build_text_message("螢幕現在過曝。"))
     dispatch_camera_ids = camera_ids_for_matches(session, binding=binding, matches=machine.camera_matches)
     capture = find_latest_work_order_capture(
         session,
@@ -1239,8 +1263,62 @@ def _reply_machine_detail(
         site_id=binding.site_id,
         camera_ids=dispatch_camera_ids,
     )
-    if capture is not None:
-        messages.append(build_text_message(f"派工單資訊\n{build_dispatch_ticket_summary(capture.observation)}"))
+    if capture is None:
+        _reply_messages_if_possible(settings, event, [build_text_message(DISPATCH_TICKET_ALIGNMENT_ERROR)])
+        return
+    image_bytes = storage.read(capture.frame.storage_key)
+    if not image_bytes:
+        _reply_messages_if_possible(settings, event, [build_text_message(DISPATCH_TICKET_ALIGNMENT_ERROR)])
+        return
+    try:
+        dispatch_crop = crop_dispatch_ticket_png(
+            image_bytes,
+            roi=capture.work_order_roi,
+            frame_size=capture.frame_size,
+        )
+        hmi_crop = crop_dispatch_ticket_png(
+            image_bytes,
+            roi=capture.hmi_roi,
+            frame_size=capture.frame_size,
+        )
+    except DispatchTicketCropError:
+        _reply_messages_if_possible(settings, event, [build_text_message(DISPATCH_TICKET_ALIGNMENT_ERROR)])
+        return
+    storage.write(
+        key=dispatch_ticket_storage_key(capture.frame.id),
+        data=dispatch_crop,
+        content_type="image/png",
+        cache_control="private, max-age=600",
+    )
+    storage.write(
+        key=hmi_screen_storage_key(capture.frame.id),
+        data=hmi_crop,
+        content_type="image/png",
+        cache_control="private, max-age=600",
+    )
+    if not settings.line_public_base_url:
+        _reply_messages_if_possible(settings, event, [build_text_message("LINE_PUBLIC_BASE_URL 尚未設定，無法傳送機台圖片。")])
+        return
+    token = create_floorplan_render_token(
+        settings,
+        site_slug=binding.site_slug,
+        source_type=binding.source_type,
+        source_id=binding.source_id,
+        destination_id=binding.destination_id,
+    )
+    base_origin = settings.line_public_base_url.rstrip("/")
+    messages = [
+        build_text_message("當下派工單"),
+        build_image_message(
+            f"{base_origin}/v1/line/dispatch-ticket/{binding.site_slug}/{token}/{capture.frame.id}"
+        ),
+        build_text_message("當下 HMI 螢幕"),
+        build_image_message(
+            f"{base_origin}/v1/line/hmi-screen/{binding.site_slug}/{token}/{capture.frame.id}"
+        ),
+    ]
+    if hmi_screen_is_overexposed(session, layout=layout, binding=binding, machine=machine):
+        messages.append(build_text_message("螢幕現在過曝。"))
     _reply_messages_if_possible(settings, event, messages)
 
 
