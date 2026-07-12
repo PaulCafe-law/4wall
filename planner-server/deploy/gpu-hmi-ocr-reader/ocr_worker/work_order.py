@@ -46,6 +46,7 @@ KNOWN_COLORS: tuple[str, ...] = ("透明", "白色", "黑色", "紅色", "藍色
 
 _L_MARKERS = {"L", "|L", "L|", "(L)"}
 _R_MARKERS = {"R", "|R", "R|", "(R)"}
+_MERGED_R_MARKER_PATTERN = re.compile(r"(?:R[0-9]{1,6}|[0-9]{1,6}R)")
 _CODE_PATTERN = re.compile(r"^[A-Z]{1,4}[0-9]{2,6}[A-Z0-9]{0,4}$")
 _INT_PATTERN = re.compile(r"^[0-9]{1,6}$")
 _ROC_YEAR_PATTERN = re.compile(r"^1[0-9]{2}$")
@@ -143,7 +144,15 @@ def _cluster_rows(lines: list[_Line]) -> list[list[_Line]]:
 
 def _find_marker(row: list[_Line], markers: set[str]) -> _Line | None:
     for line in row:
-        if normalize_text(line.text) in markers:
+        normalized = normalize_text(line.text)
+        if normalized in markers:
+            return line
+        # On the live sheet PaddleOCR sometimes merges the printed R column
+        # marker with the handwritten cell value (for example ``R 1056`` or
+        # ``10R``).  Treat that geometry as an R marker so alignment remains
+        # honest, but leave the merged numeric value unknown: the parser must
+        # never invent which part of the merged token belongs to the cell.
+        if markers == _R_MARKERS and _MERGED_R_MARKER_PATTERN.fullmatch(normalized.strip("|")):
             return line
     return None
 

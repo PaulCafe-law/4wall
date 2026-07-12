@@ -138,6 +138,26 @@ def test_material_never_captures_stray_marker_when_total_row_marker_garbles() ->
     assert fields["material"]["value"] != "L"
 
 
+def test_merged_r_marker_keeps_alignment_without_guessing_merged_value() -> None:
+    # Live 2026-07-12 OCR merged the printed R marker and handwritten value as
+    # ``R 1056``.  The row geometry is still valid evidence, but the merged
+    # right value must remain unknown rather than being guessed.
+    result = build_work_order_fields(
+        [
+            _line("HC600", 0.9, 20, 100),
+            _line("L", 0.99, 152, 180),
+            _line("1056", 0.95, 220, 180),
+            _line("R 1056", 0.89, 361, 180),
+        ]
+    )
+
+    assert result["alignmentStatus"] == "ok"
+    # One surviving row is enough to prove L/R structure, but not enough to
+    # map it to one of the four named rows, so both values stay fail-closed.
+    assert result["quantities"]["plannedWithHanger"]["left"]["value"] == "unknown"
+    assert result["quantities"]["plannedWithHanger"]["right"]["value"] == "unknown"
+
+
 def test_color_publishes_only_when_it_snaps_to_a_known_color() -> None:
     # Live frames have OCR'd the half-occluded 透明 as "a巴"; raw garble must
     # never be published as the product color.
