@@ -570,7 +570,7 @@ def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client,
         json={
             "mode": "machine_monitor",
             "modeConfidence": 0.86,
-            "source": "live",
+            "source": "offline_file",
             "capturedAt": "2026-07-04T10:00:00+08:00",
             "rawOcrLines": [
                 {"text": "機器監視", "confidence": 0.91, "box": [[0, 0], [10, 0], [10, 10], [0, 10]], "region": "hmi"},
@@ -611,6 +611,86 @@ def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client,
     assert latest["gptSummary"]["machine"] == "HC600"
 
 
+def test_live_ocr_requires_exact_frame_time_and_bounded_capture_regions(client, session_factory) -> None:
+    token = "fwcam_live_ocr_contract"
+    captured_at = datetime(2026, 7, 12, 3, 4, 5, tzinfo=timezone.utc)
+    with session_factory() as session:
+        org = seed_organization(session, name="Live OCR Contract Org")
+        site = seed_site(session, organization_id=org.id, name="Live OCR Contract Site")
+        camera = _seed_camera(session, org.id, site.id, token=token)
+        session.add(
+            CameraFrame(
+                id="live-ocr-frame",
+                camera_id=camera.id,
+                organization_id=org.id,
+                site_id=site.id,
+                captured_at=captured_at,
+                storage_key=f"camera-frames/{org.id}/{camera.id}/live-ocr-frame.jpg",
+                content_type="image/jpeg",
+                width=1280,
+                height=720,
+                upload_status="uploaded",
+                analysis_status="complete",
+                upload_expires_at=captured_at + timedelta(minutes=15),
+                completed_at=captured_at,
+            )
+        )
+        session.commit()
+
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {
+        "mode": "machine_monitor",
+        "modeConfidence": 0.9,
+        "source": "live",
+        "capturedAt": captured_at.isoformat(),
+        "frameId": "live-ocr-frame",
+        "rawOcrLines": [],
+        "structuredFields": {
+            "captureRegions": {
+                "calibrationId": "jingcheng-hc600-20260712-v2",
+                "frameSize": [1280, 720],
+                "hmi": {"roi": [462, 275, 225, 162], "alignmentStatus": "ok"},
+                "workOrder": {"roi": [450, 60, 275, 168], "alignmentStatus": "ok"},
+            }
+        },
+        "summaryStatus": "unknown",
+    }
+
+    accepted = client.post("/v1/camera-ingest/ocr-observations", headers=headers, json=payload)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["frameId"] == "live-ocr-frame"
+    assert accepted.json()["capturedAt"] == "2026-07-12T03:04:05Z"
+
+    missing_frame = client.post(
+        "/v1/camera-ingest/ocr-observations",
+        headers=headers,
+        json={**payload, "frameId": None},
+    )
+    assert missing_frame.status_code == 422
+    assert missing_frame.json()["detail"] == "ocr_frame_id_required"
+
+    bad_roi_payload = {
+        **payload,
+        "structuredFields": {
+            "captureRegions": {
+                **payload["structuredFields"]["captureRegions"],
+                "workOrder": {"roi": [1200, 60, 275, 168], "alignmentStatus": "ok"},
+            }
+        },
+    }
+    bad_roi = client.post("/v1/camera-ingest/ocr-observations", headers=headers, json=bad_roi_payload)
+    assert bad_roi.status_code == 422
+    assert bad_roi.json()["detail"] == "ocr_capture_roi_out_of_bounds"
+
+    wrong_time = client.post(
+        "/v1/camera-ingest/ocr-observations",
+        headers=headers,
+        json={**payload, "capturedAt": (captured_at + timedelta(minutes=1)).isoformat()},
+    )
+    assert wrong_time.status_code == 422
+    assert wrong_time.json()["detail"] == "ocr_captured_at_frame_mismatch"
+
+
 def test_ocr_ingest_succeeds_even_when_plan_point_upsert_fails(client, session_factory, monkeypatch) -> None:
     # Regression: a ledger side-effect failure (e.g. the decision_points table missing
     # on prod because a migration was not applied) must NOT block OCR ingest. Before the
@@ -638,7 +718,7 @@ def test_ocr_ingest_succeeds_even_when_plan_point_upsert_fails(client, session_f
         json={
             "mode": "machine_monitor",
             "modeConfidence": 0.9,
-            "source": "live",
+            "source": "offline_file",
             "capturedAt": "2026-07-04T10:00:00+08:00",
             "rawOcrLines": [{"text": "溫度", "confidence": 0.9, "region": "hmi"}],
             "structuredFields": {},
@@ -700,6 +780,69 @@ def test_camera_device_submits_person_observation_and_web_list_shows_latest(clie
     assert latest["personCount"] == 2
     assert latest["calibrationId"] == "overview-h-20260704"
     assert latest["detectorName"] == "paddledet_ppyoloe_plus_person"
+
+
+def test_live_person_observation_requires_exact_frame_time_and_size(client, session_factory) -> None:
+    token = "fwcam_live_person_contract"
+    captured_at = datetime(2026, 7, 12, 4, 5, 6, tzinfo=timezone.utc)
+    with session_factory() as session:
+        org = seed_organization(session, name="Live Person Contract Org")
+        site = seed_site(session, organization_id=org.id, name="Live Person Contract Site")
+        camera = _seed_camera(session, org.id, site.id, token=token)
+        session.add(
+            CameraFrame(
+                id="live-person-frame",
+                camera_id=camera.id,
+                organization_id=org.id,
+                site_id=site.id,
+                captured_at=captured_at,
+                storage_key=f"camera-frames/{org.id}/{camera.id}/live-person-frame.jpg",
+                content_type="image/jpeg",
+                width=2560,
+                height=1440,
+                upload_status="uploaded",
+                analysis_status="complete",
+                upload_expires_at=captured_at + timedelta(minutes=15),
+                completed_at=captured_at,
+            )
+        )
+        session.commit()
+
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = _person_observation_payload(
+        source="live",
+        frameId="live-person-frame",
+        capturedAt=captured_at.isoformat(),
+        detections=[],
+    )
+    accepted = client.post("/v1/camera-ingest/person-observations", headers=headers, json=payload)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["frameId"] == "live-person-frame"
+    assert accepted.json()["personCount"] == 0
+
+    missing_frame = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers=headers,
+        json={**payload, "frameId": None},
+    )
+    assert missing_frame.status_code == 422
+    assert missing_frame.json()["detail"] == "person_frame_id_required"
+
+    wrong_time = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers=headers,
+        json={**payload, "capturedAt": (captured_at + timedelta(minutes=1)).isoformat()},
+    )
+    assert wrong_time.status_code == 422
+    assert wrong_time.json()["detail"] == "person_captured_at_frame_mismatch"
+
+    wrong_size = client.post(
+        "/v1/camera-ingest/person-observations",
+        headers=headers,
+        json={**payload, "imageWidth": 1280},
+    )
+    assert wrong_size.status_code == 422
+    assert wrong_size.json()["detail"] == "person_frame_size_mismatch"
 
 
 def test_camera_list_caps_latest_person_observation_detections(client, session_factory) -> None:
@@ -1297,7 +1440,7 @@ def test_camera_list_batches_historical_status_queries(client, session_factory, 
 
 def _person_observation_payload(**overrides) -> dict:
     payload = {
-        "source": "live",
+        "source": "offline_file",
         "capturedAt": "2026-07-04T10:00:00+08:00",
         "imageWidth": 2560,
         "imageHeight": 1440,

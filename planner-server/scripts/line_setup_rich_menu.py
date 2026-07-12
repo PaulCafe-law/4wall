@@ -30,10 +30,8 @@ DEFAULT_RICH_MENU_OWNED_BY_OTHER_CHANNEL = "the richmenu is owned by another cha
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create the six-cell 4WALL LINE rich menu.")
     parser.add_argument("--apply", action="store_true", help="Call the LINE API. Default is dry-run JSON only.")
-    parser.add_argument("--name", default="factory-ops-v2")
+    parser.add_argument("--name", default="factory-ops-v3")
     parser.add_argument("--chat-bar-text", default="選單")
-    parser.add_argument("--expected-display-name", default=EXPECTED_BOT_DISPLAY_NAME)
-    parser.add_argument("--expected-basic-id", default=EXPECTED_BOT_BASIC_ID)
     return parser.parse_args()
 
 
@@ -49,20 +47,32 @@ def main() -> int:
     if not token:
         raise SystemExit("missing_LINE_CHANNEL_ACCESS_TOKEN")
     info = _get_bot_info(token)
-    if info.get("displayName") != args.expected_display_name or info.get("basicId") != args.expected_basic_id:
-        raise SystemExit("line_bot_identity_mismatch")
+    _assert_bot_identity(info)
     previous_default_id = _get_default_rich_menu_id(token)
     rich_menu_id = _create_rich_menu(token, payload)
+    default_change_attempted = False
     try:
         _upload_rich_menu_image(token, rich_menu_id, _render_rich_menu_image())
+        default_change_attempted = True
         _set_default_rich_menu(token, rich_menu_id)
         if _get_default_rich_menu_id(token) != rich_menu_id:
             raise RuntimeError("line_default_rich_menu_verification_failed")
-    except Exception:
-        if previous_default_id:
-            _set_default_rich_menu(token, previous_default_id)
-        else:
-            _cancel_default_rich_menu(token)
+    except Exception as exc:
+        rollback_errors: list[Exception] = []
+        if default_change_attempted:
+            try:
+                if previous_default_id:
+                    _set_default_rich_menu(token, previous_default_id)
+                else:
+                    _cancel_default_rich_menu(token)
+            except Exception as rollback_exc:
+                rollback_errors.append(rollback_exc)
+        try:
+            _delete_rich_menu(token, rich_menu_id)
+        except Exception as cleanup_exc:
+            rollback_errors.append(cleanup_exc)
+        if rollback_errors:
+            raise RuntimeError("line_rich_menu_rollback_failed") from exc
         raise
     print(
         json.dumps(
@@ -92,7 +102,7 @@ def build_rich_menu_payload(*, name: str, chat_bar_text: str) -> dict:
             _area(834, 0, 833, 843, "檢視工程進度", "project_progress"),
             _area(1667, 0, 833, 843, "前往官網", "official_site"),
             _area(0, 843, 834, 843, "找機台", "machines"),
-            _area(834, 843, 833, 843, "找人", "people_portal"),
+            _area(834, 843, 833, 843, "機台人員情況", "machine_people"),
             _area(1667, 843, 833, 843, "聯絡我們", "contact_us"),
         ],
     }
@@ -145,6 +155,16 @@ def _cancel_default_rich_menu(token: str) -> None:
         response.raise_for_status()
 
 
+def _delete_rich_menu(token: str, rich_menu_id: str) -> None:
+    response = httpx.delete(
+        f"{LINE_RICH_MENU_URL}/{rich_menu_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=20,
+    )
+    if response.status_code not in {200, 404}:
+        response.raise_for_status()
+
+
 def _get_default_rich_menu_id(token: str) -> str | None:
     response = httpx.get(
         LINE_DEFAULT_RICH_MENU_URL,
@@ -156,7 +176,7 @@ def _get_default_rich_menu_id(token: str) -> str | None:
     if response.status_code == 403:
         message = str(response.json().get("message") or "")
         if message == DEFAULT_RICH_MENU_OWNED_BY_OTHER_CHANNEL:
-            return None
+            raise RuntimeError("line_default_rich_menu_not_restorable")
     response.raise_for_status()
     return str(response.json().get("richMenuId") or "") or None
 
@@ -171,6 +191,11 @@ def _get_bot_info(token: str) -> dict:
     return dict(response.json())
 
 
+def _assert_bot_identity(info: dict) -> None:
+    if info.get("displayName") != EXPECTED_BOT_DISPLAY_NAME or info.get("basicId") != EXPECTED_BOT_BASIC_ID:
+        raise SystemExit("line_bot_identity_mismatch")
+
+
 def _render_rich_menu_image() -> bytes:
     image = Image.new("RGB", (2500, 1686), "#F4EFE7")
     draw = ImageDraw.Draw(image)
@@ -179,7 +204,7 @@ def _render_rich_menu_image() -> bytes:
         ("檢視\n工程\n進度", (834, 0, 1667, 843), 112),
         ("前往\n官網", (1667, 0, 2500, 843), 120),
         ("找機台", (0, 843, 834, 1686), 132),
-        ("找人", (834, 843, 1667, 1686), 132),
+        ("機台人員\n情況", (834, 843, 1667, 1686), 104),
         ("聯絡\n我們", (1667, 843, 2500, 1686), 120),
     ]
     for index, (label, bounds, font_size) in enumerate(labels):

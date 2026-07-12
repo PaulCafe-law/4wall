@@ -35,12 +35,13 @@ from app.line_bot import (
     verify_line_signature,
 )
 from app.line_dispatch_ticket import (
+    DISPATCH_TICKET_ALIGNMENT_ERROR,
     DispatchTicketCropError,
     build_dispatch_ticket_summary,
     crop_dispatch_ticket_png,
     dispatch_ticket_storage_key,
     find_latest_work_order_capture,
-    frame_is_stale,
+    find_work_order_capture_for_frame,
 )
 from app.line_floorplan.layout import (
     FloorplanLayoutError,
@@ -51,8 +52,8 @@ from app.line_floorplan.layout import (
 from app.line_floorplan.messages import (
     build_account_link_message,
     build_floorplan_imagemap_message,
-    build_gauges_message,
     build_help_message,
+    build_hmi_screen_message,
     build_image_message,
     build_intent_clarification_message,
     build_liveview_button_message,
@@ -65,10 +66,12 @@ from app.line_intent import parse_line_intent, resolve_machine_candidate, safe_l
 from app.line_floorplan.render import render_floorplan_png
 from app.line_floorplan.service import (
     build_floorplan_state_payload,
+    build_hmi_screen_view,
     build_machine_detail_payload,
     build_machine_detail_view,
-    build_site_gauge_views,
+    camera_ids_for_matches,
     get_site_for_binding,
+    latest_machine_people_count,
     machine_center,
     today_bounds_taipei,
 )
@@ -95,7 +98,7 @@ from app.line_identity import (
     resolve_line_user_scope,
     unlink_line_user_binding,
 )
-from app.models import CameraFrame, IncidentRecord, LineWebhookEventRecord, Organization, Site, utc_now
+from app.models import IncidentRecord, LineWebhookEventRecord, Organization, Site, utc_now
 from app.rate_limit import RateLimitRule, RateLimiter, client_identity
 from app.storage import ArtifactStorage
 from app.web_dto import (
@@ -113,15 +116,16 @@ FLOORPLAN_LIVEVIEW_RATE_LIMIT = RateLimitRule(max_attempts=120, window_seconds=6
 LINE_ACCOUNT_LINK_USER_RATE_LIMIT = RateLimitRule(max_attempts=3, window_seconds=10 * 60)
 LINE_ACCOUNT_LINK_DESTINATION_RATE_LIMIT = RateLimitRule(max_attempts=30, window_seconds=60)
 LINE_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024
-DISPATCH_TICKET_NO_IMAGE_TEXT = "目前沒有新的派工單畫面"
 FLOORPLAN_STATE_CACHE_SECONDS = 5
 RICH_MENU_ACTIONS = {
     "floorplan",
     "machines",
     "gauges",
+    "hmi_screen",
     "daily_incidents",
     "project_progress",
     "people_portal",
+    "machine_people",
     "official_site",
     "contact_us",
 }
@@ -195,7 +199,16 @@ def get_line_floorplan_machine_detail(
     machine = layout.machine(machine_id)
     if machine is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="machine_not_found")
-    detail = build_machine_detail_view(session, storage, layout=layout, binding=binding, machine=machine)
+    if not machine.line_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="machine_not_available")
+    detail = build_machine_detail_view(
+        session,
+        storage,
+        layout=layout,
+        binding=binding,
+        machine=machine,
+        include_legacy_gauges=False,
+    )
     if detail is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="invalid_floorplan_token")
     return build_machine_detail_payload(detail)
@@ -265,23 +278,28 @@ def get_line_dispatch_ticket_image(
     binding = _scope_for_floorplan_token(session, settings, token_payload)
     if binding is None or binding.site_slug != site_slug:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="dispatch_ticket_binding_not_found")
-    frame = session.get(CameraFrame, frame_id)
-    if (
-        frame is None
-        or frame.organization_id != binding.organization_id
-        or frame.site_id != binding.site_id
-        or frame.upload_status != "uploaded"
-    ):
+    layout = load_floorplan_layout(binding.site_slug)
+    dispatch_machine = next((machine for machine in layout.machines if machine.line_enabled), None)
+    dispatch_camera_ids = (
+        camera_ids_for_matches(session, binding=binding, matches=dispatch_machine.camera_matches)
+        if dispatch_machine is not None
+        else ()
+    )
+    capture = find_work_order_capture_for_frame(
+        session,
+        organization_id=binding.organization_id,
+        site_id=binding.site_id,
+        frame_id=frame_id,
+        camera_ids=dispatch_camera_ids,
+    )
+    if capture is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found")
-    content = storage.read(dispatch_ticket_storage_key(frame.id))
+    content = storage.read(dispatch_ticket_storage_key(capture.frame.id))
     if content is None:
-        original = storage.read(frame.storage_key)
-        if not original:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found")
-        try:
-            content = crop_dispatch_ticket_png(original)
-        except DispatchTicketCropError as exc:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found") from exc
+        # Crops are created only after a fresh OCR observation has linked this
+        # exact frame to a validated calibration ROI. Never reconstruct a crop
+        # here from a camera's latest frame or a server-side fallback ROI.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found")
     return Response(
         content=content,
         media_type="image/png",
@@ -1042,13 +1060,21 @@ def _reply_dispatch_ticket(
     """LINE「派工單」: crop the dispatch-sheet region of the newest frame and
     reply image + parsed summary. Honest fallback when nothing fresh exists."""
 
-    no_image = [build_text_message(DISPATCH_TICKET_NO_IMAGE_TEXT)]
+    no_image = [build_text_message(DISPATCH_TICKET_ALIGNMENT_ERROR)]
+    layout = load_floorplan_layout(binding.site_slug)
+    dispatch_machine = next((machine for machine in layout.machines if machine.line_enabled), None)
+    dispatch_camera_ids = (
+        camera_ids_for_matches(session, binding=binding, matches=dispatch_machine.camera_matches)
+        if dispatch_machine is not None
+        else ()
+    )
     capture = find_latest_work_order_capture(
         session,
         organization_id=binding.organization_id,
         site_id=binding.site_id,
+        camera_ids=dispatch_camera_ids,
     )
-    if capture is None or capture.frame is None or frame_is_stale(capture.frame):
+    if capture is None:
         _reply_messages_if_possible(settings, event, no_image)
         return
     image_bytes = storage.read(capture.frame.storage_key) if storage is not None else None
@@ -1056,7 +1082,11 @@ def _reply_dispatch_ticket(
         _reply_messages_if_possible(settings, event, no_image)
         return
     try:
-        cropped = crop_dispatch_ticket_png(image_bytes)
+        cropped = crop_dispatch_ticket_png(
+            image_bytes,
+            roi=capture.work_order_roi,
+            frame_size=capture.frame_size,
+        )
     except DispatchTicketCropError:
         _reply_messages_if_possible(settings, event, no_image)
         return
@@ -1098,15 +1128,19 @@ def _reply_rich_menu_action(
         layout = load_floorplan_layout(binding.site_slug)
         _reply_messages_if_possible(settings, event, [build_machine_list_message(layout)])
         return
-    if action == "gauges":
-        layout = load_floorplan_layout(binding.site_slug)
-        gauges_by_machine = build_site_gauge_views(session, layout=layout, binding=binding)
-        _reply_messages_if_possible(settings, event, [build_gauges_message(gauges_by_machine, layout)])
+    if action in {"gauges", "hmi_screen"}:
+        _reply_hmi_screen(session, settings, event, binding)
         return
     if action == "daily_incidents":
         _reply_daily_incidents(session, settings, event, binding)
         return
-    if action in {"project_progress", "people_portal", "official_site", "contact_us"}:
+    if action in {"people_portal", "machine_people"}:
+        _reply_machine_people(session, settings, event, binding)
+        return
+    if action == "contact_us":
+        _reply_messages_if_possible(settings, event, [build_text_message("聯絡我們：4wallaitech@gmail.com")])
+        return
+    if action in {"project_progress", "official_site"}:
         _reply_navigation_action(settings, event, action)
         return
     _reply_messages_if_possible(settings, event, [build_help_message()])
@@ -1121,26 +1155,12 @@ def _reply_navigation_action(settings, event: dict, action: str) -> None:
             "/factory-twin",
             "",
         ),
-        "people_portal": (
-            "找人",
-            "為保護現場人員隱私，LINE 不會顯示人數、位置或身分。請登入 4WALL 查看你有權限的人員資訊。",
-            "登入 4WALL 查看",
-            "/factory-twin",
-            "",
-        ),
         "official_site": (
             "4WALL 官方網站",
             "查看 4WALL 的產品、工廠數位分身與最新服務資訊。",
             "前往官網",
             "/official",
             "",
-        ),
-        "contact_us": (
-            "聯絡 4WALL",
-            "前往官方網站的聯絡區，取得最新聯絡方式。",
-            "聯絡我們",
-            "/official",
-            "contact",
         ),
     }
     title, body, button_label, path, fragment = navigation[action]
@@ -1201,7 +1221,17 @@ def _reply_machine_detail(
     if machine is None:
         _reply_messages_if_possible(settings, event, [build_text_message("找不到指定機台。")])
         return
-    detail = build_machine_detail_view(session, storage, layout=layout, binding=binding, machine=machine)
+    if not machine.line_enabled:
+        _reply_messages_if_possible(settings, event, [build_text_message(f"{machine.label} 尚未開通。")])
+        return
+    detail = build_machine_detail_view(
+        session,
+        storage,
+        layout=layout,
+        binding=binding,
+        machine=machine,
+        include_legacy_gauges=False,
+    )
     if detail is None:
         _reply_messages_if_possible(settings, event, [build_text_message("此 LINE 對話的場域不存在或與廠區圖不一致。")])
         return
@@ -1214,6 +1244,52 @@ def _reply_machine_detail(
         focus=f"machine:{machine.id}",
     )
     _reply_messages_if_possible(settings, event, [build_machine_detail_message(detail, liveview_url=liveview_url)])
+
+
+def _reply_hmi_screen(
+    session: Session,
+    settings,
+    event: dict,
+    binding: LineConversationScope,
+) -> None:
+    layout = load_floorplan_layout(binding.site_slug)
+    machine = next((item for item in layout.machines if item.line_enabled), None)
+    if machine is None:
+        _reply_messages_if_possible(settings, event, [build_text_message("HC600-01 尚未開通。")])
+        return
+    view = build_hmi_screen_view(session, layout=layout, binding=binding, machine=machine)
+    if view is None:
+        _reply_messages_if_possible(
+            settings,
+            event,
+            [build_text_message("HC600-01 目前沒有 3 分鐘內可確認的螢幕資訊。")],
+        )
+        return
+    _reply_messages_if_possible(settings, event, [build_hmi_screen_message(view)])
+
+
+def _reply_machine_people(
+    session: Session,
+    settings,
+    event: dict,
+    binding: LineConversationScope,
+) -> None:
+    layout = load_floorplan_layout(binding.site_slug)
+    machine = next((item for item in layout.machines if item.person_camera_matches and item.line_enabled), None)
+    if machine is None:
+        _reply_messages_if_possible(
+            settings,
+            event,
+            [build_text_message("HC600-01 機台附近目前沒有 60 秒內的新偵測資料。")],
+        )
+        return
+    count = latest_machine_people_count(session, layout=layout, binding=binding, machine=machine)
+    text = (
+        f"{machine.label} 機台附近目前偵測到 {count} 人。"
+        if count is not None
+        else f"{machine.label} 機台附近目前沒有 60 秒內的新偵測資料。"
+    )
+    _reply_messages_if_possible(settings, event, [build_text_message(text)])
 
 
 def _reply_daily_incidents(session: Session, settings, event: dict, binding: LineConversationScope) -> None:

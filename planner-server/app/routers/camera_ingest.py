@@ -156,7 +156,7 @@ class CameraOcrTextLineDto(BaseModel):
 class SubmitCameraOcrObservationDto(BaseModel):
     mode: Literal["temperature_monitor", "machine_monitor", "unknown"]
     modeConfidence: float = Field(ge=0, le=1)
-    source: Literal["live"] = "live"
+    source: Literal["live", "offline_file"] = "live"
     capturedAt: datetime
     frameId: str | None = Field(default=None, max_length=120)
     rawOcrLines: list[CameraOcrTextLineDto] = Field(default_factory=list, max_length=1000)
@@ -221,7 +221,7 @@ class CameraPersonDetectionDto(BaseModel):
 
 
 class SubmitCameraPersonObservationDto(BaseModel):
-    source: Literal["live"] = "live"
+    source: Literal["live", "offline_file"] = "live"
     capturedAt: datetime
     frameId: str | None = Field(default=None, max_length=120)
     imageWidth: int = Field(ge=1)
@@ -586,15 +586,38 @@ def submit_camera_ocr_observation(
     session: Session = Depends(get_session),
 ) -> CameraOcrObservationDto:
     frame_id = request.frameId.strip() if request.frameId else None
+    if request.source == "live" and not frame_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="ocr_frame_id_required")
+    frame: CameraFrame | None = None
     if frame_id:
         frame = _load_frame_for_device(session, camera, frame_id)
         frame_id = frame.id
+        if request.source == "live" and frame.upload_status != "uploaded":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ocr_frame_not_uploaded",
+            )
 
     raw_ocr_lines = normalize_traditional_chinese([line.model_dump() for line in request.rawOcrLines])
     structured_fields = normalize_traditional_chinese(request.structuredFields)
+    _validate_ocr_capture_regions(
+        structured_fields,
+        frame=frame,
+        required=request.source == "live",
+    )
     work_order_raw_text = normalize_traditional_chinese(request.workOrderRawText)
     gpt_summary = normalize_traditional_chinese(request.gptSummary)
     summary_error = normalize_traditional_chinese(request.summaryError)
+
+    captured_at = _as_utc(request.capturedAt)
+    if frame is not None:
+        frame_captured_at = _as_utc(frame.captured_at)
+        if abs((captured_at - frame_captured_at).total_seconds()) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ocr_captured_at_frame_mismatch",
+            )
+        captured_at = frame_captured_at
 
     observation = CameraOcrObservation(
         camera_id=camera.id,
@@ -604,7 +627,7 @@ def submit_camera_ocr_observation(
         mode=request.mode,
         mode_confidence=request.modeConfidence,
         source=request.source,
-        captured_at=_as_utc(request.capturedAt),
+        captured_at=captured_at,
         raw_ocr_lines_json=raw_ocr_lines,
         structured_fields_json=structured_fields,
         work_order_raw_text=work_order_raw_text,
@@ -653,20 +676,45 @@ def submit_camera_person_observation(
 ) -> CameraPersonObservationDto:
     _validate_person_observation_request(request)
     frame_id = request.frameId.strip() if request.frameId else None
+    if request.source == "live" and not frame_id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="person_frame_id_required")
+    frame: CameraFrame | None = None
     if frame_id:
         frame = _load_frame_for_device(session, camera, frame_id)
         frame_id = frame.id
+        if request.source == "live" and frame.upload_status != "uploaded":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="person_frame_not_uploaded",
+            )
+        if (
+            (frame.width is not None and frame.width != request.imageWidth)
+            or (frame.height is not None and frame.height != request.imageHeight)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="person_frame_size_mismatch",
+            )
 
     detection_payload = [detection.model_dump() for detection in request.detections]
     calibration_id = request.calibrationId.strip() if request.calibrationId else None
     detector_name = request.detectorName.strip() if request.detectorName else None
+    captured_at = _as_utc(request.capturedAt)
+    if frame is not None:
+        frame_captured_at = _as_utc(frame.captured_at)
+        if abs((captured_at - frame_captured_at).total_seconds()) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="person_captured_at_frame_mismatch",
+            )
+        captured_at = frame_captured_at
     observation = CameraPersonObservation(
         camera_id=camera.id,
         organization_id=camera.organization_id,
         site_id=camera.site_id,
         frame_id=frame_id,
         source=request.source,
-        captured_at=_as_utc(request.capturedAt),
+        captured_at=captured_at,
         image_width=request.imageWidth,
         image_height=request.imageHeight,
         calibration_id=calibration_id,
@@ -1016,8 +1064,8 @@ def _serialize_ocr_observation(observation: CameraOcrObservation) -> CameraOcrOb
         mode=observation.mode,
         modeConfidence=observation.mode_confidence,
         source=observation.source,
-        capturedAt=observation.captured_at,
-        receivedAt=observation.created_at,
+        capturedAt=_as_utc(observation.captured_at),
+        receivedAt=_as_utc(observation.created_at),
         rawOcrLines=observation.raw_ocr_lines_json,
         structuredFields=observation.structured_fields_json,
         workOrderRawText=observation.work_order_raw_text,
@@ -1040,8 +1088,8 @@ def _serialize_person_observation(
         cameraId=observation.camera_id,
         frameId=observation.frame_id,
         source=observation.source,
-        capturedAt=observation.captured_at,
-        receivedAt=observation.created_at,
+        capturedAt=_as_utc(observation.captured_at),
+        receivedAt=_as_utc(observation.created_at),
         imageWidth=observation.image_width,
         imageHeight=observation.image_height,
         calibrationId=observation.calibration_id,
@@ -1292,6 +1340,72 @@ def _count_camera_frames(
 def _validate_frame_id(frame_id: str) -> None:
     if not FRAME_ID_PATTERN.fullmatch(frame_id):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid_frame_id")
+
+
+def _validate_ocr_capture_regions(
+    structured_fields: dict[str, Any],
+    *,
+    frame: CameraFrame | None,
+    required: bool,
+) -> None:
+    capture = structured_fields.get("captureRegions")
+    if capture is None and not required:
+        return
+    if not isinstance(capture, dict):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid_ocr_capture_regions",
+        )
+
+    calibration_id = capture.get("calibrationId")
+    frame_size = capture.get("frameSize")
+    if (
+        not isinstance(calibration_id, str)
+        or not calibration_id.strip()
+        or len(calibration_id) > 200
+        or not isinstance(frame_size, list)
+        or len(frame_size) != 2
+        or any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in frame_size)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid_ocr_capture_regions",
+        )
+    frame_width, frame_height = frame_size
+    if frame is not None and (
+        (frame.width is not None and frame.width != frame_width)
+        or (frame.height is not None and frame.height != frame_height)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="ocr_frame_size_mismatch",
+        )
+
+    for region_name in ("hmi", "workOrder"):
+        region = capture.get(region_name)
+        if not isinstance(region, dict):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="invalid_ocr_capture_regions",
+            )
+        alignment_status = region.get("alignmentStatus")
+        roi = region.get("roi")
+        if (
+            alignment_status not in {"ok", "unverified", "invalid", "disabled"}
+            or not isinstance(roi, list)
+            or len(roi) != 4
+            or any(isinstance(value, bool) or not isinstance(value, int) for value in roi)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="invalid_ocr_capture_regions",
+            )
+        x, y, width, height = roi
+        if x < 0 or y < 0 or width <= 0 or height <= 0 or x + width > frame_width or y + height > frame_height:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="ocr_capture_roi_out_of_bounds",
+            )
 
 
 def _extension_for_content_type(content_type: str) -> str:

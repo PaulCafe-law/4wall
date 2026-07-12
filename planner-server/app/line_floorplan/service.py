@@ -11,6 +11,8 @@ from app.models import (
     CameraDevice,
     CameraFrame,
     CameraGaugeReading,
+    CameraOcrObservation,
+    CameraPersonObservation,
     IncidentRecord,
     LineGroupBinding,
     Site,
@@ -23,6 +25,10 @@ from .layout import FloorplanLayout, MachineLayout, Point
 TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 CAMERA_HEARTBEAT_FRESH_SECONDS = 90
 GAUGE_FRESH_SECONDS = 15 * 60
+HMI_FRESH_SECONDS = 3 * 60
+PERSON_FRESH_SECONDS = 60
+HMI_MIN_CONFIDENCE = 0.55
+HMI_STRUCTURED_SUFFICIENT_FIELD_COUNT = 4
 MACHINE_STATUS_RED = "red"
 MACHINE_STATUS_YELLOW = "yellow"
 MACHINE_STATUS_GREEN = "green"
@@ -51,6 +57,28 @@ class GaugeReadingView:
 
 
 @dataclass(frozen=True)
+class HmiFieldView:
+    label: str
+    value: str
+    confidence: float
+
+
+@dataclass(frozen=True)
+class HmiSectionView:
+    label: str
+    fields: tuple[HmiFieldView, ...]
+
+
+@dataclass(frozen=True)
+class HmiScreenView:
+    machine_label: str
+    mode_label: str
+    sections: tuple[HmiSectionView, ...]
+    raw_lines: tuple[str, ...]
+    captured_at: datetime
+
+
+@dataclass(frozen=True)
 class MachineDetailView:
     machine: MachineLayout
     site: Site
@@ -58,6 +86,7 @@ class MachineDetailView:
     today_incident_count: int
     thumbnail_url: str | None
     thumbnail_ttl_seconds: int
+    hmi_screen: HmiScreenView | None
 
 
 @dataclass(frozen=True)
@@ -119,18 +148,23 @@ def build_machine_detail_view(
     binding: FloorplanBindingScope,
     machine: MachineLayout,
     now: datetime | None = None,
+    include_legacy_gauges: bool = True,
 ) -> MachineDetailView | None:
     site = get_site_for_binding(session, layout, binding)
     if site is None:
         return None
     now_utc = _as_utc(now or datetime.now(timezone.utc))
-    gauges = tuple(_gauge_view(session, binding, machine, gauge_id, now_utc) for gauge_id in machine.gauge_ids)
+    gauges = (
+        tuple(_gauge_view(session, binding, machine, gauge_id, now_utc) for gauge_id in machine.gauge_ids)
+        if include_legacy_gauges
+        else ()
+    )
     today_incident_count = sum(
         1
         for incident in _today_incidents(session, binding, now_utc)
         if _incident_matches_machine(incident, machine)
     )
-    thumbnail_url = _latest_machine_thumbnail_url(session, storage, binding, layout, machine, ttl_seconds=600)
+    thumbnail_url = _latest_machine_thumbnail_url(session, storage, binding, machine, ttl_seconds=600)
     return MachineDetailView(
         machine=machine,
         site=site,
@@ -138,7 +172,156 @@ def build_machine_detail_view(
         today_incident_count=today_incident_count,
         thumbnail_url=thumbnail_url,
         thumbnail_ttl_seconds=600,
+        hmi_screen=build_hmi_screen_view(
+            session,
+            layout=layout,
+            binding=binding,
+            machine=machine,
+            now=now_utc,
+        ),
     )
+
+
+def build_hmi_screen_view(
+    session: Session,
+    *,
+    layout: FloorplanLayout,
+    binding: FloorplanBindingScope,
+    machine: MachineLayout,
+    now: datetime | None = None,
+) -> HmiScreenView | None:
+    """Return only fresh, aligned, current-frame HMI evidence for one scoped machine."""
+
+    if get_site_for_binding(session, layout, binding) is None:
+        return None
+    camera_ids = _camera_ids_for_matches(session, binding, machine.camera_matches)
+    if not camera_ids:
+        return None
+    observation = session.exec(
+        select(CameraOcrObservation)
+        .where(
+            CameraOcrObservation.organization_id == binding.organization_id,
+            CameraOcrObservation.site_id == binding.site_id,
+            CameraOcrObservation.camera_id.in_(camera_ids),
+        )
+        .order_by(CameraOcrObservation.created_at.desc())
+    ).first()
+    if observation is None:
+        return None
+    if observation.source != "live" or not observation.frame_id:
+        return None
+    now_utc = _as_utc(now or datetime.now(timezone.utc))
+    created_at = _as_utc(observation.created_at)
+    captured_at = _as_utc(observation.captured_at)
+    if not _received_and_captured_are_fresh(
+        now_utc,
+        created_at=created_at,
+        captured_at=captured_at,
+        max_age_seconds=HMI_FRESH_SECONDS,
+    ):
+        return None
+    if not observation.frame_id:
+        return None
+    frame = session.get(CameraFrame, observation.frame_id)
+    if (
+        frame is None
+        or frame.camera_id != observation.camera_id
+        or frame.organization_id != binding.organization_id
+        or frame.site_id != binding.site_id
+        or frame.upload_status != "uploaded"
+        or abs((_as_utc(frame.captured_at) - captured_at).total_seconds()) > 1
+    ):
+        return None
+
+    structured = observation.structured_fields_json or {}
+    if not _hmi_capture_is_valid(structured, frame=frame):
+        return None
+    visibility = structured.get("screenVisibility") or {}
+    if not isinstance(visibility, dict) or visibility.get("status") != "lit":
+        return None
+
+    sections = _hmi_sections(observation.mode, structured)
+    structured_field_count = sum(len(section.fields) for section in sections)
+    raw_lines = (
+        _reliable_hmi_raw_lines(observation.raw_ocr_lines_json)
+        if structured_field_count < HMI_STRUCTURED_SUFFICIENT_FIELD_COUNT
+        else ()
+    )
+    if not sections and not raw_lines:
+        return None
+    screen = structured.get("screen")
+    mode = str((screen.get("kind") if isinstance(screen, dict) else None) or observation.mode)
+    return HmiScreenView(
+        machine_label=machine.label,
+        mode_label={
+            "temperature_monitor": "溫度監視",
+            "machine_monitor": "機器監視",
+        }.get(mode, "螢幕資訊"),
+        sections=sections,
+        raw_lines=raw_lines,
+        captured_at=captured_at,
+    )
+
+
+def latest_machine_people_count(
+    session: Session,
+    *,
+    layout: FloorplanLayout,
+    binding: FloorplanBindingScope,
+    machine: MachineLayout,
+    now: datetime | None = None,
+) -> int | None:
+    """Return the latest anonymous count, never detections, identity, or coordinates."""
+
+    if get_site_for_binding(session, layout, binding) is None:
+        return None
+    camera_ids = _camera_ids_for_matches(session, binding, machine.person_camera_matches)
+    if not camera_ids:
+        return None
+    observation = session.exec(
+        select(CameraPersonObservation)
+        .where(
+            CameraPersonObservation.organization_id == binding.organization_id,
+            CameraPersonObservation.site_id == binding.site_id,
+            CameraPersonObservation.camera_id.in_(camera_ids),
+        )
+        .order_by(CameraPersonObservation.created_at.desc())
+    ).first()
+    if observation is None:
+        return None
+    if observation.source != "live" or not observation.frame_id:
+        return None
+    frame = session.get(CameraFrame, observation.frame_id)
+    if (
+        frame is None
+        or frame.camera_id != observation.camera_id
+        or frame.organization_id != binding.organization_id
+        or frame.site_id != binding.site_id
+        or frame.upload_status != "uploaded"
+        or abs((_as_utc(frame.captured_at) - _as_utc(observation.captured_at)).total_seconds()) > 1
+        or (frame.width is not None and frame.width != observation.image_width)
+        or (frame.height is not None and frame.height != observation.image_height)
+    ):
+        return None
+    if not _received_and_captured_are_fresh(
+        _as_utc(now or datetime.now(timezone.utc)),
+        created_at=_as_utc(observation.created_at),
+        captured_at=_as_utc(observation.captured_at),
+        max_age_seconds=PERSON_FRESH_SECONDS,
+    ):
+        return None
+    return max(0, int(observation.person_count))
+
+
+def camera_ids_for_matches(
+    session: Session,
+    *,
+    binding: FloorplanBindingScope,
+    matches: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Resolve layout camera-name matchers inside the already-scoped site."""
+
+    return tuple(_camera_ids_for_matches(session, binding, matches))
 
 
 def build_site_gauge_views(
@@ -168,7 +351,6 @@ def build_floorplan_state_payload(
         return None
     now_utc = _as_utc(now or datetime.now(timezone.utc))
     snapshot = get_floorplan_snapshot(session, layout=layout, binding=binding, now=now_utc)
-    gauges_by_machine = build_site_gauge_views(session, layout=layout, binding=binding, now=now_utc)
     incidents = [
         incident
         for incident in _today_incidents(session, binding, now_utc)
@@ -193,7 +375,10 @@ def build_floorplan_state_payload(
                 "rect": _rect_payload(machine.rect),
                 "point": _point_payload(machine_center(machine)),
                 "status": snapshot.machine_statuses.get(machine.id, MACHINE_STATUS_GRAY),
-                "gauges": [_gauge_payload(gauge) for gauge in gauges_by_machine.get(machine.id, ())],
+                "lineEnabled": machine.line_enabled,
+                # Analog PRESS/FLOW readings remain available to internal
+                # camera pages, but never cross the LINE presentation boundary.
+                "gauges": [],
             }
             for machine in layout.machines
         ],
@@ -226,6 +411,8 @@ def build_machine_detail_payload(detail: MachineDetailView) -> dict[str, Any]:
         "thumbnailUrl": detail.thumbnail_url,
         "thumbnailTtlSeconds": detail.thumbnail_ttl_seconds if detail.thumbnail_url else 0,
         "thumbnailFallbackText": None if detail.thumbnail_url else "暫無可公開縮圖",
+        "lineEnabled": detail.machine.line_enabled,
+        "hmiScreen": _hmi_payload(detail.hmi_screen),
     }
 
 
@@ -261,6 +448,27 @@ def _gauge_payload(gauge: GaugeReadingView) -> dict[str, Any]:
         "minutesAgo": gauge.minutes_ago,
         "trend": gauge.trend,
         "stale": gauge.stale,
+    }
+
+
+def _hmi_payload(view: HmiScreenView | None) -> dict[str, Any] | None:
+    if view is None:
+        return None
+    return {
+        "machineLabel": view.machine_label,
+        "modeLabel": view.mode_label,
+        "capturedAt": _iso(view.captured_at),
+        "sections": [
+            {
+                "label": section.label,
+                "fields": [
+                    {"label": field.label, "value": field.value, "confidence": field.confidence}
+                    for field in section.fields
+                ],
+            }
+            for section in view.sections
+        ],
+        "rawLines": list(view.raw_lines),
     }
 
 
@@ -457,28 +665,186 @@ def _comparison_gauge_reading(
 
 
 def _machine_camera_ids(session: Session, binding: FloorplanBindingScope, machine: MachineLayout) -> list[str]:
-    if not machine.camera_matches:
+    return _camera_ids_for_matches(session, binding, machine.camera_matches)
+
+
+def _camera_ids_for_matches(
+    session: Session,
+    binding: FloorplanBindingScope,
+    matches: tuple[str, ...],
+) -> list[str]:
+    if not matches:
         return []
     cameras = _site_cameras(session, binding)
     ids: list[str] = []
-    for needle in machine.camera_matches:
+    for needle in matches:
         ids.extend(camera.id for camera in _matching_cameras(cameras, needle))
     return sorted(set(ids))
+
+
+def _hmi_capture_is_valid(structured: dict[str, Any], *, frame: CameraFrame) -> bool:
+    capture = structured.get("captureRegions") or {}
+    if not isinstance(capture, dict) or not str(capture.get("calibrationId") or "").strip():
+        return False
+    frame_size = capture.get("frameSize")
+    hmi = capture.get("hmi") or {}
+    if not isinstance(frame_size, list) or len(frame_size) != 2 or not isinstance(hmi, dict):
+        return False
+    try:
+        frame_width, frame_height = (int(value) for value in frame_size)
+        x, y, width, height = (int(value) for value in hmi.get("roi") or [])
+    except (TypeError, ValueError):
+        return False
+    return (
+        hmi.get("alignmentStatus") == "ok"
+        and frame_width > 0
+        and frame_height > 0
+        and (frame.width is None or frame.width == frame_width)
+        and (frame.height is None or frame.height == frame_height)
+        and x >= 0
+        and y >= 0
+        and width > 0
+        and height > 0
+        and x + width <= frame_width
+        and y + height <= frame_height
+    )
+
+
+def _received_and_captured_are_fresh(
+    now: datetime,
+    *,
+    created_at: datetime,
+    captured_at: datetime,
+    max_age_seconds: int,
+) -> bool:
+    received_age = (now - created_at).total_seconds()
+    captured_age = (now - captured_at).total_seconds()
+    return 0 <= received_age <= max_age_seconds and 0 <= captured_age <= max_age_seconds
+
+
+def _hmi_sections(mode: str, structured: dict[str, Any]) -> tuple[HmiSectionView, ...]:
+    screen_value = structured.get("screen")
+    screen = screen_value if isinstance(screen_value, dict) else {}
+    resolved_mode = str(screen.get("kind") or mode)
+    if resolved_mode == "temperature_monitor":
+        details_value = screen.get("temperatureCellReadings")
+        details = details_value if isinstance(details_value, dict) else {}
+        section_labels = {"setpoint": "設定", "current": "現在", "keepWarm": "保溫"}
+        slot_labels = {
+            "barrel1": "一段",
+            "barrel2": "二段",
+            "barrel3": "三段",
+            "barrel4": "四段",
+            "barrel5": "五段",
+            "oilTemperature": "油溫",
+        }
+        sections: list[HmiSectionView] = []
+        for section_id, section_label in section_labels.items():
+            cells_value = details.get(section_id)
+            cells = cells_value if isinstance(cells_value, dict) else {}
+            fields = tuple(
+                field
+                for slot_id in slot_labels
+                if (field := _hmi_field_view(cells.get(slot_id), fallback_label=slot_labels[slot_id])) is not None
+            )
+            if fields:
+                sections.append(HmiSectionView(label=section_label, fields=fields))
+        return tuple(sections)
+
+    fixed_fields = structured.get("fixedFields") or {}
+    if not isinstance(fixed_fields, dict):
+        return ()
+    allowed_fragments = (
+        "operationmode",
+        "shotstage",
+        "station",
+        "pressure",
+        "speed",
+        "timer",
+        "position",
+        "mold",
+        "screw",
+        "ejector",
+        "模式",
+        "射出",
+        "站",
+        "壓力",
+        "速度",
+        "計時",
+        "位置",
+        "開模",
+        "螺桿",
+        "頂針",
+    )
+    fields: list[HmiFieldView] = []
+    seen: set[tuple[str, str]] = set()
+    for field_id, payload in fixed_fields.items():
+        haystack = f"{field_id} {(payload or {}).get('label', '')}".lower() if isinstance(payload, dict) else str(field_id).lower()
+        if not any(fragment in haystack for fragment in allowed_fragments):
+            continue
+        field = _hmi_field_view(payload, fallback_label=str(field_id))
+        if field is None or (field.label, field.value) in seen:
+            continue
+        seen.add((field.label, field.value))
+        fields.append(field)
+    return (HmiSectionView(label="機器監視", fields=tuple(fields)),) if fields else ()
+
+
+def _hmi_field_view(payload: Any, *, fallback_label: str) -> HmiFieldView | None:
+    if not isinstance(payload, dict) or payload.get("status") != "ok":
+        return None
+    try:
+        confidence = float(payload.get("confidence"))
+    except (TypeError, ValueError):
+        return None
+    value = payload.get("value")
+    if confidence < HMI_MIN_CONFIDENCE or value is None or str(value).strip().lower() in {"", "unknown"}:
+        return None
+    unit = str(payload.get("unit") or "").strip()
+    if unit.lower() == "c":
+        unit = "°C"
+    value_text = f"{value} {unit}".strip()
+    return HmiFieldView(
+        label=str(payload.get("label") or fallback_label).strip(),
+        value=value_text,
+        confidence=confidence,
+    )
+
+
+def _reliable_hmi_raw_lines(lines: list[dict]) -> tuple[str, ...]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for line in lines or []:
+        if not isinstance(line, dict) or line.get("region") != "hmi":
+            continue
+        try:
+            confidence = float(line.get("confidence"))
+        except (TypeError, ValueError):
+            continue
+        text = str(line.get("text") or "").strip()
+        if confidence < HMI_MIN_CONFIDENCE or not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+        if len(output) == 8:
+            break
+    return tuple(output)
 
 
 def _latest_machine_thumbnail_url(
     session: Session,
     storage: ArtifactStorage,
     binding: FloorplanBindingScope,
-    layout: FloorplanLayout,
     machine: MachineLayout,
     *,
     ttl_seconds: int,
 ) -> str | None:
     cameras = _site_cameras(session, binding)
-    needles = list(machine.camera_matches)
-    needles.extend(camera.name_contains for camera in layout.cameras if camera.machine_id == machine.id)
-    matched_ids = sorted({camera.id for needle in needles for camera in _matching_cameras(cameras, needle)})
+    # Only the machine's explicitly approved detail cameras may supply a hero.
+    # Layout overview/person cameras are intentionally excluded.
+    matched_ids = sorted(
+        {camera.id for needle in machine.camera_matches for camera in _matching_cameras(cameras, needle)}
+    )
     if not matched_ids:
         return None
     frame = session.exec(

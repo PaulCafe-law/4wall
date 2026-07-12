@@ -77,6 +77,8 @@ class MachineLayout:
     rect: Rect
     gauge_ids: tuple[str, ...]
     camera_matches: tuple[str, ...]
+    line_enabled: bool = True
+    person_camera_matches: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -171,6 +173,8 @@ def _parse_layout(data: dict[str, Any]) -> FloorplanLayout:
             rect=Rect.from_json(item["rect"]),
             gauge_ids=tuple(str(value) for value in item.get("gaugeIds") or []),
             camera_matches=tuple(str(value) for value in item.get("cameraMatches") or []),
+            line_enabled=bool(item.get("lineEnabled", True)),
+            person_camera_matches=tuple(str(value) for value in item.get("personCameraMatches") or []),
         )
         for item in data.get("machines") or []
     )
