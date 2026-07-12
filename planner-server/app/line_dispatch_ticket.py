@@ -78,6 +78,38 @@ def find_latest_work_order_capture(
     )
 
 
+def find_latest_line_crop_capture(
+    session: Session,
+    *,
+    organization_id: str,
+    site_id: str,
+    camera_ids: tuple[str, ...] | None = None,
+    now: datetime | None = None,
+) -> WorkOrderCapture | None:
+    """Return the newest fresh LINE crop frame without requiring successful OCR."""
+
+    if camera_ids is not None and not camera_ids:
+        return None
+    statement = select(CameraOcrObservation).where(
+        CameraOcrObservation.organization_id == organization_id,
+        CameraOcrObservation.site_id == site_id,
+    )
+    if camera_ids is not None:
+        statement = statement.where(CameraOcrObservation.camera_id.in_(camera_ids))
+    observation = session.exec(
+        statement.order_by(CameraOcrObservation.created_at.desc()).limit(1)
+    ).first()
+    return _capture_from_observation(
+        session,
+        observation,
+        organization_id=organization_id,
+        site_id=site_id,
+        camera_ids=camera_ids,
+        now=now,
+        require_work_order_alignment=False,
+    )
+
+
 def find_work_order_capture_for_frame(
     session: Session,
     *,
@@ -135,6 +167,40 @@ def find_work_order_capture_for_frame(
     )
 
 
+def find_line_crop_capture_for_frame(
+    session: Session,
+    *,
+    organization_id: str,
+    site_id: str,
+    frame_id: str,
+    camera_ids: tuple[str, ...] | None = None,
+    now: datetime | None = None,
+) -> WorkOrderCapture | None:
+    """Validate a URL-addressed LINE crop without requiring successful OCR."""
+
+    if not frame_id or (camera_ids is not None and not camera_ids):
+        return None
+    statement = select(CameraOcrObservation).where(
+        CameraOcrObservation.organization_id == organization_id,
+        CameraOcrObservation.site_id == site_id,
+        CameraOcrObservation.frame_id == frame_id,
+    )
+    if camera_ids is not None:
+        statement = statement.where(CameraOcrObservation.camera_id.in_(camera_ids))
+    observation = session.exec(
+        statement.order_by(CameraOcrObservation.created_at.desc()).limit(1)
+    ).first()
+    return _capture_from_observation(
+        session,
+        observation,
+        organization_id=organization_id,
+        site_id=site_id,
+        camera_ids=camera_ids,
+        now=now,
+        require_work_order_alignment=False,
+    )
+
+
 def _capture_from_observation(
     session: Session,
     observation: CameraOcrObservation | None,
@@ -143,6 +209,7 @@ def _capture_from_observation(
     site_id: str,
     camera_ids: tuple[str, ...] | None,
     now: datetime | None,
+    require_work_order_alignment: bool = True,
 ) -> WorkOrderCapture | None:
     if (
         observation is None
@@ -151,7 +218,10 @@ def _capture_from_observation(
         or not observation.frame_id
     ):
         return None
-    evidence = _validated_capture_evidence(observation.structured_fields_json or {})
+    evidence = _validated_capture_evidence(
+        observation.structured_fields_json or {},
+        require_work_order_alignment=require_work_order_alignment,
+    )
     if evidence is None:
         return None
     work_order_roi, hmi_roi, frame_size, calibration_id = evidence
@@ -263,12 +333,18 @@ def build_dispatch_ticket_summary(observation: CameraOcrObservation) -> str:
 
 def _validated_capture_evidence(
     structured_fields: dict[str, Any],
+    *,
+    require_work_order_alignment: bool = True,
 ) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int], tuple[int, int], str] | None:
     work_order = structured_fields.get("workOrder")
     regions = structured_fields.get("captureRegions")
-    if not isinstance(work_order, dict) or not isinstance(regions, dict):
+    if not isinstance(regions, dict):
         return None
-    if work_order.get("alignmentStatus") != "ok" or work_order.get("currentEvidence") is not True:
+    if require_work_order_alignment and (
+        not isinstance(work_order, dict)
+        or work_order.get("alignmentStatus") != "ok"
+        or work_order.get("currentEvidence") is not True
+    ):
         return None
     work_region = regions.get("workOrder")
     hmi_region = regions.get("hmi")
@@ -277,7 +353,7 @@ def _validated_capture_evidence(
     if (
         not isinstance(work_region, dict)
         or not isinstance(hmi_region, dict)
-        or work_region.get("alignmentStatus") != "ok"
+        or (require_work_order_alignment and work_region.get("alignmentStatus") != "ok")
         or not isinstance(calibration_id, str)
         or not calibration_id.strip()
         or not isinstance(frame_size_value, (list, tuple))

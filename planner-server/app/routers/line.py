@@ -41,8 +41,8 @@ from app.line_dispatch_ticket import (
     crop_dispatch_ticket_png,
     dispatch_ticket_storage_key,
     hmi_screen_storage_key,
-    find_latest_work_order_capture,
-    find_work_order_capture_for_frame,
+    find_latest_line_crop_capture,
+    find_line_crop_capture_for_frame,
 )
 from app.line_floorplan.layout import (
     FloorplanLayoutError,
@@ -284,7 +284,7 @@ def get_line_dispatch_ticket_image(
         if dispatch_machine is not None
         else ()
     )
-    capture = find_work_order_capture_for_frame(
+    capture = find_line_crop_capture_for_frame(
         session,
         organization_id=binding.organization_id,
         site_id=binding.site_id,
@@ -334,7 +334,7 @@ def get_line_hmi_screen_image(
         if machine is not None
         else ()
     )
-    capture = find_work_order_capture_for_frame(
+    capture = find_line_crop_capture_for_frame(
         session,
         organization_id=binding.organization_id,
         site_id=binding.site_id,
@@ -1110,7 +1110,7 @@ def _reply_dispatch_ticket(
         if dispatch_machine is not None
         else ()
     )
-    capture = find_latest_work_order_capture(
+    capture = find_latest_line_crop_capture(
         session,
         organization_id=binding.organization_id,
         site_id=binding.site_id,
@@ -1257,7 +1257,7 @@ def _reply_machine_detail(
         _reply_messages_if_possible(settings, event, [build_text_message(f"{machine.label} 尚未開通。")])
         return
     dispatch_camera_ids = camera_ids_for_matches(session, binding=binding, matches=machine.camera_matches)
-    capture = find_latest_work_order_capture(
+    capture = find_latest_line_crop_capture(
         session,
         organization_id=binding.organization_id,
         site_id=binding.site_id,

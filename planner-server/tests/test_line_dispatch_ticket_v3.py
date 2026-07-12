@@ -9,6 +9,7 @@ from PIL import Image
 from app.line_dispatch_ticket import (
     DispatchTicketCropError,
     crop_dispatch_ticket_png,
+    find_latest_line_crop_capture,
     find_latest_work_order_capture,
 )
 from app.models import CameraDevice, CameraFrame, CameraOcrObservation
@@ -202,6 +203,30 @@ def test_capture_rejects_invalid_alignment_and_out_of_bounds_roi(client, session
             assert find_latest_work_order_capture(
                 session, organization_id=org.id, site_id=site.id, now=now
             ) is None
+
+
+def test_line_crop_capture_accepts_invalid_ocr_alignment_but_keeps_roi_validation(client, session_factory) -> None:
+    now = datetime.now(timezone.utc)
+    with session_factory() as session:
+        org, site, camera = _scope(session)
+        frame = _frame(session, camera=camera, org=org, site=site, frame_id="frame-line-direct", at=now)
+        _observation(
+            session,
+            camera=camera,
+            org=org,
+            site=site,
+            frame_id=frame.id,
+            at=now,
+            structured=_evidence(aligned=False),
+        )
+        session.commit()
+
+        capture = find_latest_line_crop_capture(session, organization_id=org.id, site_id=site.id, now=now)
+
+    assert capture is not None
+    assert capture.frame.id == "frame-line-direct"
+    assert capture.work_order_roi == (2, 1, 3, 2)
+    assert capture.hmi_roi == (0, 0, 1, 1)
 
 
 def test_crop_uses_exact_pixel_roi_content() -> None:
