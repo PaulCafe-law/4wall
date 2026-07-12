@@ -1193,6 +1193,62 @@ def test_line_crop_endpoints_keep_issued_images_available_across_freshness_bound
     assert Image.open(BytesIO(hmi_response.content)).size == (225, 162)
 
 
+def test_line_crop_endpoints_remain_available_for_seven_days_without_extending_floorplan_token(test_settings) -> None:
+    settings = _line_settings(test_settings)
+    dispatch_crop = BytesIO()
+    hmi_crop = BytesIO()
+    Image.new("RGB", (275, 168), color=(220, 220, 220)).save(dispatch_crop, format="PNG")
+    Image.new("RGB", (225, 162), color=(80, 100, 120)).save(hmi_crop, format="PNG")
+    storage = _CroppableStorage(
+        {
+            "line-dispatch-tickets/frame-latest.png": dispatch_crop.getvalue(),
+            "line-hmi-screens/frame-latest.png": hmi_crop.getvalue(),
+        }
+    )
+    app = build_app(settings=settings, artifact_storage=storage)
+    token_issue_time = datetime.now(timezone.utc) - timedelta(days=2)
+    captured_at = token_issue_time - timedelta(seconds=30)
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _seed_work_order_observation(app)
+        with app.state.session_factory() as session:
+            observation = session.exec(
+                select(CameraOcrObservation).where(CameraOcrObservation.frame_id == "frame-latest")
+            ).first()
+            frame = session.get(CameraFrame, "frame-latest")
+            assert observation is not None
+            assert frame is not None
+            observation.captured_at = captured_at
+            observation.created_at = token_issue_time
+            frame.captured_at = captured_at
+            session.add(observation)
+            session.add(frame)
+            session.commit()
+        token = create_floorplan_render_token(
+            settings,
+            site_slug="jingcheng",
+            group_id=BOUND_GROUP_ID,
+            now=token_issue_time,
+        )
+        dispatch_response = client.get(f"/v1/line/dispatch-ticket/jingcheng/{token}/frame-latest")
+        hmi_response = client.get(f"/v1/line/hmi-screen/jingcheng/{token}/frame-latest")
+        floorplan_response = client.get(f"/v1/line/floorplan/jingcheng/{token}/1040")
+        expired_crop_token = create_floorplan_render_token(
+            settings,
+            site_slug="jingcheng",
+            group_id=BOUND_GROUP_ID,
+            now=datetime.now(timezone.utc) - timedelta(days=8),
+        )
+        expired_crop_response = client.get(
+            f"/v1/line/dispatch-ticket/jingcheng/{expired_crop_token}/frame-latest"
+        )
+
+    assert dispatch_response.status_code == 200, dispatch_response.text
+    assert hmi_response.status_code == 200, hmi_response.text
+    assert floorplan_response.status_code == 403
+    assert expired_crop_response.status_code == 403
+
+
 def test_dispatch_ticket_endpoint_keeps_requested_fresh_crop_after_newer_valid_frame(test_settings) -> None:
     settings = _line_settings(test_settings)
     crop = BytesIO()

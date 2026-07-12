@@ -77,6 +77,7 @@ from app.line_floorplan.service import (
 )
 from app.line_floorplan.tokens import (
     FloorplanTokenError,
+    LINE_CROP_TOKEN_TTL_SECONDS,
     create_floorplan_render_token,
     verify_floorplan_liveview_token,
     verify_floorplan_render_token,
@@ -268,7 +269,12 @@ def get_line_dispatch_ticket_image(
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> Response:
     try:
-        token_payload = verify_floorplan_render_token(settings, site_slug=site_slug, token=render_token)
+        token_payload = verify_floorplan_render_token(
+            settings,
+            site_slug=site_slug,
+            token=render_token,
+            ttl_seconds=LINE_CROP_TOKEN_TTL_SECONDS,
+        )
     except FloorplanTokenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     rate_limiter.check(
@@ -319,7 +325,12 @@ def get_line_hmi_screen_image(
     rate_limiter: RateLimiter = Depends(get_rate_limiter),
 ) -> Response:
     try:
-        token_payload = verify_floorplan_render_token(settings, site_slug=site_slug, token=render_token)
+        token_payload = verify_floorplan_render_token(
+            settings,
+            site_slug=site_slug,
+            token=render_token,
+            ttl_seconds=LINE_CROP_TOKEN_TTL_SECONDS,
+        )
     except FloorplanTokenError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     rate_limiter.check(
