@@ -54,11 +54,14 @@ from app.line_floorplan.messages import (
     build_gauges_message,
     build_help_message,
     build_image_message,
+    build_intent_clarification_message,
     build_liveview_button_message,
     build_machine_detail_message,
     build_machine_list_message,
+    build_navigation_message,
     build_text_message,
 )
+from app.line_intent import parse_line_intent, resolve_machine_candidate, safe_line_navigation_url
 from app.line_floorplan.render import render_floorplan_png
 from app.line_floorplan.service import (
     build_floorplan_state_payload,
@@ -112,7 +115,16 @@ LINE_ACCOUNT_LINK_DESTINATION_RATE_LIMIT = RateLimitRule(max_attempts=30, window
 LINE_WEBHOOK_MAX_BODY_BYTES = 1024 * 1024
 DISPATCH_TICKET_NO_IMAGE_TEXT = "目前沒有新的派工單畫面"
 FLOORPLAN_STATE_CACHE_SECONDS = 5
-RICH_MENU_ACTIONS = {"floorplan", "machines", "gauges", "daily_incidents"}
+RICH_MENU_ACTIONS = {
+    "floorplan",
+    "machines",
+    "gauges",
+    "daily_incidents",
+    "project_progress",
+    "people_portal",
+    "official_site",
+    "contact_us",
+}
 INCIDENT_POSTBACK_ACTIONS = {
     "confirm_incident",
     "mark_false_positive",
@@ -882,12 +894,48 @@ def _handle_message_event(
         destination_id=destination_id,
     ):
         return
-    action = _text_action(text)
-    if action == "machine_detail":
-        _reply_machine_detail(session, storage, settings, event, binding, _machine_id_from_text(text))
+    natural_language_enabled = (
+        settings.line_natural_language_enabled
+        or binding.organization_id in settings.line_natural_language_canary_org_ids
+    )
+    parsed_intent = parse_line_intent(text, natural_language_enabled=natural_language_enabled)
+    logger.info(
+        "line_intent_resolved",
+        extra={
+            "line_intent": parsed_intent.intent or "none",
+            "line_intent_reason": parsed_intent.reason,
+            "line_intent_match_count": len(parsed_intent.matched_intents),
+            "line_site_slug": binding.site_slug,
+            "line_source_type": binding.source_type,
+        },
+    )
+    if parsed_intent.intent == "machine_detail":
+        layout = load_floorplan_layout(binding.site_slug)
+        resolution = resolve_machine_candidate(layout, parsed_intent.machine_candidate or "")
+        if resolution.status == "resolved" and resolution.machine is not None:
+            _reply_machine_detail(session, storage, settings, event, binding, resolution.machine.id)
+        elif resolution.status == "ambiguous":
+            _reply_messages_if_possible(
+                settings,
+                event,
+                [build_text_message("找到多台相符機台，請從機台清單選擇。"), build_machine_list_message(layout)],
+            )
+        else:
+            _reply_messages_if_possible(
+                settings,
+                event,
+                [build_text_message("找不到這台機台，請從此場域的機台清單選擇。"), build_machine_list_message(layout)],
+            )
         return
-    if action is not None:
-        _reply_rich_menu_action(session, settings, event, binding, action)
+    if parsed_intent.intent is not None:
+        _reply_rich_menu_action(session, settings, event, binding, parsed_intent.intent)
+        return
+    if parsed_intent.reason == "ambiguous":
+        _reply_messages_if_possible(
+            settings,
+            event,
+            [build_intent_clarification_message(parsed_intent.matched_intents)],
+        )
         return
     # LINE is an external trust boundary. Keep unmatched text on deterministic
     # command/help handling and never forward it to the local Codex CLI worker,
@@ -1058,7 +1106,57 @@ def _reply_rich_menu_action(
     if action == "daily_incidents":
         _reply_daily_incidents(session, settings, event, binding)
         return
+    if action in {"project_progress", "people_portal", "official_site", "contact_us"}:
+        _reply_navigation_action(settings, event, action)
+        return
     _reply_messages_if_possible(settings, event, [build_help_message()])
+
+
+def _reply_navigation_action(settings, event: dict, action: str) -> None:
+    navigation = {
+        "project_progress": (
+            "檢視工程進度",
+            "請登入 4WALL，在即時工廠頁查看你有權限的工程與現場進度。",
+            "開啟工程進度",
+            "/factory-twin",
+            "",
+        ),
+        "people_portal": (
+            "找人",
+            "為保護現場人員隱私，LINE 不會顯示人數、位置或身分。請登入 4WALL 查看你有權限的人員資訊。",
+            "登入 4WALL 查看",
+            "/factory-twin",
+            "",
+        ),
+        "official_site": (
+            "4WALL 官方網站",
+            "查看 4WALL 的產品、工廠數位分身與最新服務資訊。",
+            "前往官網",
+            "/official",
+            "",
+        ),
+        "contact_us": (
+            "聯絡 4WALL",
+            "前往官方網站的聯絡區，取得最新聯絡方式。",
+            "聯絡我們",
+            "/official",
+            "contact",
+        ),
+    }
+    title, body, button_label, path, fragment = navigation[action]
+    uri = safe_line_navigation_url(settings, path, fragment=fragment)
+    _reply_messages_if_possible(
+        settings,
+        event,
+        [
+            build_navigation_message(
+                title=title,
+                body=body,
+                button_label=button_label,
+                uri=uri,
+            )
+        ],
+    )
 
 
 def _reply_floorplan(session: Session, settings, event: dict, binding: LineConversationScope) -> None:
@@ -1370,24 +1468,6 @@ def _write_actor_or_reply(
         [build_text_message("你的 4WALL 帳號沒有此場域的寫入權限，未執行變更。")],
     )
     return False
-
-
-def _text_action(text: str) -> str | None:
-    if text in {"廠區圖", "floorplan"}:
-        return "floorplan"
-    if text in {"機台", "machines"}:
-        return "machines"
-    if text in {"儀表", "gauges"}:
-        return "gauges"
-    if text in {"異常", "今日異常", "daily_incidents"}:
-        return "daily_incidents"
-    if text.startswith("機台 "):
-        return "machine_detail"
-    return None
-
-
-def _machine_id_from_text(text: str) -> str:
-    return text.split(None, 1)[1].strip() if len(text.split(None, 1)) == 2 else ""
 
 
 def _line_actor_name(event: dict) -> str:

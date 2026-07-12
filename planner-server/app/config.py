@@ -69,6 +69,9 @@ class Settings:
     line_account_linking_enabled: bool = False
     line_account_link_encryption_keys: tuple[str, ...] = ()
     line_destination_id: str | None = None
+    line_natural_language_enabled: bool = False
+    line_natural_language_canary_org_ids: tuple[str, ...] = ()
+    line_navigation_allowed_hosts: tuple[str, ...] = ()
     web_signup_rate_limit_attempts: int = 5
     web_signup_rate_limit_window_seconds: int = 300
     codex_cli_path: str = "codex"
@@ -152,6 +155,9 @@ class Settings:
             line_account_linking_enabled=_env_bool("LINE_ACCOUNT_LINKING_ENABLED", False),
             line_account_link_encryption_keys=_env_csv("LINE_ACCOUNT_LINK_ENCRYPTION_KEYS"),
             line_destination_id=_env_str("LINE_DESTINATION_ID"),
+            line_natural_language_enabled=_env_bool("LINE_NATURAL_LANGUAGE_ENABLED", False),
+            line_natural_language_canary_org_ids=_env_csv("LINE_NATURAL_LANGUAGE_CANARY_ORG_IDS"),
+            line_navigation_allowed_hosts=_env_csv("LINE_NAVIGATION_ALLOWED_HOSTS"),
             codex_cli_path=_env_str("CODEX_CLI_PATH", "codex") or "codex",
             codex_text_model=_env_str("CODEX_TEXT_MODEL", "gpt-5.5") or "gpt-5.5",
             codex_text_timeout_seconds=_env_int("CODEX_TEXT_TIMEOUT_SECONDS", 600),
