@@ -24,6 +24,7 @@ LINE_DEFAULT_RICH_MENU_URL = "https://api.line.me/v2/bot/user/all/richmenu"
 LINE_BOT_INFO_URL = "https://api.line.me/v2/bot/info"
 EXPECTED_BOT_DISPLAY_NAME = "4wallaitech"
 EXPECTED_BOT_BASIC_ID = "@941wjxxe"
+DEFAULT_RICH_MENU_OWNED_BY_OTHER_CHANNEL = "the richmenu is owned by another channel"
 
 
 def parse_args() -> argparse.Namespace:
@@ -152,6 +153,10 @@ def _get_default_rich_menu_id(token: str) -> str | None:
     )
     if response.status_code == 404:
         return None
+    if response.status_code == 403:
+        message = str(response.json().get("message") or "")
+        if message == DEFAULT_RICH_MENU_OWNED_BY_OTHER_CHANNEL:
+            return None
     response.raise_for_status()
     return str(response.json().get("richMenuId") or "") or None
 

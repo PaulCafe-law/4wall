@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from io import BytesIO
 
+import httpx
 from PIL import Image
 import pytest
 
@@ -13,7 +14,11 @@ from app.line_intent import (
     resolve_machine_candidate,
     safe_line_navigation_url,
 )
-from scripts.line_setup_rich_menu import _render_rich_menu_image, build_rich_menu_payload
+from scripts.line_setup_rich_menu import (
+    _get_default_rich_menu_id,
+    _render_rich_menu_image,
+    build_rich_menu_payload,
+)
 
 
 @pytest.mark.parametrize(
@@ -154,3 +159,34 @@ def test_six_cell_rich_menu_payload_and_image() -> None:
     image = Image.open(BytesIO(_render_rich_menu_image()))
     assert image.size == (2500, 1686)
     assert image.format == "PNG"
+
+
+def test_manager_owned_default_rich_menu_is_a_valid_previous_state(monkeypatch) -> None:
+    request = httpx.Request("GET", "https://api.line.me/v2/bot/user/all/richmenu")
+
+    def manager_owned_default(*args, **kwargs) -> httpx.Response:
+        return httpx.Response(
+            403,
+            json={"message": "the richmenu is owned by another channel", "details": []},
+            request=request,
+        )
+
+    monkeypatch.setattr("scripts.line_setup_rich_menu.httpx.get", manager_owned_default)
+
+    assert _get_default_rich_menu_id("token") is None
+
+
+def test_unexpected_default_rich_menu_forbidden_still_fails_closed(monkeypatch) -> None:
+    request = httpx.Request("GET", "https://api.line.me/v2/bot/user/all/richmenu")
+
+    def unexpected_forbidden(*args, **kwargs) -> httpx.Response:
+        return httpx.Response(
+            403,
+            json={"message": "forbidden", "details": []},
+            request=request,
+        )
+
+    monkeypatch.setattr("scripts.line_setup_rich_menu.httpx.get", unexpected_forbidden)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        _get_default_rich_menu_id("token")
