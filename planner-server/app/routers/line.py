@@ -290,6 +290,7 @@ def get_line_dispatch_ticket_image(
         site_id=binding.site_id,
         frame_id=frame_id,
         camera_ids=dispatch_camera_ids,
+        now=token_payload.issued_at,
     )
     if capture is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="dispatch_ticket_not_found")
@@ -340,6 +341,7 @@ def get_line_hmi_screen_image(
         site_id=binding.site_id,
         frame_id=frame_id,
         camera_ids=camera_ids,
+        now=token_payload.issued_at,
     )
     if capture is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="hmi_screen_not_found")
