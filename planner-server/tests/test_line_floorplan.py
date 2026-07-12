@@ -776,45 +776,63 @@ def test_navigation_action_fails_closed_for_non_allowlisted_origin(test_settings
     assert "目前無法安全開啟連結" in json.dumps(message, ensure_ascii=False)
 
 
-def test_text_machine_detail_uses_presigned_thumbnail(test_settings, monkeypatch) -> None:
+def test_text_machine_detail_returns_current_work_order_and_hmi_crops(test_settings, monkeypatch) -> None:
     settings = _line_settings(test_settings, app_origin="https://app.example.test")
-    storage = FakeStorage(get_url="https://signed.example.test/thumb.jpg")
+    storage = _CroppableStorage({"camera-frames/org/camera/frame.jpg": _machine_regions_jpeg()})
     replies = _capture_replies(monkeypatch)
     app = build_app(settings=settings, artifact_storage=storage)
     with TestClient(app) as client:
         _seed_scope(app)
-        _seed_hmi_observation(app)
+        _seed_work_order_observation(app)
         response = _post_line_events(client, settings, [_message_event("機台 m-hc600")])
+        messages = replies[0]["messages"]
+        dispatch_path = messages[1]["originalContentUrl"].removeprefix("https://api.example.test")
+        hmi_path = messages[3]["originalContentUrl"].removeprefix("https://api.example.test")
+        dispatch_image = client.get(dispatch_path)
+        hmi_image = client.get(hmi_path)
 
     assert response.status_code == 200, response.text
-    assert storage.get_url_calls == [{"key": "camera-frames/org/camera/frame.jpg", "expires_in_seconds": 600}]
-    message = replies[0]["messages"][0]
-    assert message["type"] == "flex"
-    assert message["contents"]["hero"]["url"] == "https://signed.example.test/thumb.jpg"
-    dumped = json.dumps(message, ensure_ascii=False)
-    assert "射出壓力：88 Bar" in dumped
-    assert "PRESS" not in dumped
-    assert "FLOW" not in dumped
-    assert "今日異常" in dumped
+    assert messages[0] == {"type": "text", "text": "當下派工單"}
+    assert "/v1/line/dispatch-ticket/jingcheng/" in messages[1]["originalContentUrl"]
+    assert messages[2] == {"type": "text", "text": "當下 HMI 螢幕"}
+    assert "/v1/line/hmi-screen/jingcheng/" in messages[3]["originalContentUrl"]
+    dispatch_crop = Image.open(BytesIO(dispatch_image.content)).convert("RGB")
+    hmi_crop = Image.open(BytesIO(hmi_image.content)).convert("RGB")
+    assert dispatch_crop.size == (275, 168)
+    assert hmi_crop.size == (225, 162)
+    assert dispatch_crop.getpixel((100, 100))[1] > 240
+    assert hmi_crop.getpixel((100, 100))[2] > 240
+    assert storage.writes == [
+        "line-dispatch-tickets/frame-latest.png",
+        "line-hmi-screens/frame-latest.png",
+    ]
+    dumped = json.dumps(messages, ensure_ascii=False)
     assert "即時圖" not in dumped
-    assert "floorplan/jingcheng" not in dumped
+    assert "今日異常" not in dumped
 
 
-def test_text_machine_detail_appends_fresh_work_order_summary_without_liveview(test_settings, monkeypatch) -> None:
-    settings = _line_settings(test_settings, app_origin="https://app.example.test")
+def test_text_machine_detail_appends_overexposure_warning(test_settings, monkeypatch) -> None:
+    settings = _line_settings(test_settings)
+    storage = _CroppableStorage({"camera-frames/org/camera/frame.jpg": _machine_regions_jpeg()})
     replies = _capture_replies(monkeypatch)
-    app = build_app(settings=settings, artifact_storage=FakeStorage())
+    app = build_app(settings=settings, artifact_storage=storage)
     with TestClient(app) as client:
         _seed_scope(app)
         _seed_work_order_observation(app)
+        with app.state.session_factory() as session:
+            observation = session.exec(
+                select(CameraOcrObservation).where(CameraOcrObservation.frame_id == "frame-latest")
+            ).first()
+            assert observation is not None
+            structured = dict(observation.structured_fields_json or {})
+            structured["screenVisibility"] = {"status": "overexposed", "confidence": 1.0}
+            observation.structured_fields_json = structured
+            session.add(observation)
+            session.commit()
         response = _post_line_events(client, settings, [_message_event("機台 m-hc600")])
 
     assert response.status_code == 200, response.text
-    dumped = json.dumps(replies[0]["messages"], ensure_ascii=False)
-    assert "派工單資訊" in dumped
-    assert "機台:HC600" in dumped
-    assert "總計:1000 PCS" in dumped
-    assert "即時圖" not in dumped
+    assert replies[0]["messages"][-1] == {"type": "text", "text": "螢幕現在過曝。"}
 
 
 def test_overexposed_hmi_replies_explicitly(test_settings, monkeypatch) -> None:
@@ -830,7 +848,7 @@ def test_overexposed_hmi_replies_explicitly(test_settings, monkeypatch) -> None:
     assert replies[0]["messages"] == [{"type": "text", "text": "螢幕現在過曝。"}]
 
 
-def test_text_machine_detail_degrades_without_public_thumbnail(test_settings, monkeypatch) -> None:
+def test_text_machine_detail_fails_closed_without_current_work_order(test_settings, monkeypatch) -> None:
     settings = _line_settings(test_settings)
     replies = _capture_replies(monkeypatch)
     app = build_app(settings=settings, artifact_storage=FakeStorage(get_url=None))
@@ -839,9 +857,9 @@ def test_text_machine_detail_degrades_without_public_thumbnail(test_settings, mo
         response = _post_line_events(client, settings, [_message_event("機台 m-hc600")])
 
     assert response.status_code == 200, response.text
-    message = replies[0]["messages"][0]
-    assert "hero" not in message["contents"]
-    assert "暫無可公開縮圖" in json.dumps(message, ensure_ascii=False)
+    assert replies[0]["messages"] == [
+        {"type": "text", "text": "目前無法確認派工單畫面，請檢查攝影機位置並重新校正。"}
+    ]
 
 
 class _CroppableStorage(FakeStorage):
@@ -864,6 +882,19 @@ class _CroppableStorage(FakeStorage):
 def _ticket_jpeg(width: int = 1280, height: int = 720) -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (width, height), color=(220, 220, 220)).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _machine_regions_jpeg() -> bytes:
+    image = Image.new("RGB", (1280, 720), color=(20, 20, 20))
+    for y in range(60, 228):
+        for x in range(450, 725):
+            image.putpixel((x, y), (0, 255, 0))
+    for y in range(275, 437):
+        for x in range(462, 687):
+            image.putpixel((x, y), (0, 0, 255))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
     return buffer.getvalue()
 
 

@@ -114,6 +114,7 @@ def test_capture_uses_observation_exact_frame_not_camera_newest(client, session_
     assert capture.frame.id == "frame-exact"
     assert capture.observation.frame_id == "frame-exact"
     assert capture.work_order_roi == (2, 1, 3, 2)
+    assert capture.hmi_roi == (0, 0, 1, 1)
 
 
 def test_capture_rejects_cross_camera_frame_and_stale_received_observation(client, session_factory) -> None:
