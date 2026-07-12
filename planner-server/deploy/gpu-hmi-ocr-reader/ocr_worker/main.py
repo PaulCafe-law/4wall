@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from dataclasses import replace
@@ -36,6 +37,7 @@ from .text_normalization import normalize_traditional_chinese
 
 
 TAIPEI = ZoneInfo("Asia/Taipei")
+OFFLINE_CALIBRATION_ID = "offline-file-uncalibrated"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -67,6 +69,7 @@ class HmiOcrRunner:
         self.temperature_history = {}
         self.work_order_history = {}
         self._last_frame_size: tuple[int, int] | None = None
+        self._last_frame_id: str | None = None
         if config.debug.save_crops:
             self.crop_dir.mkdir(parents=True, exist_ok=True)
             self.lit_sample_dir.mkdir(parents=True, exist_ok=True)
@@ -75,9 +78,21 @@ class HmiOcrRunner:
         backoff_sec = 1.0
         while True:
             try:
-                frame = capture_configured_frame(self.config.frame_source, self.config.root_dir)
-                result = self.process_frame(frame, frame_name="live")
-                print(json.dumps({"status": "ok", **result}, ensure_ascii=False))
+                captured = capture_configured_frame(self.config.frame_source, self.config.root_dir)
+                if captured.frame_id is not None and captured.frame_id == self._last_frame_id:
+                    print(json.dumps({"status": "skipped", "reason": "duplicate_frame", "frameId": captured.frame_id}))
+                    if once:
+                        break
+                    time.sleep(self.config.frame_source.interval_sec)
+                    continue
+                result = self.process_frame(
+                    captured.image,
+                    frame_name="live",
+                    frame_id=captured.frame_id,
+                    captured_at=captured.captured_at,
+                )
+                self._last_frame_id = captured.frame_id
+                print(json.dumps(_live_log_summary(result), ensure_ascii=False))
                 backoff_sec = 1.0
             except FrameSourceError as exc:
                 print(json.dumps({"status": "degraded", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
@@ -90,15 +105,23 @@ class HmiOcrRunner:
                 break
             time.sleep(self.config.frame_source.interval_sec)
 
-    def process_frame(self, frame, *, frame_name: str) -> dict[str, Any]:
-        captured_at = _now_iso()
+    def process_frame(
+        self,
+        frame,
+        *,
+        frame_name: str,
+        frame_id: str | None = None,
+        captured_at: str | None = None,
+    ) -> dict[str, Any]:
+        captured_at = captured_at or _now_iso()
         frame_height, frame_width = frame.shape[:2]
         frame_size = (frame_width, frame_height)
         reference_resolution = self.config.reference_resolution
         for warning in frame_size_warnings(self._last_frame_size, frame_size, reference_resolution):
             print(json.dumps({"status": "warning", **warning}, ensure_ascii=False), file=sys.stderr)
         self._last_frame_size = frame_size
-        hmi_crop = crop_roi(frame, resolve_roi(self.config.hmi.roi, frame_size, reference_resolution))
+        hmi_roi = resolve_roi(self.config.hmi.roi, frame_size, reference_resolution)
+        hmi_crop = crop_roi(frame, hmi_roi)
         screen_visibility = detect_screen_visibility(hmi_crop)
         if self.config.debug.save_crops:
             cv2.imwrite(str(self.crop_dir / f"{frame_name}-hmi-{int(time.time())}.jpg"), hmi_crop)
@@ -113,8 +136,9 @@ class HmiOcrRunner:
         if screen_visibility.status == "lit":
             hmi_lines = recognize_scaled(self.engine, hmi_crop, scale=3.0)
         work_order_lines = []
+        work_order_roi = resolve_roi(self.config.work_order.roi, frame_size, reference_resolution)
         if self.config.work_order.enabled:
-            work_order_crop = crop_roi(frame, resolve_roi(self.config.work_order.roi, frame_size, reference_resolution))
+            work_order_crop = crop_roi(frame, work_order_roi)
             if self.config.debug.save_crops:
                 cv2.imwrite(str(self.crop_dir / f"{frame_name}-work-order-{int(time.time())}.jpg"), work_order_crop)
                 _trim_directory(self.crop_dir, self.config.debug.rolling_keep)
@@ -190,7 +214,24 @@ class HmiOcrRunner:
                     lambda: self._save_adjudication_crop(work_order_crop, frame_name),
                 )
             structured_fields["workOrder"] = work_order_sheet
+        structured_fields["captureRegions"] = {
+            "calibrationId": self._calibration_id(),
+            "frameSize": [frame_width, frame_height],
+            "hmi": {
+                "roi": list(hmi_roi),
+                "alignmentStatus": "ok" if screen_visibility.status == "lit" and hmi_lines else "unverified",
+            },
+            "workOrder": {
+                "roi": list(work_order_roi),
+                "alignmentStatus": (
+                    structured_fields.get("workOrder", {}).get("alignmentStatus", "invalid")
+                    if self.config.work_order.enabled
+                    else "disabled"
+                ),
+            },
+        }
         observation = build_ocr_observation(
+            frame_id=frame_id,
             captured_at=captured_at,
             mode=mode_result.mode,
             mode_confidence=mode_result.confidence,
@@ -214,6 +255,14 @@ class HmiOcrRunner:
                     file=sys.stderr,
                 )
         return {"readings": readings, "ocrObservation": observation}
+
+    def _calibration_id(self) -> str:
+        calibration_id = (os.environ.get("HMI_OCR_CALIBRATION_ID") or "").strip()
+        if calibration_id:
+            return calibration_id
+        if self.config.frame_source.mode == "url":
+            raise FrameSourceError("missing HMI_OCR_CALIBRATION_ID for live frame source")
+        return OFFLINE_CALIBRATION_ID
 
     def _save_adjudication_crop(self, work_order_crop, frame_name: str) -> Path:
         """Persist the sheet crop for `codex exec -i`; called only when the
@@ -261,6 +310,7 @@ def recognize_scaled(engine: OcrEngine, image, *, scale: float) -> list[OcrTextL
 
 def build_ocr_observation(
     *,
+    frame_id: str | None = None,
     captured_at: str,
     mode: str,
     mode_confidence: float,
@@ -268,10 +318,10 @@ def build_ocr_observation(
     structured_fields: dict[str, Any],
     work_order_raw_text: str | None,
 ) -> dict[str, Any]:
-    return normalize_traditional_chinese({
+    payload = {
         "mode": mode,
         "modeConfidence": round(float(mode_confidence), 3),
-        "source": "live",
+        "source": "live" if frame_id is not None else "offline_file",
         "capturedAt": captured_at,
         "rawOcrLines": raw_lines,
         "structuredFields": structured_fields,
@@ -279,11 +329,29 @@ def build_ocr_observation(
         "gptSummary": {},
         "summaryStatus": "unknown",
         "summaryError": None,
-    })
+    }
+    if frame_id is not None:
+        payload["frameId"] = frame_id
+    return normalize_traditional_chinese(payload)
 
 
 def _now_iso() -> str:
     return datetime.now(TAIPEI).isoformat(timespec="seconds")
+
+
+def _live_log_summary(result: dict[str, Any]) -> dict[str, Any]:
+    observation = result.get("ocrObservation") or {}
+    structured = observation.get("structuredFields") or {}
+    work_order = structured.get("workOrder") or {}
+    return {
+        "status": "ok",
+        "frameId": observation.get("frameId"),
+        "capturedAt": observation.get("capturedAt"),
+        "mode": observation.get("mode"),
+        "readingCount": len(result.get("readings") or []),
+        "rawOcrLineCount": len(observation.get("rawOcrLines") or []),
+        "workOrderAlignmentStatus": work_order.get("alignmentStatus"),
+    }
 
 
 def _trim_directory(directory: Path, keep: int) -> None:

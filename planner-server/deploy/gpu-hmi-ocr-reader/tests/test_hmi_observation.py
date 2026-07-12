@@ -55,7 +55,11 @@ def test_classifies_machine_monitor_page() -> None:
 
 
 def test_builds_ocr_observation_payload_with_unknown_summary() -> None:
-    lines = [OcrTextLine(text="機器監視 壓力 0 Bar", confidence=0.9)]
+    lines = [
+        OcrTextLine(text="機器監視 站號 3", confidence=0.91),
+        OcrTextLine(text="射出四段 壓力 0 Bar 速度 0 計時 37.7", confidence=0.89),
+        OcrTextLine(text="操作 手動 停止 重切模 螺桿 0.5 mm", confidence=0.85),
+    ]
     mode = classify_hmi_mode(lines)
     structured = build_structured_fields(
         mode_result=mode,
@@ -73,11 +77,19 @@ def test_builds_ocr_observation_payload_with_unknown_summary() -> None:
         work_order_raw_text="HC600 FLJ2R02",
     )
 
-    assert payload["source"] == "live"
+    assert payload["source"] == "offline_file"
     assert payload["mode"] == "machine_monitor"
     assert payload["summaryStatus"] == "unknown"
     assert payload["rawOcrLines"][0]["region"] == "hmi"
     assert payload["structuredFields"]["screen"]["kind"] == "machine_monitor"
+    fixed = payload["structuredFields"]["fixedFields"]
+    assert fixed["operationMode"]["value"] == "手動"
+    assert fixed["shotStage"]["value"] == "四段"
+    assert fixed["station"]["value"] == "3"
+    assert fixed["pressureBar"]["value"] == 0
+    assert fixed["speedPercent"]["value"] == 0
+    assert fixed["timerSec"]["value"] == 37.7
+    assert fixed["screwPositionMm"]["value"] == 0.5
 
 
 def test_ocr_observation_payload_normalizes_human_text_to_traditional_chinese() -> None:

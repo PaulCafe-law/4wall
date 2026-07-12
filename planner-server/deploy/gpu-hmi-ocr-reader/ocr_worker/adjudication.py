@@ -22,6 +22,7 @@ per Taipei calendar day.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -52,8 +53,9 @@ def sheet_identity(sheet: dict[str, Any]) -> str:
     budget without new information.
     """
     fields = sheet.get("fields", {})
-    machine = fields.get("machineNo", {}).get("value", UNKNOWN)
-    mold = fields.get("moldNo", {}).get("value", UNKNOWN)
+    current = sheet.get("currentIdentity", {})
+    machine = current.get("machineNo", fields.get("machineNo", {}).get("value", UNKNOWN))
+    mold = current.get("moldNo", fields.get("moldNo", {}).get("value", UNKNOWN))
     return f"{machine}|{mold}"
 
 
@@ -149,13 +151,14 @@ class GptAdjudicator:
 
 
 def _bridge_payload(config: GptConfig, sheet: dict[str, Any], image_path: Path) -> dict[str, Any]:
+    current = sheet.get("currentIdentity", {})
     return {
         "model": config.summary_model,
         "imagePath": str(image_path),
         "template": sheet.get("template", ""),
         "identity": {
-            "machineNo": sheet["fields"]["machineNo"]["value"],
-            "moldNo": sheet["fields"]["moldNo"]["value"],
+            "machineNo": current.get("machineNo", sheet["fields"]["machineNo"]["value"]),
+            "moldNo": current.get("moldNo", sheet["fields"]["moldNo"]["value"]),
         },
         "rowLabels": dict(QUANTITY_ROW_SCHEMA),
         "triggers": sheet.get("adjudicationTriggers", []),
@@ -223,6 +226,8 @@ def _merge(
         for side, cell in row.items():
             path = f"quantities.{key}.{side}"
             leaf = sheet["quantities"][key][side]
+            if status == "cached" and not _leaf_supports_value(leaf, cell["value"]):
+                continue
             leaf["value"] = cell["value"]
             leaf["confidence"] = confidence
             leaf["source"] = ADJUDICATED_SOURCE
@@ -257,6 +262,15 @@ def _merge(
         sheet["adjudication"]["unresolvedCells"] = unresolved
     sheet["needsReview"] = bool(unresolved)
     return sheet
+
+
+def _leaf_supports_value(leaf: dict[str, Any], value: int) -> bool:
+    """A cached adjudication is usable only when this frame contains the value."""
+
+    if leaf.get("value") == value or value in (leaf.get("candidates") or []):
+        return True
+    tokens = re.findall(r"(?<!\d)-?\d+(?!\d)", str(leaf.get("rawText", "")))
+    return str(value) in tokens
 
 
 def _mark_unresolved(sheet: dict[str, Any], at: str, *, status: str, error: str) -> dict[str, Any]:

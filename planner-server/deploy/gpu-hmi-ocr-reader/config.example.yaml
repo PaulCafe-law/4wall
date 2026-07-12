@@ -44,7 +44,9 @@ work_order:
   roi: [900, 120, 550, 335]
 
 gpt:
-  enabled: true
+  # Keep disabled in production. The local Codex bridge has host read tools and
+  # is not an isolation boundary for untrusted camera/OCR content.
+  enabled: false
   auth_mode: "account_oauth_dev"
   summary_model: "latest"
   auth_cache_dir: "" # optional: local nckusoc-only account auth cache directory
@@ -66,7 +68,7 @@ gpt:
   # and GPT reads the topmost/newest stroke. Results are cached per sheet
   # identity (machineNo+moldNo) and capped per day; adjudicated values are
   # always tagged source: "gpt_adjudicated" in structuredFields.workOrder.
-  adjudication_enabled: true
+  adjudication_enabled: false
   adjudication_command:
     - "./.venv/bin/python"
     - "scripts/codex_adjudicate_bridge.py"

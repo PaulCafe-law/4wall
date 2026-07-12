@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 import hashlib
 from pathlib import Path
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -14,6 +16,9 @@ from .config import FrameSourceConfig, resolve_config_path
 
 class FrameSourceError(RuntimeError):
     pass
+
+
+_FRAME_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 
 
 @dataclass(frozen=True)
@@ -30,7 +35,7 @@ def load_frame_file(path: str | Path) -> CapturedFrame:
     image = _decode_image(data, f"could not read image file: {file_path}")
     return CapturedFrame(
         image=image,
-        frame_id=file_path.stem,
+        frame_id=None,
         captured_at=None,
         content_sha256=hashlib.sha256(data).hexdigest(),
     )
@@ -53,10 +58,18 @@ def fetch_frame_url(url: str, *, headers: dict[str, str] | None = None, timeout_
     except TimeoutError as exc:
         raise FrameSourceError("frame source timeout") from exc
 
+    if frame_id is None or not _FRAME_ID_PATTERN.fullmatch(frame_id):
+        raise FrameSourceError("frame source missing or invalid X-Camera-Frame-Id")
+    try:
+        parsed_captured_at = datetime.fromisoformat((captured_at or "").replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise FrameSourceError("frame source missing or invalid X-Camera-Captured-At") from exc
+    if parsed_captured_at.tzinfo is None:
+        raise FrameSourceError("frame source missing or invalid X-Camera-Captured-At")
     return CapturedFrame(
         image=_decode_image(data, "frame source did not return a decodable image"),
         frame_id=frame_id,
-        captured_at=captured_at,
+        captured_at=parsed_captured_at.isoformat(),
         content_sha256=hashlib.sha256(data).hexdigest(),
     )
 

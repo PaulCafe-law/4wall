@@ -163,7 +163,10 @@ def test_material_and_color_degrade_to_unknown_without_quantity_anchor() -> None
 
 
 def _quantity_grid(row_extras: dict[int, list]) -> list[OcrTextLine]:
-    lines: list[OcrTextLine] = []
+    # A valid current dispatch-sheet frame must include identity evidence plus
+    # at least one L/R row. Keep these stabilizer fixtures aligned with that
+    # production contract.
+    lines: list[OcrTextLine] = [_line("HC600", 0.9, 20, 100)]
     for index, y in enumerate((180, 220, 255, 295)):
         lines.append(_line("款", 0.5, 60, y))
         lines.append(_line("L", 0.99, 152, y))
@@ -383,15 +386,33 @@ def test_stabilizer_blocks_single_frame_phantom_value() -> None:
     assert result["quantities"]["plannedScheduledNoHanger"]["left"]["value"] == "unknown"
 
 
-def test_stabilizer_holds_locked_value_through_bad_frames() -> None:
+def test_stabilizer_hides_locked_value_on_bad_current_frame() -> None:
     history: dict = {}
     stabilize_work_order(build_work_order_fields(REAL_LINES), history)
     stabilize_work_order(build_work_order_fields(REAL_LINES), history)
-    # A completely garbled frame (no lines) must not clear locked values.
+    # A completely garbled frame must not present a historical lock as current.
     held = stabilize_work_order(build_work_order_fields([]), history)
-    assert held["fields"]["machineNo"]["value"] == "HC600"
-    assert held["fields"]["machineNo"]["held"] is True
-    assert held["quantities"]["total"]["right"]["value"] == 210
+    assert held["fields"]["machineNo"]["value"] == "unknown"
+    assert "held" not in held["fields"]["machineNo"]
+    assert held["quantities"]["total"]["right"]["value"] == "unknown"
+
+
+def test_three_alignment_failures_require_two_valid_frames_before_current_evidence_returns() -> None:
+    history: dict = {}
+    stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+    stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+
+    for _ in range(3):
+        failed = stabilize_work_order(build_work_order_fields([]), history)
+    assert failed["currentEvidence"] is False
+
+    first_valid = stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+    assert first_valid["currentEvidence"] is False
+    assert first_valid["reacquireValidStreak"] == 1
+
+    second_valid = stabilize_work_order(build_work_order_fields(REAL_LINES), history)
+    assert second_valid["currentEvidence"] is True
+    assert second_valid["fields"]["machineNo"]["value"] == "HC600"
 
 
 def test_stabilizer_resets_other_cells_when_sheet_identity_changes() -> None:
@@ -430,7 +451,9 @@ def test_sustained_identity_misread_does_not_wipe_locked_cells() -> None:
     history2: dict = {}
     outputs = [stabilize_work_order(build_work_order_fields(f), history2) for f in (gm, gm, gh, gh)]
     assert outputs[-1]["quantities"]["total"]["left"]["value"] == 210
-    assert outputs[-1]["fields"]["moldNo"]["value"] == "GM096LC"
+    # The old identity lock remains protected in history, but is not shown as
+    # a current read while this frame says GH096LC.
+    assert outputs[-1]["fields"]["moldNo"]["value"] == "unknown"
 
 
 def test_value_unknown_value_does_not_lock() -> None:

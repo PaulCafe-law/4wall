@@ -39,7 +39,9 @@ Install PaddleDetection separately on the GPU host and set `PYTHONPATH` so `depl
 
 Copy `config.example.yaml` to `config.yaml`, set the model path, and optionally set `projection.homography` from a calibration report.
 
-The latest-frame fetch must keep the `Authorization: Bearer ${PERSON_PRESENCE_DEVICE_TOKEN}` header. The response headers `X-Camera-Frame-Id` and `X-Camera-Captured-At` are part of the duplicate-skip and payload contract.
+The latest-frame fetch must keep the `Authorization: Bearer ${PERSON_PRESENCE_DEVICE_TOKEN}` header. URL/live mode rejects responses missing a valid `X-Camera-Frame-Id` or timezone-aware `X-Camera-Captured-At`; the ingest API rechecks frame ownership, source time, and image size. File mode is marked `offline_file`, may omit `frameId`, and is never shown by LINE.
+
+Live service logs contain only status, frame ID, detection/person counts, and queue count. They do not print bboxes, foot points, floor positions, or the full observation payload.
 
 ## Run
 

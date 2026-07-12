@@ -170,7 +170,7 @@ def test_adjudicated_value_merges_with_source_marker_and_old_value() -> None:
     assert payload["rowLabels"]["total"] == "總計"
 
 
-def test_adjudicated_lock_survives_following_frames_with_marker() -> None:
+def test_adjudicated_lock_is_not_republished_without_matching_current_evidence() -> None:
     history: dict = {}
     sheet = _suspicious_sheet(history)
     adjudicator = GptAdjudicator(
@@ -178,13 +178,12 @@ def test_adjudicated_lock_survives_following_frames_with_marker() -> None:
     )
     adjudicator.adjudicate(sheet, history, lambda: Path("fake-crop.jpg"))
 
-    # Next frame still shows both numbers -> rule value unknown, but the
-    # stabilizer holds the adjudicated lock WITH its honesty markers.
+    # Next frame still shows both numbers. The historical adjudication remains
+    # internal, but cannot masquerade as a numeric read from this frame.
     later = stabilize_work_order(build_work_order_fields(_overwritten_total_lines()), history)
     leaf = later["quantities"]["total"]["left"]
-    assert leaf["value"] == 240
-    assert leaf["source"] == ADJUDICATED_SOURCE
-    assert leaf["oldValue"] == 210
+    assert leaf["value"] == "unknown"
+    assert "source" not in leaf
 
 
 def test_rule_parsed_cells_never_carry_adjudication_marker() -> None:
@@ -239,9 +238,29 @@ def test_same_sheet_identity_is_adjudicated_only_once() -> None:
     assert len(invoke.calls) == 1
     assert first["adjudication"]["status"] == "ok"
     assert second["adjudication"]["status"] == "cached"
-    # The cached merge still applies the adjudicated value and its markers.
+    # The cached merge still applies the adjudicated value because this frame
+    # independently contains 240 among its OCR candidates.
     assert second["quantities"]["total"]["left"]["value"] == 240
     assert second["quantities"]["total"]["left"]["source"] == ADJUDICATED_SOURCE
+
+
+def test_cached_adjudication_requires_value_evidence_in_current_frame() -> None:
+    invoke = _RecordingInvoke(response=_GOOD_RESPONSE)
+    adjudicator = GptAdjudicator(_enabled_config(), invoke=invoke, now=lambda: TAIPEI_NOON)
+    history: dict = {}
+    adjudicator.adjudicate(_suspicious_sheet(history), history, lambda: Path("crop-1.jpg"))
+    changed = _quantity_grid({3: [_line("210", 0.93, 200, 295), _line("260", 0.91, 260, 295)]})
+
+    second = adjudicator.adjudicate(
+        stabilize_work_order(build_work_order_fields(changed), history),
+        history,
+        lambda: Path("crop-2.jpg"),
+    )
+
+    assert len(invoke.calls) == 1
+    assert second["adjudication"]["status"] == "cached"
+    assert second["quantities"]["total"]["left"]["value"] == "unknown"
+    assert second["needsReview"] is True
 
 
 def test_failed_adjudication_keeps_drop_behavior_and_is_not_cached() -> None:

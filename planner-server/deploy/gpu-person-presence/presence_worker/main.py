@@ -54,7 +54,7 @@ class PersonPresenceRunner:
             try:
                 frame = capture_configured_frame(self.config.frame_source, self.config.root_dir)
                 result = self.process_frame(frame)
-                print(json.dumps({"status": "ok", **result}, ensure_ascii=False))
+                print(json.dumps(_live_log_summary(result), ensure_ascii=False))
                 self.platform_sink.flush_pending()
                 backoff_sec = 1.0
             except FrameSourceError as exc:
@@ -82,10 +82,10 @@ class PersonPresenceRunner:
 
         raw_detections = self.detector.detect(frame.image)
         observation = build_person_observation(frame, raw_detections, self.config)
-        # 只上報「有人」的觀測。若把每個空幀(0 人)也 POST 上去,前端最新觀測會在偵測到人/
-        # 沒偵測到人之間反覆翻轉,造成標記閃爍;改成人離開後由前端新鮮窗自然老化清除。
-        has_person = bool(observation.get("detections"))
-        if self.publish_enabled and has_person:
+        # Zero-person frames are evidence, not an absence of evidence. Publishing
+        # every unique frame lets readers distinguish a confirmed zero from an
+        # interrupted/stale detector stream.
+        if self.publish_enabled:
             self.platform_sink.submit_person_observation(observation)
             if self.platform_sink.state.last_error:
                 print(
@@ -125,7 +125,7 @@ def build_person_observation(frame: CapturedFrame, raw_detections: list[Detectio
         )
 
     payload = {
-        "source": "live",
+        "source": "live" if frame.frame_id is not None else "offline_file",
         "capturedAt": frame.captured_at or _now_iso(),
         "imageWidth": int(image_width),
         "imageHeight": int(image_height),
@@ -150,6 +150,19 @@ def _round_list(values) -> list[float]:
 
 def _now_iso() -> str:
     return datetime.now(TAIPEI).isoformat(timespec="seconds")
+
+
+def _live_log_summary(result: dict[str, Any]) -> dict[str, Any]:
+    observation = result.get("personObservation") or {}
+    return {
+        "status": "ok",
+        "skipped": bool(result.get("skipped")),
+        "reason": result.get("reason"),
+        "frameId": result.get("frameId"),
+        "rawDetectionCount": result.get("rawDetectionCount", 0),
+        "personCount": len(observation.get("detections") or []),
+        "platformQueuedCount": result.get("platformQueuedCount", 0),
+    }
 
 
 def _trim_directory(directory: Path, keep: int) -> None:

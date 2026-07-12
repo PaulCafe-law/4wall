@@ -72,6 +72,8 @@ def build_work_order_fields(work_order_lines: list[OcrTextLine]) -> dict[str, An
         "template": "hc600_dispatch_sheet_v1",
         "unit": "PCS",
         "sourceLineCount": len(lines),
+        "alignmentStatus": "invalid",
+        "currentEvidence": False,
         "fields": fields,
         "quantities": quantities,
     }
@@ -100,6 +102,9 @@ def build_work_order_fields(work_order_lines: list[OcrTextLine]) -> dict[str, An
         # Without the quantity band as an anchor the scan region is unbounded
         # and would grab garbled header labels; degrade to unknown instead.
         _fill_material_and_color(rows, fields, last_quantity_cy, max_x)
+    identity_seen = any(fields[key]["value"] != UNKNOWN for key in ("machineNo", "moldNo"))
+    result["alignmentStatus"] = "ok" if identity_seen and quantity_rows else "invalid"
+    result["currentEvidence"] = result["alignmentStatus"] == "ok"
     return result
 
 
@@ -288,6 +293,43 @@ _LOCK_MARKER_KEYS = ("source", "overwritten", "oldValue")
 
 def stabilize_work_order(sheet: dict[str, Any], history: WorkOrderHistory) -> dict[str, Any]:
     cells = list(_sheet_cells(sheet))
+    sheet["currentIdentity"] = {
+        key: (sheet.get("fields", {}).get(key) or {}).get("value", UNKNOWN)
+        for key in ("machineNo", "moldNo")
+    }
+
+    alignment = history.setdefault(
+        "__alignment__",
+        {"failures": 0, "reacquireRequired": False, "validStreak": 0},
+    )
+    if sheet.get("alignmentStatus") != "ok":
+        alignment["failures"] = int(alignment.get("failures", 0)) + 1
+        if alignment["failures"] >= 3:
+            failures = alignment["failures"]
+            history.clear()
+            alignment = {
+                "failures": failures,
+                "reacquireRequired": True,
+                "validStreak": 0,
+            }
+            history["__alignment__"] = alignment
+        for _path, leaf in cells:
+            leaf["value"] = UNKNOWN
+            leaf["confidence"] = 0.0
+            leaf.pop("held", None)
+            leaf.pop("consensusPending", None)
+        sheet["currentEvidence"] = False
+        sheet["alignmentFailureStreak"] = alignment["failures"]
+        sheet["stabilized"] = True
+        sheet["needsAdjudication"] = False
+        return sheet
+    alignment["failures"] = 0
+    if alignment.get("reacquireRequired"):
+        alignment["validStreak"] = int(alignment.get("validStreak", 0)) + 1
+        if alignment["validStreak"] >= 2:
+            alignment["reacquireRequired"] = False
+    else:
+        alignment["validStreak"] = 0
 
     swapped = False
     for path, leaf in cells:
@@ -309,9 +351,7 @@ def stabilize_work_order(sheet: dict[str, Any], history: WorkOrderHistory) -> di
 
     for path, leaf in cells:
         locked = history.get(path, {}).get("locked")
-        if locked is not None:
-            if leaf["value"] != locked["value"]:
-                leaf["held"] = True
+        if locked is not None and leaf["value"] == locked["value"]:
             leaf["value"] = locked["value"]
             leaf["confidence"] = locked["confidence"]
             leaf["rawText"] = locked["rawText"]
@@ -323,7 +363,12 @@ def stabilize_work_order(sheet: dict[str, Any], history: WorkOrderHistory) -> di
             leaf["consensusPending"] = True
             leaf["value"] = UNKNOWN
             leaf["confidence"] = 0.0
+        else:
+            leaf.pop("held", None)
     sheet["stabilized"] = True
+    sheet["currentEvidence"] = not bool(alignment.get("reacquireRequired"))
+    if not sheet["currentEvidence"]:
+        sheet["reacquireValidStreak"] = alignment["validStreak"]
     sheet["needsAdjudication"] = bool(triggers)
     if triggers:
         sheet["adjudicationTriggers"] = triggers

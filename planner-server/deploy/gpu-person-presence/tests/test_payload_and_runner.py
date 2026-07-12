@@ -5,7 +5,7 @@ import numpy as np
 from presence_worker.config import AppConfig, DebugConfig, DetectorConfig, FrameSourceConfig, PlatformConfig, ProjectionConfig
 from presence_worker.detector import Detection, FakeDetector
 from presence_worker.frame_source import CapturedFrame
-from presence_worker.main import PersonPresenceRunner, build_person_observation
+from presence_worker.main import PersonPresenceRunner, _live_log_summary, build_person_observation
 
 
 def test_build_payload_includes_zero_person_frame(tmp_path) -> None:
@@ -38,6 +38,35 @@ def test_build_payload_keeps_detection_when_projection_missing(tmp_path) -> None
     ]
 
 
+def test_offline_frame_is_marked_offline_and_may_omit_frame_id(tmp_path) -> None:
+    frame = CapturedFrame(
+        image=np.zeros((240, 320, 3), dtype=np.uint8),
+        frame_id=None,
+        captured_at=None,
+        content_sha256="a" * 64,
+    )
+    payload = build_person_observation(frame, [], _config(tmp_path))
+
+    assert payload["source"] == "offline_file"
+    assert "frameId" not in payload
+
+
+def test_live_log_summary_never_contains_detection_geometry() -> None:
+    summary = _live_log_summary(
+        {
+            "skipped": False,
+            "frameId": "frame-1",
+            "rawDetectionCount": 1,
+            "personObservation": {"detections": [{"bbox": [1, 2, 3, 4], "footPoint": [2, 4]}]},
+            "platformQueuedCount": 0,
+        }
+    )
+
+    assert summary["personCount"] == 1
+    assert "detections" not in summary
+    assert "bbox" not in str(summary)
+
+
 def test_runner_skips_same_frame_id(tmp_path) -> None:
     detector = FakeDetector([Detection(bbox=(10, 20, 30, 80), confidence=0.9)])
     runner = PersonPresenceRunner(_config(tmp_path), detector=detector, publish=False)
@@ -65,8 +94,7 @@ def test_runner_queues_platform_failures_without_stopping(tmp_path) -> None:
     assert runner.platform_sink.state.last_error == "platform_sink_missing_api_url_or_device_token"
 
 
-def test_runner_does_not_publish_empty_observation(tmp_path) -> None:
-    # 空幀(0 人)不應上報:否則前端最新觀測會在「有人/沒人」之間反覆翻轉,造成標記閃爍。
+def test_runner_publishes_empty_observation_as_fresh_zero(tmp_path) -> None:
     detector = FakeDetector([])
     config = _config(
         tmp_path,
@@ -79,9 +107,10 @@ def test_runner_does_not_publish_empty_observation(tmp_path) -> None:
     assert result["skipped"] is False
     assert result["rawDetectionCount"] == 0
     assert result["personObservation"]["detections"] == []
-    # 沒有嘗試上報:佇列為空、無錯誤、送出計數為 0。
-    assert result["platformQueuedCount"] == 0
-    assert runner.platform_sink.state.last_error is None
+    # Publishing was attempted. The intentionally incomplete test platform
+    # config queues the zero-person observation just like a positive one.
+    assert result["platformQueuedCount"] == 1
+    assert runner.platform_sink.state.last_error == "platform_sink_missing_api_url_or_device_token"
     assert runner.platform_sink.state.submitted_count == 0
 
 
