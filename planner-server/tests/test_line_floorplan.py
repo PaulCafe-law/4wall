@@ -784,6 +784,24 @@ def test_text_machine_detail_returns_current_work_order_and_hmi_crops(test_setti
     with TestClient(app) as client:
         _seed_scope(app)
         _seed_work_order_observation(app)
+        with app.state.session_factory() as session:
+            observation = session.exec(
+                select(CameraOcrObservation).where(CameraOcrObservation.frame_id == "frame-latest")
+            ).first()
+            assert observation is not None
+            structured = dict(observation.structured_fields_json or {})
+            work_order = dict(structured.get("workOrder") or {})
+            work_order["alignmentStatus"] = "invalid"
+            work_order["currentEvidence"] = False
+            regions = dict(structured.get("captureRegions") or {})
+            work_region = dict(regions.get("workOrder") or {})
+            work_region["alignmentStatus"] = "invalid"
+            regions["workOrder"] = work_region
+            structured["workOrder"] = work_order
+            structured["captureRegions"] = regions
+            observation.structured_fields_json = structured
+            session.add(observation)
+            session.commit()
         response = _post_line_events(client, settings, [_message_event("機台 m-hc600")])
         messages = replies[0]["messages"]
         dispatch_path = messages[1]["originalContentUrl"].removeprefix("https://api.example.test")
