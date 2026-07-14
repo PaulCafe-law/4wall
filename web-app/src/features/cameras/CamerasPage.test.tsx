@@ -26,10 +26,27 @@ vi.mock('../../lib/api', async () => {
 
 const createObjectURLMock = vi.fn(() => 'blob:camera-frame')
 const revokeObjectURLMock = vi.fn()
+const requestFullscreenMock = vi.fn<(element: HTMLElement) => Promise<void>>()
+const exitFullscreenMock = vi.fn<() => Promise<void>>()
+let fullscreenElement: Element | null = null
 
 beforeAll(() => {
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURLMock })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURLMock })
+  Object.defineProperty(document, 'fullscreenElement', {
+    configurable: true,
+    get: () => fullscreenElement,
+  })
+  Object.defineProperty(HTMLElement.prototype, 'requestFullscreen', {
+    configurable: true,
+    value: function requestFullscreen(this: HTMLElement) {
+      return requestFullscreenMock(this)
+    },
+  })
+  Object.defineProperty(document, 'exitFullscreen', {
+    configurable: true,
+    value: exitFullscreenMock,
+  })
 })
 
 function gaugeReadingFixture(overrides: Partial<CameraGaugeReading> = {}): CameraGaugeReading {
@@ -157,6 +174,15 @@ describe('CamerasPage', () => {
     apiMock.fetchCameraLatestFrameBlob.mockReset()
     createObjectURLMock.mockClear()
     revokeObjectURLMock.mockClear()
+    fullscreenElement = null
+    requestFullscreenMock.mockReset().mockImplementation(async (element) => {
+      fullscreenElement = element
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
+    exitFullscreenMock.mockReset().mockImplementation(async () => {
+      fullscreenElement = null
+      document.dispatchEvent(new Event('fullscreenchange'))
+    })
 
     apiMock.listCameras.mockResolvedValue({
       cameras: [cameraFixture('camera-1', 'PoE Camera')],
@@ -176,6 +202,8 @@ describe('CamerasPage', () => {
     expect((await screen.findAllByText('現場攝影機 1')).length).toBeGreaterThan(0)
     const images = await screen.findAllByAltText('現場攝影機 1 最新畫面')
     expect(images[0]).toHaveAttribute('src', 'blob:camera-frame')
+    expect(await screen.findByRole('button', { name: '全螢幕顯示 現場攝影機 1' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /全螢幕顯示/ })).toHaveLength(1)
     expect(screen.getAllByText('連線中').length).toBeGreaterThan(1)
     expect(screen.getAllByText('略過分析').length).toBeGreaterThan(0)
 
@@ -201,6 +229,47 @@ describe('CamerasPage', () => {
     await waitFor(() => {
       expect(apiMock.fetchCameraLatestFrameBlob).toHaveBeenCalledWith('test-token', 'camera-1')
     })
+  })
+
+  it('opens and exits the selected camera frame in fullscreen', async () => {
+    const user = userEvent.setup()
+    const camera = cameraFixture('camera-1', 'PoE Camera 192.168.1.10')
+
+    renderWithProviders(<CameraFrameImage camera={camera} displayName="儀表板攝影機" allowFullscreen />)
+
+    await user.click(await screen.findByRole('button', { name: '全螢幕顯示 儀表板攝影機' }))
+
+    expect(requestFullscreenMock).toHaveBeenCalledTimes(1)
+    const exitButton = await screen.findByRole('button', { name: '離開全螢幕' })
+    expect(exitButton).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(exitButton)
+
+    expect(exitFullscreenMock).toHaveBeenCalledTimes(1)
+    expect(await screen.findByRole('button', { name: '全螢幕顯示 儀表板攝影機' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    )
+  })
+
+  it('shows a clear error when fullscreen is rejected', async () => {
+    const user = userEvent.setup()
+    requestFullscreenMock.mockRejectedValueOnce(new Error('fullscreen denied'))
+
+    renderWithProviders(
+      <CameraFrameImage camera={cameraFixture('camera-1', 'PoE Camera')} allowFullscreen />,
+    )
+
+    await user.click(await screen.findByRole('button', { name: '全螢幕顯示 PoE Camera' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('瀏覽器無法開啟全螢幕，請再試一次。')
+  })
+
+  it('does not add a nested fullscreen control to camera previews', async () => {
+    renderWithProviders(<CameraFrameImage camera={cameraFixture('camera-1', 'PoE Camera')} />)
+
+    expect(await screen.findByAltText('PoE Camera 最新畫面')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /全螢幕顯示/ })).not.toBeInTheDocument()
   })
 
   it('shows latest frame previews for every readable camera in the selected site', async () => {
