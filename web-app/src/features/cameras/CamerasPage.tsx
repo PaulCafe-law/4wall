@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DataList, EmptyState, Field, Metric, Panel, Select, ShellSection, formatDateTime } from '../../components/ui'
 import { api } from '../../lib/api'
@@ -175,10 +175,15 @@ function cameraDisplayName(camera: CameraDevice, cameras: CameraDevice[]): strin
 export function CameraFrameImage({
   camera,
   displayName = camera.name,
+  allowFullscreen = false,
 }: {
   camera: CameraDevice
   displayName?: string
+  allowFullscreen?: boolean
 }) {
+  const frameContainerRef = useRef<HTMLDivElement>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [fullscreenError, setFullscreenError] = useState<string | null>(null)
   const latestFrameId = camera.latestFrame?.frameId ?? null
   const frameImageQuery = useAuthedQuery({
     queryKey: ['cameras', camera.cameraId, 'latest-frame-image', latestFrameId],
@@ -200,20 +205,85 @@ export function CameraFrameImage({
     }
   }, [imageUrl])
 
+  useEffect(() => {
+    if (!allowFullscreen) return
+
+    const syncFullscreenState = () => {
+      setIsFullscreen(document.fullscreenElement === frameContainerRef.current)
+    }
+
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState)
+  }, [allowFullscreen])
+
+  const fullscreenSupported =
+    typeof document !== 'undefined' && typeof document.documentElement.requestFullscreen === 'function'
+
+  const toggleFullscreen = async () => {
+    const frameContainer = frameContainerRef.current
+    if (!frameContainer) return
+
+    setFullscreenError(null)
+    try {
+      if (document.fullscreenElement === frameContainer) {
+        await document.exitFullscreen()
+      } else {
+        if (document.fullscreenElement) await document.exitFullscreen()
+        await frameContainer.requestFullscreen()
+      }
+    } catch {
+      setIsFullscreen(false)
+      setFullscreenError('瀏覽器無法開啟全螢幕，請再試一次。')
+    }
+  }
+
   return (
-    <div className="flex aspect-video items-center justify-center bg-chrome-950">
+    <div
+      ref={frameContainerRef}
+      className={`relative flex items-center justify-center bg-chrome-950 ${
+        isFullscreen ? 'h-screen w-screen' : 'aspect-video'
+      }`}
+    >
       {imageUrl ? (
-        <img
-          key={latestFrameId ?? camera.cameraId}
-          src={imageUrl}
-          alt={`${displayName} 最新畫面`}
-          className="h-full w-full object-contain"
-        />
+        <>
+          <img
+            key={latestFrameId ?? camera.cameraId}
+            src={imageUrl}
+            alt={`${displayName} 最新畫面`}
+            className="h-full w-full object-contain"
+          />
+          {allowFullscreen && fullscreenSupported ? (
+            <button
+              type="button"
+              aria-label={isFullscreen ? '離開全螢幕' : `全螢幕顯示 ${displayName}`}
+              aria-pressed={isFullscreen}
+              title={isFullscreen ? '離開全螢幕' : '全螢幕顯示'}
+              onClick={toggleFullscreen}
+              className="absolute right-3 top-3 inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/25 bg-chrome-950/85 px-3 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-chrome-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            >
+              {isFullscreen ? (
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+                  <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />
+                </svg>
+              ) : (
+                <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5 fill-none stroke-current stroke-2">
+                  <path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5" />
+                </svg>
+              )}
+              <span className="hidden sm:inline">{isFullscreen ? '離開全螢幕' : '全螢幕'}</span>
+            </button>
+          ) : null}
+        </>
       ) : (
         <div className="px-6 text-center text-sm text-chrome-100">
           {frameImageQuery.isLoading ? '載入最新截圖中' : '尚無可顯示截圖。'}
         </div>
       )}
+      {fullscreenError ? (
+        <p role="alert" className="absolute bottom-3 left-3 right-3 rounded-lg bg-red-700/95 px-4 py-3 text-sm text-white">
+          {fullscreenError}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -613,6 +683,7 @@ export function CamerasPage() {
                 <CameraFrameImage
                   camera={selectedCamera}
                   displayName={cameraDisplayName(selectedCamera, selectedCameraGroup?.cameras ?? visibleCameras)}
+                  allowFullscreen
                 />
               </div>
               <p

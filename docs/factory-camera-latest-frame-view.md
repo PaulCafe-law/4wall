@@ -43,6 +43,35 @@ JPEG frame and refreshes it on the same cadence as the Pi agent.
 - Responses should use private/no-store cache headers because frames may contain
   operational site imagery.
 
+## Fullscreen View Increment (2026-07-15)
+
+### Gap
+
+The selected camera frame is constrained to the management-page card. Operators
+cannot inspect the dispatch sheet or HMI text at the full monitor size without
+using browser zoom, which also enlarges the rest of the interface.
+
+### Behavior
+
+- Add a fullscreen control to the selected camera's latest-frame image only.
+- Keep the small camera-selection previews unchanged so their parent buttons do
+  not contain nested controls.
+- Use the browser Fullscreen API, keep the image contained without cropping, and
+  synchronize the control when the operator exits with `Esc` or browser chrome.
+- Show a clear in-frame error if the browser rejects the fullscreen request.
+- Do not introduce another image request, public URL, credential, or server API.
+  Fullscreen displays the same authenticated blob already loaded by the page.
+
+### Verification
+
+- Component coverage checks enter, exit, `fullscreenchange`, and rejection.
+- Page coverage checks that the selected frame exposes the control while preview
+  cards do not.
+- Web typecheck, tests, lint, and build must pass. A Chromium interaction check
+  verifies native fullscreen entry; `fullscreenchange` covers browser- or
+  `Esc`-initiated exit because headless Chromium does not forward synthetic
+  `Escape` to its fullscreen browser layer consistently.
+
 ## Production Deployment Evidence
 
 Deployed on 2026-06-19 using DockerHub image references:
