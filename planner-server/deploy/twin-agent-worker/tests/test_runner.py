@@ -233,6 +233,184 @@ def test_simulation_answer_is_labelled_even_when_model_omits_the_label() -> None
     assert payload["text"] == "模擬情境：今日模擬達成率為 69.3%。"
 
 
+def test_prompt_includes_openbmc_read_model_rules() -> None:
+    prompt = build_agent_prompt({"source": "web", "text": "pi5 現在溫度多少？"}, {"openBmc": {"state": "current"}})
+
+    assert "world.openBmc" in prompt
+    assert "authorized_live" in prompt
+    assert "真實資料：" in prompt
+    assert "Never mention, suggest, or attempt OpenBMC device commands" in prompt
+
+
+def test_real_data_prefix_survives_for_current_live_openbmc_answer() -> None:
+    original = {"text": "真實資料：Pi5 目前溫度 57.3°C，風扇 1184 RPM（12 秒前觀測）。", "toolCalls": []}
+    payload = enforce_response_trust_labels(
+        original,
+        job={"text": "pi5現在溫度是多少呢?"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "openBmc": {"source": "authorized_live", "state": "current", "temperatureC": 57.3},
+        },
+        max_output_chars=4000,
+        world_age_seconds=2.0,
+    )
+
+    assert payload == original
+
+
+def test_real_data_prefix_accepts_halfwidth_colon_variant() -> None:
+    original = {"text": "真實資料:Pi5 目前溫度 57.3°C（剛剛觀測）。", "toolCalls": []}
+    payload = enforce_response_trust_labels(
+        original,
+        job={"text": "pi5現在溫度是多少呢?"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "openBmc": {"source": "authorized_live", "state": "current"},
+        },
+        max_output_chars=4000,
+        world_age_seconds=2.0,
+    )
+
+    assert payload == original
+
+
+def test_real_data_prefix_is_stripped_and_relabelled_when_openbmc_data_is_not_current() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "真實資料：Pi5 目前溫度 57.3°C。", "toolCalls": []},
+        job={"text": "pi5現在溫度是多少呢?"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "openBmc": {"source": "authorized_live", "state": "stale"},
+        },
+        max_output_chars=4000,
+        world_age_seconds=2.0,
+    )
+
+    assert payload["text"] == "模擬情境：Pi5 目前溫度 57.3°C。"
+    assert "真實資料" not in payload["text"]
+
+
+def test_real_data_prefix_is_stripped_when_openbmc_source_is_simulation_fixture() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "真實資料：Pi5 目前溫度 48.6°C。", "toolCalls": []},
+        job={"text": "pi5現在溫度是多少呢?"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "openBmc": {"source": "simulation", "state": "current", "temperatureC": 48.6},
+        },
+        max_output_chars=4000,
+        world_age_seconds=2.0,
+    )
+
+    assert payload["text"] == "模擬情境：Pi5 目前溫度 48.6°C。"
+    assert "真實資料" not in payload["text"]
+
+
+def test_real_data_prefix_is_stripped_when_snapshot_is_old() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "真實資料：Pi5 目前溫度 57.3°C。", "toolCalls": []},
+        job={"text": "pi5現在溫度是多少呢?"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "openBmc": {"source": "authorized_live", "state": "current"},
+        },
+        max_output_chars=4000,
+        world_age_seconds=120.0,
+    )
+
+    assert payload["text"] == "模擬情境：Pi5 目前溫度 57.3°C。"
+
+
+def test_real_data_prefix_is_stripped_when_snapshot_age_is_unknown() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "真實資料：Pi5 目前溫度 57.3°C。", "toolCalls": []},
+        job={"text": "pi5現在溫度是多少呢?"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "openBmc": {"source": "authorized_live", "state": "current"},
+        },
+        max_output_chars=4000,
+    )
+
+    assert payload["text"] == "模擬情境：Pi5 目前溫度 57.3°C。"
+
+
+def test_real_data_prefix_is_stripped_when_answer_mixes_simulated_entities() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "真實資料：Pi5 溫度 57.3°C；HC600-02 今日產量 1860 件。", "toolCalls": []},
+        job={"text": "pi5 跟 HC600-02 現在狀況如何？"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "entities": [
+                {"id": "m-hc600-002", "type": "machine", "name": "HC600-02"},
+                {"id": "device-openbmc-pi5", "type": "device", "name": "Pi5 / OpenBMC 節點"},
+            ],
+            "openBmc": {"source": "authorized_live", "state": "current"},
+        },
+        max_output_chars=4000,
+        world_age_seconds=2.0,
+    )
+
+    assert payload["text"].startswith("模擬情境：")
+    assert "真實資料" not in payload["text"]
+
+
+def test_real_data_prefix_is_relabelled_when_world_has_no_openbmc() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "真實資料：HC600-02 溫度異常。", "toolCalls": []},
+        job={"text": "HC600-02 現在狀況？"},
+        world={"dataAvailability": {"mode": "simulation"}},
+        max_output_chars=4000,
+        world_age_seconds=2.0,
+    )
+
+    assert payload["text"] == "模擬情境：HC600-02 溫度異常。"
+
+
+def test_real_data_prefix_is_relabelled_when_answer_is_not_about_pi5() -> None:
+    payload = enforce_response_trust_labels(
+        {"text": "真實資料：HC600-02 溫度異常。", "toolCalls": []},
+        job={"text": "HC600-02 現在狀況？"},
+        world={
+            "dataAvailability": {"mode": "simulation"},
+            "openBmc": {"source": "authorized_live", "state": "current"},
+        },
+        max_output_chars=4000,
+        world_age_seconds=2.0,
+    )
+
+    assert payload["text"] == "模擬情境：HC600-02 溫度異常。"
+
+
+def test_runner_keeps_real_data_label_for_live_pi5_answer(tmp_path) -> None:
+    bridge = FakeAgentBridge(
+        [BridgeResult(status="ok", text="真實資料：Pi5 目前溫度 57.3°C，健康正常（剛剛觀測）。")]
+    )
+    runner = TwinAgentRunner(_config(tmp_path), bridge=bridge, publish=False)
+    polled = PolledJob(
+        job={"jobId": "j-pi5", "source": "web", "text": "pi5現在溫度是多少呢?", "sessionId": "demo-session"},
+        world={
+            "entities": [],
+            "dataAvailability": {"mode": "simulation", "openBmc": {"state": "current", "source": "authorized_live"}},
+            "simulationContext": {"scenarioId": "normal"},
+            "openBmc": {
+                "source": "authorized_live",
+                "state": "current",
+                "temperatureC": 57.3,
+                "health": "ok",
+                "fan": {"present": True, "rpm": 1184, "pwm": 75},
+            },
+        },
+        world_age_seconds=1.0,
+        ledger_context=None,
+    )
+
+    result = runner.process_job(polled)
+
+    assert result["result"]["text"] == "真實資料：Pi5 目前溫度 57.3°C，健康正常（剛剛觀測）。"
+    assert len(bridge.prompts) == 1
+
+
 def test_pending_work_order_answer_is_always_marked_for_confirmation() -> None:
     payload = enforce_response_trust_labels(
         {"text": "派工單顯示模具 GM096LC，總計 420 PCS。", "toolCalls": []},

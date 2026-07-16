@@ -458,8 +458,24 @@ demo mode 必須繼續可啟動；prod mode 透過 dependency wiring 與 feature
 
 - LINE router 不 import OpenBMC command service。
 - LINE postback/text 沒有 OpenBMC command intent。
-- Twin Agent snapshot 預設不含 command capability、connector metadata 或 command endpoint。
-- 若未來 assistant 可摘要 Pi5 狀態，也只能讀取 server 已 scope/freshness 處理的 read model。
+- Twin Agent snapshot 不含 command capability、connector metadata 或 command endpoint。
+- assistant 摘要 Pi5 狀態時，只能讀取 server 已 scope/freshness 處理的 read model：
+  `/demo-factory` 把 `/v1/openbmc/devices` 回應壓縮成 `world.openBmc` 唯讀摘要
+  （溫度、健康、風扇、threshold、近期事件、freshness），排除 capabilities、
+  `canControl`、`controlEligible`、`recentCommands`、connector 與 org 識別欄位。
+  此摘要只進 `accelerator_demo` scope 的 snapshot。
+- freshness fail closed：非 fresh 時 `world.openBmc` 只送最後觀測時間與過期／缺資料說明，
+  不送數值，也不送近期事件（事件 message 可能內嵌溫度數字）；載入中標 `loading`、
+  從未觀測標 `missing`，不得誤報成服務不可用或資料過期。
+- 誠實標示：demo（simulation mode）中引用 `world.openBmc` authorized_live 且 state current
+  的回答以「真實資料：」開頭。worker 的 deterministic 檢查要求全部成立：
+  snapshot 年齡 ≤ 30 秒、`world.openBmc.source=authorized_live` 且 `state=current`、
+  問答有提及 Pi5、回答未點名任何模擬實體；不成立時剝除「真實資料：」宣稱並
+  強制「模擬情境：」前綴。
+- 信任假設：`world.openBmc` 與其餘 world snapshot 同層級，皆由已通過
+  `platform_admin`/`ops` 驗證的瀏覽器 session 組裝；worker 的檢查防的是模型
+  錯標，不是惡意 snapshot。若要防後者，需改由 planner-server 端以自身
+  read model enrich（未實作）。
 - assistant 文字永遠不能直接轉成 command enum；使用者仍必須進 authenticated web proposal/confirmation UI。
 - event message 中的 `curl`、URL、prompt 或 shell 字串一律只是純文字。
 

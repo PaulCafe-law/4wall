@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -35,6 +36,12 @@ WAREHOUSE_TOOL_NAMES = {
 MAX_TOOL_CALLS = 10
 FALLBACK_TEXT = "4WALL AI 助手暫時無法回應，請稍後再試。"
 AMR_QUERY_TERMS = ("amr", "自主移動機器人", "自走搬運車", "搬運機器人")
+OPENBMC_REFERENCE_TERMS = ("pi5", "pi 5", "raspberry", "openbmc", "樹莓派")
+# 接受全形／半形冒號與大小寫變體，避免模型的字面變化把真實資料誤降級成模擬。
+REAL_DATA_PREFIX_PATTERN = re.compile(r"^\s*(?:真實資料[：:]|real data[：:])\s*", re.IGNORECASE)
+# 真實資料標籤只在 world snapshot 本身夠新鮮時可信；分頁凍結或斷線後的殘留
+# snapshot 會把 state 卡在 current，必須以 server 端量到的 snapshot 年齡把關。
+REAL_DATA_MAX_WORLD_AGE_SECONDS = 30.0
 WORK_ORDER_TERMS = ("派工單", "工單", "模具", "模號", "材質", "顏色", "總計", "生產數", "計畫數", "pcs")
 WORK_ORDER_CONFIDENCE_THRESHOLD = 0.75
 
@@ -138,6 +145,7 @@ class TwinAgentRunner:
                 job=job,
                 world=polled.world,
                 max_output_chars=self.config.agent.max_output_chars,
+                world_age_seconds=polled.world_age_seconds,
             )
         if self.publish_enabled and job_id:
             self.result_sink.submit_job_result(job_id, result_payload)
@@ -190,9 +198,16 @@ def build_agent_prompt(
         "Do not say the machine on/off state signal is not connected. For HC600-01, the HMI screen visibility is the practical power evidence.",
         "After the screen status, summarize live gauge readings, HMI/OCR work order, and nearby live people in plain Chinese when present.",
         "If a live-only machine has no related camera/HMI/person data in machineRealData, say the live feed is unavailable instead of using simulated placeholder metrics.",
+        "world.openBmc, when present, is the scoped read model for the Raspberry Pi 5 / OpenBMC device. Use it for every Pi5, Raspberry Pi, or OpenBMC question about temperature, health, status, fan RPM/PWM, thresholds, or recent device events.",
+        "If world.openBmc.source is authorized_live and world.openBmc.state is current, those values are real authorized device data, not simulation. Even in simulation mode, answer such Pi5 questions from world.openBmc and begin that answer with 真實資料： (or Real data: in English) instead of 模擬情境：, mentioning how fresh the observation is.",
+        "If world.openBmc.state is loading, say Pi5 資料載入中, not that the service is unreadable. If stale, say Pi5 目前狀態無法確認 and how long ago the last observation was. If missing or unavailable, say no confirmable Pi5 observation exists yet. Never quote old Pi5 values as current. If world.openBmc is absent, say the Pi5 / OpenBMC feed is not connected.",
+        "If world.openBmc.source is simulation, its values are demo fixture data; present them with the normal simulation labeling.",
+        "If one answer mixes Pi5 authorized data with any simulated machine/AMR/warehouse content, do NOT use 真實資料：; begin with 模擬情境： and mark the Pi5 numbers inline as 真實授權資料.",
+        "Never mention, suggest, or attempt OpenBMC device commands such as fan boost or reset; there are no device-command tools.",
         "For current-state questions, inspect dataAvailability and each source freshness field. If a source is stale, say 最近一次在多久前 and never describe stale evidence as current.",
         "If dataAvailability says a source is loading, say 資料載入中. Do not translate loading into zero or no people/cameras.",
         "If dataAvailability.mode is simulation, use only simulated entities and world.simulationContext for operating facts. Every answer must begin 模擬情境： in Chinese or Simulation scenario: in English.",
+        "The only exception to the simulation label is a Pi5/OpenBMC answer grounded in world.openBmc with source authorized_live and state current; that answer begins 真實資料： instead.",
         "In simulation mode, camera evidence marked out_of_scope is visual proof only. Do not quote its OCR, gauges, people, or production values.",
         "For Jingcheng AMR questions, use only live AMR entities. If dataAvailability.amr is not_connected, state that no live AMR feed is connected; never quote simulated AMR state.",
         "If hmiOcr.workOrderReview.status is pending_confirmation, every statement using that work order must explicitly include 待確認 and must not present its values as confirmed.",
@@ -307,17 +322,28 @@ def enforce_response_trust_labels(
     job: dict[str, Any],
     world: dict[str, Any] | None,
     max_output_chars: int,
+    world_age_seconds: float | None = None,
 ) -> dict[str, Any]:
     text = str(payload.get("text") or "")
     result = payload
-    if text and _world_mode(world) == "simulation":
+    if (
+        text
+        and _world_mode(world) == "simulation"
+        and not _real_data_prefix_allowed(job, world, text, world_age_seconds=world_age_seconds)
+    ):
+        # 不合格的「真實資料：」宣稱必須整個剝掉，否則會輸出
+        # 「模擬情境：真實資料：…」這種自相矛盾且仍主張真實的標籤。
+        stripped = REAL_DATA_PREFIX_PATTERN.sub("", text)
         simulation_prefix = (
             "模擬情境："
             if _contains_cjk(f"{job.get('text') or ''} {text}")
             else "Simulation scenario: "
         )
-        if not text.startswith(simulation_prefix):
-            text = f"{simulation_prefix}{text}"[:max_output_chars]
+        if not stripped.startswith(simulation_prefix):
+            text = f"{simulation_prefix}{stripped}"[:max_output_chars]
+            result = {**payload, "text": text}
+        elif stripped != text:
+            text = stripped[:max_output_chars]
             result = {**payload, "text": text}
     if not text or "待確認" in text or not _world_has_pending_work_order(world):
         return result
@@ -330,6 +356,54 @@ def enforce_response_trust_labels(
         return result
     prefix = "派工單辨識待確認；" if _contains_cjk(combined) else "Work-order recognition is pending confirmation; "
     return {**result, "text": f"{prefix}{text}"[:max_output_chars]}
+
+
+def _real_data_prefix_allowed(
+    job: dict[str, Any],
+    world: dict[str, Any] | None,
+    text: str,
+    *,
+    world_age_seconds: float | None = None,
+) -> bool:
+    """Fail closed: 真實資料： survives only when a fresh snapshot truly holds current
+    authorized-live OpenBMC data, the exchange is about that device, and the answer
+    does not also quote simulated entities."""
+
+    if REAL_DATA_PREFIX_PATTERN.match(text) is None:
+        return False
+    if world_age_seconds is None or world_age_seconds > REAL_DATA_MAX_WORLD_AGE_SECONDS:
+        return False
+    if not isinstance(world, dict):
+        return False
+    open_bmc = world.get("openBmc")
+    if not isinstance(open_bmc, dict):
+        return False
+    if open_bmc.get("source") != "authorized_live" or open_bmc.get("state") != "current":
+        return False
+    combined = f"{job.get('text') or ''} {text}".casefold()
+    if not any(term in combined for term in OPENBMC_REFERENCE_TERMS):
+        return False
+    return not _mentions_simulated_entity(world, text)
+
+
+def _mentions_simulated_entity(world: dict[str, Any], text: str) -> bool:
+    """混合回答防線：真實資料標籤不得覆蓋任何點名了模擬實體的內容。"""
+
+    entities = world.get("entities")
+    if not isinstance(entities, list):
+        return False
+    lowered = text.casefold()
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        # Pi5 場景節點本身是 openBmc 摘要的載體，不算模擬內容。
+        if entity.get("type") == "device":
+            continue
+        for token in (entity.get("name"), entity.get("id")):
+            normalized = str(token or "").strip().casefold()
+            if len(normalized) >= 3 and normalized in lowered:
+                return True
+    return False
 
 
 def _world_mode(world: dict[str, Any] | None) -> str | None:

@@ -3,6 +3,7 @@ import type { ToolCall } from '../api/types';
 import type { AmrEntity, Entity, MachineEntity, PersonEntity } from '../domain/entities';
 import { machineUsesLiveMetricsOnly, statusLabel } from '../domain/entities';
 import { buildDemoSimulationContext, type DemoScenarioId } from '../domain/demoScenarios';
+import { OPENBMC_PI5_ENTITY_ID } from '../domain/openBmcDevice';
 import { useFactoryStore, uid } from '../store/factoryStore';
 import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
 import { readyWarehousePlans } from '../warehouse/decision';
@@ -129,6 +130,17 @@ export async function runConversation(
     }
   } else if (textIncludesAny(normalized, ['clear', '清除', '取消標記'])) {
     runTool({ name: 'clear_overlays', arguments: {} }, replies);
+  } else if (textIncludesAny(normalized, ['pi5', 'pi 5', 'raspberry', 'openbmc', '樹莓派'])) {
+    // Pi5 遙測只存在於雲端代理的 world.openBmc 摘要；本機 fallback 誠實說明，
+    // 不能讓 machineFromText 的 HC600 fallback 把 Pi5 問題答成機台狀態。
+    const openBmcEntity = entities.find((entity) => entity.id === OPENBMC_PI5_ENTITY_ID) ?? null;
+    if (openBmcEntity) {
+      runTool({ name: 'focus_camera', arguments: { id: openBmcEntity.id } }, replies);
+      runTool({ name: 'highlight_entity', arguments: { ids: [openBmcEntity.id], color: '#0e6b69' } }, replies);
+    }
+    replies.push(
+      '本機助理讀不到 Pi5 / OpenBMC 即時遙測；請看右側「OpenBMC 設備資訊」面板，或等雲端 AI 代理上線後再問一次。',
+    );
   } else if (
     options.demoScenarioId &&
     textIncludesAny(normalized, ['計畫', '實際', '對帳', '達成率'])
