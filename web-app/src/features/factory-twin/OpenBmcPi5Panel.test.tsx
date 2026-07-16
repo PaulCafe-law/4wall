@@ -116,12 +116,15 @@ describe('OpenBmcPi5Panel', () => {
       confirmationExpiresAt: new Date(Date.now() + 60_000).toISOString(),
       summary: '風扇加速 10 秒',
     })
-    apiMock.confirmOpenBmcCommand.mockResolvedValue(commandFixture())
-    apiMock.cancelOpenBmcCommand.mockResolvedValue(commandFixture({ status: 'cancelled' }))
+    apiMock.confirmOpenBmcCommand.mockImplementation(async (_token, commandId: string) =>
+      commandFixture({ commandId }),
+    )
+    apiMock.cancelOpenBmcCommand.mockImplementation(async (_token, commandId: string) =>
+      commandFixture({ commandId, status: 'cancelled' }),
+    )
   })
 
-  it('fails closed when the server marks telemetry stale', async () => {
-    const user = userEvent.setup()
+  it('fails closed when the server marks telemetry stale', () => {
     const device = deviceFixture({
       freshness: 'stale',
       controlEligible: false,
@@ -133,8 +136,7 @@ describe('OpenBmcPi5Panel', () => {
     expect(screen.queryByText('52.4 °C')).not.toBeInTheDocument()
     expect(screen.queryByText('1180 RPM')).not.toBeInTheDocument()
     expect(screen.getByText('目前沒有可確認的新鮮狀態；數值已隱藏。')).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: '查看詳情與控制' }))
+    expect(screen.getAllByText('STALE')).toHaveLength(2)
 
     expect(
       screen.getByText('為避免把過期資料當成現在狀態，本畫面不顯示最後一次的溫度、RPM 或 PWM。'),
@@ -160,8 +162,7 @@ describe('OpenBmcPi5Panel', () => {
     expect(screen.queryByText('1180 RPM')).not.toBeInTheDocument()
   })
 
-  it('labels deterministic fallback data as simulated and keeps it read-only', async () => {
-    const user = userEvent.setup()
+  it('labels deterministic fallback data as simulated and keeps it read-only', () => {
     const device = deviceFixture({
       deviceId: 'demo-pi5-simulated',
       controlEligible: false,
@@ -172,7 +173,6 @@ describe('OpenBmcPi5Panel', () => {
 
     expect(screen.getByText('SIMULATED')).toBeInTheDocument()
     expect(screen.getByText('52.4 °C')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: '查看詳情與控制' }))
     expect(screen.getByText('模擬資料僅供展示，不會送出控制命令。')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '建立提案：風扇加速 10 秒' })).toBeDisabled()
   })
@@ -190,7 +190,6 @@ describe('OpenBmcPi5Panel', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '查看詳情與控制' }))
     await user.click(screen.getByRole('button', { name: '建立提案：風扇加速 10 秒' }))
 
     await waitFor(() => {
@@ -215,8 +214,64 @@ describe('OpenBmcPi5Panel', () => {
     expect(onRefresh).toHaveBeenCalled()
   })
 
-  it('disables a pending confirmation when live evidence becomes ineligible', async () => {
+  it('locks cancellation while a confirmation request is pending', async () => {
     const user = userEvent.setup()
+    apiMock.confirmOpenBmcCommand.mockImplementation(() => new Promise(() => undefined))
+    const pending = commandFixture({
+      status: 'awaiting_confirmation',
+      confirmedAt: null,
+    })
+
+    renderWithProviders(
+      <OpenBmcPi5Panel
+        device={deviceFixture({ recentCommands: [pending] })}
+        sourceMode="live"
+      />,
+    )
+
+    const confirmButton = screen.getByRole('button', { name: '確認送出命令' })
+    const cancelButton = screen.getByRole('button', { name: '取消提案' })
+    await user.click(confirmButton)
+
+    await waitFor(() => {
+      expect(confirmButton).toBeDisabled()
+      expect(cancelButton).toBeDisabled()
+    })
+    await user.click(cancelButton)
+
+    expect(apiMock.confirmOpenBmcCommand).toHaveBeenCalledTimes(1)
+    expect(apiMock.cancelOpenBmcCommand).not.toHaveBeenCalled()
+  })
+
+  it('locks confirmation while a cancellation request is pending', async () => {
+    const user = userEvent.setup()
+    apiMock.cancelOpenBmcCommand.mockImplementation(() => new Promise(() => undefined))
+    const pending = commandFixture({
+      status: 'awaiting_confirmation',
+      confirmedAt: null,
+    })
+
+    renderWithProviders(
+      <OpenBmcPi5Panel
+        device={deviceFixture({ recentCommands: [pending] })}
+        sourceMode="live"
+      />,
+    )
+
+    const confirmButton = screen.getByRole('button', { name: '確認送出命令' })
+    await user.click(screen.getByRole('button', { name: '取消提案' }))
+
+    await waitFor(() => {
+      expect(confirmButton).toBeDisabled()
+      expect(screen.getByRole('button', { name: '取消中…' })).toBeDisabled()
+    })
+    await user.click(confirmButton)
+
+    expect(apiMock.cancelOpenBmcCommand).toHaveBeenCalledTimes(1)
+    expect(apiMock.confirmOpenBmcCommand).not.toHaveBeenCalled()
+  })
+
+  it('disables a pending confirmation when live evidence becomes ineligible', () => {
     const device = deviceFixture({
       controlEligible: false,
       controlBlockReasons: ['command_execution_disabled'],
@@ -224,13 +279,11 @@ describe('OpenBmcPi5Panel', () => {
 
     renderWithProviders(<OpenBmcPi5Panel device={device} sourceMode="live" />)
 
-    await user.click(screen.getByRole('button', { name: '查看詳情與控制' }))
     expect(screen.getByRole('button', { name: '建立提案：風扇加速 10 秒' })).toBeDisabled()
     expect(apiMock.createOpenBmcCommandProposal).not.toHaveBeenCalled()
   })
 
-  it('keeps command controls read-only for an authenticated viewer', async () => {
-    const user = userEvent.setup()
+  it('keeps command controls read-only for an authenticated viewer', () => {
     const device = deviceFixture({
       canControl: false,
       controlEligible: false,
@@ -239,14 +292,12 @@ describe('OpenBmcPi5Panel', () => {
 
     renderWithProviders(<OpenBmcPi5Panel device={device} sourceMode="live" />)
 
-    await user.click(screen.getByRole('button', { name: '查看詳情與控制' }))
     expect(screen.getByRole('button', { name: '建立提案：風扇加速 10 秒' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '建立提案：重啟流程演練' })).toBeDisabled()
     expect(screen.getByText('insufficient_write_role')).toBeInTheDocument()
   })
 
-  it('disables fan boost when the latest live observation lacks manual boost evidence', async () => {
-    const user = userEvent.setup()
+  it('disables fan boost when the latest live observation lacks manual boost evidence', () => {
     const base = deviceFixture()
     const device = deviceFixture({
       latestObservation: {
@@ -260,8 +311,123 @@ describe('OpenBmcPi5Panel', () => {
 
     renderWithProviders(<OpenBmcPi5Panel device={device} sourceMode="live" />)
 
-    await user.click(screen.getByRole('button', { name: '查看詳情與控制' }))
     expect(screen.getByRole('button', { name: '建立提案：風扇加速 10 秒' })).toBeDisabled()
     expect(screen.getByRole('button', { name: '建立提案：重啟流程演練' })).toBeEnabled()
+  })
+
+  it('shows an explicit loading state before a device is available', () => {
+    renderWithProviders(
+      <OpenBmcPi5Panel
+        device={null}
+        sourceMode="unavailable"
+        isLoading
+      />,
+    )
+
+    expect(screen.getByText('LOADING')).toBeInTheDocument()
+    expect(screen.getByText('正在讀取 Pi5 / OpenBMC 狀態…')).toBeInTheDocument()
+    expect(screen.queryByText('UNAVAILABLE')).not.toBeInTheDocument()
+  })
+
+  it('restores only the newest valid pending proposal from the selected device', async () => {
+    const user = userEvent.setup()
+    const now = Date.now()
+    const device = deviceFixture({
+      recentCommands: [
+        commandFixture({
+          commandId: 'cancelled-newer',
+          type: 'fan_boost',
+          status: 'cancelled',
+          proposedAt: new Date(now + 3_000).toISOString(),
+          confirmationExpiresAt: new Date(now + 60_000).toISOString(),
+          proposalHash: 'cancelled-hash',
+        }),
+        commandFixture({
+          commandId: 'pending-newest',
+          type: 'reset_dry_run',
+          status: 'awaiting_confirmation',
+          proposedAt: new Date(now + 2_000).toISOString(),
+          confirmationExpiresAt: new Date(now + 60_000).toISOString(),
+          proposalHash: 'newest-hash',
+        }),
+        commandFixture({
+          commandId: 'pending-older',
+          type: 'fan_boost',
+          status: 'awaiting_confirmation',
+          proposedAt: new Date(now + 1_000).toISOString(),
+          confirmationExpiresAt: new Date(now + 60_000).toISOString(),
+          proposalHash: 'older-hash',
+        }),
+        commandFixture({
+          commandId: 'pending-expired',
+          type: 'fan_boost',
+          status: 'awaiting_confirmation',
+          proposedAt: new Date(now + 4_000).toISOString(),
+          confirmationExpiresAt: new Date(now - 1_000).toISOString(),
+          proposalHash: 'expired-hash',
+        }),
+      ],
+    })
+
+    renderWithProviders(<OpenBmcPi5Panel device={device} sourceMode="live" />)
+
+    expect(screen.getByText('WAITING FOR CONFIRMATION')).toBeInTheDocument()
+    expect(screen.getByText('重啟流程演練（不重啟）')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '確認送出命令' }))
+
+    await waitFor(() => {
+      expect(apiMock.confirmOpenBmcCommand).toHaveBeenCalledWith('test-token', 'pending-newest', {
+        expectedProposalHash: 'newest-hash',
+      })
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('WAITING FOR CONFIRMATION')).not.toBeInTheDocument()
+    })
+  })
+
+  it('switches to a newer pending proposal received by polling', async () => {
+    const user = userEvent.setup()
+    const now = Date.now()
+    const older = commandFixture({
+      commandId: 'pending-older-tab',
+      type: 'fan_boost',
+      status: 'awaiting_confirmation',
+      confirmedAt: null,
+      proposedAt: new Date(now).toISOString(),
+      confirmationExpiresAt: new Date(now + 60_000).toISOString(),
+      proposalHash: 'older-tab-hash',
+    })
+    const newer = commandFixture({
+      commandId: 'pending-newer-tab',
+      type: 'reset_dry_run',
+      status: 'awaiting_confirmation',
+      confirmedAt: null,
+      proposedAt: new Date(now + 1_000).toISOString(),
+      confirmationExpiresAt: new Date(now + 60_000).toISOString(),
+      proposalHash: 'newer-tab-hash',
+    })
+    const initialDevice = deviceFixture({ recentCommands: [older] })
+    const { rerender } = renderWithProviders(
+      <OpenBmcPi5Panel device={initialDevice} sourceMode="live" />,
+    )
+
+    expect(screen.getByText('風扇加速 10 秒')).toBeInTheDocument()
+
+    rerender(
+      <OpenBmcPi5Panel
+        device={{ ...initialDevice, recentCommands: [newer, older] }}
+        sourceMode="live"
+      />,
+    )
+
+    expect(await screen.findByText('重啟流程演練（不重啟）')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '確認送出命令' }))
+
+    await waitFor(() => {
+      expect(apiMock.confirmOpenBmcCommand).toHaveBeenCalledWith('test-token', 'pending-newer-tab', {
+        expectedProposalHash: 'newer-tab-hash',
+      })
+    })
   })
 })

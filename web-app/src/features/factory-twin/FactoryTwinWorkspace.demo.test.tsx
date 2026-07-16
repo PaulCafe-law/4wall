@@ -47,6 +47,7 @@ vi.mock('./mirror/hooks/useTwinAgentBridge', () => ({
 
 import { FactoryTwinWorkspace } from './FactoryTwinWorkspace';
 import type { CameraEntity } from './mirror/domain/entities';
+import { OPENBMC_PI5_ENTITY_ID } from './mirror/domain/openBmcDevice';
 import { useFactoryStore } from './mirror/store/factoryStore';
 import { useWarehouseDemoStore } from './mirror/store/warehouseDemoStore';
 
@@ -98,6 +99,7 @@ it('does not expose or initialize the warehouse portal for the customer workspac
 
   expect(screen.queryByRole('button', { name: '進入倉儲' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: '立即進入智慧倉儲模擬區' })).not.toBeInTheDocument();
+  expect(useFactoryStore.getState().entities[OPENBMC_PI5_ENTITY_ID]).toBeUndefined();
   expect(useWarehouseDemoStore.getState().enabled).toBe(false);
   expect(useWarehouseDemoStore.getState().planSet).toBeNull();
 });
@@ -159,6 +161,7 @@ it('keeps the accelerator workspace labelled and rotates the assistant session o
       platformCameras={[authorizedCamera]}
       livePersons={[]}
       demoPresentation
+      openBmcSceneMode="live"
       liveDataStatus={{
         mode: 'simulation',
         cameraState: 'ready',
@@ -174,6 +177,11 @@ it('keeps the accelerator workspace labelled and rotates the assistant session o
   expect(screen.getByText('模擬營運數據')).toBeInTheDocument();
   expect(screen.getByText('靚程授權影像 1/1 在線')).toBeInTheDocument();
   expect(screen.queryByTestId('work-order-overlay')).not.toBeInTheDocument();
+  expect(useFactoryStore.getState().entities[OPENBMC_PI5_ENTITY_ID]).toMatchObject({
+    type: 'device',
+    deviceKind: 'openbmc_pi5',
+    status: 'live',
+  });
   expect(screen.getByTestId('chat-session')).toHaveTextContent('demo-session-initial');
   expect(bridgeMock).toHaveBeenLastCalledWith(
     expect.objectContaining({ mode: 'simulation' }),
@@ -194,4 +202,28 @@ it('keeps the accelerator workspace labelled and rotates the assistant session o
   });
   expect(screen.getByTestId('chat-session')).not.toHaveTextContent('demo-session-initial');
   expect(useFactoryStore.getState().messages[0]?.text).toContain('模擬情境：計畫落後已載入');
+  expect(useFactoryStore.getState().entities[OPENBMC_PI5_ENTITY_ID]).toMatchObject({
+    type: 'device',
+    status: 'live',
+  });
+});
+
+it('reopens the detail rail when the OpenBMC scene device is selected', () => {
+  render(
+    <FactoryTwinWorkspace
+      platformCameras={[]}
+      livePersons={[]}
+      demoPresentation
+      openBmcSceneMode="simulated"
+      openBmcDetail={<div>OpenBMC detail</div>}
+    />,
+  );
+
+  act(() => useFactoryStore.getState().toggleRight());
+  expect(useFactoryStore.getState().rightOpen).toBe(false);
+
+  act(() => useFactoryStore.getState().select(OPENBMC_PI5_ENTITY_ID));
+
+  expect(useFactoryStore.getState().selectedId).toBe(OPENBMC_PI5_ENTITY_ID);
+  expect(useFactoryStore.getState().rightOpen).toBe(true);
 });

@@ -5,8 +5,10 @@ import { api, type OpenBmcCommandProposalPayload } from '../../lib/api'
 import { useAuthedMutation } from '../../lib/auth-query'
 import type {
   OpenBmcCommandProposal,
+  OpenBmcCommand,
   OpenBmcCommandType,
   OpenBmcDevice,
+  OpenBmcDeviceList,
   OpenBmcEvent,
 } from '../../lib/types'
 
@@ -107,6 +109,53 @@ function commandLabel(commandType: OpenBmcCommandType): string {
   return commandType === 'fan_boost' ? '風扇加速 10 秒' : '重啟流程演練（不重啟）'
 }
 
+function latestPendingCommand(
+  device: OpenBmcDevice | null,
+  nowMs: number,
+): OpenBmcCommand | null {
+  return (
+    [...(device?.recentCommands ?? [])]
+      .filter(
+        (command) =>
+          command.status === 'awaiting_confirmation' &&
+          command.confirmationExpiresAt !== null &&
+          Date.parse(command.confirmationExpiresAt) > nowMs,
+      )
+      .sort((a, b) => Date.parse(b.proposedAt) - Date.parse(a.proposedAt))[0] ?? null
+  )
+}
+
+function proposalFromCommand(command: OpenBmcCommand): OpenBmcCommandProposal {
+  return {
+    commandId: command.commandId,
+    status: 'awaiting_confirmation',
+    proposalHash: command.proposalHash,
+    confirmationExpiresAt: command.confirmationExpiresAt!,
+    summary: commandLabel(command.type),
+  }
+}
+
+function upsertRecentCommand(
+  current: OpenBmcDeviceList | undefined,
+  deviceId: string,
+  command: OpenBmcCommand,
+): OpenBmcDeviceList | undefined {
+  if (!current) return current
+  return {
+    devices: current.devices.map((candidate) =>
+      candidate.deviceId === deviceId
+        ? {
+            ...candidate,
+            recentCommands: [
+              command,
+              ...candidate.recentCommands.filter((item) => item.commandId !== command.commandId),
+            ],
+          }
+        : candidate,
+    ),
+  }
+}
+
 export function OpenBmcPi5Panel({
   device,
   sourceMode,
@@ -115,10 +164,12 @@ export function OpenBmcPi5Panel({
   onRefresh,
 }: OpenBmcPi5PanelProps) {
   const queryClient = useQueryClient()
-  const [expanded, setExpanded] = useState(false)
-  const [proposal, setProposal] = useState<OpenBmcCommandProposal | null>(null)
-  const [proposalType, setProposalType] = useState<OpenBmcCommandType | null>(null)
   const [clockMs, setClockMs] = useState(() => Date.now())
+  const [localProposal, setLocalProposal] = useState<OpenBmcCommandProposal | null>(null)
+  const [localProposalType, setLocalProposalType] = useState<OpenBmcCommandType | null>(null)
+  const [settledCommandIds, setSettledCommandIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  )
 
   useEffect(() => {
     const timer = window.setInterval(() => setClockMs(Date.now()), 1_000)
@@ -129,36 +180,94 @@ export function OpenBmcPi5Panel({
     mutationKey: ['openbmc', 'command-proposal'],
     mutationFn: ({ token, payload }) =>
       api.createOpenBmcCommandProposal(token, payload.deviceId, payload.payload),
-    onSuccess: (nextProposal) => {
-      setProposal(nextProposal)
+    onSuccess: (nextProposal, request) => {
+      const proposedAt = new Date().toISOString()
+      const cachedCommand: OpenBmcCommand = {
+        commandId: nextProposal.commandId,
+        type: request.payload.command.type,
+        arguments: request.payload.command.arguments,
+        status: 'awaiting_confirmation',
+        reason: request.payload.reason,
+        proposalHash: nextProposal.proposalHash,
+        proposedAt,
+        confirmationExpiresAt: nextProposal.confirmationExpiresAt,
+        confirmedAt: null,
+        claimExpiresAt: null,
+        completedAt: null,
+        failureCode: null,
+        result: null,
+      }
+      setLocalProposal(nextProposal)
       setClockMs(Date.now())
+      queryClient.setQueriesData<OpenBmcDeviceList>(
+        { queryKey: ['openbmc', 'devices'] },
+        (current) => upsertRecentCommand(current, request.deviceId, cachedCommand),
+      )
+      void queryClient.invalidateQueries({ queryKey: ['openbmc', 'devices'] })
+      onRefresh?.()
     },
   })
 
-  const confirmMutation = useAuthedMutation<unknown, ConfirmRequest>({
+  const confirmMutation = useAuthedMutation<OpenBmcCommand, ConfirmRequest>({
     mutationKey: ['openbmc', 'command-confirm'],
     mutationFn: ({ token, payload }) =>
       api.confirmOpenBmcCommand(token, payload.commandId, {
         expectedProposalHash: payload.expectedProposalHash,
       }),
-    onSuccess: async () => {
-      setProposal(null)
-      setProposalType(null)
+    onSuccess: async (command) => {
+      setLocalProposal(null)
+      setLocalProposalType(null)
+      setSettledCommandIds((current) => new Set(current).add(command.commandId))
+      if (device) {
+        queryClient.setQueriesData<OpenBmcDeviceList>(
+          { queryKey: ['openbmc', 'devices'] },
+          (current) => upsertRecentCommand(current, device.deviceId, command),
+        )
+      }
       await queryClient.invalidateQueries({ queryKey: ['openbmc', 'devices'] })
       onRefresh?.()
     },
   })
 
-  const cancelMutation = useAuthedMutation<unknown, string>({
+  const cancelMutation = useAuthedMutation<OpenBmcCommand, string>({
     mutationKey: ['openbmc', 'command-cancel'],
     mutationFn: ({ token, payload: commandId }) => api.cancelOpenBmcCommand(token, commandId),
-    onSuccess: async () => {
-      setProposal(null)
-      setProposalType(null)
+    onSuccess: async (command) => {
+      setLocalProposal(null)
+      setLocalProposalType(null)
+      setSettledCommandIds((current) => new Set(current).add(command.commandId))
+      if (device) {
+        queryClient.setQueriesData<OpenBmcDeviceList>(
+          { queryKey: ['openbmc', 'devices'] },
+          (current) => upsertRecentCommand(current, device.deviceId, command),
+        )
+      }
       await queryClient.invalidateQueries({ queryKey: ['openbmc', 'devices'] })
       onRefresh?.()
     },
   })
+
+  const commandTransitionPending = confirmMutation.isPending || cancelMutation.isPending
+  const latestServerPendingCommand = useMemo(
+    () => latestPendingCommand(device, clockMs),
+    [clockMs, device],
+  )
+  const serverPendingCommand =
+    latestServerPendingCommand &&
+    !settledCommandIds.has(latestServerPendingCommand.commandId)
+      ? latestServerPendingCommand
+      : null
+  const serverProposal = useMemo(
+    () => (serverPendingCommand ? proposalFromCommand(serverPendingCommand) : null),
+    [serverPendingCommand],
+  )
+  const localProposalIsVisible =
+    localProposal !== null &&
+    !settledCommandIds.has(localProposal.commandId)
+  const proposal = serverProposal ?? (localProposalIsVisible ? localProposal : null)
+  const proposalType = serverPendingCommand?.type ?? (
+    localProposalIsVisible ? localProposalType : null
+  )
 
   const observation = device?.latestObservation ?? null
   const liveEvidenceIsCurrent =
@@ -211,7 +320,7 @@ export function OpenBmcPi5Panel({
 
   const propose = (commandType: OpenBmcCommandType) => {
     if (!device || !commandEligible(commandType) || proposalMutation.isPending) return
-    setProposalType(commandType)
+    setLocalProposalType(commandType)
     proposalMutation.mutate({
       deviceId: device.deviceId,
       payload: {
@@ -225,11 +334,16 @@ export function OpenBmcPi5Panel({
   }
 
   const confirm = () => {
-    if (!proposal || proposalExpired || !proposalControlEligible || confirmMutation.isPending) return
+    if (!proposal || proposalExpired || !proposalControlEligible || commandTransitionPending) return
     confirmMutation.mutate({
       commandId: proposal.commandId,
       expectedProposalHash: proposal.proposalHash,
     })
+  }
+
+  const cancel = () => {
+    if (!proposal || commandTransitionPending) return
+    cancelMutation.mutate(proposal.commandId)
   }
 
   const sourceBadge =
@@ -244,14 +358,31 @@ export function OpenBmcPi5Panel({
       : sourceMode === 'simulated'
         ? 'border-[#A56A16] bg-[#F7E8BF] text-[#7B4D0D]'
         : 'border-[#B0A79B] bg-[#EEE8DF] text-[#6F685F]'
+  const sourceDescription =
+    sourceMode === 'live'
+      ? '真實 OpenBMC connector'
+      : sourceMode === 'simulated'
+        ? '展示 fixture（唯讀）'
+        : 'OpenBMC 服務不可用'
+  const showStaleBadge =
+    sourceMode === 'live' && device !== null && !currentStateAvailable
 
   if (isLoading && !device) {
     return (
       <section
         aria-label="Pi5 OpenBMC 狀態"
-        className="border-b border-[#DED5C8] bg-[#F4EFE7] px-4 py-3 md:px-6"
+        className="detail text-[#171B1F]"
+        data-source-mode="loading"
       >
-        <p className="m-0 font-mono text-xs text-[#6F685F]">正在讀取 Pi5 / OpenBMC 狀態…</p>
+        <div className="panel-title">OpenBMC 設備資訊</div>
+        <div className="pt-4">
+          <span className="border border-[#9AD0D2] bg-[#E6F0EE] px-2 py-1 font-mono text-[10px] font-semibold tracking-[0.08em] text-[#0E6B69]">
+            LOADING
+          </span>
+          <p className="mt-3 mb-0 font-mono text-xs text-[#6F685F]">
+            正在讀取 Pi5 / OpenBMC 狀態…
+          </p>
+        </div>
       </section>
     )
   }
@@ -259,216 +390,204 @@ export function OpenBmcPi5Panel({
   return (
     <section
       aria-label="Pi5 OpenBMC 狀態"
-      className="border-b-2 border-[#171B1F] bg-[#F4EFE7] text-[#171B1F]"
+      className="detail text-[#171B1F]"
       data-source-mode={sourceMode}
     >
-      <div className="flex min-h-[72px] flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3 md:px-6">
-        <div className="min-w-[210px]">
-          <div className="flex items-center gap-2">
-            <h2 className="m-0 font-display text-base font-semibold tracking-[-0.02em]">
-              {device?.name ?? 'Pi5 OpenBMC'}
-            </h2>
-            <span
-              className={`border px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em] ${sourceBadgeClass}`}
-            >
-              {sourceBadge}
+      <div className="panel-title">OpenBMC 設備資訊</div>
+
+      <div className="pt-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="m-0 font-display text-lg font-semibold tracking-[-0.02em]">
+            {device?.name ?? 'Pi5 / OpenBMC 節點'}
+          </h2>
+          <span
+            className={`border px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em] ${sourceBadgeClass}`}
+          >
+            {sourceBadge}
+          </span>
+          {showStaleBadge ? (
+            <span className="border border-[#A56A16] bg-[#FBF0D7] px-2 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em] text-[#8A570F]">
+              STALE
             </span>
-          </div>
-          <p className="mt-1 mb-0 text-xs text-[#6F685F]">
-            {errorText
-              ? 'OpenBMC 服務目前無法讀取。'
-              : currentStateAvailable
-                ? `最近觀測 ${formatObservedAt(observation?.observedAt)}`
-                : '目前沒有可確認的新鮮狀態；數值已隱藏。'}
-          </p>
+          ) : null}
         </div>
 
-        <dl className="m-0 grid min-w-[440px] flex-1 grid-cols-4 divide-x divide-[#DED5C8]">
-          <div className="px-3 first:pl-0">
-            <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">溫度</dt>
-            <dd className="m-0 mt-1 font-mono text-base font-semibold">
-              {currentStateAvailable ? formatTemperature(observation?.temperatureC) : '—'}
-            </dd>
-          </div>
-          <div className="px-3">
-            <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">健康</dt>
-            <dd className="m-0 mt-1">
-              <span
-                className={`inline-block border px-1.5 py-0.5 text-xs font-semibold ${statusTone(
-                  currentStateAvailable ? observation?.health : null,
-                )}`}
-              >
-                {currentStateAvailable ? healthLabel(observation?.health) : '無資料'}
-              </span>
-            </dd>
-          </div>
-          <div className="px-3">
-            <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">風扇轉速</dt>
-            <dd className="m-0 mt-1 font-mono text-base font-semibold">
-              {currentStateAvailable && observation?.fan.present
-                ? formatMetric(observation.fan.rpm, 'RPM')
-                : '—'}
-            </dd>
-          </div>
-          <div className="px-3">
-            <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">PWM</dt>
-            <dd className="m-0 mt-1 font-mono text-base font-semibold">
-              {currentStateAvailable && observation?.fan.present ? formatPwm(observation.fan.pwm) : '—'}
-            </dd>
-          </div>
-        </dl>
-
-        <button
-          type="button"
-          className="h-9 border border-[#0E6B69] bg-transparent px-3 text-xs font-semibold text-[#0E6B69] hover:bg-[#E6F0EE]"
-          aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          {expanded ? '收合詳情' : '查看詳情與控制'}
-        </button>
+        <p className="mt-2 mb-0 text-xs text-[#6F685F]">資料來源：{sourceDescription}</p>
+        <p className="mt-1 mb-0 text-xs text-[#6F685F]">
+          {errorText
+            ? 'OpenBMC 服務目前無法讀取。'
+            : currentStateAvailable
+              ? `最近觀測 ${formatObservedAt(observation?.observedAt)}`
+              : '目前沒有可確認的新鮮狀態；數值已隱藏。'}
+        </p>
       </div>
 
-      {expanded ? (
-        <div className="grid border-t border-[#DED5C8] lg:grid-cols-[1.1fr_1fr]">
-          <div className="border-b border-[#DED5C8] p-4 lg:border-r lg:border-b-0 md:px-6">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h3 className="m-0 font-display text-sm font-semibold">狀態與近期事件</h3>
-              <span className="font-mono text-[10px] text-[#6F685F]">
-                {device?.freshness === 'fresh' ? 'FRESH' : (device?.freshness ?? 'MISSING').toUpperCase()}
-              </span>
-            </div>
-            {!currentStateAvailable ? (
-              <p className="m-0 border-l-4 border-[#A56A16] bg-[#FBF0D7] p-3 text-xs text-[#6B4812]">
-                為避免把過期資料當成現在狀態，本畫面不顯示最後一次的溫度、RPM 或 PWM。
-              </p>
-            ) : (
-              <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-3 text-xs">
-                <div>
-                  <dt className="text-[#6F685F]">運行狀態</dt>
-                  <dd className="m-0 mt-1 font-semibold">{healthLabel(observation?.status)}</dd>
-                </div>
-                <div>
-                  <dt className="text-[#6F685F]">風扇</dt>
-                  <dd className="m-0 mt-1 font-semibold">
-                    {observation?.fan.present ? '已偵測' : '未偵測'}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[#6F685F]">警告門檻</dt>
-                  <dd className="m-0 mt-1 font-mono">
-                    {formatMetric(observation?.thresholds.warningC, '°C')}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-[#6F685F]">嚴重門檻</dt>
-                  <dd className="m-0 mt-1 font-mono">
-                    {formatMetric(observation?.thresholds.criticalC, '°C')}
-                  </dd>
-                </div>
-              </dl>
-            )}
+      <dl className="m-0 mt-4 grid grid-cols-2 border-t border-l border-[#DED5C8]">
+        <div className="border-r border-b border-[#DED5C8] bg-[#EEE8DF] p-3">
+          <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">溫度</dt>
+          <dd className="m-0 mt-1 font-mono text-base font-semibold">
+            {currentStateAvailable ? formatTemperature(observation?.temperatureC) : '—'}
+          </dd>
+        </div>
+        <div className="border-r border-b border-[#DED5C8] bg-[#EEE8DF] p-3">
+          <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">健康</dt>
+          <dd className="m-0 mt-1">
+            <span
+              className={`inline-block border px-1.5 py-0.5 text-xs font-semibold ${statusTone(
+                currentStateAvailable ? observation?.health : null,
+              )}`}
+            >
+              {currentStateAvailable ? healthLabel(observation?.health) : '無資料'}
+            </span>
+          </dd>
+        </div>
+        <div className="border-r border-b border-[#DED5C8] bg-[#EEE8DF] p-3">
+          <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">風扇轉速</dt>
+          <dd className="m-0 mt-1 font-mono text-base font-semibold">
+            {currentStateAvailable && observation?.fan.present
+              ? formatMetric(observation.fan.rpm, 'RPM')
+              : '—'}
+          </dd>
+        </div>
+        <div className="border-r border-b border-[#DED5C8] bg-[#EEE8DF] p-3">
+          <dt className="text-[10px] font-semibold tracking-[0.08em] text-[#6F685F]">PWM</dt>
+          <dd className="m-0 mt-1 font-mono text-base font-semibold">
+            {currentStateAvailable && observation?.fan.present ? formatPwm(observation.fan.pwm) : '—'}
+          </dd>
+        </div>
+      </dl>
 
-            <div className="mt-4 space-y-2">
-              {(device?.recentEvents ?? []).slice(0, 3).map((event) => (
-                <article
-                  key={event.eventId}
-                  className={`border-l-4 bg-[#EEE8DF] px-3 py-2 ${eventTone(event)}`}
-                >
-                  <div className="flex justify-between gap-3">
-                    <strong className="text-xs">{event.message}</strong>
-                    <time className="shrink-0 font-mono text-[10px] text-[#6F685F]">
-                      {formatObservedAt(event.occurredAt)}
-                    </time>
-                  </div>
-                  <p className="mt-1 mb-0 font-mono text-[10px] text-[#6F685F]">{event.code}</p>
-                </article>
-              ))}
-              {(device?.recentEvents.length ?? 0) === 0 ? (
-                <p className="m-0 text-xs text-[#6F685F]">目前沒有近期事件。</p>
-              ) : null}
+      <div className="mt-4 border-t border-[#DED5C8] pt-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="m-0 font-display text-sm font-semibold">狀態與近期事件</h3>
+          <span className="font-mono text-[10px] text-[#6F685F]">
+            {device?.freshness === 'fresh' ? 'FRESH' : (device?.freshness ?? 'MISSING').toUpperCase()}
+          </span>
+        </div>
+        {!currentStateAvailable ? (
+          <p className="m-0 border-l-4 border-[#A56A16] bg-[#FBF0D7] p-3 text-xs text-[#6B4812]">
+            為避免把過期資料當成現在狀態，本畫面不顯示最後一次的溫度、RPM 或 PWM。
+          </p>
+        ) : (
+          <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+            <div>
+              <dt className="text-[#6F685F]">運行狀態</dt>
+              <dd className="m-0 mt-1 font-semibold">{healthLabel(observation?.status)}</dd>
+            </div>
+            <div>
+              <dt className="text-[#6F685F]">風扇</dt>
+              <dd className="m-0 mt-1 font-semibold">
+                {observation?.fan.present ? '已偵測' : '未偵測'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[#6F685F]">警告門檻</dt>
+              <dd className="m-0 mt-1 font-mono">
+                {formatMetric(observation?.thresholds.warningC, '°C')}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[#6F685F]">嚴重門檻</dt>
+              <dd className="m-0 mt-1 font-mono">
+                {formatMetric(observation?.thresholds.criticalC, '°C')}
+              </dd>
+            </div>
+          </dl>
+        )}
+
+        <div className="mt-4 space-y-2">
+          {(device?.recentEvents ?? []).slice(0, 3).map((event) => (
+            <article
+              key={event.eventId}
+              className={`border-l-4 bg-[#EEE8DF] px-3 py-2 ${eventTone(event)}`}
+            >
+              <div className="flex justify-between gap-3">
+                <strong className="text-xs">{event.message}</strong>
+                <time className="shrink-0 font-mono text-[10px] text-[#6F685F]">
+                  {formatObservedAt(event.occurredAt)}
+                </time>
+              </div>
+              <p className="mt-1 mb-0 font-mono text-[10px] text-[#6F685F]">{event.code}</p>
+            </article>
+          ))}
+          {(device?.recentEvents.length ?? 0) === 0 ? (
+            <p className="m-0 text-xs text-[#6F685F]">目前沒有近期事件。</p>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 border-t border-[#DED5C8] pt-4">
+        <h3 className="m-0 font-display text-sm font-semibold">經確認的控制操作</h3>
+        <p className="mt-1 mb-3 text-xs text-[#6F685F]">
+          第一次點擊只建立提案；必須再次核對並確認，現場 connector 才能領取命令。
+        </p>
+
+        {proposal ? (
+          <div className="border-2 border-[#B55C2B] bg-[#FBF0D7] p-3">
+            <span className="font-mono text-[10px] font-semibold tracking-[0.08em] text-[#8A461F]">
+              WAITING FOR CONFIRMATION
+            </span>
+            <p className="mt-2 mb-1 text-sm font-semibold">
+              {proposal.summary || commandLabel(proposalType ?? 'reset_dry_run')}
+            </p>
+            <p className="m-0 text-xs text-[#6F685F]">
+              {proposalExpired
+                ? '提案已逾期，請取消後重新建立。'
+                : `確認期限 ${formatObservedAt(proposal.confirmationExpiresAt)}`}
+            </p>
+            <div className="mt-3 grid gap-2">
+              <button
+                type="button"
+                className="min-h-9 border border-[#B55C2B] bg-[#B55C2B] px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={proposalExpired || !proposalControlEligible || commandTransitionPending}
+                onClick={confirm}
+              >
+                {confirmMutation.isPending ? '送出確認中…' : '確認送出命令'}
+              </button>
+              <button
+                type="button"
+                className="min-h-9 border border-[#6F685F] bg-transparent px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={commandTransitionPending}
+                onClick={cancel}
+              >
+                {cancelMutation.isPending ? '取消中…' : '取消提案'}
+              </button>
             </div>
           </div>
-
-          <div className="p-4 md:px-6">
-            <h3 className="m-0 font-display text-sm font-semibold">經確認的控制操作</h3>
-            <p className="mt-1 mb-3 text-xs text-[#6F685F]">
-              第一次點擊只建立提案；必須再次核對並確認，現場 connector 才能領取命令。
-            </p>
-
-            {proposal ? (
-              <div className="border-2 border-[#B55C2B] bg-[#FBF0D7] p-3">
-                <span className="font-mono text-[10px] font-semibold tracking-[0.08em] text-[#8A461F]">
-                  WAITING FOR CONFIRMATION
-                </span>
-                <p className="mt-2 mb-1 text-sm font-semibold">
-                  {proposal.summary || commandLabel(proposalType ?? 'reset_dry_run')}
-                </p>
-                <p className="m-0 text-xs text-[#6F685F]">
-                  {proposalExpired
-                    ? '提案已逾期，請取消後重新建立。'
-                    : `確認期限 ${formatObservedAt(proposal.confirmationExpiresAt)}`}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="h-9 border border-[#B55C2B] bg-[#B55C2B] px-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={proposalExpired || !proposalControlEligible || confirmMutation.isPending}
-                    onClick={confirm}
-                  >
-                    {confirmMutation.isPending ? '送出確認中…' : '確認送出命令'}
-                  </button>
-                  <button
-                    type="button"
-                    className="h-9 border border-[#6F685F] bg-transparent px-3 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={cancelMutation.isPending}
-                    onClick={() => cancelMutation.mutate(proposal.commandId)}
-                  >
-                    取消提案
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    className="min-h-11 border border-[#0E6B69] bg-[#0E6B69] px-3 text-left text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-[#B0A79B] disabled:bg-[#D6CFC5] disabled:text-[#6F685F]"
-                    disabled={
-                      !commandEligible('fan_boost') ||
-                      proposalMutation.isPending
-                    }
-                    onClick={() => propose('fan_boost')}
-                  >
-                    建立提案：風扇加速 10 秒
-                  </button>
-                  <button
-                    type="button"
-                    className="min-h-11 border border-[#4A4F55] bg-transparent px-3 text-left text-xs font-semibold disabled:cursor-not-allowed disabled:border-[#B0A79B] disabled:bg-[#EEE8DF] disabled:text-[#6F685F]"
-                    disabled={
-                      !commandEligible('reset_dry_run') ||
-                      proposalMutation.isPending
-                    }
-                    onClick={() => propose('reset_dry_run')}
-                  >
-                    建立提案：重啟流程演練
-                  </button>
-                </div>
-                {controlBlockMessage ? (
-                  <p className="mt-3 mb-0 border-l-4 border-[#A56A16] pl-3 text-xs text-[#6B4812]">
-                    {controlBlockMessage}
-                  </p>
-                ) : null}
-              </>
-            )}
-
-            {commandError ? (
-              <p role="alert" className="mt-3 mb-0 text-xs font-semibold text-[#B9382F]">
-                操作未送出：{commandError}
+        ) : (
+          <>
+            <div className="grid gap-2">
+              <button
+                type="button"
+                className="min-h-11 border border-[#0E6B69] bg-[#0E6B69] px-3 text-left text-xs font-semibold text-white disabled:cursor-not-allowed disabled:border-[#B0A79B] disabled:bg-[#D6CFC5] disabled:text-[#6F685F]"
+                disabled={!commandEligible('fan_boost') || proposalMutation.isPending}
+                onClick={() => propose('fan_boost')}
+              >
+                建立提案：風扇加速 10 秒
+              </button>
+              <button
+                type="button"
+                className="min-h-11 border border-[#4A4F55] bg-transparent px-3 text-left text-xs font-semibold disabled:cursor-not-allowed disabled:border-[#B0A79B] disabled:bg-[#EEE8DF] disabled:text-[#6F685F]"
+                disabled={!commandEligible('reset_dry_run') || proposalMutation.isPending}
+                onClick={() => propose('reset_dry_run')}
+              >
+                建立提案：重啟流程演練
+              </button>
+            </div>
+            {controlBlockMessage ? (
+              <p className="mt-3 mb-0 border-l-4 border-[#A56A16] pl-3 text-xs text-[#6B4812]">
+                {controlBlockMessage}
               </p>
             ) : null}
-          </div>
-        </div>
-      ) : null}
+          </>
+        )}
+
+        {commandError ? (
+          <p role="alert" className="mt-3 mb-0 text-xs font-semibold text-[#B9382F]">
+            操作未送出：{commandError}
+          </p>
+        ) : null}
+      </div>
     </section>
   )
 }

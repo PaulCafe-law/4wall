@@ -12,6 +12,7 @@ export const ENTITY_COLOR: Record<string, string> = {
   person: '#ede4ce', // cream
   machine: '#c9bfa3', // tan
   camera: '#c0492f', // brick
+  device: '#38b2ac', // teal edge-compute node
   zone: '#d9a441', // mustard (usually overridden per-zone)
   amr: '#d9a441', // mustard
   drone: '#e0852f', // orange

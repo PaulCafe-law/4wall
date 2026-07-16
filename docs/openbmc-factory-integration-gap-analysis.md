@@ -33,7 +33,7 @@
 - OpenBMC connector 或一般設備身分。
 - org/site/device 綁定的 BMC telemetry、event 與 capability 模型。
 - 可追蹤的設備命令 proposal、confirmation、claim、execution result 狀態機。
-- `/demo-factory` 中獨立的 Pi5/OpenBMC 即時面板。
+- `/demo-factory` 中可點選的 Pi5/OpenBMC 設備物件與右側即時詳情。
 - 對 collector 斷線、時鐘偏移、事件重送與命令重試的專用規則。
 
 ## Current `openbmc_final` capabilities
@@ -95,7 +95,7 @@ Pi5 sensor agent
 - 設定一個 org/site-scoped Pi5 managed device。
 - 現場 outbound connector 輪詢既有 `GET /api/state`。
 - 正規化並上傳目前溫度、健康狀態、風扇、threshold、freshness 與事件。
-- `/demo-factory` 顯示：
+- `/demo-factory` 在 3D 工廠內顯示一個 Pi5/OpenBMC 設備物件；使用者點選後，既有右側詳細資訊欄顯示：
   - Pi5 連線與資料時間
   - 溫度、Normal/Warning/Critical、health
   - 風扇是否存在、RPM、PWM、cooling state
@@ -235,13 +235,13 @@ rollback 順序：
 
 1. 關閉 command execution，讓 queued/claimed command 到期，不新增命令。
 2. 必要時撤銷 connector token並停止現場 connector。
-3. `/demo-factory` 回到 clearly-labelled fixture 或隱藏 OpenBMC panel。
+3. `/demo-factory` 回到 clearly-labelled fixture，或隱藏 OpenBMC 設備物件及其詳情。
 4. 保留 telemetry、event、command 與 audit 記錄供調查。
 5. 不回復成 browser/LINE 直接呼叫 collector，也不以 stale data 填補畫面。
 
 ## Exit criteria
 
-- 使用者可在 `/demo-factory` 一眼辨識目前顯示的是 live 或 simulated Pi5 資料。
+- 使用者可在 `/demo-factory` 點選 Pi5/OpenBMC 設備物件，並在右側詳情一眼辨識目前顯示的是 live 或 simulated Pi5 資料。
 - fresh Pi5 state 可在 30 秒內呈現；斷線後 30 秒內進入 stale/missing 並停用控制。
 - 所有資料與命令皆可追溯至正確 org/site/device/connector。
 - 任何外部文字、URL 或 LINE event 無法建立 OpenBMC command。

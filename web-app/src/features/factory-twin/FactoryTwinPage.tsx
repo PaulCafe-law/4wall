@@ -508,6 +508,12 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
   const openBmcDevice =
     liveOpenBmcDevice ??
     (openBmcSourceMode === 'simulated' ? buildSimulatedOpenBmcDevice(nowMs) : null);
+  const openBmcSceneMode =
+    openBmcQuery.isLoading && !openBmcQuery.data
+      ? 'loading'
+      : openBmcSourceMode === 'live' && openBmcDevice?.freshness !== 'fresh'
+        ? 'stale'
+        : openBmcSourceMode;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -534,19 +540,6 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
         </div>
       ) : null}
 
-      {acceleratorDemo ? (
-        <OpenBmcPi5Panel
-          key={`${openBmcSourceMode}:${openBmcDevice?.deviceId ?? 'none'}`}
-          device={openBmcDevice}
-          sourceMode={openBmcSourceMode}
-          isLoading={openBmcQuery.isLoading}
-          errorText={openBmcQuery.error?.detail ?? null}
-          onRefresh={() => {
-            void openBmcQuery.refetch();
-          }}
-        />
-      ) : null}
-
       <div className="min-h-0 flex-1">
         <FactoryTwinWorkspace
           platformCameras={platformCameras}
@@ -554,6 +547,21 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
           liveOnly={liveOnly}
           liveDataStatus={liveDataStatus}
           demoPresentation={acceleratorDemo}
+          openBmcSceneMode={acceleratorDemo ? openBmcSceneMode : undefined}
+          openBmcDetail={
+            acceleratorDemo ? (
+              <OpenBmcPi5Panel
+                key={`${openBmcSourceMode}:${openBmcDevice?.deviceId ?? 'none'}`}
+                device={openBmcDevice}
+                sourceMode={openBmcSourceMode}
+                isLoading={openBmcQuery.isLoading}
+                errorText={openBmcQuery.error?.detail ?? null}
+                onRefresh={() => {
+                  void openBmcQuery.refetch();
+                }}
+              />
+            ) : undefined
+          }
         />
       </div>
     </div>

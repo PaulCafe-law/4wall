@@ -99,10 +99,8 @@ def _require_integration(settings: Settings) -> None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="openbmc_integration_disabled")
 
 
-def _require_live_view(settings: Settings, current_user: CurrentWebUser) -> None:
+def _require_live_view(settings: Settings) -> None:
     if settings.openbmc_live_view_enabled:
-        return
-    if current_user.global_roles.intersection({"platform_admin", "ops"}):
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="openbmc_live_view_disabled")
 
@@ -444,7 +442,7 @@ def list_openbmc_devices(
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    _require_live_view(settings, current_user)
+    _require_live_view(settings)
     statement = apply_org_read_scope(
         select(OpenBmcDevice).order_by(OpenBmcDevice.created_at.desc()),
         OpenBmcDevice.organization_id,
@@ -497,7 +495,7 @@ def get_openbmc_device(
     current_user: CurrentWebUser = Depends(get_current_web_user),
     session: Session = Depends(get_session),
 ) -> dict:
-    _require_live_view(settings, current_user)
+    _require_live_view(settings)
     device, connector = _load_device_for_web(session, current_user, device_id, write=False)
     if _expire_connector_commands(
         session,

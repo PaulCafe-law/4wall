@@ -9,7 +9,7 @@
 - 新增 outbound connector，讓現場主動推送正規化資料並拉取已確認命令。
 - planner-server 負責 identity、org/site scope、持久化、freshness、command workflow 與 audit。
 - web-app 只呼叫 planner-server，不直接接觸 collector。
-- `/demo-factory` 是第一個 presentation surface，不是設備安全邊界。
+- `/demo-factory` 是第一個 presentation surface，不是設備安全邊界。OpenBMC 以場景內設備物件呈現，只有在使用者點選後才進入既有右側詳細資訊欄。
 
 ## Target topology
 
@@ -43,11 +43,19 @@ Postgres
     |
 web-app
     |
-    +-- /demo-factory live Pi5 panel
+    +-- /demo-factory Pi5/OpenBMC object -> right-side live detail
     +-- future customer device page
 ```
 
 若 connector 與 collector 在同一台 3090，collector 應綁 `127.0.0.1`。若不同主機，collector 防火牆只允許 connector 主機；兩者都不開放到公網。
+
+## Demo factory interaction
+
+- 展示工廠預設只顯示 Pi5/OpenBMC 設備物件，不在頁面頂端常駐遙測面板。
+- 設備物件沿用數位分身既有的 entity selection、3D focus 與右側 detail panel 模式。
+- 點選設備物件時，右側欄顯示資料來源、最近觀測、溫度、健康、風扇、近期事件與受控命令。
+- 點選場景空白處、其他物件或收起右側欄時，OpenBMC 詳情不再佔用主畫面。
+- 設備仍存在於 unavailable/stale 狀態；使用者點選後會看到誠實的無資料或過期說明，不以模擬值掩蓋 API 錯誤。
 
 ## Trust boundaries
 
@@ -547,7 +555,7 @@ metadata 可含 command type、bounded arguments、freshness evidence、failure 
 
 - command 異常：先關 `OPENBMC_COMMAND_EXECUTION_ENABLED`，不刪 audit。
 - connector 異常：撤銷 token並停止 connector；cloud read model進入 stale。
-- UI 異常：關 `OPENBMC_LIVE_VIEW_ENABLED`，回到明確標示的 demo fixture 或隱藏 panel。
+- UI 異常：關 `OPENBMC_LIVE_VIEW_ENABLED`，所有角色（包含 `platform_admin` 與 `ops`）都停止讀取 live OpenBMC API，畫面回到明確標示的 demo fixture 或 unavailable 狀態。
 - collector 異常：保留原 local dashboard，修復 collector/QEMU/Pi5；不得讓 web 直連 Pi5。
 - migration rollback 前先停 ingest/claim，保留 exportable audit/command history。
 

@@ -341,6 +341,38 @@ def test_read_path_marks_stale_and_default_command_flags_fail_closed(client, app
     assert hidden.json()["detail"] == "openbmc_live_view_disabled"
 
 
+def test_live_view_flag_is_a_global_kill_switch_for_internal_roles(
+    client,
+    app,
+    session_factory,
+) -> None:
+    app.state.settings = replace(
+        app.state.settings,
+        openbmc_integration_enabled=True,
+        openbmc_live_view_enabled=False,
+    )
+    with session_factory() as session:
+        seed_user(
+            session,
+            email="platform-openbmc@test.dev",
+            password=PASSWORD,
+            global_roles=["platform_admin"],
+        )
+        seed_user(
+            session,
+            email="ops-openbmc@test.dev",
+            password=PASSWORD,
+            global_roles=["ops"],
+        )
+        session.commit()
+
+    for email in ("platform-openbmc@test.dev", "ops-openbmc@test.dev"):
+        headers, _ = login_web(client, email=email, password=PASSWORD)
+        response = client.get("/v1/openbmc/devices", headers=headers)
+        assert response.status_code == 403
+        assert response.json()["detail"] == "openbmc_live_view_disabled"
+
+
 def test_command_proposal_hash_idempotency_claim_progress_and_terminal_result(
     client,
     app,

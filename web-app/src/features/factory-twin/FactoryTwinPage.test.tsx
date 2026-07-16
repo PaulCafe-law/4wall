@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, vi } from 'vitest';
@@ -36,10 +37,14 @@ vi.mock('./FactoryTwinWorkspace', () => ({
     platformCameras,
     livePersons,
     demoPresentation,
+    openBmcSceneMode,
+    openBmcDetail,
   }: {
     platformCameras: Array<{ name: string; attrs?: { latestGaugeReadings?: unknown[]; latestOcrObservation?: unknown } }>;
     livePersons: Array<{ id: string; name: string }>;
     demoPresentation?: boolean;
+    openBmcSceneMode?: string;
+    openBmcDetail?: ReactNode;
   }) => {
     const gaugeCount = platformCameras.reduce(
       (total, camera) => total + (camera.attrs?.latestGaugeReadings?.length ?? 0),
@@ -53,6 +58,8 @@ vi.mock('./FactoryTwinWorkspace', () => ({
         ocr observations: {ocrCount}
         live persons: {livePersons.length}
         demo presentation: {String(Boolean(demoPresentation))}
+        openbmc scene: {openBmcSceneMode ?? 'none'}
+        openbmc detail provided: {String(Boolean(openBmcDetail))}
         {platformCameras.map((camera) => (
           <span key={camera.name}>{camera.name}</span>
         ))}
@@ -232,6 +239,8 @@ describe('FactoryTwinPage', () => {
     expect(screen.queryByText('已綁定至數位分身的平台攝影機')).not.toBeInTheDocument();
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('gauge readings: 2');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc scene: none');
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc detail provided: false');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('機台周遭');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('桌面分類');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('儀表板');
@@ -325,7 +334,11 @@ describe('FactoryTwinPage', () => {
     expect(screen.getByText(/展示模式.*營運數據皆為模擬.*靚程授權影像 3\/3 在線/)).toBeInTheDocument();
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('demo presentation: true');
-    expect(await screen.findByText('SIMULATED')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc scene: simulated');
+    });
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc detail provided: true');
+    expect(screen.queryByText('SIMULATED')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(apiMock.listOpenBmcDevices).toHaveBeenCalledWith('test-token', {
         siteId: 'dd6cbdd3aa744736ad96d2791d689fce',
@@ -338,9 +351,11 @@ describe('FactoryTwinPage', () => {
 
     renderDemoRoute();
 
-    expect(await screen.findByText('UNAVAILABLE')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc scene: unavailable');
+    });
     expect(screen.queryByText('SIMULATED')).not.toBeInTheDocument();
-    expect(screen.getByText('OpenBMC 服務目前無法讀取。')).toBeInTheDocument();
+    expect(screen.queryByText('OpenBMC 服務目前無法讀取。')).not.toBeInTheDocument();
   });
 
   it('does not expose the accelerator workspace to customer-only accounts', async () => {

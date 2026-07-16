@@ -26,6 +26,11 @@ import {
 } from './mirror/domain/demoScenarios';
 import { SPATIAL_ZONES } from './mirror/domain/spatialZones';
 import { livePersonAnchorForCamera, readStoredLivePersonAnchor } from './mirror/domain/machineCameras';
+import {
+  buildOpenBmcSceneDevice,
+  OPENBMC_PI5_ENTITY_ID,
+  type OpenBmcSceneSourceMode,
+} from './mirror/domain/openBmcDevice';
 import type { CameraEntity, PersonEntity } from './mirror/domain/entities';
 import { useLocalAgent } from './mirror/hooks/useLocalAgent';
 import {
@@ -79,6 +84,7 @@ function FactoryDemo({
   demoScenarioId,
   demoSessionId,
   onDemoScenarioChange,
+  openBmcDetail,
 }: {
   liveOnly: boolean;
   liveDataStatus?: TwinAgentLiveDataStatus;
@@ -86,6 +92,7 @@ function FactoryDemo({
   demoScenarioId: DemoScenarioId;
   demoSessionId: string;
   onDemoScenarioChange: (scenarioId: DemoScenarioId) => void;
+  openBmcDetail?: ReactNode;
 }) {
   const leftOpen = useFactoryStore((s) => s.leftOpen);
   const rightOpen = useFactoryStore((s) => s.rightOpen);
@@ -253,7 +260,11 @@ function FactoryDemo({
       </main>
       {rightOpen ? (
         <aside className="col col-right">
-          {warehousePresentation ? <WarehouseDecisionInspector /> : <DetailPanel />}
+          {warehousePresentation ? (
+            <WarehouseDecisionInspector />
+          ) : (
+            <DetailPanel openBmcDetail={openBmcDetail} />
+          )}
         </aside>
       ) : null}
     </div>
@@ -266,12 +277,16 @@ export function FactoryTwinWorkspace({
   liveOnly = false,
   liveDataStatus,
   demoPresentation = false,
+  openBmcSceneMode = 'unavailable',
+  openBmcDetail,
 }: {
   platformCameras: CameraEntity[];
   livePersons: PersonEntity[];
   liveOnly?: boolean;
   liveDataStatus?: TwinAgentLiveDataStatus;
   demoPresentation?: boolean;
+  openBmcSceneMode?: OpenBmcSceneSourceMode;
+  openBmcDetail?: ReactNode;
 }) {
   const [mode, setMode] = useState<FactoryMode>('factory');
   const [demoScenarioId, setDemoScenarioId] = useState<DemoScenarioId>('normal');
@@ -300,17 +315,27 @@ export function FactoryTwinWorkspace({
     return entities;
   }, [liveOnly]);
 
+  const withOpenBmcDevice = useCallback(
+    (entities: ReturnType<typeof buildMockEntities>) => {
+      if (!demoPresentation) return entities;
+      const openBmcEntity = buildOpenBmcSceneDevice(openBmcSceneMode);
+      entities[openBmcEntity.id] = openBmcEntity;
+      return entities;
+    },
+    [demoPresentation, openBmcSceneMode],
+  );
+
   useLayoutEffect(() => {
     const workspaceKey = liveOnly ? 'live' : demoPresentation ? 'accelerator-demo' : 'simulation';
     if (seededMode.current === workspaceKey) return;
     seededMode.current = workspaceKey;
-    const entities = withSpatialZones(
+    const entities = withOpenBmcDevice(withSpatialZones(
       liveOnly
         ? buildLiveFactoryEntities()
         : demoPresentation
           ? buildDemoScenarioEntities('normal')
           : buildMockEntities(),
-    );
+    ));
     resetWorkspace(
       entities,
       liveOnly
@@ -319,13 +344,21 @@ export function FactoryTwinWorkspace({
           ? '模擬情境：4WALL 展示工廠已載入。機台、人員、AMR、產量與對帳皆為模擬資料；靚程授權影像只作即時連線展示。'
           : '靚程工廠數位分身已載入。可問「小明在哪」、「HC600 今天狀況」，或輸入「派小明去處理 HC600」。',
     );
-  }, [demoPresentation, liveOnly, resetWorkspace, withSpatialZones]);
+  }, [demoPresentation, liveOnly, resetWorkspace, withOpenBmcDevice, withSpatialZones]);
+
+  useEffect(() => {
+    if (!demoPresentation) return;
+    const state = useFactoryStore.getState();
+    if (!state.entities[OPENBMC_PI5_ENTITY_ID]) return;
+    const next = buildOpenBmcSceneDevice(openBmcSceneMode);
+    state.patchEntity(next.id, { ...next });
+  }, [demoPresentation, openBmcSceneMode]);
 
   const applyDemoScenario = useCallback(
     (scenarioId: DemoScenarioId) => {
       if (!demoPresentation) return;
       const scenario = getDemoScenario(scenarioId);
-      const entities = withSpatialZones(buildDemoScenarioEntities(scenarioId));
+      const entities = withOpenBmcDevice(withSpatialZones(buildDemoScenarioEntities(scenarioId)));
       setDemoScenarioId(scenarioId);
       setDemoSessionId(uid('demo-twin-session'));
       resetWorkspace(
@@ -339,7 +372,7 @@ export function FactoryTwinWorkspace({
         message: scenario.eventMessage,
       });
     },
-    [demoPresentation, resetWorkspace, withSpatialZones],
+    [demoPresentation, resetWorkspace, withOpenBmcDevice, withSpatialZones],
   );
 
   useEffect(() => {
@@ -402,6 +435,7 @@ export function FactoryTwinWorkspace({
             demoScenarioId={demoScenarioId}
             demoSessionId={demoSessionId}
             onDemoScenarioChange={applyDemoScenario}
+            openBmcDetail={openBmcDetail}
           />
         )}
       </div>
