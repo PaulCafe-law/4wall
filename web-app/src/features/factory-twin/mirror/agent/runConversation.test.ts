@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { buildDemoScenarioEntities } from '../domain/demoScenarios';
+import { buildOpenBmcSceneDevice, OPENBMC_PI5_ENTITY_ID } from '../domain/openBmcDevice';
 import { useFactoryStore } from '../store/factoryStore';
 import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
 import { runConversation } from './runConversation';
@@ -36,6 +37,24 @@ describe('local accelerator demo assistant', () => {
     expect(useFactoryStore.getState().messages.at(-1)?.text).toBe(
       '模擬情境：今日模擬計畫 2460 件，實際 1704 件，差異 -756 件，達成率 69.3%。',
     );
+  });
+
+  it('answers Pi5 questions honestly instead of falling back to HC600 machine status', async () => {
+    const entities = buildDemoScenarioEntities('normal');
+    const openBmcEntity = buildOpenBmcSceneDevice('live');
+    useFactoryStore.getState().setEntities({ ...entities, [openBmcEntity.id]: openBmcEntity });
+
+    await runConversation('pi5現在溫度是多少呢?', {
+      labelSimulation: true,
+      demoScenarioId: 'normal',
+    });
+
+    const reply = useFactoryStore.getState().messages.at(-1)?.text ?? '';
+    expect(reply).toContain('本機助理讀不到 Pi5 / OpenBMC 即時遙測');
+    expect(reply).not.toContain('OEE');
+    expect(reply).not.toContain('HC600');
+    // 高亮必須落在 Pi5 場景節點，而不是任何機台。
+    expect(useFactoryStore.getState().highlights[OPENBMC_PI5_ENTITY_ID]).toBeTruthy();
   });
 
   it('answers from simulated AMRs instead of reporting Jingcheng live availability', async () => {

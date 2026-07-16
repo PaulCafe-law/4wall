@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
 import { api } from '../../../../lib/api';
 import { useAuth } from '../../../../lib/auth';
 import { useAuthedQuery } from '../../../../lib/auth-query';
-import type { TwinAgentFeedEvent } from '../../../../lib/types';
+import type { OpenBmcDevice, TwinAgentFeedEvent } from '../../../../lib/types';
 import {
   WORK_ORDER_CONFIDENCE_THRESHOLD,
   isWorkOrderCellKnown,
@@ -18,6 +18,7 @@ import {
   type DemoScenarioId,
 } from '../domain/demoScenarios';
 import { machineIdForCamera } from '../domain/machineCameras';
+import { OPENBMC_PI5_ENTITY_ID } from '../domain/openBmcDevice';
 import { uid, useFactoryStore } from '../store/factoryStore';
 import { useWarehouseDemoStore } from '../store/warehouseDemoStore';
 import { buildWarehouseAssistantSummary } from '../warehouse/decision';
@@ -46,6 +47,14 @@ export interface TwinAgentBridgeOptions {
   snapshotScope?: 'organization_live' | 'web_only' | 'accelerator_demo';
   includeLiveEvidence?: boolean;
   demoScenarioId?: DemoScenarioId;
+  openBmc?: TwinAgentOpenBmcContext;
+}
+
+export type TwinAgentOpenBmcSourceMode = 'loading' | 'live' | 'simulated' | 'unavailable';
+
+export interface TwinAgentOpenBmcContext {
+  sourceMode: TwinAgentOpenBmcSourceMode;
+  device: OpenBmcDevice | null;
 }
 
 function round1(value: number): number {
@@ -368,6 +377,87 @@ function buildMachineRealData(
   });
 }
 
+const OPENBMC_LIVE_FRESH_MS = 30_000;
+
+// OpenBMC 唯讀摘要：只給 assistant 已 scope/freshness 處理過的 Pi5 read model。
+// command capability、connector metadata、command 紀錄一律不進 snapshot
+// （見 docs/openbmc-factory-integration-architecture.md 的 LLM exclusion 節）。
+export function compactOpenBmcSummary(
+  context: TwinAgentOpenBmcContext | undefined,
+): Record<string, unknown> | null {
+  if (!context) return null;
+  const { sourceMode, device } = context;
+  if (sourceMode === 'loading') {
+    return {
+      entityId: OPENBMC_PI5_ENTITY_ID,
+      source: 'loading',
+      state: 'loading',
+      text: 'Pi5 / OpenBMC 資料載入中，請稍候。',
+    };
+  }
+  if (sourceMode === 'unavailable' || !device) {
+    return {
+      entityId: OPENBMC_PI5_ENTITY_ID,
+      source: 'unavailable',
+      state: 'unavailable',
+      text: 'Pi5 / OpenBMC 服務目前無法讀取，無法確認設備狀態。',
+    };
+  }
+  const observation = device.latestObservation;
+  const observedAt = observation?.observedAt ?? device.lastObservedAt ?? null;
+  const observationFreshness = freshness(observedAt, OPENBMC_LIVE_FRESH_MS);
+  const currentStateAvailable =
+    sourceMode === 'simulated' ||
+    (device.freshness === 'fresh' &&
+      observation !== null &&
+      observation.collectorStale === false &&
+      observationFreshness.state === 'current');
+  const base = {
+    entityId: OPENBMC_PI5_ENTITY_ID,
+    deviceName: device.name,
+    deviceType: device.deviceType,
+    source: sourceMode === 'live' ? 'authorized_live' : 'simulation',
+    sourceText:
+      sourceMode === 'live' ? '真實 OpenBMC connector（授權即時資料）' : '展示 fixture（模擬資料）',
+    observedAt,
+    freshness: observationFreshness,
+  };
+  if (!currentStateAvailable) {
+    // Fail closed：非 fresh 時只送最後觀測時間與說明。事件 message 內常嵌溫度
+    // 數字（如 "…Normal at 56.75C"），一併排除，避免模型從事件文字撈舊數值。
+    return observedAt
+      ? {
+          ...base,
+          state: 'stale',
+          text: 'Pi5 / OpenBMC 資料已過期，無法確認目前狀況；為避免誤導，不提供最後一次的數值。',
+        }
+      : {
+          ...base,
+          state: 'missing',
+          text: 'Pi5 / OpenBMC 尚未收到任何觀測資料，無法確認設備狀態。',
+        };
+  }
+  return {
+    ...base,
+    state: 'current',
+    temperatureC: observation?.temperatureC ?? null,
+    status: observation?.status ?? null,
+    health: observation?.health ?? null,
+    fan: observation
+      ? { present: observation.fan.present, rpm: observation.fan.rpm, pwm: observation.fan.pwm }
+      : null,
+    thresholds: observation
+      ? { warningC: observation.thresholds.warningC, criticalC: observation.thresholds.criticalC }
+      : null,
+    recentEvents: device.recentEvents.slice(0, 3).map((event) => ({
+      occurredAt: event.occurredAt,
+      severity: event.severity,
+      code: event.code,
+      message: event.message,
+    })),
+  };
+}
+
 function buildDataAvailability(
   entities: Record<string, Entity>,
   platformCameras: CameraEntity[],
@@ -427,7 +517,10 @@ function buildDataAvailability(
 
 export function buildWorldSnapshot(
   liveDataStatus?: TwinAgentLiveDataStatus,
-  options: Pick<TwinAgentBridgeOptions, 'includeLiveEvidence' | 'demoScenarioId' | 'snapshotScope'> = {},
+  options: Pick<
+    TwinAgentBridgeOptions,
+    'includeLiveEvidence' | 'demoScenarioId' | 'snapshotScope' | 'openBmc'
+  > = {},
 ): Record<string, unknown> {
   const s = useFactoryStore.getState();
   const warehouse = useWarehouseDemoStore.getState();
@@ -437,17 +530,26 @@ export function buildWorldSnapshot(
   const snapshotEntities = includeLiveEvidence
     ? s.entities
     : Object.fromEntries(Object.entries(s.entities).filter(([, entity]) => entity.source === 'sim'));
+  // openBmc 摘要目前只屬於展示工廠 snapshot；其他 scope 一律丟棄，
+  // 防止未來接錯線把 Pi5 read model 塞進 organization_live / web_only。
+  const openBmc =
+    options.snapshotScope === 'accelerator_demo' ? compactOpenBmcSummary(options.openBmc) : null;
+  const dataAvailability = buildDataAvailability(
+    snapshotEntities,
+    includeLiveEvidence ? s.platformCameras : [],
+    liveDataStatus,
+    includeLiveEvidence,
+  );
+  if (openBmc) {
+    dataAvailability.openBmc = { state: openBmc.state, source: openBmc.source };
+  }
   return {
     experience: {
       snapshotScope: options.snapshotScope ?? 'web_only',
       facilitySpace: includeWarehouseDecision ? warehouse.space : 'factory',
     },
-    dataAvailability: buildDataAvailability(
-      snapshotEntities,
-      includeLiveEvidence ? s.platformCameras : [],
-      liveDataStatus,
-      includeLiveEvidence,
-    ),
+    dataAvailability,
+    ...(openBmc ? { openBmc } : {}),
     entities: compactEntities(snapshotEntities),
     recentEvents: s.simEvents
       .slice(0, 20)
@@ -513,6 +615,7 @@ export function useTwinAgentBridge(
   const bindOrganization = snapshotScope === 'organization_live';
   const includeLiveEvidence = options.includeLiveEvidence ?? true;
   const demoScenarioId = options.demoScenarioId;
+  const openBmc = options.openBmc;
   const warehousePlanSetId = useWarehouseDemoStore((state) => state.planSet?.id ?? null);
   const warehouseSummaryHash = useWarehouseDemoStore((state) => state.planSet?.summaryHash ?? null);
   const warehouseSelectedPlanId = useWarehouseDemoStore((state) => state.selectedPlanId);
@@ -533,6 +636,7 @@ export function useTwinAgentBridge(
             includeLiveEvidence,
             demoScenarioId,
             snapshotScope,
+            openBmc,
           }),
           snapshotScope,
           ...(organizationId ? { organizationId } : {}),
@@ -550,6 +654,7 @@ export function useTwinAgentBridge(
     demoScenarioId,
     includeLiveEvidence,
     liveDataStatus,
+    openBmc,
     sessionId,
     snapshotScope,
     warehouseFacilitySpace,

@@ -7,7 +7,10 @@ import type { CameraDevice, OpenBmcDevice } from '../../lib/types';
 import { FactoryTwinWorkspace } from './FactoryTwinWorkspace';
 import { OpenBmcPi5Panel, type OpenBmcPanelSourceMode } from './OpenBmcPi5Panel';
 import type { CameraEntity, PersonEntity, Vec3 } from './mirror/domain/entities';
-import type { TwinAgentLiveDataStatus } from './mirror/hooks/useTwinAgentBridge';
+import type {
+  TwinAgentLiveDataStatus,
+  TwinAgentOpenBmcContext,
+} from './mirror/hooks/useTwinAgentBridge';
 import {
   HC600_01_LIVE_PERSON_ANCHOR_CHANGED_EVENT,
   livePersonAnchorForCamera,
@@ -505,15 +508,28 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
       : openBmcQuery.isSuccess
       ? 'simulated'
       : 'unavailable';
-  const openBmcDevice =
-    liveOpenBmcDevice ??
-    (openBmcSourceMode === 'simulated' ? buildSimulatedOpenBmcDevice(nowMs) : null);
+  const openBmcDevice = useMemo(
+    () =>
+      liveOpenBmcDevice ??
+      (openBmcSourceMode === 'simulated' ? buildSimulatedOpenBmcDevice(nowMs) : null),
+    [liveOpenBmcDevice, nowMs, openBmcSourceMode],
+  );
   const openBmcSceneMode =
     openBmcQuery.isLoading && !openBmcQuery.data
       ? 'loading'
       : openBmcSourceMode === 'live' && openBmcDevice?.freshness !== 'fresh'
         ? 'stale'
         : openBmcSourceMode;
+  // 給模擬助手的 Pi5 唯讀摘要來源：與右側 OpenBMC 面板同一份 server read model。
+  // 首次載入還在等 /v1/openbmc/devices 回應時要標 loading，不能誤報「服務無法讀取」。
+  const openBmcAgentLoading = openBmcQuery.isLoading && !openBmcQuery.data;
+  const openBmcAgentContext = useMemo<TwinAgentOpenBmcContext>(
+    () => ({
+      sourceMode: openBmcAgentLoading ? 'loading' : openBmcSourceMode,
+      device: openBmcDevice,
+    }),
+    [openBmcAgentLoading, openBmcDevice, openBmcSourceMode],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -548,6 +564,7 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
           liveDataStatus={liveDataStatus}
           demoPresentation={acceleratorDemo}
           openBmcSceneMode={acceleratorDemo ? openBmcSceneMode : undefined}
+          openBmcAgentContext={acceleratorDemo ? openBmcAgentContext : undefined}
           openBmcDetail={
             acceleratorDemo ? (
               <OpenBmcPi5Panel

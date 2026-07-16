@@ -4,6 +4,7 @@ import { act, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../../../test/utils';
+import type { OpenBmcDevice } from '../../../../lib/types';
 import type { MachineEntity, PersonEntity } from '../domain/entities';
 import { buildDemoScenarioEntities } from '../domain/demoScenarios';
 import { useFactoryStore } from '../store/factoryStore';
@@ -80,6 +81,77 @@ const livePerson: PersonEntity = {
   status: 'on-duty',
   source: 'live',
 };
+
+function openBmcDeviceFixture(overrides: Partial<OpenBmcDevice> = {}): OpenBmcDevice {
+  const observedAt = new Date().toISOString();
+  return {
+    deviceId: 'pi5-device',
+    organizationId: 'openbmc-org-secret',
+    siteId: 'site-1',
+    connectorId: 'openbmc-connector-secret',
+    name: 'Pi5 OpenBMC Demo',
+    externalRef: 'pi5-demo',
+    deviceType: 'raspberry_pi_5',
+    status: 'active',
+    capabilities: { commandTypes: ['fan_boost'] },
+    freshness: 'fresh',
+    canControl: true,
+    controlEligible: true,
+    controlBlockReasons: [],
+    lastObservedAt: observedAt,
+    lastIngestedAt: observedAt,
+    latestObservation: {
+      observationId: 'obs-1',
+      sourceObservationId: 'collector:1',
+      observedAt,
+      collectorReceivedAt: observedAt,
+      ingestedAt: observedAt,
+      collectorStale: false,
+      temperatureC: 57.3,
+      status: 'normal',
+      health: 'ok',
+      fan: {
+        present: true,
+        rpm: 1184,
+        pwm: 75,
+        coolingState: 1,
+        coolingMaxState: 4,
+        manualBoostSupported: true,
+      },
+      thresholds: { warningC: 65, criticalC: 75 },
+    },
+    recentEvents: [
+      {
+        eventId: 'evt-1',
+        sourceEventKey: 'collector:evt-1',
+        occurredAt: observedAt,
+        severity: 'info',
+        source: 'collector_event',
+        code: 'THRESHOLD_STATE',
+        message: 'QEMU threshold state changed from Unknown to Normal at 56.75C.',
+        details: {},
+      },
+    ],
+    recentCommands: [
+      {
+        commandId: 'openbmc-command-secret',
+        type: 'fan_boost',
+        arguments: { seconds: 10 },
+        status: 'succeeded',
+        reason: '不得送進展示助手的命令紀錄',
+        proposalHash: 'hash-1',
+        proposedAt: observedAt,
+        confirmationExpiresAt: null,
+        confirmedAt: observedAt,
+        claimExpiresAt: null,
+        completedAt: observedAt,
+        failureCode: null,
+        result: null,
+      },
+    ],
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -180,6 +252,201 @@ it('rejects demo context from an organization snapshot even when the caller pass
 
   expect(world.experience).toEqual({ snapshotScope: 'organization_live', facilitySpace: 'factory' });
   expect(world).not.toHaveProperty('simulationContext');
+});
+
+it('includes a read-only openBmc summary for current authorized live data', () => {
+  useFactoryStore.getState().setEntities(buildDemoScenarioEntities('normal'));
+
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    demoScenarioId: 'normal',
+    openBmc: { sourceMode: 'live', device: openBmcDeviceFixture() },
+  });
+
+  expect(world.openBmc).toMatchObject({
+    entityId: 'device-openbmc-pi5',
+    deviceName: 'Pi5 OpenBMC Demo',
+    source: 'authorized_live',
+    state: 'current',
+    temperatureC: 57.3,
+    status: 'normal',
+    health: 'ok',
+    fan: { present: true, rpm: 1184, pwm: 75 },
+    thresholds: { warningC: 65, criticalC: 75 },
+  });
+  expect(world.dataAvailability).toMatchObject({
+    openBmc: { state: 'current', source: 'authorized_live' },
+  });
+  const serialized = JSON.stringify(world.openBmc);
+  expect(serialized).not.toContain('capabilit');
+  expect(serialized).not.toContain('canControl');
+  expect(serialized).not.toContain('controlEligible');
+  expect(serialized).not.toContain('fan_boost');
+  expect(serialized).not.toContain('openbmc-connector-secret');
+  expect(serialized).not.toContain('openbmc-org-secret');
+  expect(serialized).not.toContain('openbmc-command-secret');
+  expect(serialized).not.toContain('不得送進展示助手的命令紀錄');
+});
+
+it('fails closed to a stale openBmc summary without telemetry values', () => {
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    openBmc: { sourceMode: 'live', device: openBmcDeviceFixture({ freshness: 'stale' }) },
+  });
+
+  expect(world.openBmc).toMatchObject({
+    source: 'authorized_live',
+    state: 'stale',
+    text: expect.stringContaining('已過期'),
+  });
+  expect(world.openBmc).not.toHaveProperty('temperatureC');
+  expect(world.openBmc).not.toHaveProperty('fan');
+  // 事件 message 內嵌溫度數字，stale 分支必須整組排除。
+  expect(world.openBmc).not.toHaveProperty('recentEvents');
+  expect(JSON.stringify(world.openBmc)).not.toContain('56.75C');
+  expect(world.dataAvailability).toMatchObject({
+    openBmc: { state: 'stale', source: 'authorized_live' },
+  });
+});
+
+it('fails closed when the collector marks the reading stale even if the server flag is fresh', () => {
+  const device = openBmcDeviceFixture();
+  device.latestObservation = { ...device.latestObservation!, collectorStale: true };
+
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    openBmc: { sourceMode: 'live', device },
+  });
+
+  expect(world.openBmc).toMatchObject({ state: 'stale' });
+  expect(world.openBmc).not.toHaveProperty('temperatureC');
+});
+
+it('fails closed when the observation is older than the 30-second live window', () => {
+  const past = new Date(Date.now() - 40_000).toISOString();
+  const device = openBmcDeviceFixture();
+  device.latestObservation = { ...device.latestObservation!, observedAt: past };
+
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    openBmc: { sourceMode: 'live', device },
+  });
+
+  expect(world.openBmc).toMatchObject({ state: 'stale' });
+  expect(world.openBmc).not.toHaveProperty('temperatureC');
+});
+
+it('reports a live device that never produced an observation as missing, not stale', () => {
+  const device = openBmcDeviceFixture({ latestObservation: null, lastObservedAt: null });
+
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    openBmc: { sourceMode: 'live', device },
+  });
+
+  expect(world.openBmc).toMatchObject({
+    state: 'missing',
+    text: expect.stringContaining('尚未收到任何觀測資料'),
+  });
+  expect(world.openBmc).not.toHaveProperty('temperatureC');
+});
+
+it('marks the openBmc source as loading during the initial fetch', () => {
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    openBmc: { sourceMode: 'loading', device: null },
+  });
+
+  expect(world.openBmc).toMatchObject({
+    source: 'loading',
+    state: 'loading',
+    text: expect.stringContaining('載入中'),
+  });
+});
+
+it('keeps the openBmc summary out of non-demo snapshot scopes', () => {
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'organization_live',
+    includeLiveEvidence: true,
+    openBmc: { sourceMode: 'live', device: openBmcDeviceFixture() },
+  });
+
+  expect(world).not.toHaveProperty('openBmc');
+  expect(world.dataAvailability).not.toHaveProperty('openBmc');
+});
+
+it('publishes world.openBmc through the bridge effect for accelerator demo sessions', async () => {
+  apiMock.getTwinAgentUpdates.mockResolvedValue({ workerOnline: true, events: [], cursor: 0 });
+  apiMock.postTwinAgentSnapshot.mockResolvedValue(undefined);
+  useFactoryStore.getState().setEntities(buildDemoScenarioEntities('normal'));
+
+  renderWithProviders(
+    <Harness
+      liveDataStatus={{
+        mode: 'simulation',
+        cameraState: 'ready',
+        cameraCount: 0,
+        cameraLatestAt: null,
+        personState: 'unavailable',
+        personLatestAt: null,
+      }}
+      options={{
+        sessionId: DEMO_TWIN_AGENT_SESSION_ID,
+        snapshotScope: 'accelerator_demo',
+        includeLiveEvidence: false,
+        demoScenarioId: 'normal',
+        openBmc: { sourceMode: 'live', device: openBmcDeviceFixture() },
+      }}
+    />,
+  );
+
+  await waitFor(() => expect(apiMock.postTwinAgentSnapshot).toHaveBeenCalled());
+  const [, payload] = apiMock.postTwinAgentSnapshot.mock.calls[0];
+  expect(payload.world.openBmc).toMatchObject({
+    source: 'authorized_live',
+    state: 'current',
+    temperatureC: 57.3,
+  });
+  expect(payload.world.dataAvailability.openBmc).toEqual({
+    state: 'current',
+    source: 'authorized_live',
+  });
+});
+
+it('labels the simulated openBmc fixture as simulation data', () => {
+  const world = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    openBmc: { sourceMode: 'simulated', device: openBmcDeviceFixture() },
+  });
+
+  expect(world.openBmc).toMatchObject({
+    source: 'simulation',
+    state: 'current',
+    temperatureC: 57.3,
+  });
+});
+
+it('reports an unavailable openBmc source honestly and omits the block when unconfigured', () => {
+  const unavailable = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+    openBmc: { sourceMode: 'unavailable', device: null },
+  });
+  const absent = buildWorldSnapshot(undefined, {
+    snapshotScope: 'accelerator_demo',
+    includeLiveEvidence: false,
+  });
+
+  expect(unavailable.openBmc).toMatchObject({ source: 'unavailable', state: 'unavailable' });
+  expect(absent).not.toHaveProperty('openBmc');
+  expect(absent.dataAvailability).not.toHaveProperty('openBmc');
 });
 
 it('processes feed events: reply into chat, commands executed and narrated', async () => {

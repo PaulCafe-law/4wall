@@ -37,6 +37,7 @@ import {
   DEMO_TWIN_AGENT_SESSION_ID,
   useTwinAgentBridge,
   type TwinAgentLiveDataStatus,
+  type TwinAgentOpenBmcContext,
 } from './mirror/hooks/useTwinAgentBridge';
 import { useSimEngine } from './mirror/sim/simEngine';
 import { uid, useFactoryStore } from './mirror/store/factoryStore';
@@ -85,6 +86,7 @@ function FactoryDemo({
   demoSessionId,
   onDemoScenarioChange,
   openBmcDetail,
+  openBmcAgentContext,
 }: {
   liveOnly: boolean;
   liveDataStatus?: TwinAgentLiveDataStatus;
@@ -93,6 +95,7 @@ function FactoryDemo({
   demoSessionId: string;
   onDemoScenarioChange: (scenarioId: DemoScenarioId) => void;
   openBmcDetail?: ReactNode;
+  openBmcAgentContext?: TwinAgentOpenBmcContext;
 }) {
   const leftOpen = useFactoryStore((s) => s.leftOpen);
   const rightOpen = useFactoryStore((s) => s.rightOpen);
@@ -143,6 +146,7 @@ function FactoryDemo({
     snapshotScope: demoPresentation ? 'accelerator_demo' : liveOnly ? 'organization_live' : 'web_only',
     includeLiveEvidence: !demoPresentation,
     demoScenarioId: demoPresentation ? demoScenarioId : undefined,
+    openBmc: demoPresentation ? openBmcAgentContext : undefined,
   });
 
   useEffect(() => {
@@ -279,6 +283,7 @@ export function FactoryTwinWorkspace({
   demoPresentation = false,
   openBmcSceneMode = 'unavailable',
   openBmcDetail,
+  openBmcAgentContext,
 }: {
   platformCameras: CameraEntity[];
   livePersons: PersonEntity[];
@@ -287,6 +292,7 @@ export function FactoryTwinWorkspace({
   demoPresentation?: boolean;
   openBmcSceneMode?: OpenBmcSceneSourceMode;
   openBmcDetail?: ReactNode;
+  openBmcAgentContext?: TwinAgentOpenBmcContext;
 }) {
   const [mode, setMode] = useState<FactoryMode>('factory');
   const [demoScenarioId, setDemoScenarioId] = useState<DemoScenarioId>('normal');
@@ -436,6 +442,7 @@ export function FactoryTwinWorkspace({
             demoSessionId={demoSessionId}
             onDemoScenarioChange={applyDemoScenario}
             openBmcDetail={openBmcDetail}
+            openBmcAgentContext={openBmcAgentContext}
           />
         )}
       </div>
