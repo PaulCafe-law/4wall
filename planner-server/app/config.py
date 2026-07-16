@@ -111,6 +111,16 @@ class Settings:
     site_map_asset_url_ttl_seconds: int = 300
     twin_agent_enabled: bool = False
     twin_agent_worker_token: str | None = None
+    openbmc_integration_enabled: bool = False
+    openbmc_live_view_enabled: bool = False
+    openbmc_command_proposals_enabled: bool = False
+    openbmc_command_execution_enabled: bool = False
+    openbmc_read_freshness_seconds: int = 30
+    openbmc_command_freshness_seconds: int = 15
+    openbmc_clock_skew_seconds: int = 120
+    openbmc_confirmation_ttl_seconds: int = 300
+    openbmc_execution_ttl_seconds: int = 120
+    openbmc_claim_lease_seconds: int = 30
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -205,6 +215,16 @@ class Settings:
             site_map_asset_url_ttl_seconds=_env_int("BUILDING_ROUTE_SITE_MAP_ASSET_URL_TTL_SECONDS", 300),
             twin_agent_enabled=_env_bool("TWIN_AGENT_ENABLED", False),
             twin_agent_worker_token=_env_str("TWIN_AGENT_WORKER_TOKEN") or None,
+            openbmc_integration_enabled=_env_bool("OPENBMC_INTEGRATION_ENABLED", False),
+            openbmc_live_view_enabled=_env_bool("OPENBMC_LIVE_VIEW_ENABLED", False),
+            openbmc_command_proposals_enabled=_env_bool("OPENBMC_COMMAND_PROPOSALS_ENABLED", False),
+            openbmc_command_execution_enabled=_env_bool("OPENBMC_COMMAND_EXECUTION_ENABLED", False),
+            openbmc_read_freshness_seconds=_env_int("OPENBMC_READ_FRESHNESS_SECONDS", 30),
+            openbmc_command_freshness_seconds=_env_int("OPENBMC_COMMAND_FRESHNESS_SECONDS", 15),
+            openbmc_clock_skew_seconds=_env_int("OPENBMC_CLOCK_SKEW_SECONDS", 120),
+            openbmc_confirmation_ttl_seconds=_env_int("OPENBMC_CONFIRMATION_TTL_SECONDS", 300),
+            openbmc_execution_ttl_seconds=_env_int("OPENBMC_EXECUTION_TTL_SECONDS", 120),
+            openbmc_claim_lease_seconds=_env_int("OPENBMC_CLAIM_LEASE_SECONDS", 30),
         )
 
     @property
@@ -212,6 +232,24 @@ class Settings:
         return self.database_url.startswith("sqlite")
 
     def validate_runtime(self) -> None:
+        openbmc_positive_values = {
+            "OPENBMC_READ_FRESHNESS_SECONDS": self.openbmc_read_freshness_seconds,
+            "OPENBMC_COMMAND_FRESHNESS_SECONDS": self.openbmc_command_freshness_seconds,
+            "OPENBMC_CLOCK_SKEW_SECONDS": self.openbmc_clock_skew_seconds,
+            "OPENBMC_CONFIRMATION_TTL_SECONDS": self.openbmc_confirmation_ttl_seconds,
+            "OPENBMC_EXECUTION_TTL_SECONDS": self.openbmc_execution_ttl_seconds,
+            "OPENBMC_CLAIM_LEASE_SECONDS": self.openbmc_claim_lease_seconds,
+        }
+        invalid_openbmc_setting = next(
+            (name for name, value in openbmc_positive_values.items() if value <= 0),
+            None,
+        )
+        if invalid_openbmc_setting is not None:
+            raise ValueError(f"{invalid_openbmc_setting} must be greater than zero")
+        if self.openbmc_command_proposals_enabled and not self.openbmc_integration_enabled:
+            raise ValueError("OPENBMC_INTEGRATION_ENABLED must be true when command proposals are enabled")
+        if self.openbmc_command_execution_enabled and not self.openbmc_command_proposals_enabled:
+            raise ValueError("OPENBMC_COMMAND_PROPOSALS_ENABLED must be true when command execution is enabled")
         if self.line_account_linking_enabled:
             if not self.line_destination_id:
                 raise ValueError("LINE_DESTINATION_ID must be set when account linking is enabled")

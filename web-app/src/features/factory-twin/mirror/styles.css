@@ -1480,6 +1480,34 @@
   pointer-events: none;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.55);
 }
+.marker-label.device-label {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+.device-source {
+  border-left: 1px solid rgba(245, 247, 248, 0.42);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding-left: 7px;
+}
+.device-source.live {
+  color: #72e3a5;
+}
+.device-source.stale {
+  color: #f1cf72;
+}
+.device-source.simulated {
+  color: #f1cf72;
+}
+.device-source.loading {
+  color: #9ad0d2;
+}
+.device-source.unavailable {
+  color: #b0a79b;
+}
 
 .entity-screen-hit-target {
   display: block;
@@ -1491,6 +1519,11 @@
   pointer-events: auto;
 }
 .entity-screen-hit-target:focus {
+  outline: none;
+}
+.entity-screen-hit-target:focus-visible {
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 3px #e0852f;
   outline: none;
 }
 

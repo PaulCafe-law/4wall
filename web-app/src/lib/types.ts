@@ -1005,3 +1005,107 @@ export interface TwinAgentMessagePayload {
 export interface TwinAgentMessageResponse {
   jobId: string
 }
+
+export type OpenBmcFreshness = 'fresh' | 'stale' | 'missing'
+
+export type OpenBmcCommandType = 'fan_boost' | 'reset_dry_run'
+
+export type OpenBmcCommandStatus =
+  | 'awaiting_confirmation'
+  | 'queued'
+  | 'claimed'
+  | 'accepted_by_collector'
+  | 'delivered_to_agent'
+  | 'succeeded'
+  | 'failed'
+  | 'expired'
+  | 'cancelled'
+  | 'rejected'
+
+export interface OpenBmcFanState {
+  present: boolean
+  rpm: number | null
+  pwm: number | null
+  coolingState: number | null
+  coolingMaxState: number | null
+  manualBoostSupported: boolean
+}
+
+export interface OpenBmcThresholds {
+  warningC: number | null
+  criticalC: number | null
+}
+
+export interface OpenBmcObservation {
+  observationId: string
+  sourceObservationId: string
+  observedAt: string
+  collectorReceivedAt: string | null
+  ingestedAt: string
+  collectorStale: boolean
+  temperatureC: number | null
+  status: 'normal' | 'warning' | 'critical' | 'unknown'
+  health: 'ok' | 'warning' | 'critical' | 'unknown'
+  fan: OpenBmcFanState
+  thresholds: OpenBmcThresholds
+}
+
+export interface OpenBmcEvent {
+  eventId: string
+  sourceEventKey: string
+  occurredAt: string
+  severity: 'info' | 'warning' | 'critical' | 'unknown'
+  source: string
+  code: string
+  message: string
+  details: Record<string, unknown>
+}
+
+export interface OpenBmcCommand {
+  commandId: string
+  type: OpenBmcCommandType
+  arguments: Record<string, unknown>
+  status: OpenBmcCommandStatus
+  reason: string
+  proposalHash: string
+  proposedAt: string
+  confirmationExpiresAt: string | null
+  confirmedAt: string | null
+  claimExpiresAt: string | null
+  completedAt: string | null
+  failureCode: string | null
+  result: Record<string, unknown> | null
+}
+
+export interface OpenBmcDevice {
+  deviceId: string
+  organizationId: string
+  siteId: string
+  connectorId: string
+  name: string
+  externalRef: string
+  deviceType: 'raspberry_pi_5' | string
+  status: 'active' | 'disabled'
+  capabilities: string[] | Record<string, unknown>
+  freshness: OpenBmcFreshness
+  canControl: boolean
+  controlEligible: boolean
+  controlBlockReasons: string[]
+  lastObservedAt: string | null
+  lastIngestedAt: string | null
+  latestObservation: OpenBmcObservation | null
+  recentEvents: OpenBmcEvent[]
+  recentCommands: OpenBmcCommand[]
+}
+
+export interface OpenBmcDeviceList {
+  devices: OpenBmcDevice[]
+}
+
+export interface OpenBmcCommandProposal {
+  commandId: string
+  status: 'awaiting_confirmation'
+  proposalHash: string
+  confirmationExpiresAt: string
+  summary: string
+}

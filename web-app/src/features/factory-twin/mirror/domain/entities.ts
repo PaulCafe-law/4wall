@@ -6,7 +6,7 @@
 //  data feed simply flips `source` to 'live' and pushes updates to the same store.
 // ============================================================================
 
-export type EntityType = 'person' | 'machine' | 'camera' | 'zone' | 'amr' | 'drone';
+export type EntityType = 'person' | 'machine' | 'camera' | 'device' | 'zone' | 'amr' | 'drone';
 export type DataSource = 'sim' | 'live';
 
 export interface Vec3 {
@@ -62,6 +62,12 @@ export interface CameraEntity extends BaseEntity {
   feedMode: 'mock' | 'snapshot';
 }
 
+export interface DeviceEntity extends BaseEntity {
+  type: 'device';
+  deviceKind: 'openbmc_pi5';
+  status: 'loading' | 'live' | 'stale' | 'simulated' | 'unavailable';
+}
+
 export interface InventoryItem {
   sku: string;
   name: string;
@@ -94,6 +100,7 @@ export type Entity =
   | PersonEntity
   | MachineEntity
   | CameraEntity
+  | DeviceEntity
   | ZoneEntity
   | AmrEntity
   | DroneEntity;
@@ -102,6 +109,7 @@ export const ENTITY_LABEL: Record<EntityType, string> = {
   person: '人員',
   machine: '機台',
   camera: '監視器',
+  device: '邊緣設備',
   zone: '倉儲區',
   amr: 'AMR',
   drone: '無人機',

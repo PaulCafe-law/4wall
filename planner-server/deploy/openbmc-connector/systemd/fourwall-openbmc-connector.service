@@ -1,0 +1,30 @@
+[Unit]
+Description=4WALL outbound OpenBMC connector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fourwall-openbmc
+Group=fourwall-openbmc
+WorkingDirectory=/opt/fourwall/openbmc-connector
+EnvironmentFile=/etc/fourwall-openbmc-connector/connector.env
+Environment=PYTHONPATH=/opt/fourwall/openbmc-connector
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m fourwall_openbmc_connector --config /etc/fourwall-openbmc-connector/config.json
+Restart=always
+RestartSec=5
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/fourwall-openbmc-connector
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

@@ -46,6 +46,12 @@ function stopCanvasGesture(e: ThreeEvent<PointerEvent>) {
 
 function baseColor(e: Entity): string {
   if (e.type === 'machine') return machineColor(e.status);
+  if (e.type === 'device') {
+    if (e.status === 'simulated') return '#d9a441';
+    if (e.status === 'stale') return '#a56a16';
+    if (e.status === 'unavailable') return '#7a807a';
+    if (e.status === 'loading') return '#9ad0d2';
+  }
   return ENTITY_COLOR[e.type] ?? '#cccccc';
 }
 
@@ -55,6 +61,8 @@ function markerHeight(e: Entity): number {
       return 1.05;
     case 'machine':
       return 1.4;
+    case 'device':
+      return 1.1;
     case 'amr':
       return 0.42;
     default:
@@ -109,6 +117,52 @@ function Geometry({ entity, color }: { entity: Entity; color: string }) {
           </mesh>
         </group>
       );
+    case 'device': {
+      const ledColor =
+        entity.status === 'live'
+          ? '#2fd27a'
+          : entity.status === 'stale'
+            ? '#d9a441'
+          : entity.status === 'simulated'
+            ? '#d9a441'
+            : entity.status === 'loading'
+              ? '#9ad0d2'
+              : '#7a807a';
+      return (
+        <group>
+          <mesh position={[0, 0.42, 0]} castShadow>
+            <boxGeometry args={[1.05, 0.84, 0.72]} />
+            <meshStandardMaterial color="#18252a" metalness={0.28} roughness={0.58} />
+          </mesh>
+          <mesh position={[0, 0.43, 0.375]} castShadow>
+            <boxGeometry args={[0.82, 0.58, 0.05]} />
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={0.22}
+              roughness={0.48}
+            />
+          </mesh>
+          <mesh position={[-0.27, 0.43, 0.415]}>
+            <boxGeometry args={[0.18, 0.12, 0.04]} />
+            <meshStandardMaterial color="#050608" roughness={0.72} />
+          </mesh>
+          <mesh position={[0.28, 0.58, 0.43]}>
+            <sphereGeometry args={[0.075, 16, 16]} />
+            <meshStandardMaterial
+              color={ledColor}
+              emissive={ledColor}
+              emissiveIntensity={0.9}
+              roughness={0.3}
+            />
+          </mesh>
+          <mesh position={[0, 0.94, 0]}>
+            <cylinderGeometry args={[0.04, 0.04, 0.34, 10]} />
+            <meshStandardMaterial color="#7f8f93" metalness={0.45} roughness={0.42} />
+          </mesh>
+        </group>
+      );
+    }
     case 'zone': {
       const sx = (entity.attrs?.sizeX as number) ?? 7;
       const sz = (entity.attrs?.sizeZ as number) ?? 7;
@@ -177,6 +231,14 @@ function InteractiveHitTarget({ entity }: { entity: Entity }) {
       </mesh>
     );
   }
+  if (entity.type === 'device') {
+    return (
+      <mesh position={[0, 0.7, 0]}>
+        <boxGeometry args={[1.55, 1.65, 1.45]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
+    );
+  }
   return null;
 }
 
@@ -204,9 +266,13 @@ function forwardWheelToCanvas(event: ReactWheelEvent<HTMLButtonElement>) {
 }
 
 function ScreenHitTarget({ entity, height }: { entity: Entity; height: number }) {
-  if (entity.type !== 'person' && entity.type !== 'amr') return null;
+  if (entity.type !== 'person' && entity.type !== 'amr' && entity.type !== 'device') return null;
   const select = useFactoryStore.getState().select;
-  const size = entity.type === 'amr' ? 64 : 48;
+  const size = entity.type === 'person' ? 48 : 64;
+  const ariaLabel =
+    entity.type === 'device' && entity.deviceKind === 'openbmc_pi5'
+      ? '查看 Pi5 OpenBMC 資訊'
+      : `選取 ${entity.name}`;
   return (
     <Html position={[0, height, 0]} center zIndexRange={[40, 0]}>
       <button
@@ -214,7 +280,7 @@ function ScreenHitTarget({ entity, height }: { entity: Entity; height: number })
         className="entity-screen-hit-target"
         style={{ width: size, height: size }}
         data-entity-hit={entity.id}
-        aria-label={`選取 ${entity.name}`}
+        aria-label={ariaLabel}
         onPointerDown={(event) => {
           event.stopPropagation();
           select(entity.id);
@@ -254,8 +320,20 @@ export function EntityMarker({ entity }: { entity: Entity }) {
   // 現場真人永遠標示身分:醒目名牌 + 持續脈動光環,一眼認得出它是真的偵測到的人。
   const isLivePerson = entity.type === 'person' && entity.source === 'live';
   const draggableLiveAnchor = isDraggableLiveAnchor(entity);
-  const ringRadius = entity.type === 'person' ? 0.38 : entity.type === 'amr' ? 0.9 : entity.type === 'machine' ? 1.7 : 1.15;
-  const showLabel = selected || !!highlight || isLivePerson || (debugOpen && bound && entity.type === 'machine');
+  const ringRadius =
+    entity.type === 'person'
+      ? 0.38
+      : entity.type === 'amr' || entity.type === 'device'
+        ? 0.9
+        : entity.type === 'machine'
+          ? 1.7
+          : 1.15;
+  const showLabel =
+    selected ||
+    !!highlight ||
+    isLivePerson ||
+    entity.type === 'device' ||
+    (debugOpen && bound && entity.type === 'machine');
   const labelHeight = (bound ? 1.2 : markerHeight(entity)) + 0.6;
 
   useEffect(() => {
@@ -342,7 +420,12 @@ export function EntityMarker({ entity }: { entity: Entity }) {
       {!draggableLiveAnchor && <ScreenHitTarget entity={entity} height={labelHeight - 0.1} />}
       {showLabel && (
         <Html position={[0, labelHeight, 0]} center zIndexRange={[12, 0]} style={{ pointerEvents: 'none' }}>
-          <div className="marker-label">{entity.name}</div>
+          <div className={`marker-label ${entity.type === 'device' ? 'device-label' : ''}`}>
+            {entity.name}
+            {entity.type === 'device' ? (
+              <span className={`device-source ${entity.status}`}>{entity.status.toUpperCase()}</span>
+            ) : null}
+          </div>
         </Html>
       )}
     </group>

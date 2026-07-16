@@ -1,9 +1,11 @@
+import type { ReactNode } from 'react';
 import { screen, waitFor } from '@testing-library/react';
 import { Route, Routes } from 'react-router-dom';
 import { beforeEach, vi } from 'vitest';
 
 import { AppShell } from '../../app/shell';
 import { RequireAuthenticated, RequireInternal } from '../../app/routes';
+import { ApiError } from '../../lib/api';
 import type { CameraDevice, CameraPersonObservation } from '../../lib/types';
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils';
 import { DemoFactoryPage, FactoryTwinPage, toLivePersons } from './FactoryTwinPage';
@@ -15,6 +17,7 @@ import { buildMockEntities } from './mirror/domain/mockData';
 
 const apiMock = vi.hoisted(() => ({
   listCameras: vi.fn(),
+  listOpenBmcDevices: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async () => {
@@ -24,6 +27,7 @@ vi.mock('../../lib/api', async () => {
     api: {
       ...actual.api,
       listCameras: apiMock.listCameras,
+      listOpenBmcDevices: apiMock.listOpenBmcDevices,
     },
   };
 });
@@ -33,10 +37,14 @@ vi.mock('./FactoryTwinWorkspace', () => ({
     platformCameras,
     livePersons,
     demoPresentation,
+    openBmcSceneMode,
+    openBmcDetail,
   }: {
     platformCameras: Array<{ name: string; attrs?: { latestGaugeReadings?: unknown[]; latestOcrObservation?: unknown } }>;
     livePersons: Array<{ id: string; name: string }>;
     demoPresentation?: boolean;
+    openBmcSceneMode?: string;
+    openBmcDetail?: ReactNode;
   }) => {
     const gaugeCount = platformCameras.reduce(
       (total, camera) => total + (camera.attrs?.latestGaugeReadings?.length ?? 0),
@@ -50,6 +58,8 @@ vi.mock('./FactoryTwinWorkspace', () => ({
         ocr observations: {ocrCount}
         live persons: {livePersons.length}
         demo presentation: {String(Boolean(demoPresentation))}
+        openbmc scene: {openBmcSceneMode ?? 'none'}
+        openbmc detail provided: {String(Boolean(openBmcDetail))}
         {platformCameras.map((camera) => (
           <span key={camera.name}>{camera.name}</span>
         ))}
@@ -199,6 +209,8 @@ describe('FactoryTwinPage', () => {
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
     apiMock.listCameras.mockReset();
+    apiMock.listOpenBmcDevices.mockReset();
+    apiMock.listOpenBmcDevices.mockResolvedValue({ devices: [] });
     apiMock.listCameras.mockResolvedValue({
       cameras: [
         cameraFixture('dental-1', 'AVTECH Ch1', 'fce8ab62e93843da961bbc751bf79176'),
@@ -227,6 +239,8 @@ describe('FactoryTwinPage', () => {
     expect(screen.queryByText('已綁定至數位分身的平台攝影機')).not.toBeInTheDocument();
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('gauge readings: 2');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc scene: none');
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc detail provided: false');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('機台周遭');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('桌面分類');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('儀表板');
@@ -236,6 +250,7 @@ describe('FactoryTwinPage', () => {
     await waitFor(() => {
       expect(apiMock.listCameras).toHaveBeenCalledWith('test-token');
     });
+    expect(apiMock.listOpenBmcDevices).not.toHaveBeenCalled();
   });
 
   it('redirects anonymous users to the login page', async () => {
@@ -319,6 +334,28 @@ describe('FactoryTwinPage', () => {
     expect(screen.getByText(/展示模式.*營運數據皆為模擬.*靚程授權影像 3\/3 在線/)).toBeInTheDocument();
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('demo presentation: true');
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc scene: simulated');
+    });
+    expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc detail provided: true');
+    expect(screen.queryByText('SIMULATED')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(apiMock.listOpenBmcDevices).toHaveBeenCalledWith('test-token', {
+        siteId: 'dd6cbdd3aa744736ad96d2791d689fce',
+      });
+    });
+  });
+
+  it('does not mask an OpenBMC API failure with simulated state', async () => {
+    apiMock.listOpenBmcDevices.mockRejectedValueOnce(new ApiError(503, 'openbmc unavailable'));
+
+    renderDemoRoute();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('openbmc scene: unavailable');
+    });
+    expect(screen.queryByText('SIMULATED')).not.toBeInTheDocument();
+    expect(screen.queryByText('OpenBMC 服務目前無法讀取。')).not.toBeInTheDocument();
   });
 
   it('does not expose the accelerator workspace to customer-only accounts', async () => {

@@ -32,6 +32,10 @@ import type {
   Overview,
   OrganizationDetail,
   OrganizationSummary,
+  OpenBmcCommand,
+  OpenBmcCommandProposal,
+  OpenBmcCommandType,
+  OpenBmcDeviceList,
   Site,
   SiteMapAssetManifest,
   AlertCenterItem,
@@ -103,6 +107,16 @@ type ApiOptions = RequestInit & {
   token?: string
 }
 
+function normalizeApiErrorDetail(value: unknown, fallback: string): string {
+  if (typeof value === 'string' && value.trim()) return value
+  if (value && typeof value === 'object') {
+    const detail = value as Record<string, unknown>
+    if (typeof detail.message === 'string' && detail.message.trim()) return detail.message
+    if (typeof detail.code === 'string' && detail.code.trim()) return detail.code
+  }
+  return fallback
+}
+
 async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const headers = new Headers(options.headers)
   if (options.token) {
@@ -121,8 +135,8 @@ async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
   if (!response.ok) {
     let detail = response.statusText
     try {
-      const payload = (await response.json()) as { detail?: string }
-      detail = payload.detail ?? detail
+      const payload = (await response.json()) as { detail?: unknown }
+      detail = normalizeApiErrorDetail(payload.detail, detail)
     } catch {
       // fall back to the response status text
     }
@@ -147,8 +161,8 @@ async function artifactFetch(path: string, token: string): Promise<Response> {
   if (!response.ok) {
     let detail = response.statusText
     try {
-      const payload = (await response.json()) as { detail?: string }
-      detail = payload.detail ?? detail
+      const payload = (await response.json()) as { detail?: unknown }
+      detail = normalizeApiErrorDetail(payload.detail, detail)
     } catch {
       // fall back to the response status text
     }
@@ -509,6 +523,20 @@ export interface ReprocessMissionAnalysisPayload {
   note?: string
 }
 
+export interface OpenBmcCommandProposalPayload {
+  command: {
+    type: OpenBmcCommandType
+    arguments: {
+      seconds?: number
+    }
+  }
+  reason: string
+}
+
+export interface OpenBmcCommandConfirmPayload {
+  expectedProposalHash: string
+}
+
 function buildQuery(params: Record<string, string | undefined>) {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
@@ -547,6 +575,45 @@ export const api = {
   getHealth: () => apiFetch<PlatformHealthStatus>('/healthz'),
   getOverview: (token: string) => apiFetch<Overview>('/v1/web/overview', { token }),
   listCameras: (token: string) => apiFetch<CameraDeviceList>('/v1/cameras', { token }),
+  listOpenBmcDevices: (
+    token: string,
+    filters: { organizationId?: string; siteId?: string } = {},
+  ) =>
+    apiFetch<OpenBmcDeviceList>(
+      `/v1/openbmc/devices${buildQuery({
+        organizationId: filters.organizationId,
+        siteId: filters.siteId,
+      })}`,
+      { token },
+    ),
+  createOpenBmcCommandProposal: (
+    token: string,
+    deviceId: string,
+    payload: OpenBmcCommandProposalPayload,
+  ) =>
+    apiFetch<OpenBmcCommandProposal>(
+      `/v1/openbmc/devices/${encodeURIComponent(deviceId)}/command-proposals`,
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify(payload),
+      },
+    ),
+  confirmOpenBmcCommand: (
+    token: string,
+    commandId: string,
+    payload: OpenBmcCommandConfirmPayload,
+  ) =>
+    apiFetch<OpenBmcCommand>(`/v1/openbmc/commands/${encodeURIComponent(commandId)}/confirm`, {
+      method: 'POST',
+      token,
+      body: JSON.stringify(payload),
+    }),
+  cancelOpenBmcCommand: (token: string, commandId: string) =>
+    apiFetch<OpenBmcCommand>(`/v1/openbmc/commands/${encodeURIComponent(commandId)}/cancel`, {
+      method: 'POST',
+      token,
+    }),
   getControlPlaneDashboard: (token: string) =>
     apiFetch<ControlPlaneDashboard>('/v1/control-plane/dashboard', { token }),
   listControlPlaneAlerts: (token: string) =>

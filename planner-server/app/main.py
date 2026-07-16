@@ -25,6 +25,7 @@ from app.routers import (
     line_router,
     live_ops_router,
     missions_router,
+    openbmc_router,
     twin_agent_router,
     web_router,
 )
@@ -115,6 +116,7 @@ def build_app(
     app.include_router(line_router)
     app.include_router(missions_router)
     app.include_router(live_ops_router)
+    app.include_router(openbmc_router)
     app.include_router(twin_agent_router)
     app.include_router(web_router)
 
