@@ -1,0 +1,20 @@
+{
+  "cloud": {
+    "api_base_url": "https://staging-api.example.com",
+    "connector_token_env": "FOURWALL_OPENBMC_CONNECTOR_TOKEN",
+    "timeout_seconds": 10
+  },
+  "collector": {
+    "base_url_env": "FOURWALL_OPENBMC_COLLECTOR_URL",
+    "timeout_seconds": 5,
+    "allow_private_lan": false,
+    "allowed_hostnames": []
+  },
+  "state_path": "/var/lib/fourwall-openbmc-connector/state.json",
+  "poll_interval_seconds": 5,
+  "heartbeat_interval_seconds": 5,
+  "config_refresh_seconds": 300,
+  "command_reconcile_seconds": 20,
+  "event_batch_size": 50,
+  "log_level": "INFO"
+}

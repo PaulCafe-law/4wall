@@ -4,6 +4,7 @@ import { beforeEach, vi } from 'vitest';
 
 import { AppShell } from '../../app/shell';
 import { RequireAuthenticated, RequireInternal } from '../../app/routes';
+import { ApiError } from '../../lib/api';
 import type { CameraDevice, CameraPersonObservation } from '../../lib/types';
 import { createAuthValue, createSession, renderWithProviders } from '../../test/utils';
 import { DemoFactoryPage, FactoryTwinPage, toLivePersons } from './FactoryTwinPage';
@@ -15,6 +16,7 @@ import { buildMockEntities } from './mirror/domain/mockData';
 
 const apiMock = vi.hoisted(() => ({
   listCameras: vi.fn(),
+  listOpenBmcDevices: vi.fn(),
 }));
 
 vi.mock('../../lib/api', async () => {
@@ -24,6 +26,7 @@ vi.mock('../../lib/api', async () => {
     api: {
       ...actual.api,
       listCameras: apiMock.listCameras,
+      listOpenBmcDevices: apiMock.listOpenBmcDevices,
     },
   };
 });
@@ -199,6 +202,8 @@ describe('FactoryTwinPage', () => {
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
     apiMock.listCameras.mockReset();
+    apiMock.listOpenBmcDevices.mockReset();
+    apiMock.listOpenBmcDevices.mockResolvedValue({ devices: [] });
     apiMock.listCameras.mockResolvedValue({
       cameras: [
         cameraFixture('dental-1', 'AVTECH Ch1', 'fce8ab62e93843da961bbc751bf79176'),
@@ -236,6 +241,7 @@ describe('FactoryTwinPage', () => {
     await waitFor(() => {
       expect(apiMock.listCameras).toHaveBeenCalledWith('test-token');
     });
+    expect(apiMock.listOpenBmcDevices).not.toHaveBeenCalled();
   });
 
   it('redirects anonymous users to the login page', async () => {
@@ -319,6 +325,22 @@ describe('FactoryTwinPage', () => {
     expect(screen.getByText(/展示模式.*營運數據皆為模擬.*靚程授權影像 3\/3 在線/)).toBeInTheDocument();
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('live persons: 0');
     expect(screen.getByTestId('factory-twin-workspace')).toHaveTextContent('demo presentation: true');
+    expect(await screen.findByText('SIMULATED')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(apiMock.listOpenBmcDevices).toHaveBeenCalledWith('test-token', {
+        siteId: 'dd6cbdd3aa744736ad96d2791d689fce',
+      });
+    });
+  });
+
+  it('does not mask an OpenBMC API failure with simulated state', async () => {
+    apiMock.listOpenBmcDevices.mockRejectedValueOnce(new ApiError(503, 'openbmc unavailable'));
+
+    renderDemoRoute();
+
+    expect(await screen.findByText('UNAVAILABLE')).toBeInTheDocument();
+    expect(screen.queryByText('SIMULATED')).not.toBeInTheDocument();
+    expect(screen.getByText('OpenBMC 服務目前無法讀取。')).toBeInTheDocument();
   });
 
   it('does not expose the accelerator workspace to customer-only accounts', async () => {

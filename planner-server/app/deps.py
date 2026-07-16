@@ -6,9 +6,15 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
 
-from app.models import CameraDevice, OrganizationMembership, OperatorAccount, UserAccount
+from app.models import CameraDevice, OpenBmcConnector, OrganizationMembership, OperatorAccount, UserAccount
 from app.rate_limit import RateLimiter
-from app.security import AuthError, hash_camera_device_token, verify_access_token, verify_web_access_token
+from app.security import (
+    AuthError,
+    hash_camera_device_token,
+    hash_openbmc_connector_token,
+    verify_access_token,
+    verify_web_access_token,
+)
 
 
 auth_scheme = HTTPBearer(auto_error=False)
@@ -132,6 +138,22 @@ def get_current_camera_device(
     if camera is None or camera.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="camera_device_unauthorized")
     return camera
+
+
+def get_current_openbmc_connector(
+    credentials: HTTPAuthorizationCredentials | None = Depends(auth_scheme),
+    session: Session = Depends(get_session),
+) -> OpenBmcConnector:
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="missing_bearer_token")
+    token = credentials.credentials
+    if not token.startswith("fwobmc_"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="openbmc_connector_unauthorized")
+    token_hash = hash_openbmc_connector_token(token)
+    connector = session.exec(select(OpenBmcConnector).where(OpenBmcConnector.token_hash == token_hash)).first()
+    if connector is None or connector.status != "active":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="openbmc_connector_unauthorized")
+    return connector
 
 
 def get_current_actor(

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, CheckConstraint, Column, Index, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, Column, ForeignKeyConstraint, Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -216,6 +216,254 @@ class CameraPersonObservation(SQLModel, table=True):
     person_count: int = Field(default=0, index=True)
     detections_json: list[dict] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class OpenBmcConnector(SQLModel, table=True):
+    __tablename__ = "openbmc_connectors"
+    __table_args__ = (
+        UniqueConstraint(
+            "organization_id",
+            "site_id",
+            "name",
+            name="uq_openbmc_connectors_org_site_name",
+        ),
+        UniqueConstraint(
+            "id",
+            "organization_id",
+            "site_id",
+            name="uq_openbmc_connectors_id_org_site",
+        ),
+        UniqueConstraint(
+            "token_hash",
+            name="uq_openbmc_connectors_token_hash",
+        ),
+        CheckConstraint("status IN ('active', 'disabled', 'revoked')", name="ck_openbmc_connectors_status"),
+    )
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    name: str = Field(index=True)
+    status: str = Field(default="active", index=True)
+    token_hash: str
+    version: str = Field(default="unknown")
+    last_heartbeat_at: datetime | None = Field(default=None, index=True)
+    last_observation_at: datetime | None = Field(default=None, index=True)
+    last_error_code: str | None = None
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class OpenBmcDevice(SQLModel, table=True):
+    __tablename__ = "openbmc_devices"
+    __table_args__ = (
+        UniqueConstraint(
+            "connector_id",
+            "external_ref",
+            name="uq_openbmc_devices_connector_external_ref",
+        ),
+        UniqueConstraint(
+            "id",
+            "organization_id",
+            "site_id",
+            name="uq_openbmc_devices_id_org_site",
+        ),
+        UniqueConstraint(
+            "id",
+            "connector_id",
+            "organization_id",
+            "site_id",
+            name="uq_openbmc_devices_id_connector_org_site",
+        ),
+        ForeignKeyConstraint(
+            ["connector_id", "organization_id", "site_id"],
+            ["openbmc_connectors.id", "openbmc_connectors.organization_id", "openbmc_connectors.site_id"],
+            name="fk_openbmc_devices_connector_binding",
+        ),
+        CheckConstraint("status IN ('active', 'disabled')", name="ck_openbmc_devices_status"),
+        CheckConstraint("device_type IN ('raspberry_pi_5')", name="ck_openbmc_devices_type"),
+        Index(
+            "ix_openbmc_devices_org_site_status",
+            "organization_id",
+            "site_id",
+            "status",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    connector_id: str = Field(index=True)
+    name: str = Field(index=True)
+    external_ref: str = Field(index=True)
+    device_type: str = Field(default="raspberry_pi_5", index=True)
+    status: str = Field(default="active", index=True)
+    capabilities_json: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    last_observed_at: datetime | None = Field(default=None, index=True)
+    last_ingested_at: datetime | None = Field(default=None, index=True)
+    created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
+class OpenBmcTelemetryObservation(SQLModel, table=True):
+    __tablename__ = "openbmc_telemetry_observations"
+    __table_args__ = (
+        UniqueConstraint(
+            "device_id",
+            "source_observation_id",
+            name="uq_openbmc_observations_device_source",
+        ),
+        ForeignKeyConstraint(
+            ["device_id", "organization_id", "site_id"],
+            ["openbmc_devices.id", "openbmc_devices.organization_id", "openbmc_devices.site_id"],
+            name="fk_openbmc_observations_device_binding",
+        ),
+        CheckConstraint(
+            "status IN ('normal', 'warning', 'critical', 'unknown')",
+            name="ck_openbmc_observations_status",
+        ),
+        CheckConstraint(
+            "health IN ('ok', 'warning', 'critical', 'unknown')",
+            name="ck_openbmc_observations_health",
+        ),
+        Index(
+            "ix_openbmc_observations_device_observed_ingested",
+            "device_id",
+            "observed_at",
+            "ingested_at",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    device_id: str = Field(index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    source_observation_id: str = Field(index=True)
+    observed_at: datetime = Field(index=True)
+    collector_received_at: datetime
+    ingested_at: datetime = Field(default_factory=utc_now, index=True)
+    collector_stale: bool = True
+    temperature_c: float | None = None
+    status: str = Field(default="unknown", index=True)
+    health: str = Field(default="unknown", index=True)
+    fan_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    thresholds_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    raw_schema_version: str = Field(default="openbmc-observation.v1")
+
+
+class OpenBmcEventRecord(SQLModel, table=True):
+    __tablename__ = "openbmc_event_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "device_id",
+            "source_event_key",
+            name="uq_openbmc_events_device_source",
+        ),
+        ForeignKeyConstraint(
+            ["device_id", "organization_id", "site_id"],
+            ["openbmc_devices.id", "openbmc_devices.organization_id", "openbmc_devices.site_id"],
+            name="fk_openbmc_events_device_binding",
+        ),
+        CheckConstraint(
+            "severity IN ('info', 'warning', 'critical')",
+            name="ck_openbmc_events_severity",
+        ),
+        Index(
+            "ix_openbmc_events_device_occurred",
+            "device_id",
+            "occurred_at",
+            "ingested_at",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    device_id: str = Field(index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    source_event_key: str = Field(index=True)
+    occurred_at: datetime = Field(index=True)
+    severity: str = Field(default="info", index=True)
+    source: str = Field(default="collector", index=True)
+    code: str = Field(default="unknown", index=True)
+    message: str
+    details_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    ingested_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class OpenBmcCommand(SQLModel, table=True):
+    __tablename__ = "openbmc_commands"
+    __table_args__ = (
+        Index(
+            "ix_openbmc_commands_connector_status_created",
+            "connector_id",
+            "status",
+            "created_at",
+        ),
+        Index(
+            "ix_openbmc_commands_device_status",
+            "device_id",
+            "status",
+        ),
+        UniqueConstraint(
+            "device_id",
+            "active_slot",
+            name="uq_openbmc_commands_device_active_slot",
+        ),
+        UniqueConstraint(
+            "organization_id",
+            "proposed_by_user_id",
+            "request_idempotency_key",
+            name="uq_openbmc_commands_proposer_idempotency",
+        ),
+        ForeignKeyConstraint(
+            ["device_id", "connector_id", "organization_id", "site_id"],
+            [
+                "openbmc_devices.id",
+                "openbmc_devices.connector_id",
+                "openbmc_devices.organization_id",
+                "openbmc_devices.site_id",
+            ],
+            name="fk_openbmc_commands_device_binding",
+        ),
+        CheckConstraint(
+            "command_type IN ('fan_boost', 'reset_dry_run')",
+            name="ck_openbmc_commands_type",
+        ),
+        CheckConstraint(
+            "status IN ('awaiting_confirmation', 'queued', 'claimed', 'accepted_by_collector', "
+            "'delivered_to_agent', 'succeeded', 'failed', 'expired', 'cancelled', 'rejected')",
+            name="ck_openbmc_commands_status",
+        ),
+    )
+
+    id: str = Field(default_factory=lambda: uuid4().hex, primary_key=True)
+    device_id: str = Field(index=True)
+    connector_id: str = Field(index=True)
+    organization_id: str = Field(foreign_key="organization.id", index=True)
+    site_id: str = Field(foreign_key="site.id", index=True)
+    command_type: str = Field(index=True)
+    arguments_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    reason: str
+    request_idempotency_key: str | None = Field(default=None, index=True)
+    proposal_hash: str = Field(index=True)
+    status: str = Field(default="awaiting_confirmation", index=True)
+    active_slot: bool | None = Field(default=None, index=True)
+    proposed_by_user_id: str = Field(foreign_key="useraccount.id", index=True)
+    proposed_at: datetime = Field(default_factory=utc_now, index=True)
+    confirmed_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
+    confirmed_at: datetime | None = Field(default=None, index=True)
+    confirmation_expires_at: datetime = Field(index=True)
+    execution_expires_at: datetime | None = Field(default=None, index=True)
+    claim_lease_hash: str | None = Field(default=None, index=True)
+    claim_expires_at: datetime | None = Field(default=None, index=True)
+    local_command_id: str | None = None
+    result_json: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    completed_at: datetime | None = Field(default=None, index=True)
+    failure_code: str | None = Field(default=None, index=True)
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    updated_at: datetime = Field(default_factory=utc_now)
 
 
 class EquipmentWatchZone(SQLModel, table=True):

@@ -16,6 +16,8 @@ from app.models import OperatorAccount, RefreshToken, UserAccount, WebRefreshTok
 PBKDF2_ITERATIONS = 390_000
 WEB_REFRESH_COOKIE_NAME = "fw_refresh"
 CAMERA_DEVICE_TOKEN_PREFIX = "fwcam_"
+OPENBMC_CONNECTOR_TOKEN_PREFIX = "fwobmc_"
+OPENBMC_COMMAND_LEASE_PREFIX = "fwobmcl_"
 
 
 class AuthError(RuntimeError):
@@ -195,6 +197,22 @@ def hash_camera_device_token(token: str) -> str:
 
 def verify_camera_device_token(token: str, token_hash: str) -> bool:
     return hmac.compare_digest(hash_camera_device_token(token), token_hash)
+
+
+def create_openbmc_connector_token() -> str:
+    return f"{OPENBMC_CONNECTOR_TOKEN_PREFIX}{secrets.token_urlsafe(48)}"
+
+
+def hash_openbmc_connector_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def create_openbmc_command_lease() -> str:
+    return f"{OPENBMC_COMMAND_LEASE_PREFIX}{secrets.token_urlsafe(32)}"
+
+
+def hash_openbmc_command_lease(lease: str) -> str:
+    return hashlib.sha256(lease.encode("utf-8")).hexdigest()
 
 
 def hash_invite_token(token: str) -> str:

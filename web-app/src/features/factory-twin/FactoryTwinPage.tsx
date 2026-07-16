@@ -3,8 +3,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { isFactoryOpsCustomer, useAuth } from '../../lib/auth';
 import { useAuthedQuery } from '../../lib/auth-query';
-import type { CameraDevice } from '../../lib/types';
+import type { CameraDevice, OpenBmcDevice } from '../../lib/types';
 import { FactoryTwinWorkspace } from './FactoryTwinWorkspace';
+import { OpenBmcPi5Panel, type OpenBmcPanelSourceMode } from './OpenBmcPi5Panel';
 import type { CameraEntity, PersonEntity, Vec3 } from './mirror/domain/entities';
 import type { TwinAgentLiveDataStatus } from './mirror/hooks/useTwinAgentBridge';
 import {
@@ -23,6 +24,63 @@ const LIVE_PERSON_FRESH_MS = 90_000;
 const LIVE_PERSON_FUTURE_SKEW_MS = 60_000;
 const LIVE_PERSON_BOUNDS_MARGIN_M = 2;
 const CAMERA_SIGNAL_FRESH_MS = 90_000;
+
+function buildSimulatedOpenBmcDevice(nowMs: number): OpenBmcDevice {
+  const observedAt = new Date(nowMs || Date.now()).toISOString();
+  return {
+    deviceId: 'demo-pi5-simulated',
+    organizationId: 'accelerator-demo',
+    siteId: JINGCHENG_SITE_ID,
+    connectorId: 'simulated',
+    name: 'Pi5 OpenBMC 展示節點',
+    externalRef: 'pi5-demo',
+    deviceType: 'raspberry_pi_5',
+    status: 'active',
+    capabilities: {},
+    freshness: 'fresh',
+    canControl: false,
+    controlEligible: false,
+    controlBlockReasons: ['simulated_read_only'],
+    lastObservedAt: observedAt,
+    lastIngestedAt: observedAt,
+    latestObservation: {
+      observationId: 'demo-observation',
+      sourceObservationId: 'demo:pi5:state',
+      observedAt,
+      collectorReceivedAt: observedAt,
+      ingestedAt: observedAt,
+      collectorStale: false,
+      temperatureC: 48.6,
+      status: 'normal',
+      health: 'ok',
+      fan: {
+        present: true,
+        rpm: 1_180,
+        pwm: 42,
+        coolingState: 1,
+        coolingMaxState: 4,
+        manualBoostSupported: false,
+      },
+      thresholds: {
+        warningC: 65,
+        criticalC: 75,
+      },
+    },
+    recentEvents: [
+      {
+        eventId: 'demo-event',
+        sourceEventKey: 'demo:waiting-for-connector',
+        occurredAt: observedAt,
+        severity: 'info',
+        source: 'demo_fixture',
+        code: 'SIMULATED_STATE',
+        message: '展示資料：現場 connector 尚未綁定。',
+        details: {},
+      },
+    ],
+    recentCommands: [],
+  };
+}
 
 const FACTORY_CAMERA_LABELS: Array<{ ip: string; label: string; order: number }> = [
   { ip: '192.168.1.31', label: '機台周遭', order: 0 },
@@ -288,6 +346,13 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
     staleTime: 5_000,
     refetchInterval: 10_000,
   });
+  const openBmcQuery = useAuthedQuery({
+    queryKey: ['openbmc', 'devices', 'demo-factory', JINGCHENG_SITE_ID],
+    queryFn: (token) => api.listOpenBmcDevices(token, { siteId: JINGCHENG_SITE_ID }),
+    enabled: acceleratorDemo,
+    staleTime: 3_000,
+    refetchInterval: acceleratorDemo ? 5_000 : false,
+  });
 
   useEffect(() => {
     const updateNow = () => setNowMs(Date.now());
@@ -427,6 +492,23 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
       ].filter(Boolean)
     : [cameraStatusText, cameraEvidenceText, personStatusText, '真實資料'].filter(Boolean);
 
+  const openBmcUnavailable = Boolean(openBmcQuery.error);
+  const liveOpenBmcDevice = openBmcUnavailable
+    ? null
+    : openBmcQuery.data?.devices.find((device) => device.status === 'active') ??
+      openBmcQuery.data?.devices[0] ??
+      null;
+  const openBmcSourceMode: OpenBmcPanelSourceMode = liveOpenBmcDevice
+    ? 'live'
+    : openBmcUnavailable
+      ? 'unavailable'
+      : openBmcQuery.isSuccess
+      ? 'simulated'
+      : 'unavailable';
+  const openBmcDevice =
+    liveOpenBmcDevice ??
+    (openBmcSourceMode === 'simulated' ? buildSimulatedOpenBmcDevice(nowMs) : null);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div
@@ -450,6 +532,19 @@ export function FactoryTwinPage({ experience = 'standard' }: { experience?: Fact
             ? '靚程授權影像暫時無法載入，展示情境與模擬助手仍可正常使用。'
             : '暫時無法讀取攝影機資料，目前不會顯示最新現場資訊。'}
         </div>
+      ) : null}
+
+      {acceleratorDemo ? (
+        <OpenBmcPi5Panel
+          key={`${openBmcSourceMode}:${openBmcDevice?.deviceId ?? 'none'}`}
+          device={openBmcDevice}
+          sourceMode={openBmcSourceMode}
+          isLoading={openBmcQuery.isLoading}
+          errorText={openBmcQuery.error?.detail ?? null}
+          onRefresh={() => {
+            void openBmcQuery.refetch();
+          }}
+        />
       ) : null}
 
       <div className="min-h-0 flex-1">
