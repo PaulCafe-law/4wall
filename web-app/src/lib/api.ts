@@ -42,6 +42,7 @@ import type {
   SupportQueueItem,
   SupportQueueAction,
   CameraDeviceList,
+  CameraLatestFrameManifest,
   PlatformHealthStatus,
   TelemetryBatchRecord,
   TwinAgentMessagePayload,
@@ -915,6 +916,22 @@ export const api = {
     return response.blob()
   },
   fetchCameraLatestFrameBlob: async (token: string, cameraId: string) => {
+    const manifest = await apiFetch<CameraLatestFrameManifest>(
+      `/v1/cameras/${cameraId}/latest-frame/manifest`,
+      { token },
+    )
+    if (manifest.imageUrl) {
+      try {
+        const directResponse = await fetch(manifest.imageUrl, {
+          cache: 'no-store',
+          credentials: 'omit',
+        })
+        if (directResponse.ok) return directResponse.blob()
+      } catch {
+        // A bucket CORS or transient object-storage failure must not make the
+        // camera disappear; the authenticated API proxy remains the fallback.
+      }
+    }
     const response = await artifactFetch(`/v1/cameras/${cameraId}/latest-frame/image`, token)
     return response.blob()
   },

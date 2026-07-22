@@ -1228,7 +1228,7 @@ def test_camera_device_token_rotation_is_org_scoped(client, session_factory) -> 
     assert response.status_code == 403
 
 
-def test_latest_frame_image_is_web_org_scoped(client, session_factory) -> None:
+def test_latest_frame_image_is_web_org_scoped(client, session_factory, app) -> None:
     token = "fwcam_latest_frame"
     frame_bytes = _image_bytes("JPEG")
     checksum = hashlib.sha256(frame_bytes).hexdigest()
@@ -1270,6 +1270,42 @@ def test_latest_frame_image_is_web_org_scoped(client, session_factory) -> None:
     assert image.headers["content-type"] == "image/jpeg"
     assert image.headers["cache-control"] == "private, no-store"
     assert image.headers["x-camera-frame-id"] == "latest-frame"
+
+    original_storage = app.state.artifact_storage
+
+    class SignedFrameStorage:
+        def __init__(self, delegate) -> None:
+            self.delegate = delegate
+            self.presign_calls: list[tuple[str, int]] = []
+
+        def __getattr__(self, name):
+            return getattr(self.delegate, name)
+
+        def create_presigned_get_url(self, *, key: str, expires_in_seconds: int) -> str:
+            self.presign_calls.append((key, expires_in_seconds))
+            return "https://frames.example.test/latest.jpg?X-Amz-Signature=test"
+
+    signed_storage = SignedFrameStorage(original_storage)
+    app.state.artifact_storage = signed_storage
+    try:
+        manifest = client.get(f"/v1/cameras/{camera_id}/latest-frame/manifest", headers=admin_headers)
+        assert manifest.status_code == 200, manifest.text
+        assert manifest.headers["cache-control"] == "private, no-store"
+        assert manifest.json()["frameId"] == "latest-frame"
+        assert manifest.json()["imageUrl"].startswith("https://frames.example.test/")
+        assert manifest.json()["expiresAt"] is not None
+        assert "storageKey" not in manifest.json()
+        assert signed_storage.presign_calls == [(intent.json()["storageKey"], 90)]
+
+        other_headers, _ = login_web(client, email="admin@latest-b.test", password=PASSWORD)
+        blocked_manifest = client.get(
+            f"/v1/cameras/{camera_id}/latest-frame/manifest",
+            headers=other_headers,
+        )
+        assert blocked_manifest.status_code == 403
+        assert signed_storage.presign_calls == [(intent.json()["storageKey"], 90)]
+    finally:
+        app.state.artifact_storage = original_storage
 
     other_headers, _ = login_web(client, email="admin@latest-b.test", password=PASSWORD)
     blocked = client.get(f"/v1/cameras/{camera_id}/latest-frame/image", headers=other_headers)
@@ -1341,7 +1377,7 @@ def test_latest_frame_image_returns_404_without_uploaded_frame(client, session_f
     assert response.json()["detail"] == "camera_latest_frame_not_found"
 
 
-def test_camera_list_batches_historical_status_queries(client, session_factory, monkeypatch) -> None:
+def test_camera_list_batches_historical_status_queries(client, session_factory, monkeypatch, app) -> None:
     """The list endpoint must not fall back to one history scan per camera."""
     captured_at = datetime(2026, 7, 10, 8, 0, tzinfo=timezone.utc)
     with session_factory() as session:
@@ -1426,7 +1462,23 @@ def test_camera_list_batches_historical_status_queries(client, session_factory, 
     monkeypatch.setattr(camera_ingest, "_count_camera_frames", fail_legacy_query)
 
     headers, _ = login_web(client, email="admin@batched-camera.test", password=PASSWORD)
-    response = client.get("/v1/cameras", headers=headers)
+    camera_table_statements: list[str] = []
+
+    def record_camera_statement(_conn, _cursor, statement, _parameters, _context, _executemany):
+        normalized = statement.lower()
+        if any(
+            table in normalized
+            for table in ("camera_frames", "camera_ocr_observations", "camera_person_observations", "camera_gauge_readings")
+        ):
+            camera_table_statements.append(normalized)
+
+    from sqlalchemy import event
+
+    event.listen(app.state.engine, "before_cursor_execute", record_camera_statement)
+    try:
+        response = client.get("/v1/cameras", headers=headers)
+    finally:
+        event.remove(app.state.engine, "before_cursor_execute", record_camera_statement)
 
     assert response.status_code == 200, response.text
     cameras = {item["cameraId"]: item for item in response.json()["cameras"]}
@@ -1436,6 +1488,10 @@ def test_camera_list_batches_historical_status_queries(client, session_factory, 
     assert cameras[first_id]["failedFrameCount"] == 2
     assert cameras[first_id]["latestGaugeReadings"][0]["value"] == 13.0
     assert cameras[second_id]["latestFrame"]["frameId"] == "batch-second"
+    assert sum("camera_frames" in statement for statement in camera_table_statements) == 2
+    assert sum("camera_ocr_observations" in statement for statement in camera_table_statements) == 1
+    assert sum("camera_person_observations" in statement for statement in camera_table_statements) == 1
+    assert sum("camera_gauge_readings" in statement for statement in camera_table_statements) == 1
 
 
 def _person_observation_payload(**overrides) -> dict:
