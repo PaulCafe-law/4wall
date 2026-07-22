@@ -350,6 +350,7 @@ def test_daily_brief_uses_site_local_date_label(client, session_factory) -> None
 
 
 def test_ledger_api_flow_attribution(client, session_factory) -> None:
+    occurred_at = datetime.now(timezone.utc)
     with session_factory() as session:
         org = _seed_org_with_user(session)
         org_id = org.id
@@ -363,7 +364,7 @@ def test_ledger_api_flow_attribution(client, session_factory) -> None:
         json={
             "organizationId": org_id,
             "machineNo": "HC600-01",
-            "occurredAt": DAY.isoformat(),
+            "occurredAt": occurred_at.isoformat(),
             "source": "manual",
             "actualAssignee": "路人甲",
         },

@@ -13,7 +13,7 @@ import warnings
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from PIL import Image
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlmodel import Session, select
 
 from app.audit import record_audit
@@ -57,6 +57,7 @@ GAUGE_SORT_ORDER = {"press_am_meter": 0, "flow_am_meter": 1}
 # The web camera list is a status feed: keep the payload lean by capping the
 # detections echoed on latestPersonObservation (personCount stays the full count).
 MAX_STATUS_PERSON_DETECTIONS = 10
+DIRECT_FRAME_URL_TTL_SECONDS = 90
 
 
 class CreateCameraFrameUploadIntentDto(BaseModel):
@@ -104,6 +105,14 @@ class CameraFrameDto(BaseModel):
     errorMessage: str | None = None
     uploadExpiresAt: datetime
     completedAt: datetime | None = None
+
+
+class CameraLatestFrameManifestDto(BaseModel):
+    frameId: str
+    capturedAt: datetime
+    contentType: str
+    imageUrl: str | None = None
+    expiresAt: datetime | None = None
 
 
 class CameraGaugeReadingInputDto(BaseModel):
@@ -882,6 +891,40 @@ def get_camera_latest_frame_image(
     return _latest_frame_image_response(session, camera, storage)
 
 
+@router.get(
+    "/v1/cameras/{camera_id}/latest-frame/manifest",
+    response_model=CameraLatestFrameManifestDto,
+)
+def get_camera_latest_frame_manifest(
+    camera_id: str,
+    response: Response,
+    current_user: CurrentWebUser = Depends(get_current_web_user),
+    session: Session = Depends(get_session),
+    storage: ArtifactStorage = Depends(get_artifact_storage),
+) -> CameraLatestFrameManifestDto:
+    camera = _load_camera_for_web(session, current_user, camera_id, write=False)
+    frame = _latest_uploaded_frame_for_camera(session, camera)
+    if frame is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="camera_latest_frame_not_found")
+
+    image_url = storage.create_presigned_get_url(
+        key=frame.storage_key,
+        expires_in_seconds=DIRECT_FRAME_URL_TTL_SECONDS,
+    )
+    response.headers["Cache-Control"] = "private, no-store"
+    return CameraLatestFrameManifestDto(
+        frameId=frame.id,
+        capturedAt=_as_utc(frame.captured_at),
+        contentType=frame.content_type,
+        imageUrl=image_url,
+        expiresAt=(
+            _now() + timedelta(seconds=DIRECT_FRAME_URL_TTL_SECONDS)
+            if image_url is not None
+            else None
+        ),
+    )
+
+
 def _latest_frame_image_response(session: Session, camera: CameraDevice, storage: ArtifactStorage) -> Response:
     frame = _latest_uploaded_frame_for_camera(session, camera)
     if frame is None:
@@ -1166,17 +1209,25 @@ def _serialize_camera_status_from_records(
 
 
 def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) -> dict[str, Any]:
-    records: dict[str, Any] = {}
-    for camera_id in camera_ids:
-        record = session.exec(
-            select(model)
-            .where(model.camera_id == camera_id)
-            .order_by(model.captured_at.desc(), model.created_at.desc())
-            .limit(1)
-        ).first()
-        if record is not None:
-            records[camera_id] = record
-    return records
+    ranked = (
+        select(
+            model.id.label("record_id"),
+            func.row_number()
+            .over(
+                partition_by=model.camera_id,
+                order_by=(model.captured_at.desc(), model.created_at.desc()),
+            )
+            .label("record_rank"),
+        )
+        .where(model.camera_id.in_(camera_ids))
+        .subquery()
+    )
+    latest = session.exec(
+        select(model)
+        .join(ranked, model.id == ranked.c.record_id)
+        .where(ranked.c.record_rank == 1)
+    ).all()
+    return {str(record.camera_id): record for record in latest}
 
 
 def _latest_gauge_readings_by_camera(
@@ -1184,40 +1235,54 @@ def _latest_gauge_readings_by_camera(
     camera_ids: list[str],
 ) -> dict[str, list[CameraGaugeReading]]:
     grouped: dict[str, list[CameraGaugeReading]] = {camera_id: [] for camera_id in camera_ids}
+    ranked = (
+        select(
+            CameraGaugeReading.id.label("reading_id"),
+            func.row_number()
+            .over(
+                partition_by=(CameraGaugeReading.camera_id, CameraGaugeReading.gauge_id),
+                order_by=(CameraGaugeReading.captured_at.desc(), CameraGaugeReading.created_at.desc()),
+            )
+            .label("reading_rank"),
+        )
+        .where(CameraGaugeReading.camera_id.in_(camera_ids))
+        .subquery()
+    )
+    readings = session.exec(
+        select(CameraGaugeReading)
+        .join(ranked, CameraGaugeReading.id == ranked.c.reading_id)
+        .where(ranked.c.reading_rank == 1)
+    ).all()
+    for reading in readings:
+        grouped[str(reading.camera_id)].append(reading)
     for camera_id in camera_ids:
-        readings = session.exec(
-            select(CameraGaugeReading)
-            .where(CameraGaugeReading.camera_id == camera_id)
-            .order_by(CameraGaugeReading.captured_at.desc(), CameraGaugeReading.created_at.desc())
-            .limit(50)
-        ).all()
-        latest_by_gauge: dict[str, CameraGaugeReading] = {}
-        for reading in readings:
-            latest_by_gauge.setdefault(reading.gauge_id, reading)
-        grouped[camera_id] = sorted(
-            latest_by_gauge.values(),
+        grouped[camera_id].sort(
             key=lambda reading: (GAUGE_SORT_ORDER.get(reading.gauge_id, 100), reading.gauge_id),
         )
     return grouped
 
 
 def _frame_counts_by_camera(session: Session, camera_ids: list[str]) -> dict[str, tuple[int, int, int, int]]:
-    counts = {camera_id: [0, 0, 0, 0] for camera_id in camera_ids}
-    status_queries = (
-        (CameraFrame.upload_status, "uploaded", 0),
-        (CameraFrame.analysis_status, "queued", 1),
-        (CameraFrame.upload_status, "failed", 2),
-        (CameraFrame.analysis_status, "failed", 3),
-    )
-    for column, value, index in status_queries:
-        rows = session.exec(
-            select(CameraFrame.camera_id, func.count())
-            .where(CameraFrame.camera_id.in_(camera_ids), column == value)
-            .group_by(CameraFrame.camera_id)
-        ).all()
-        for camera_id, count in rows:
-            counts[str(camera_id)][index] = int(count)
-    return {camera_id: tuple(values) for camera_id, values in counts.items()}
+    counts = {camera_id: (0, 0, 0, 0) for camera_id in camera_ids}
+    rows = session.exec(
+        select(
+            CameraFrame.camera_id,
+            func.sum(case((CameraFrame.upload_status == "uploaded", 1), else_=0)),
+            func.sum(case((CameraFrame.analysis_status == "queued", 1), else_=0)),
+            func.sum(case((CameraFrame.upload_status == "failed", 1), else_=0)),
+            func.sum(case((CameraFrame.analysis_status == "failed", 1), else_=0)),
+        )
+        .where(CameraFrame.camera_id.in_(camera_ids))
+        .group_by(CameraFrame.camera_id)
+    ).all()
+    for camera_id, uploaded, queued, upload_failed, analysis_failed in rows:
+        counts[str(camera_id)] = (
+            int(uploaded or 0),
+            int(queued or 0),
+            int(upload_failed or 0),
+            int(analysis_failed or 0),
+        )
+    return counts
 
 
 def _latest_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFrame | None:

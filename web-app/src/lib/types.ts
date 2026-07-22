@@ -646,6 +646,14 @@ export interface CameraDeviceList {
   cameras: CameraDevice[]
 }
 
+export interface CameraLatestFrameManifest {
+  frameId: string
+  capturedAt: string
+  contentType: string
+  imageUrl: string | null
+  expiresAt: string | null
+}
+
 export interface AlertCenterItem {
   alertId: string
   category: SupportCategory
