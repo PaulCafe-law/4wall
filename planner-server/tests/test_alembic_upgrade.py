@@ -67,6 +67,8 @@ def test_alembic_upgrade_creates_phase1_demo_tables(tmp_path, monkeypatch) -> No
     camera_columns = {column["name"] for column in inspector.get_columns("camera_devices")}
     assert "device_token_hash" in camera_columns
     assert "sampling_interval_seconds" in camera_columns
+    assert "latest_frame_id" in camera_columns
+    assert "latest_storage_key" in camera_columns
 
     frame_columns = {column["name"] for column in inspector.get_columns("camera_frames")}
     assert "storage_key" in frame_columns

@@ -463,6 +463,9 @@ def complete_camera_frame_upload(
 ) -> CameraFrameDto:
     frame = _load_frame_for_device(session, camera, frame_id)
     if frame.upload_status == "uploaded":
+        if _set_camera_latest_frame_pointer(camera, frame):
+            session.add(camera)
+            session.commit()
         return _serialize_frame(frame)
     _ensure_pending_upload_not_expired(frame)
     data = storage.read(frame.storage_key)
@@ -501,8 +504,7 @@ def complete_camera_frame_upload(
     frame.analysis_status = "queued"
     frame.completed_at = _now()
     frame.updated_at = frame.completed_at
-    camera.last_frame_at = frame.captured_at
-    camera.updated_at = _now()
+    _set_camera_latest_frame_pointer(camera, frame)
     session.add(frame)
     session.add(camera)
     record_audit(
@@ -1152,11 +1154,22 @@ def _serialize_camera_statuses(session: Session, cameras: list[CameraDevice]) ->
         return []
 
     camera_ids = [camera.id for camera in cameras]
-    latest_frames = _latest_records_by_camera(session, CameraFrame, camera_ids)
-    latest_ocr = _latest_records_by_camera(session, CameraOcrObservation, camera_ids)
-    latest_person = _latest_records_by_camera(session, CameraPersonObservation, camera_ids)
-    latest_gauges = _latest_gauge_readings_by_camera(session, camera_ids)
-    frame_counts = _frame_counts_by_camera(session, camera_ids)
+    retention_cutoff = _now() - timedelta(days=max(camera.retention_days for camera in cameras))
+    latest_frames = _frames_from_camera_pointers(
+        session,
+        cameras,
+        captured_after=retention_cutoff,
+    )
+    latest_ocr = _latest_records_by_camera(
+        session, CameraOcrObservation, camera_ids, captured_after=retention_cutoff
+    )
+    latest_person = _latest_records_by_camera(
+        session, CameraPersonObservation, camera_ids, captured_after=retention_cutoff
+    )
+    latest_gauges = _latest_gauge_readings_by_camera(
+        session, camera_ids, captured_after=retention_cutoff
+    )
+    frame_counts = _frame_counts_by_camera(session, camera_ids, captured_after=retention_cutoff)
 
     return [
         _serialize_camera_status_from_records(
@@ -1208,7 +1221,13 @@ def _serialize_camera_status_from_records(
     )
 
 
-def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) -> dict[str, Any]:
+def _latest_records_by_camera(
+    session: Session,
+    model,
+    camera_ids: list[str],
+    *,
+    captured_after: datetime,
+) -> dict[str, Any]:
     ranked = (
         select(
             model.id.label("record_id"),
@@ -1219,7 +1238,7 @@ def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) ->
             )
             .label("record_rank"),
         )
-        .where(model.camera_id.in_(camera_ids))
+        .where(model.camera_id.in_(camera_ids), model.captured_at >= captured_after)
         .subquery()
     )
     latest = session.exec(
@@ -1233,6 +1252,8 @@ def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) ->
 def _latest_gauge_readings_by_camera(
     session: Session,
     camera_ids: list[str],
+    *,
+    captured_after: datetime,
 ) -> dict[str, list[CameraGaugeReading]]:
     grouped: dict[str, list[CameraGaugeReading]] = {camera_id: [] for camera_id in camera_ids}
     ranked = (
@@ -1245,7 +1266,10 @@ def _latest_gauge_readings_by_camera(
             )
             .label("reading_rank"),
         )
-        .where(CameraGaugeReading.camera_id.in_(camera_ids))
+        .where(
+            CameraGaugeReading.camera_id.in_(camera_ids),
+            CameraGaugeReading.captured_at >= captured_after,
+        )
         .subquery()
     )
     readings = session.exec(
@@ -1262,7 +1286,12 @@ def _latest_gauge_readings_by_camera(
     return grouped
 
 
-def _frame_counts_by_camera(session: Session, camera_ids: list[str]) -> dict[str, tuple[int, int, int, int]]:
+def _frame_counts_by_camera(
+    session: Session,
+    camera_ids: list[str],
+    *,
+    captured_after: datetime,
+) -> dict[str, tuple[int, int, int, int]]:
     counts = {camera_id: (0, 0, 0, 0) for camera_id in camera_ids}
     rows = session.exec(
         select(
@@ -1272,7 +1301,7 @@ def _frame_counts_by_camera(session: Session, camera_ids: list[str]) -> dict[str
             func.sum(case((CameraFrame.upload_status == "failed", 1), else_=0)),
             func.sum(case((CameraFrame.analysis_status == "failed", 1), else_=0)),
         )
-        .where(CameraFrame.camera_id.in_(camera_ids))
+        .where(CameraFrame.camera_id.in_(camera_ids), CameraFrame.captured_at >= captured_after)
         .group_by(CameraFrame.camera_id)
     ).all()
     for camera_id, uploaded, queued, upload_failed, analysis_failed in rows:
@@ -1294,11 +1323,65 @@ def _latest_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFr
 
 
 def _latest_uploaded_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFrame | None:
+    if camera.latest_frame_id:
+        pointed = session.get(CameraFrame, camera.latest_frame_id)
+        if (
+            pointed is not None
+            and pointed.camera_id == camera.id
+            and pointed.upload_status == "uploaded"
+        ):
+            return pointed
     return session.exec(
         select(CameraFrame)
         .where(CameraFrame.camera_id == camera.id, CameraFrame.upload_status == "uploaded")
         .order_by(CameraFrame.captured_at.desc(), CameraFrame.created_at.desc())
     ).first()
+
+
+def _frames_from_camera_pointers(
+    session: Session,
+    cameras: list[CameraDevice],
+    *,
+    captured_after: datetime,
+) -> dict[str, CameraFrame]:
+    pointer_ids = [camera.latest_frame_id for camera in cameras if camera.latest_frame_id]
+    frames = session.exec(select(CameraFrame).where(CameraFrame.id.in_(pointer_ids))).all() if pointer_ids else []
+    by_id = {frame.id: frame for frame in frames}
+    result: dict[str, CameraFrame] = {}
+    for camera in cameras:
+        frame = by_id.get(camera.latest_frame_id or "")
+        if frame is not None and frame.camera_id == camera.id and frame.upload_status == "uploaded":
+            result[camera.id] = frame
+    missing_camera_ids = [camera.id for camera in cameras if camera.id not in result]
+    if missing_camera_ids:
+        result.update(
+            _latest_records_by_camera(
+                session,
+                CameraFrame,
+                missing_camera_ids,
+                captured_after=captured_after,
+            )
+        )
+    return result
+
+
+def _set_camera_latest_frame_pointer(camera: CameraDevice, frame: CameraFrame) -> bool:
+    if frame.camera_id != camera.id or frame.upload_status != "uploaded":
+        return False
+    current_at = _as_utc(camera.last_frame_at) if camera.last_frame_at is not None else None
+    captured_at = _as_utc(frame.captured_at)
+    if current_at is not None and captured_at < current_at and camera.latest_frame_id:
+        return False
+    changed = (
+        camera.latest_frame_id != frame.id
+        or camera.latest_storage_key != frame.storage_key
+        or current_at != captured_at
+    )
+    camera.latest_frame_id = frame.id
+    camera.latest_storage_key = frame.storage_key
+    camera.last_frame_at = frame.captured_at
+    camera.updated_at = _now()
+    return changed
 
 
 def _latest_gauge_readings_for_camera(session: Session, camera: CameraDevice) -> list[CameraGaugeReading]:
