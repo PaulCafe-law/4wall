@@ -1152,11 +1152,20 @@ def _serialize_camera_statuses(session: Session, cameras: list[CameraDevice]) ->
         return []
 
     camera_ids = [camera.id for camera in cameras]
-    latest_frames = _latest_records_by_camera(session, CameraFrame, camera_ids)
-    latest_ocr = _latest_records_by_camera(session, CameraOcrObservation, camera_ids)
-    latest_person = _latest_records_by_camera(session, CameraPersonObservation, camera_ids)
-    latest_gauges = _latest_gauge_readings_by_camera(session, camera_ids)
-    frame_counts = _frame_counts_by_camera(session, camera_ids)
+    retention_cutoff = _now() - timedelta(days=max(camera.retention_days for camera in cameras))
+    latest_frames = _latest_records_by_camera(
+        session, CameraFrame, camera_ids, captured_after=retention_cutoff
+    )
+    latest_ocr = _latest_records_by_camera(
+        session, CameraOcrObservation, camera_ids, captured_after=retention_cutoff
+    )
+    latest_person = _latest_records_by_camera(
+        session, CameraPersonObservation, camera_ids, captured_after=retention_cutoff
+    )
+    latest_gauges = _latest_gauge_readings_by_camera(
+        session, camera_ids, captured_after=retention_cutoff
+    )
+    frame_counts = _frame_counts_by_camera(session, camera_ids, captured_after=retention_cutoff)
 
     return [
         _serialize_camera_status_from_records(
@@ -1208,7 +1217,13 @@ def _serialize_camera_status_from_records(
     )
 
 
-def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) -> dict[str, Any]:
+def _latest_records_by_camera(
+    session: Session,
+    model,
+    camera_ids: list[str],
+    *,
+    captured_after: datetime,
+) -> dict[str, Any]:
     ranked = (
         select(
             model.id.label("record_id"),
@@ -1219,7 +1234,7 @@ def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) ->
             )
             .label("record_rank"),
         )
-        .where(model.camera_id.in_(camera_ids))
+        .where(model.camera_id.in_(camera_ids), model.captured_at >= captured_after)
         .subquery()
     )
     latest = session.exec(
@@ -1233,6 +1248,8 @@ def _latest_records_by_camera(session: Session, model, camera_ids: list[str]) ->
 def _latest_gauge_readings_by_camera(
     session: Session,
     camera_ids: list[str],
+    *,
+    captured_after: datetime,
 ) -> dict[str, list[CameraGaugeReading]]:
     grouped: dict[str, list[CameraGaugeReading]] = {camera_id: [] for camera_id in camera_ids}
     ranked = (
@@ -1245,7 +1262,10 @@ def _latest_gauge_readings_by_camera(
             )
             .label("reading_rank"),
         )
-        .where(CameraGaugeReading.camera_id.in_(camera_ids))
+        .where(
+            CameraGaugeReading.camera_id.in_(camera_ids),
+            CameraGaugeReading.captured_at >= captured_after,
+        )
         .subquery()
     )
     readings = session.exec(
@@ -1262,7 +1282,12 @@ def _latest_gauge_readings_by_camera(
     return grouped
 
 
-def _frame_counts_by_camera(session: Session, camera_ids: list[str]) -> dict[str, tuple[int, int, int, int]]:
+def _frame_counts_by_camera(
+    session: Session,
+    camera_ids: list[str],
+    *,
+    captured_after: datetime,
+) -> dict[str, tuple[int, int, int, int]]:
     counts = {camera_id: (0, 0, 0, 0) for camera_id in camera_ids}
     rows = session.exec(
         select(
@@ -1272,7 +1297,7 @@ def _frame_counts_by_camera(session: Session, camera_ids: list[str]) -> dict[str
             func.sum(case((CameraFrame.upload_status == "failed", 1), else_=0)),
             func.sum(case((CameraFrame.analysis_status == "failed", 1), else_=0)),
         )
-        .where(CameraFrame.camera_id.in_(camera_ids))
+        .where(CameraFrame.camera_id.in_(camera_ids), CameraFrame.captured_at >= captured_after)
         .group_by(CameraFrame.camera_id)
     ).all()
     for camera_id, uploaded, queued, upload_failed, analysis_failed in rows:

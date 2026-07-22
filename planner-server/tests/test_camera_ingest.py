@@ -430,7 +430,7 @@ def test_camera_device_config_is_device_scoped(client, session_factory) -> None:
 def test_camera_health_list_is_org_scoped_and_counts_frames(client, session_factory) -> None:
     token_a = "fwcam_health_a"
     token_b = "fwcam_health_b"
-    captured_at = datetime(2026, 6, 19, 3, 0, tzinfo=timezone.utc)
+    captured_at = datetime.now(timezone.utc)
     with session_factory() as session:
         org_a = seed_organization(session, name="Health A")
         org_b = seed_organization(session, name="Health B")
@@ -1379,7 +1379,7 @@ def test_latest_frame_image_returns_404_without_uploaded_frame(client, session_f
 
 def test_camera_list_batches_historical_status_queries(client, session_factory, monkeypatch, app) -> None:
     """The list endpoint must not fall back to one history scan per camera."""
-    captured_at = datetime(2026, 7, 10, 8, 0, tzinfo=timezone.utc)
+    captured_at = datetime.now(timezone.utc)
     with session_factory() as session:
         org = seed_organization(session, name="Batched Camera Org")
         site = seed_site(session, organization_id=org.id, name="Batched Factory")

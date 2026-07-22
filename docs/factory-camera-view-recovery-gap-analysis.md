@@ -6,6 +6,11 @@ Date: 2026-07-22
 
 - The production camera page eventually returned all three Jingcheng frames, but
   `GET /v1/cameras` took 39.68 seconds before image requests could start.
+- After the first batching release, the production table volume made the
+  windowed latest-record queries regress further: the camera list exceeded 120
+  seconds and a single latest-frame manifest exceeded 30 seconds. The batch
+  query ranked the entire accumulated history, and uploaded-frame lookup lacked
+  an index that combined upload state with newest-record ordering.
 - Each protected latest-frame image request then took about 15 seconds through
   the API, leaving the page on its dark loading state for close to a minute.
 - The factory Pi had both the current per-camera service for `192.168.1.31` and
@@ -30,12 +35,17 @@ Date: 2026-07-22
    for any image.
 3. Historical failure totals grow without bound and make the status page noisy;
    they must not be interpreted as the number of cameras currently unavailable.
+4. The uploaded-frame lookup and person observations lack composite indexes
+   matching their newest-record access paths.
 
 ## Recovery scope
 
 - Keep only the three named Jingcheng camera agents enabled on the factory Pi.
 - Replace per-camera latest-record queries with one windowed batch query per
   record type while preserving exact newest-record ordering and tenant scope.
+- Bound status aggregation and batch ranking to each camera's configured
+  retention horizon, and add matching composite newest-record indexes for
+  frames, uploaded frames, OCR, person observations, and gauges.
 - Add a regression test that bounds database statement count as camera count
   grows.
 - Stop proxying every camera JPEG through the Render API process. After the
