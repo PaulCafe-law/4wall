@@ -784,24 +784,6 @@ def test_text_machine_detail_returns_current_work_order_and_hmi_crops(test_setti
     with TestClient(app) as client:
         _seed_scope(app)
         _seed_work_order_observation(app)
-        with app.state.session_factory() as session:
-            observation = session.exec(
-                select(CameraOcrObservation).where(CameraOcrObservation.frame_id == "frame-latest")
-            ).first()
-            assert observation is not None
-            structured = dict(observation.structured_fields_json or {})
-            work_order = dict(structured.get("workOrder") or {})
-            work_order["alignmentStatus"] = "invalid"
-            work_order["currentEvidence"] = False
-            regions = dict(structured.get("captureRegions") or {})
-            work_region = dict(regions.get("workOrder") or {})
-            work_region["alignmentStatus"] = "invalid"
-            regions["workOrder"] = work_region
-            structured["workOrder"] = work_order
-            structured["captureRegions"] = regions
-            observation.structured_fields_json = structured
-            session.add(observation)
-            session.commit()
         response = _post_line_events(client, settings, [_message_event("機台 m-hc600")])
         messages = replies[0]["messages"]
         dispatch_path = messages[1]["originalContentUrl"].removeprefix("https://api.example.test")
@@ -827,6 +809,45 @@ def test_text_machine_detail_returns_current_work_order_and_hmi_crops(test_setti
     dumped = json.dumps(messages, ensure_ascii=False)
     assert "即時圖" not in dumped
     assert "今日異常" not in dumped
+
+
+def test_text_machine_detail_reports_unposted_work_order_and_returns_hmi_crop(test_settings, monkeypatch) -> None:
+    settings = _line_settings(test_settings, app_origin="https://app.example.test")
+    storage = _CroppableStorage({"camera-frames/org/camera/frame.jpg": _machine_regions_jpeg()})
+    replies = _capture_replies(monkeypatch)
+    app = build_app(settings=settings, artifact_storage=storage)
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _seed_work_order_observation(app)
+        with app.state.session_factory() as session:
+            observation = session.exec(
+                select(CameraOcrObservation).where(CameraOcrObservation.frame_id == "frame-latest")
+            ).first()
+            assert observation is not None
+            structured = dict(observation.structured_fields_json or {})
+            work_order = dict(structured.get("workOrder") or {})
+            work_order["alignmentStatus"] = "invalid"
+            work_order["currentEvidence"] = False
+            regions = dict(structured.get("captureRegions") or {})
+            work_region = dict(regions.get("workOrder") or {})
+            work_region["alignmentStatus"] = "invalid"
+            regions["workOrder"] = work_region
+            structured["workOrder"] = work_order
+            structured["captureRegions"] = regions
+            observation.structured_fields_json = structured
+            session.add(observation)
+            session.commit()
+        response = _post_line_events(client, settings, [_message_event("機台 m-hc600")])
+        messages = replies[0]["messages"]
+        hmi_path = messages[2]["originalContentUrl"].removeprefix("https://api.example.test")
+        hmi_image = client.get(hmi_path)
+
+    assert response.status_code == 200, response.text
+    assert messages[0] == {"type": "text", "text": "派工單目前沒有張貼"}
+    assert messages[1] == {"type": "text", "text": "當下 HMI 螢幕"}
+    assert "/v1/line/hmi-screen/jingcheng/" in messages[2]["originalContentUrl"]
+    assert Image.open(BytesIO(hmi_image.content)).size == (225, 162)
+    assert storage.writes == ["line-hmi-screens/frame-latest.png"]
 
 
 def test_text_machine_detail_appends_overexposure_warning(test_settings, monkeypatch) -> None:
@@ -1330,6 +1351,43 @@ def test_text_dispatch_ticket_replies_cropped_image_and_summary(test_settings, m
     assert storage.writes == ["line-dispatch-tickets/frame-latest.png"]
     assert fetched.status_code == 200, fetched.text
     assert Image.open(BytesIO(fetched.content)).size == (275, 168)
+
+
+def test_text_dispatch_ticket_reports_unposted_sheet_without_image(test_settings, monkeypatch) -> None:
+    settings = _line_settings(test_settings)
+    replies = _capture_replies(monkeypatch)
+    storage = _CroppableStorage({"camera-frames/org/camera/frame.jpg": _ticket_jpeg()})
+    app = build_app(settings=settings, artifact_storage=storage)
+    with TestClient(app) as client:
+        _seed_scope(app)
+        _seed_work_order_observation(app)
+        with app.state.session_factory() as session:
+            observation = session.exec(
+                select(CameraOcrObservation).where(CameraOcrObservation.frame_id == "frame-latest")
+            ).first()
+            assert observation is not None
+            structured = dict(observation.structured_fields_json or {})
+            work_order = dict(structured.get("workOrder") or {})
+            work_order["alignmentStatus"] = "invalid"
+            work_order["currentEvidence"] = False
+            regions = dict(structured.get("captureRegions") or {})
+            work_region = dict(regions.get("workOrder") or {})
+            work_region["alignmentStatus"] = "invalid"
+            regions["workOrder"] = work_region
+            structured["workOrder"] = work_order
+            structured["captureRegions"] = regions
+            observation.structured_fields_json = structured
+            session.add(observation)
+            session.commit()
+        response = _post_line_events(
+            client,
+            settings,
+            [_message_event("派工單", event_id="evt-ticket", reply_token="reply-ticket")],
+        )
+
+    assert response.status_code == 200, response.text
+    assert replies[0]["messages"] == [{"type": "text", "text": "派工單目前沒有張貼"}]
+    assert storage.writes == []
 
 
 def test_unbound_group_direct_chat_and_bind_request_do_not_leak_site_data(test_settings, monkeypatch) -> None:
