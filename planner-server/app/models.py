@@ -116,6 +116,8 @@ class CameraDevice(SQLModel, table=True):
     local_spool_hours: int = 24
     last_heartbeat_at: datetime | None = None
     last_frame_at: datetime | None = None
+    latest_frame_id: str | None = Field(default=None, index=True)
+    latest_storage_key: str | None = None
     last_error: str | None = None
     created_by_user_id: str | None = Field(default=None, foreign_key="useraccount.id", index=True)
     created_at: datetime = Field(default_factory=utc_now, index=True)

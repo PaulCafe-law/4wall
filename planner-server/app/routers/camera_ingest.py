@@ -463,6 +463,9 @@ def complete_camera_frame_upload(
 ) -> CameraFrameDto:
     frame = _load_frame_for_device(session, camera, frame_id)
     if frame.upload_status == "uploaded":
+        if _set_camera_latest_frame_pointer(camera, frame):
+            session.add(camera)
+            session.commit()
         return _serialize_frame(frame)
     _ensure_pending_upload_not_expired(frame)
     data = storage.read(frame.storage_key)
@@ -501,8 +504,7 @@ def complete_camera_frame_upload(
     frame.analysis_status = "queued"
     frame.completed_at = _now()
     frame.updated_at = frame.completed_at
-    camera.last_frame_at = frame.captured_at
-    camera.updated_at = _now()
+    _set_camera_latest_frame_pointer(camera, frame)
     session.add(frame)
     session.add(camera)
     record_audit(
@@ -1153,8 +1155,10 @@ def _serialize_camera_statuses(session: Session, cameras: list[CameraDevice]) ->
 
     camera_ids = [camera.id for camera in cameras]
     retention_cutoff = _now() - timedelta(days=max(camera.retention_days for camera in cameras))
-    latest_frames = _latest_records_by_camera(
-        session, CameraFrame, camera_ids, captured_after=retention_cutoff
+    latest_frames = _frames_from_camera_pointers(
+        session,
+        cameras,
+        captured_after=retention_cutoff,
     )
     latest_ocr = _latest_records_by_camera(
         session, CameraOcrObservation, camera_ids, captured_after=retention_cutoff
@@ -1319,11 +1323,65 @@ def _latest_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFr
 
 
 def _latest_uploaded_frame_for_camera(session: Session, camera: CameraDevice) -> CameraFrame | None:
+    if camera.latest_frame_id:
+        pointed = session.get(CameraFrame, camera.latest_frame_id)
+        if (
+            pointed is not None
+            and pointed.camera_id == camera.id
+            and pointed.upload_status == "uploaded"
+        ):
+            return pointed
     return session.exec(
         select(CameraFrame)
         .where(CameraFrame.camera_id == camera.id, CameraFrame.upload_status == "uploaded")
         .order_by(CameraFrame.captured_at.desc(), CameraFrame.created_at.desc())
     ).first()
+
+
+def _frames_from_camera_pointers(
+    session: Session,
+    cameras: list[CameraDevice],
+    *,
+    captured_after: datetime,
+) -> dict[str, CameraFrame]:
+    pointer_ids = [camera.latest_frame_id for camera in cameras if camera.latest_frame_id]
+    frames = session.exec(select(CameraFrame).where(CameraFrame.id.in_(pointer_ids))).all() if pointer_ids else []
+    by_id = {frame.id: frame for frame in frames}
+    result: dict[str, CameraFrame] = {}
+    for camera in cameras:
+        frame = by_id.get(camera.latest_frame_id or "")
+        if frame is not None and frame.camera_id == camera.id and frame.upload_status == "uploaded":
+            result[camera.id] = frame
+    missing_camera_ids = [camera.id for camera in cameras if camera.id not in result]
+    if missing_camera_ids:
+        result.update(
+            _latest_records_by_camera(
+                session,
+                CameraFrame,
+                missing_camera_ids,
+                captured_after=captured_after,
+            )
+        )
+    return result
+
+
+def _set_camera_latest_frame_pointer(camera: CameraDevice, frame: CameraFrame) -> bool:
+    if frame.camera_id != camera.id or frame.upload_status != "uploaded":
+        return False
+    current_at = _as_utc(camera.last_frame_at) if camera.last_frame_at is not None else None
+    captured_at = _as_utc(frame.captured_at)
+    if current_at is not None and captured_at < current_at and camera.latest_frame_id:
+        return False
+    changed = (
+        camera.latest_frame_id != frame.id
+        or camera.latest_storage_key != frame.storage_key
+        or current_at != captured_at
+    )
+    camera.latest_frame_id = frame.id
+    camera.latest_storage_key = frame.storage_key
+    camera.last_frame_at = frame.captured_at
+    camera.updated_at = _now()
+    return changed
 
 
 def _latest_gauge_readings_for_camera(session: Session, camera: CameraDevice) -> list[CameraGaugeReading]:

@@ -67,6 +67,10 @@ def test_camera_device_uploads_frame_through_local_intent(client, session_factor
     assert status.json()["frameId"] == "frame-001"
     assert status.json()["analysisStatus"] == "queued"
     assert status.json()["errorMessage"] is None
+    with session_factory() as session:
+        camera = session.get(CameraDevice, camera_id)
+        assert camera.latest_frame_id == "frame-001"
+        assert camera.latest_storage_key == complete_body["storageKey"]
 
 
 def test_camera_token_cannot_complete_another_camera_frame(client, session_factory) -> None:
@@ -482,6 +486,7 @@ def test_camera_health_list_is_org_scoped_and_counts_frames(client, session_fact
 
 
 def test_camera_device_submits_gauge_readings_and_web_list_shows_latest_per_gauge(client, session_factory) -> None:
+    captured_at = datetime.now(timezone.utc).isoformat()
     token = "fwcam_gauge_reader"
     with session_factory() as session:
         org = seed_organization(session, name="Gauge Org")
@@ -508,7 +513,7 @@ def test_camera_device_submits_gauge_readings_and_web_list_shows_latest_per_gaug
                     "rawPosition": 0.39,
                     "status": "ok",
                     "source": "live",
-                    "capturedAt": "2026-07-03T01:00:00+08:00",
+                    "capturedAt": captured_at,
                     "metadata": {"method": "red"},
                 },
                 {
@@ -520,7 +525,7 @@ def test_camera_device_submits_gauge_readings_and_web_list_shows_latest_per_gaug
                     "rawPosition": None,
                     "status": "degraded",
                     "source": "live",
-                    "capturedAt": "2026-07-03T01:00:00+08:00",
+                    "capturedAt": captured_at,
                     "metadata": {"reason": "meter_crop_too_small"},
                 },
             ]
@@ -552,6 +557,7 @@ def test_camera_device_submits_gauge_readings_and_web_list_shows_latest_per_gaug
 
 
 def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client, session_factory) -> None:
+    captured_at = datetime.now(timezone.utc).isoformat()
     token = "fwcam_hmi_ocr"
     with session_factory() as session:
         org = seed_organization(session, name="OCR Org")
@@ -571,7 +577,7 @@ def test_camera_device_submits_ocr_observation_and_web_list_shows_latest(client,
             "mode": "machine_monitor",
             "modeConfidence": 0.86,
             "source": "offline_file",
-            "capturedAt": "2026-07-04T10:00:00+08:00",
+            "capturedAt": captured_at,
             "rawOcrLines": [
                 {"text": "機器監視", "confidence": 0.91, "box": [[0, 0], [10, 0], [10, 10], [0, 10]], "region": "hmi"},
                 {"text": "射出四段", "confidence": 0.88, "region": "hmi"},
@@ -1450,6 +1456,12 @@ def test_camera_list_batches_historical_status_queries(client, session_factory, 
             ]
         )
         seed_user(session, email="admin@batched-camera.test", password=PASSWORD, org_roles=[(org.id, "customer_admin")])
+        first.latest_frame_id = "batch-first-old"
+        first.latest_storage_key = "batch/first-old.jpg"
+        second.latest_frame_id = "batch-second"
+        second.latest_storage_key = "batch/second.jpg"
+        session.add(first)
+        session.add(second)
         session.commit()
 
     def fail_legacy_query(*_args, **_kwargs):
@@ -1482,7 +1494,7 @@ def test_camera_list_batches_historical_status_queries(client, session_factory, 
 
     assert response.status_code == 200, response.text
     cameras = {item["cameraId"]: item for item in response.json()["cameras"]}
-    assert cameras[first_id]["latestFrame"]["frameId"] == "batch-first-new"
+    assert cameras[first_id]["latestFrame"]["frameId"] == "batch-first-old"
     assert cameras[first_id]["uploadedFrameCount"] == 1
     assert cameras[first_id]["queuedFrameCount"] == 1
     assert cameras[first_id]["failedFrameCount"] == 2
@@ -1497,7 +1509,7 @@ def test_camera_list_batches_historical_status_queries(client, session_factory, 
 def _person_observation_payload(**overrides) -> dict:
     payload = {
         "source": "offline_file",
-        "capturedAt": "2026-07-04T10:00:00+08:00",
+        "capturedAt": datetime.now(timezone.utc).isoformat(),
         "imageWidth": 2560,
         "imageHeight": 1440,
         "calibrationId": "overview-h-20260704",

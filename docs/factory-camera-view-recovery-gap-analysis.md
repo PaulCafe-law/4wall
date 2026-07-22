@@ -37,6 +37,12 @@ Date: 2026-07-22
    they must not be interpreted as the number of cameras currently unavailable.
 4. The uploaded-frame lookup and person observations lack composite indexes
    matching their newest-record access paths.
+5. Camera devices do not own a direct pointer to their newest uploaded frame.
+   Every read must rediscover that frame from the growing history table, so
+   latency and database load increase with retained history.
+6. Failed upload/analysis rows and their low-quality objects have accumulated
+   without a bounded cleanup operation. They are not useful demo evidence and
+   inflate the UI's historical failure total.
 
 ## Recovery scope
 
@@ -57,6 +63,17 @@ Date: 2026-07-22
   URLs, RTSP credentials, device tokens, or factory images publicly.
 - Verify production with fresh non-corrupt frames from all three cameras and
   measure the camera-list response after deployment.
+- Add nullable `latest_frame_id` and `latest_storage_key` fields to each camera
+  device, backfill them from the newest uploaded frame, and update both fields
+  atomically whenever a frame completes upload. Reads use the pointer first and
+  retain a legacy fallback only while old rows are being backfilled.
+- Add an explicit dry-run-first cleanup command for frames whose upload or
+  analysis status is failed. Cleanup must preserve every camera's current
+  latest frame, delete derived observations before the frame, delete the object
+  before committing metadata removal, operate in bounded batches, and emit a
+  machine-readable summary. Healthy uploaded frames are out of scope.
+- Keep `latest_storage_key` server-side. Web and LINE clients continue to
+  receive only authenticated manifests or short-lived signed URLs.
 
 ## Follow-up configuration gate
 
