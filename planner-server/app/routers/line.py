@@ -36,6 +36,7 @@ from app.line_bot import (
 )
 from app.line_dispatch_ticket import (
     DISPATCH_TICKET_ALIGNMENT_ERROR,
+    DISPATCH_TICKET_NOT_POSTED,
     DispatchTicketCropError,
     build_dispatch_ticket_summary,
     crop_dispatch_ticket_png,
@@ -43,6 +44,7 @@ from app.line_dispatch_ticket import (
     hmi_screen_storage_key,
     find_latest_line_crop_capture,
     find_line_crop_capture_for_frame,
+    work_order_is_posted,
 )
 from app.line_floorplan.layout import (
     FloorplanLayoutError,
@@ -1132,6 +1134,13 @@ def _reply_dispatch_ticket(
     if capture is None:
         _reply_messages_if_possible(settings, event, no_image)
         return
+    if not work_order_is_posted(capture.observation):
+        _reply_messages_if_possible(
+            settings,
+            event,
+            [build_text_message(DISPATCH_TICKET_NOT_POSTED)],
+        )
+        return
     image_bytes = storage.read(capture.frame.storage_key) if storage is not None else None
     if not image_bytes:
         _reply_messages_if_possible(settings, event, no_image)
@@ -1283,26 +1292,32 @@ def _reply_machine_detail(
     if not image_bytes:
         _reply_messages_if_possible(settings, event, [build_text_message(DISPATCH_TICKET_ALIGNMENT_ERROR)])
         return
+    posted_work_order = work_order_is_posted(capture.observation)
     try:
-        dispatch_crop = crop_dispatch_ticket_png(
-            image_bytes,
-            roi=capture.work_order_roi,
-            frame_size=capture.frame_size,
-        )
         hmi_crop = crop_dispatch_ticket_png(
             image_bytes,
             roi=capture.hmi_roi,
             frame_size=capture.frame_size,
         )
+        dispatch_crop = (
+            crop_dispatch_ticket_png(
+                image_bytes,
+                roi=capture.work_order_roi,
+                frame_size=capture.frame_size,
+            )
+            if posted_work_order
+            else None
+        )
     except DispatchTicketCropError:
         _reply_messages_if_possible(settings, event, [build_text_message(DISPATCH_TICKET_ALIGNMENT_ERROR)])
         return
-    storage.write(
-        key=dispatch_ticket_storage_key(capture.frame.id),
-        data=dispatch_crop,
-        content_type="image/png",
-        cache_control="private, max-age=600",
-    )
+    if dispatch_crop is not None:
+        storage.write(
+            key=dispatch_ticket_storage_key(capture.frame.id),
+            data=dispatch_crop,
+            content_type="image/png",
+            cache_control="private, max-age=600",
+        )
     storage.write(
         key=hmi_screen_storage_key(capture.frame.id),
         data=hmi_crop,
@@ -1320,16 +1335,26 @@ def _reply_machine_detail(
         destination_id=binding.destination_id,
     )
     base_origin = settings.line_public_base_url.rstrip("/")
-    messages = [
-        build_text_message("當下派工單"),
-        build_image_message(
-            f"{base_origin}/v1/line/dispatch-ticket/{binding.site_slug}/{token}/{capture.frame.id}"
-        ),
-        build_text_message("當下 HMI 螢幕"),
-        build_image_message(
-            f"{base_origin}/v1/line/hmi-screen/{binding.site_slug}/{token}/{capture.frame.id}"
-        ),
-    ]
+    messages = []
+    if posted_work_order:
+        messages.extend(
+            [
+                build_text_message("當下派工單"),
+                build_image_message(
+                    f"{base_origin}/v1/line/dispatch-ticket/{binding.site_slug}/{token}/{capture.frame.id}"
+                ),
+            ]
+        )
+    else:
+        messages.append(build_text_message(DISPATCH_TICKET_NOT_POSTED))
+    messages.extend(
+        [
+            build_text_message("當下 HMI 螢幕"),
+            build_image_message(
+                f"{base_origin}/v1/line/hmi-screen/{binding.site_slug}/{token}/{capture.frame.id}"
+            ),
+        ]
+    )
     if hmi_screen_is_overexposed(session, layout=layout, binding=binding, machine=machine):
         messages.append(build_text_message("螢幕現在過曝。"))
     _reply_messages_if_possible(settings, event, messages)

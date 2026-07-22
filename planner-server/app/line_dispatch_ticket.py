@@ -18,6 +18,7 @@ DISPATCH_TICKET_MAX_AGE_SECONDS = 3 * 60
 DISPATCH_TICKET_MAX_FUTURE_SKEW_SECONDS = 5 * 60
 DISPATCH_TICKET_FOOTNOTE = "⚠️ 數字為自動辨識,以圖為準"
 DISPATCH_TICKET_ALIGNMENT_ERROR = "目前無法確認派工單畫面，請檢查攝影機位置並重新校正。"
+DISPATCH_TICKET_NOT_POSTED = "派工單目前沒有張貼"
 _OBSERVATION_SCAN_LIMIT = 50
 _TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
@@ -34,6 +35,26 @@ class WorkOrderCapture:
     hmi_roi: tuple[int, int, int, int]
     frame_size: tuple[int, int]
     calibration_id: str
+
+
+def work_order_is_posted(observation: CameraOcrObservation) -> bool:
+    """Return true only when the newest frame contains current sheet evidence."""
+
+    structured = observation.structured_fields_json or {}
+    if not isinstance(structured, dict):
+        return False
+    work_order = structured.get("workOrder")
+    capture_regions = structured.get("captureRegions")
+    if not isinstance(work_order, dict) or not isinstance(capture_regions, dict):
+        return False
+    work_order_region = capture_regions.get("workOrder")
+    if not isinstance(work_order_region, dict):
+        return False
+    return (
+        work_order.get("currentEvidence") is True
+        and str(work_order.get("alignmentStatus") or "").lower() == "ok"
+        and str(work_order_region.get("alignmentStatus") or "").lower() == "ok"
+    )
 
 
 def find_latest_work_order_capture(
