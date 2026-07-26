@@ -159,11 +159,15 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
           <figure className="mt-12">
             <div className="overflow-hidden rounded-[2.5rem] bg-chrome-950 shadow-[0_30px_100px_rgba(18,24,33,0.28)]">
               <img
-                className={locale === 'zh' ? 'aspect-[1552/657] w-full object-cover object-center' : 'w-full'}
-                src={locale === 'zh' ? '/official-assets/factory-floor-live.webp' : '/official-assets/warroom-live.webp'}
+                className={locale === 'zh' ? 'aspect-[1862/845] w-full object-cover object-center' : 'w-full'}
+                src={
+                  locale === 'zh'
+                    ? '/official-assets/factory-ai-operations-illustration-v2.webp'
+                    : '/official-assets/warroom-live.webp'
+                }
                 alt={t.warRoom.imageAlt}
-                width={locale === 'zh' ? 2304 : 1552}
-                height={locale === 'zh' ? 1296 : 657}
+                width={locale === 'zh' ? 1862 : 1552}
+                height={locale === 'zh' ? 845 : 657}
                 fetchPriority="high"
               />
             </div>
