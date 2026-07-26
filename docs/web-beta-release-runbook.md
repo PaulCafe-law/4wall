@@ -70,6 +70,11 @@ If Render cannot access GitHub, stop using Git-backed deploys for recovery and
 follow `docs/render-image-deploy-recovery.md`. Do not repeatedly retry failed
 Git deploys after Render reports repository access failure.
 
+For the image-backed production API recovery path, `four-wall-api` deploys are
+triggered by `.github/workflows/planner-server-image.yml` after it pushes
+`docker.io/paul953206/4wall-api:prod` and calls the Render Deploy API. Render's
+native Auto-Deploy toggle does not watch Docker Hub tag updates.
+
 ## Promotion to Production
 
 1. Confirm staging smoke passed.
