@@ -72,9 +72,9 @@ type ServiceCardData = {
   contain?: boolean
 }
 
-function ServiceCard({ card, t }: { card: ServiceCardData; t: Content }) {
+function ServiceCard({ card, t, className = '' }: { card: ServiceCardData; t: Content; className?: string }) {
   return (
-    <article className="flex flex-col overflow-hidden rounded-[2rem] bg-white text-chrome-950 shadow-[0_18px_70px_rgba(18,24,33,0.1)]">
+    <article className={`flex flex-col overflow-hidden rounded-[2rem] bg-white text-chrome-950 shadow-[0_18px_70px_rgba(18,24,33,0.1)] ${className}`}>
       <div className="px-6 pt-7 text-center md:px-10 md:pt-10">
         <h3 className="font-display text-3xl font-semibold tracking-[-0.01em] md:text-4xl">{card.title}</h3>
         <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-chrome-700 md:text-base">{card.body}</p>
@@ -120,7 +120,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
       <header className="sticky top-0 z-30 border-b border-black/5 bg-[#f5f5f7]/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
           <a href="#top" className="font-display text-sm font-semibold tracking-[-0.02em] text-chrome-950">
-            {locale === 'zh' ? '第四面牆 AI' : '4WALL AI'}
+            {locale === 'zh' ? '4WALL AI（第四面牆）' : '4WALL AI'}
           </a>
           <nav className="hidden items-center gap-6 text-xs text-chrome-700 md:flex">
             <a className="transition hover:text-chrome-950" href="#services">{t.nav.services}</a>
@@ -152,18 +152,18 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
             <p className="mx-auto mt-6 max-w-4xl text-xl leading-9 text-chrome-700 md:text-2xl">{t.hero.subtitle}</p>
             <div className="mt-7 flex flex-wrap justify-center gap-3">
               <CtaLink href="#contact">{t.hero.ctaPrimary}</CtaLink>
-              <CtaLink href="#services" variant="secondary">{t.hero.ctaSecondary}</CtaLink>
+              <CtaLink href={locale === 'zh' ? '#onboarding' : '#services'} variant="secondary">{t.hero.ctaSecondary}</CtaLink>
             </div>
           </div>
 
           <figure className="mt-12">
             <div className="overflow-hidden rounded-[2.5rem] bg-chrome-950 shadow-[0_30px_100px_rgba(18,24,33,0.28)]">
               <img
-                className="w-full"
-                src="/official-assets/warroom-live.webp"
+                className={locale === 'zh' ? 'aspect-[1552/657] w-full object-cover object-center' : 'w-full'}
+                src={locale === 'zh' ? '/official-assets/factory-floor-live.webp' : '/official-assets/warroom-live.webp'}
                 alt={t.warRoom.imageAlt}
-                width={1552}
-                height={657}
+                width={locale === 'zh' ? 2304 : 1552}
+                height={locale === 'zh' ? 1296 : 657}
                 fetchPriority="high"
               />
             </div>
@@ -195,8 +195,17 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
         <section id="services" className="scroll-mt-20 px-4 py-10">
           <SectionHeading title={t.services.title} subtitle={t.services.subtitle} />
           <div className="mx-auto mt-10 grid max-w-7xl gap-5 lg:grid-cols-2">
-            {t.services.cards.map((card) => (
-              <ServiceCard key={card.title} card={card as ServiceCardData} t={t} />
+            {t.services.cards.map((card, index) => (
+              <ServiceCard
+                key={card.title}
+                card={card as ServiceCardData}
+                t={t}
+                className={
+                  locale === 'zh' && index === t.services.cards.length - 1
+                    ? 'lg:col-span-2 lg:mx-auto lg:w-[calc(50%-0.625rem)]'
+                    : ''
+                }
+              />
             ))}
           </div>
           <div className="mx-auto mt-5 max-w-7xl rounded-[2rem] bg-white px-6 py-6 text-center shadow-[0_18px_70px_rgba(18,24,33,0.08)] md:px-8">
@@ -233,10 +242,10 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
               </div>
               <img
                 className="h-full min-h-[20rem] w-full object-cover"
-                src="/official-assets/industrial-data-engine-control-room.webp"
+                src={locale === 'zh' ? '/official-assets/warroom-live.webp' : '/official-assets/industrial-data-engine-control-room.webp'}
                 alt={t.caseStudy.imageAlt}
-                width={1672}
-                height={941}
+                width={locale === 'zh' ? 1552 : 1672}
+                height={locale === 'zh' ? 657 : 941}
                 loading="lazy"
               />
             </div>
@@ -310,7 +319,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
               className="mt-8 inline-flex rounded-full bg-white px-6 py-3 text-sm font-semibold text-chrome-950 transition hover:bg-chrome-100"
               href={mailHref}
             >
-              4wallaitech@gmail.com
+              {locale === 'zh' ? t.hero.ctaPrimary : '4wallaitech@gmail.com'}
             </a>
             <p className="mt-6 text-sm text-chrome-400">{t.contact.teamLine}</p>
           </div>
@@ -320,7 +329,9 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
       <footer className="border-t border-black/5 px-4 py-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="font-display text-sm font-semibold tracking-[-0.02em] text-chrome-950">第四面牆 4WALL AI</p>
+            <p className="font-display text-sm font-semibold tracking-[-0.02em] text-chrome-950">
+              {locale === 'zh' ? '4WALL AI（第四面牆）' : '4WALL AI'}
+            </p>
             <p className="mt-2 max-w-sm text-xs leading-6 text-chrome-600">{t.footer.blurb}</p>
             <p className="mt-3 text-xs text-chrome-500">{t.footer.location}</p>
           </div>

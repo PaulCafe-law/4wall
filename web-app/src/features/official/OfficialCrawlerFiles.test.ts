@@ -29,9 +29,10 @@ describe('official crawler files', () => {
   it('publishes AI-readable public context without credentials', () => {
     const combined = `${llms}\n${markdown}`
 
-    expect(combined).toContain('第四面牆 AI')
-    expect(combined).toContain('Digital Twin')
-    expect(combined).toContain('Industrial Data Engine')
+    expect(combined).toContain('4WALL AI（第四面牆）')
+    expect(combined).toContain('工廠地端 AI')
+    expect(combined).toContain('機台資料匯出與整合')
+    expect(combined).toContain('產品履歷')
     expect(combined).toContain('4wallaitech@gmail.com')
     expect(combined).not.toContain('platform@')
     expect(combined).not.toContain('internal.test')

@@ -13,7 +13,39 @@ const officialDir = path.join(distDir, 'official')
 const siteOrigin = process.env.VITE_PUBLIC_SITE_ORIGIN || 'https://4wall.io'
 const officialUrl = `${siteOrigin}/official`
 
-const structuredData = {
+const zhStructuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Organization',
+      name: '4WALL AI（第四面牆）',
+      url: officialUrl,
+      email: '4wallaitech@gmail.com',
+      description:
+        '4WALL AI 協助工廠匯出並整合機台資料，透過地端 AI 分析設備與生產狀態，提升稼動率、協助最佳化排程，並建立可追溯的產品履歷。',
+      address: {
+        '@type': 'PostalAddress',
+        addressLocality: '台南市',
+        addressCountry: 'TW',
+      },
+    },
+    {
+      '@type': 'WebSite',
+      name: '4WALL AI（第四面牆）',
+      url: officialUrl,
+      inLanguage: 'zh-Hant-TW',
+    },
+    {
+      '@type': 'Service',
+      name: '4WALL AI 工廠地端 AI 與機台資料整合',
+      provider: { '@type': 'Organization', name: '4WALL AI（第四面牆）' },
+      serviceType: '機台資料整合、工廠地端 AI、生產狀態分析、異常事件追蹤與產品履歷',
+      areaServed: 'Taiwan',
+    },
+  ],
+}
+
+const enStructuredData = {
   '@context': 'https://schema.org',
   '@graph': [
     {
@@ -57,15 +89,15 @@ function ensureCanonical(html) {
   return html.replace('</head>', `    ${canonical}\n  </head>`)
 }
 
-function ensureHeroPreload(html) {
-  const preload = '<link rel="preload" as="image" href="/official-assets/warroom-live.webp" fetchpriority="high" />'
+function ensureHeroPreload(html, imagePath) {
+  const preload = `<link rel="preload" as="image" href="${imagePath}" fetchpriority="high" />`
   if (html.includes(preload)) {
     return html
   }
   return html.replace('</head>', `    ${preload}\n  </head>`)
 }
 
-function ensureStructuredData(html) {
+function ensureStructuredData(html, structuredData) {
   const marker = '<script type="application/ld+json">'
   const script = `    <script type="application/ld+json">${escapeScriptJson(structuredData)}</script>`
   if (html.includes(marker)) {
@@ -128,6 +160,10 @@ function applyLocaleMeta(html, meta) {
     .replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/s, `$1${meta.description}$2`)
 }
 
+function applySocialImage(html, imageUrl) {
+  return html.replace(/(<meta property="og:image" content=")[^"]*(")/, `$1${imageUrl}$2`)
+}
+
 const template = await readFile(path.join(distDir, 'index.html'), 'utf8')
 const { zh, en, content } = await renderOfficialPages()
 
@@ -135,16 +171,18 @@ let zhHtml = template.replace('<div id="root"></div>', `<div id="root">${zh}</di
 zhHtml = zhHtml.replace('<html lang="en">', '<html lang="zh-Hant-TW">')
 zhHtml = applyLocaleMeta(zhHtml, content.zh.meta)
 zhHtml = ensureCanonical(zhHtml)
-zhHtml = ensureStructuredData(zhHtml)
-zhHtml = ensureHeroPreload(zhHtml)
+zhHtml = applySocialImage(zhHtml, `${siteOrigin}/official-assets/factory-floor-live.webp`)
+zhHtml = ensureStructuredData(zhHtml, zhStructuredData)
+zhHtml = ensureHeroPreload(zhHtml, '/official-assets/factory-floor-live.webp')
 zhHtml = ensureHreflang(zhHtml, officialUrl)
 
 let enHtml = template.replace('<div id="root"></div>', `<div id="root">${en}</div>`)
 enHtml = enHtml.replace('<html lang="zh-Hant-TW">', '<html lang="en">')
 enHtml = applyLocaleMeta(enHtml, content.en.meta)
 enHtml = enHtml.replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${officialUrl}/en$2`)
-enHtml = ensureStructuredData(enHtml)
-enHtml = ensureHeroPreload(enHtml)
+enHtml = applySocialImage(enHtml, `${siteOrigin}/official-assets/hero-field-ai.jpg`)
+enHtml = ensureStructuredData(enHtml, enStructuredData)
+enHtml = ensureHeroPreload(enHtml, '/official-assets/warroom-live.webp')
 enHtml = ensureHreflang(enHtml, `${officialUrl}/en`)
 
 await mkdir(path.join(officialDir, 'en'), { recursive: true })

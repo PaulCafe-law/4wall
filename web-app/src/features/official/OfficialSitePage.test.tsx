@@ -15,42 +15,44 @@ function renderOfficial(route: string, locale?: 'en') {
 }
 
 describe('OfficialSitePage', () => {
-  it('renders the agent-first official website content', () => {
+  it('renders the machine-data-first Chinese official website content', () => {
     renderOfficial('/official')
 
-    expect(screen.getByRole('heading', { level: 1, name: '會回答你的工廠。' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: '讓機台資料真正用來改善生產。' })).toBeInTheDocument()
 
-    // War-room hero: real platform screenshot + caption.
-    const hero = screen.getByRole('img', { name: /3D 鏡像工廠戰情室/ })
-    expect(hero).toHaveAttribute('src', '/official-assets/warroom-live.webp')
-    expect(hero).toHaveAttribute('width', '1552')
-    expect(hero).toHaveAttribute('height', '657')
-    expect(screen.getByText(/內容取自營運中系統/)).toBeInTheDocument()
+    // Hero: actual injection-molding factory, not construction footage.
+    const hero = screen.getByRole('img', { name: /射出成型工廠整合機台/ })
+    expect(hero).toHaveAttribute('src', '/official-assets/factory-floor-live.webp')
+    expect(hero).toHaveAttribute('width', '2304')
+    expect(hero).toHaveAttribute('height', '1296')
+    expect(screen.getByText(/畫面由廠內攝影機取得/)).toBeInTheDocument()
 
-    // Service card titles render as visible text (imageOnly regression guard).
-    expect(screen.getByRole('heading', { name: '問它，它就回答' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '沒人問，它主動通報' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '儀表、派工單，AI 自動讀' })).toBeInTheDocument()
+    // Five core abilities render as visible text.
+    expect(screen.getByRole('heading', { name: '讓既有機台資料可以被使用' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '生產資料留在工廠，由地端 AI 持續分析' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '找出機台為什麼沒有持續生產' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '讓排程跟著真實現場調整' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '每批產品的製造過程都能回查' })).toBeInTheDocument()
 
     // Real LINE Q&A screenshot in the "ask it" card (replaces the off-topic
     // construction card); proactive-alert recreation in the "it reports" card.
-    expect(screen.getByRole('img', { name: /LINE 中文問答實錄/ })).toHaveAttribute(
+    expect(screen.getByRole('img', { name: /主管透過 LINE 查詢機台狀態/ })).toHaveAttribute(
       'src',
       '/official-assets/line-qa-live.webp',
     )
-    expect(screen.getByText(/HC600-01 成型機・溫度異常/)).toBeInTheDocument()
-    expect(screen.getByText(/已派工 志強 前往處理/)).toBeInTheDocument()
+    expect(screen.getByText(/HC600-01 成型機溫度異常/)).toBeInTheDocument()
+    expect(screen.getByText(/已指派負責人前往處理/)).toBeInTheDocument()
 
     // Day-on-duty timeline, stats, case study, pricing, onboarding, security.
-    expect(screen.getByRole('heading', { name: '它的一天，替你值的班。' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '從資料取得到異常結案，現場狀態持續累積。' })).toBeInTheDocument()
     expect(screen.getByText('07:30')).toBeInTheDocument()
     expect(screen.getByText('7 台機台')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '靚程企業｜台南・射出成型' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '靚程企業｜台南射出成型工廠' })).toBeInTheDocument()
     expect(screen.getByText('成大建築系')).toBeInTheDocument()
     expect(screen.getByText('安格科技')).toBeInTheDocument()
     expect(screen.getByText('月費 NT$8,000 起')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '導入只要三步，以週為單位。' })).toBeInTheDocument()
-    expect(screen.getByText('人員偵測全程匿名')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '從資料盤點到上線，以週為單位完成導入。' })).toBeInTheDocument()
+    expect(screen.getByText('只同步管理所需的結果')).toBeInTheDocument()
 
     // Every remaining <img> carries explicit dimensions (CLS guard).
     for (const img of Array.from(document.querySelectorAll('img'))) {
@@ -60,7 +62,7 @@ describe('OfficialSitePage', () => {
 
     // Contact, footer, language switch, platform login.
     expect(document.querySelector('footer')).toBeInTheDocument()
-    expect(screen.getByText('© 2026 第四面牆 4WALL AI. All rights reserved.')).toBeInTheDocument()
+    expect(screen.getByText('© 2026 4WALL AI（第四面牆）. All rights reserved.')).toBeInTheDocument()
     for (const link of screen.getAllByRole('link', { name: 'EN' })) {
       expect(link).toHaveAttribute('href', '/official/en')
     }
@@ -69,12 +71,14 @@ describe('OfficialSitePage', () => {
     }
     expect(screen.getByRole('link', { name: '聯絡我們' })).toHaveAttribute('href', '#contact')
 
-    // No stale / off-topic content: construction concrete card, under-construction,
-    // engineering jargon.
+    // No stale positioning or off-topic construction content.
     expect(document.body).not.toHaveTextContent('建置中')
     expect(document.body).not.toHaveTextContent('預拌混凝土')
-    expect(document.body).not.toHaveTextContent('bounding box')
-    expect(document.body).not.toHaveTextContent(['場域', '驗證'].join(''))
+    expect(document.body).not.toHaveTextContent(['戰', '情室'].join(''))
+    expect(document.body).not.toHaveTextContent(['實', '裝'].join(''))
+    expect(document.body).not.toHaveTextContent(['替你值', '的班'].join(''))
+    expect(document.body).not.toHaveTextContent(['會回答', '你的工廠'].join(''))
+    expect(document.body).not.toHaveTextContent(['不是第七個 ', 'dashboard'].join(''))
   })
 
   it('renders the English version at /official/en', () => {
@@ -97,10 +101,10 @@ describe('OfficialSitePage', () => {
   it('sets route-level official site metadata', () => {
     renderOfficial('/official')
 
-    expect(document.title).toBe('第四面牆 AI｜會回答你的工廠——3D 鏡像工廠與 AI 值班代理')
+    expect(document.title).toBe('4WALL AI｜工廠地端 AI、機台資料整合與生產最佳化')
     expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
       'content',
-      '第四面牆 AI 把機台、儀表、人員與異常事件收進 3D 鏡像工廠：在 LINE 問一句話就有答案，沒人問的時候 AI 替你值班主動通報。已於台南射出成型工廠實裝運作。',
+      '4WALL AI 協助工廠匯出並整合機台資料，透過地端 AI 分析設備與生產狀態，提升稼動率、協助最佳化排程，並建立可追溯的產品履歷。',
     )
   })
 })
