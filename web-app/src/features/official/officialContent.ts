@@ -44,9 +44,9 @@ const zh = {
       { label: 'FLOW AM METER', value: '4.1 A', note: '讀表信心 26%' },
       { label: 'HC600 料管一段', value: '205.0°C', note: '讀表信心 70%' },
     ],
-    caption: '台南靚程射出成型工廠現場，畫面由廠內攝影機取得',
+    caption: '4WALL AI 串接現場設備、攝影機、地端 AI、3D 廠區模型與異常通知',
     imageAlt:
-      '4WALL AI 在射出成型工廠整合機台與現場生產資料',
+      '4WALL AI 工廠資料整合示意圖，顯示機台、攝影機、地端 AI、3D 廠區模型與異常通知',
   },
   lineQa: {
     botName: '4WALL AI・工廠查詢',
@@ -99,10 +99,10 @@ const zh = {
       {
         title: '讓既有機台資料可以被使用',
         body: '4WALL AI 協助工廠從既有機台、PLC、HMI、儀表與其他現場設備取得資料，再將不同格式整理成一致的生產狀態。設備缺乏數位介面時，也可透過攝影機辨識儀表與操作畫面，減少更換機台的成本。',
-        image: '/official-assets/factory-floor-live.webp',
-        alt: '射出成型工廠內的機台與生產現場',
-        width: 2304,
-        height: 1296,
+        image: '/official-assets/factory-ai-operations-illustration-v2.webp',
+        alt: '4WALL AI 以攝影機與地端 AI 整合射出成型機台資料',
+        width: 1862,
+        height: 845,
       },
       {
         title: '生產資料留在工廠，由地端 AI 持續分析',

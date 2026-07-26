@@ -20,12 +20,12 @@ describe('OfficialSitePage', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: '讓機台資料真正用來改善生產。' })).toBeInTheDocument()
 
-    // Hero: actual injection-molding factory, not construction footage.
-    const hero = screen.getByRole('img', { name: /射出成型工廠整合機台/ })
-    expect(hero).toHaveAttribute('src', '/official-assets/factory-floor-live.webp')
-    expect(hero).toHaveAttribute('width', '2304')
-    expect(hero).toHaveAttribute('height', '1296')
-    expect(screen.getByText(/畫面由廠內攝影機取得/)).toBeInTheDocument()
+    // Hero: generated 4WALL AI factory-operations illustration.
+    const hero = screen.getByRole('img', { name: /工廠資料整合示意圖/ })
+    expect(hero).toHaveAttribute('src', '/official-assets/factory-ai-operations-illustration-v2.webp')
+    expect(hero).toHaveAttribute('width', '1862')
+    expect(hero).toHaveAttribute('height', '845')
+    expect(screen.getByText(/串接現場設備、攝影機、地端 AI/)).toBeInTheDocument()
 
     // Five core abilities render as visible text.
     expect(screen.getByRole('heading', { name: '讓既有機台資料可以被使用' })).toBeInTheDocument()
