@@ -171,9 +171,9 @@ let zhHtml = template.replace('<div id="root"></div>', `<div id="root">${zh}</di
 zhHtml = zhHtml.replace('<html lang="en">', '<html lang="zh-Hant-TW">')
 zhHtml = applyLocaleMeta(zhHtml, content.zh.meta)
 zhHtml = ensureCanonical(zhHtml)
-zhHtml = applySocialImage(zhHtml, `${siteOrigin}/official-assets/factory-floor-live.webp`)
+zhHtml = applySocialImage(zhHtml, `${siteOrigin}/official-assets/factory-ai-operations-illustration-v2.webp`)
 zhHtml = ensureStructuredData(zhHtml, zhStructuredData)
-zhHtml = ensureHeroPreload(zhHtml, '/official-assets/factory-floor-live.webp')
+zhHtml = ensureHeroPreload(zhHtml, '/official-assets/factory-ai-operations-illustration-v2.webp')
 zhHtml = ensureHreflang(zhHtml, officialUrl)
 
 let enHtml = template.replace('<div id="root"></div>', `<div id="root">${en}</div>`)
