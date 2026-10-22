@@ -95,6 +95,19 @@ server {
         add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     }
 
+    # The login form lives at the canonical hostname root, without /login.
+    location = /login {
+        if ($legacy_platform_origin) {
+            return 302 $legacy_platform_origin/$is_args$args;
+        }
+        if ($host = platform.4wall.io) {
+            return 302 https://platform.4wall.io/$is_args$args;
+        }
+        try_files /index.html =404;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+    }
+
     location / {
         try_files $uri $uri/ @platform;
         add_header Cache-Control "no-store";

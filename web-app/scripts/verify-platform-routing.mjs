@@ -23,7 +23,6 @@ function request(host, path) {
 const platformHost = 'platform.4wall.io'
 const legacyHosts = ['4wall.io', 'www.4wall.io', 'four-wall-web.onrender.com']
 const appPaths = [
-  '/login?expired=1',
   '/invite?token=a%2Fb%2Bc&lang=zh%20TW',
   '/line/link',
   '/m/floorplan/site-a?layout=first',
@@ -36,6 +35,17 @@ const appPaths = [
 let checks = 0
 const appShell = await request(platformHost, '/index.html')
 assert.equal(appShell.status, 200)
+
+for (const host of [...legacyHosts, platformHost]) {
+  for (const query of ['', '?expired=1', '?lineLink=1&returnTo=a%2Fb%2Bc']) {
+    const response = await request(host, `/login${query}`)
+    assert.equal(response.status, 302, `${host}/login${query}`)
+    assert.equal(response.headers.location, `https://${platformHost}/${query}`)
+    assert.equal(response.headers['cache-control'], 'no-store')
+    assert.match(response.headers['x-robots-tag'] ?? '', /noindex/)
+    checks += 1
+  }
+}
 
 for (const host of legacyHosts) {
   const root = await request(host, '/')

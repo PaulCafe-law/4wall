@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactElement } from 'react'
-import { BrowserRouter, Navigate, Outlet, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 
 import { AppShell } from './shell'
 import { AttributionWorkbenchPage } from '../features/attribution/AttributionWorkbenchPage'
@@ -31,13 +31,16 @@ import { AuthProvider, isFactoryOpsCustomer, useAuth } from '../lib/auth'
 
 const queryClient = new QueryClient()
 
-export function AppRoutes() {
+export function AppRoutes({ hostname = window.location.hostname }: { hostname?: string } = {}) {
+  const isPlatformHost = hostname === 'platform.4wall.io'
+
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<LoginPage />} />
+            {isPlatformHost && <Route path="/" element={<PlatformHome />} />}
+            <Route path="/login" element={isPlatformHost ? <PlatformLoginAlias /> : <LoginPage />} />
             <Route path="/line/link" element={<LineAccountLinkPage />} />
             <Route path="/invite" element={<InvitePage />} />
             <Route path="/official" element={<OfficialSitePage />} />
@@ -45,7 +48,7 @@ export function AppRoutes() {
             <Route path="/m/floorplan/:siteSlug" element={<LineFloorplanMobilePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>
-                <Route index element={<AuthenticatedHome />} />
+                {!isPlatformHost && <Route index element={<AuthenticatedHome />} />}
                 <Route
                   path="/overview"
                   element={
@@ -221,19 +224,43 @@ export function AppRoutes() {
   )
 }
 
+function PlatformLoginAlias() {
+  const location = useLocation()
+  return <Navigate to={{ pathname: '/', search: location.search, hash: location.hash }} replace />
+}
+
+function PlatformHome() {
+  const auth = useAuth()
+  const [searchParams] = useSearchParams()
+
+  if (auth.status === 'restoring') {
+    return <SessionRestoring />
+  }
+
+  if (auth.status === 'authenticated' && searchParams.get('lineLink') !== '1') {
+    return <AuthenticatedHome />
+  }
+
+  return <LoginPage />
+}
+
+function SessionRestoring() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-grain px-6">
+      <div className="rounded-[2rem] border border-white/70 bg-white/80 px-8 py-10 text-center shadow-panel backdrop-blur">
+        <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">Session</p>
+        <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">正在恢復登入狀態</h1>
+        <p className="mt-3 text-sm text-chrome-700">系統正在確認 access token 與 refresh cookie。</p>
+      </div>
+    </div>
+  )
+}
+
 export function RequireAuthenticated() {
   const auth = useAuth()
 
   if (auth.status === 'restoring') {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-grain px-6">
-        <div className="rounded-[2rem] border border-white/70 bg-white/80 px-8 py-10 text-center shadow-panel backdrop-blur">
-          <p className="font-mono text-[11px] uppercase tracking-[0.3em] text-ember-500">Session</p>
-          <h1 className="mt-3 font-display text-3xl font-semibold text-chrome-950">正在恢復登入狀態</h1>
-          <p className="mt-3 text-sm text-chrome-700">系統正在確認 access token 與 refresh cookie。</p>
-        </div>
-      </div>
-    )
+    return <SessionRestoring />
   }
 
   if (auth.status === 'expired') {
