@@ -147,9 +147,9 @@ export function LoginPage() {
             登入或帳號問題，請來信：
             <a
               className="block text-warehouse-ink underline underline-offset-2 hover:text-warehouse-teal"
-              href="mailto:4wallaitech@gmail.com"
+              href="mailto:admin@4wall.io"
             >
-              4wallaitech@gmail.com
+              admin@4wall.io
             </a>
           </LoginFact>
         </dl>

@@ -6,7 +6,7 @@
 import { officialContent } from './officialContent'
 
 const SITE = 'https://www.4wall.io'
-const EMAIL = '4wallaitech@gmail.com'
+const EMAIL = 'admin@4wall.io'
 
 const plain = (text: string) => text.replace(/\{([^}|]+)(?:\|email)?\}/g, '$1')
 
@@ -39,7 +39,7 @@ export function buildOfficialMarkdown() {
   lines.push('')
   lines.push(`## ${t.faq.eyebrow}`, '')
   for (const item of t.faq.items) lines.push(`### ${item.q}`, '', plain(item.a), '')
-  lines.push('## 聯絡', '', `${t.dock.sub} 寫信到 ${EMAIL}，我們會盡快回覆。`, '')
+  lines.push('## 聯絡我們', '', `${t.dock.sub} 請來信 ${EMAIL}，我們將盡快回覆。`, '')
   lines.push(`---`, '', t.footer.disclaimer, '')
   return lines.join('\n')
 }

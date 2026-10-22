@@ -46,7 +46,7 @@ describe('official crawler files', () => {
     expect(combined).toContain('3D 倉庫')
     expect(combined).toContain('模擬比較')
     expect(combined).toContain('尚未用現場資料校準')
-    expect(combined).toContain('4wallaitech@gmail.com')
+    expect(combined).toContain('admin@4wall.io')
     for (const content of [llms, markdown]) {
       expect(content).toContain('https://www.4wall.io/')
       expect(content).toContain('https://www.4wall.io/en')
