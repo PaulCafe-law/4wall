@@ -1,7 +1,7 @@
 # Official website redesign: warehouse pivot
 
 Date: 2026-10-23
-Status: Implemented and verified locally (branch `claude/official-warehouse-redesign`, uncommitted); production deploy awaits founder review.
+Status: Live on www.4wall.io since 2026-10-23 (image `6af9b7a-prod`).
 
 ## Request and scope
 
@@ -127,6 +127,26 @@ multi-tenant claims, "data never leaves the machine", unimplemented inputs
   sent whole; chat edits send the object list); "every number has a typical
   error" is scoped to AI QuickJudge; ties are described as the product behaves
   (marked as a tie, default rule set suggested).
-- Not done: production deploy (awaiting founder approval of the preview);
-  `platform.4wall.io` still shows the legacy login look and the platform shell
-  still has factory metadata — both outside this change.
+- Outside this change: `platform.4wall.io` still shows the legacy login look
+  and the platform shell still has factory metadata (tracked separately).
+
+## Production deploy (2026-10-23)
+
+- Founder approved "commit 後直接部署到 www.4wall.io".
+- Source commit `6af9b7a` (branch `claude/official-warehouse-redesign`).
+- Image `paul953206/4wall-web:6af9b7a-prod`, digest
+  `sha256:63720a65fa8c48c2d42225c6acb2ad43043cc4b683da28a91ede6554a2a4fc50`,
+  deployed through the Render web deploy hook with `imgURL` at 06:39 Asia/Taipei.
+- The Render API key in the local CLI config had expired (July 2026), so deploy
+  status was verified over HTTP and in a browser instead of the API.
+- Production checks: `/` and `/en` 200 with the new prerendered pages; apex and
+  `/official*` aliases redirect as before; `/login` still redirects to the
+  platform; OG images, favicon, `llms.txt`, `official.md`, robots and sitemap
+  return 200 (OG briefly 404 during the instance switch, then 200);
+  `platform.4wall.io/` and `/healthz` 200. Chromium at 1440 (zh, en) and 390
+  (zh): hydrated, canvas live, no console errors, no horizontal overflow; the
+  platform login renders without official CSS.
+- Rollback: redeploy `paul953206/4wall-web:fe39362-prod`
+  (`sha256:f59de1c248da96a895ff529f554f24fbf66bccc6a474294b557d16d1efbb143d`).
+- The branch could not be pushed from this machine (GitHub credential lacks
+  write access to the repository); the commit exists locally.
