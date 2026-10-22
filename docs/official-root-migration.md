@@ -1,7 +1,7 @@
 # Official website at the hostname root
 
 Date: 2026-10-22
-Status: Implementation and local verification complete; production cutover pending.
+Status: Production cutover and anonymous browser/HTTP verification complete.
 
 ## Request and scope
 
@@ -81,3 +81,29 @@ Platform DNS and API configuration require no changes.
   reversal uses Render's remove/re-add workflow. Existing browser-cached 301
   redirects are a deployment consideration, so verify the existing Chrome
   session as well as new HTTP requests after the switch.
+
+## Production result
+
+- Source revision: `fe393627516ac6227ccb0e49b38c90e6950a3b6d`.
+- Published image: `paul953206/4wall-web:fe39362-prod`, pinned in Render as
+  `sha256:f59de1c248da96a895ff529f554f24fbf66bccc6a474294b557d16d1efbb143d`.
+- Render deployment `dep-dbcosr6q1p3s73cqp8d0` succeeded and became Live after
+  starting at 2026-10-22 12:17:48 Asia/Taipei. Both source-branch and PR CI
+  passed before this deployment, including browser end-to-end tests.
+- Render now pairs `4wall.io` as a redirect to primary `www.4wall.io`.
+  Both domains are Verified with Certificate Issued. Existing DNS records
+  were retained; the platform domain and API configuration were unchanged.
+  The remove/re-add operation briefly required certificate reissuance.
+- Independent fresh HTTPS verification at 12:20:22 Asia/Taipei found zero
+  failures: public root and `/en` returned 200 with matching canonical URLs;
+  apex and old official aliases resolved in one or two redirects with encoded
+  query strings preserved. Seven referenced JS/CSS/image assets returned 200.
+- Chrome verified root-page hydration, English navigation and locale metadata,
+  and the old apex `/official/en` URL retaining query and `#services` at
+  `https://www.4wall.io/en`. The existing profile initially encountered its
+  cached old www-to-apex 301; reloading the page restored normal navigation.
+  Subsequent root visits and language switching worked. No cookies or history
+  were cleared. Returning visitors with that cached redirect may need reload.
+- `https://platform.4wall.io/` still shows the login form directly. Its HTML
+  remains noindex and its robots file disallows all paths. Actual-account login
+  was not requested and was not performed.
