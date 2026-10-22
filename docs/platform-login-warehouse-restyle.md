@@ -1,7 +1,7 @@
 # Platform login restyle: warehouse visual language
 
 Date: 2026-10-23
-Status: Implemented and verified locally; PR open, not merged or deployed.
+Status: Live on platform.4wall.io since 2026-10-23 (merged in #123, image `443981a-prod`).
 
 ## Request and scope
 
@@ -113,3 +113,16 @@ Checkpoint: `checkpoint/platform-login-restyle-20261023` at `b8b9520`
 - Not covered locally: the `platform.4wall.io` hostname itself (the root
   rendering is covered by `routes.test.tsx`), real sign-in, and LINE linking.
   No authentication code paths changed.
+
+## Production deploy (2026-10-23)
+
+- The founder noticed the merged login was not live yet ("platform.4wall.io
+  的登入頁我剛剛看還沒更改") and asked for it; it shipped with the copy-polish
+  image from `main` at `443981a` (#124), `paul953206/4wall-web:443981a-prod`,
+  deployed through the Render web deploy hook at 23:50 Asia/Taipei.
+- Production check: `platform.4wall.io/` 200 with the warehouse-style login
+  (title 「4WALL AI 平台｜倉庫模擬與規劃工作區」, help link to
+  `admin@4wall.io`); `/healthz` 200; `www.4wall.io/login` still redirects to
+  the platform.
+- Rollback: redeploy `paul953206/4wall-web:6af9b7a-prod` (official site
+  redesign with the legacy login).
