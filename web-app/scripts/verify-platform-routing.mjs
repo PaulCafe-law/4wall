@@ -22,6 +22,7 @@ function request(host, path) {
 
 const platformHost = 'platform.4wall.io'
 const legacyHosts = ['4wall.io', 'www.4wall.io', 'four-wall-web.onrender.com']
+const officialHosts = ['4wall.io', 'www.4wall.io']
 const appPaths = [
   '/invite?token=a%2Fb%2Bc&lang=zh%20TW',
   '/line/link',
@@ -49,8 +50,17 @@ for (const host of [...legacyHosts, platformHost]) {
 
 for (const host of legacyHosts) {
   const root = await request(host, '/')
-  assert.equal(root.status, 301, `${host}/ stays on the official site`)
-  assert.equal(root.headers.location, '/official')
+  if (officialHosts.includes(host)) {
+    assert.equal(root.status, 200, `${host}/ directly serves the official website`)
+    assert.equal(root.headers.location, undefined)
+    assert.doesNotMatch(root.headers['x-robots-tag'] ?? '', /noindex/)
+    assert.match(root.body, /<link rel="canonical" href="https:\/\/www\.4wall\.io\/"/)
+    assert.match(root.body, /href="\/en"/, 'Language link uses the new English route')
+    assert.match(root.body, /讓機台資料真正用來改善生產/)
+  } else {
+    assert.equal(root.status, 301, `${host}/ retains its public-site entry`)
+    assert.equal(root.headers.location, '/official')
+  }
   checks += 1
 
   for (const path of appPaths) {
@@ -63,7 +73,7 @@ for (const host of legacyHosts) {
   }
 }
 
-for (const path of ['/', ...appPaths]) {
+for (const path of ['/', '/en', '/en/', ...appPaths]) {
   const response = await request(platformHost, path)
   assert.equal(response.status, 200, `${platformHost}${path}`)
   assert.equal(response.headers.location, undefined)
@@ -74,12 +84,27 @@ for (const path of ['/', ...appPaths]) {
 }
 
 for (const host of [...legacyHosts, platformHost]) {
-  for (const path of ['/official', '/official/', '/official/en', '/official/en/', '/robots.txt', '/sitemap.xml', '/llms.txt', '/official.md', '/healthz']) {
+  for (const path of ['/official', '/official/', '/official/en', '/official/en/']) {
+    for (const query of ['', '?ref=a%2Fb%2Bc&lang=zh%20TW']) {
+      const response = await request(host, `${path}${query}`)
+      const destination = path.startsWith('/official/en') ? '/en' : '/'
+      assert.equal(response.status, 301, `${host}${path}${query}`)
+      assert.equal(response.headers.location, `https://www.4wall.io${destination}${query}`)
+      assert.equal(response.headers['cache-control'], 'no-store')
+      checks += 1
+    }
+  }
+  for (const path of ['/robots.txt', '/sitemap.xml', '/llms.txt', '/official.md', '/healthz']) {
     const response = await request(host, path)
     assert.equal(response.status, 200, `${host}${path}`)
     assert.equal(response.headers.location, undefined, `${host}${path}`)
-    if (path.startsWith('/official') && !path.endsWith('.md')) {
-      assert.match(response.body, /href="https:\/\/platform\.4wall\.io"/, 'Prerendered login links use the new origin')
+    if (path === '/robots.txt') {
+      if (host === platformHost) {
+        assert.equal(response.body, 'User-agent: *\nDisallow: /\n')
+      } else {
+        assert.match(response.body, /Allow: \/\$/)
+        assert.match(response.body, /Sitemap: https:\/\/www\.4wall\.io\/sitemap\.xml/)
+      }
     }
     checks += 1
   }
@@ -88,12 +113,27 @@ for (const host of [...legacyHosts, platformHost]) {
   checks += 1
 }
 
-const official = await request('4wall.io', '/official')
+for (const host of officialHosts) {
+  const english = await request(host, '/en?campaign=language-check')
+  assert.equal(english.status, 200)
+  assert.equal(english.headers.location, undefined)
+  assert.doesNotMatch(english.headers['x-robots-tag'] ?? '', /noindex/)
+  assert.match(english.body, /<html lang="en"/)
+  assert.match(english.body, /<link rel="canonical" href="https:\/\/www\.4wall\.io\/en"/)
+  assert.match(english.body, /href="\/"/, 'Language link returns to the official root')
+  const englishSlash = await request(host, '/en/?ref=a%2Fb')
+  assert.equal(englishSlash.status, 301)
+  assert.equal(englishSlash.headers.location, 'https://www.4wall.io/en?ref=a%2Fb')
+  checks += 2
+}
+
+const official = await request('www.4wall.io', '/')
+assert.match(official.body, /href="https:\/\/platform\.4wall\.io"/, 'Platform link uses its separate origin')
 const assetPaths = [...new Set(official.body.match(/\/(?:assets|official-assets)\/[^"'<>\s]+/g) ?? [])]
 assert.ok(assetPaths.some((path) => path.startsWith('/assets/')), 'Built app assets must be present')
 assert.ok(assetPaths.some((path) => path.startsWith('/official-assets/')), 'Official assets must be present')
 for (const path of assetPaths) {
-  const response = await request('4wall.io', path)
+  const response = await request('www.4wall.io', path)
   assert.equal(response.status, 200, `Public asset stays available: ${path}`)
   assert.equal(response.headers.location, undefined)
   checks += 1
@@ -107,6 +147,19 @@ for (const host of ['localhost', 'four-wall-web-staging.onrender.com']) {
   assert.equal(login.status, 200, `${host} is not a production migration alias`)
   assert.equal(login.headers.location, undefined)
   checks += 2
+  for (const path of ['/official', '/official/en']) {
+    const response = await request(host, path)
+    assert.equal(response.status, 200, `${host}${path} keeps its public preview route`)
+    assert.equal(response.headers.location, undefined)
+    checks += 1
+  }
+  for (const path of ['/en', '/en/']) {
+    const response = await request(host, path)
+    assert.equal(response.status, 200, `${host}${path} retains the app fallback`)
+    assert.equal(response.body, appShell.body)
+    assert.match(response.headers['x-robots-tag'] ?? '', /noindex/)
+    checks += 1
+  }
 }
 
 console.log(`Passed ${checks} real nginx routing checks.`)

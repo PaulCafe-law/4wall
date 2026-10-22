@@ -110,8 +110,9 @@ function ServiceCard({ card, t, className = '' }: { card: ServiceCardData; t: Co
   )
 }
 
-export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale }) {
+export function OfficialSitePage({ locale = 'zh', basePath = '' }: { locale?: OfficialLocale; basePath?: '' | '/official' }) {
   const t = officialContent[locale]
+  const languageHref = `${basePath}${t.nav.langHref === '/' ? '' : t.nav.langHref}` || '/'
   useOfficialSiteMeta(locale)
   const mailHref = `mailto:4wallaitech@gmail.com?subject=${t.contact.mailSubject}`
 
@@ -130,7 +131,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
             <a className="transition hover:text-chrome-950" href="#security">{t.nav.security}</a>
           </nav>
           <div className="flex items-center gap-4">
-            <Link className="text-xs font-medium text-chrome-700 transition hover:text-chrome-950" rel="nofollow" to={t.nav.langHref}>
+            <Link className="text-xs font-medium text-chrome-700 transition hover:text-chrome-950" rel="nofollow" to={languageHref}>
               {t.nav.langSwitch}
             </Link>
             <Link className="hidden text-xs text-chrome-700 transition hover:text-chrome-950 md:inline" rel="nofollow" to="https://platform.4wall.io">
@@ -347,7 +348,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
           </div>
           <div className="flex flex-col gap-2 text-xs text-chrome-600">
             <a className="transition hover:text-chrome-950" href="mailto:4wallaitech@gmail.com">4wallaitech@gmail.com</a>
-            <Link className="transition hover:text-chrome-950" rel="nofollow" to={t.nav.langHref}>{t.nav.langSwitch}</Link>
+            <Link className="transition hover:text-chrome-950" rel="nofollow" to={languageHref}>{t.nav.langSwitch}</Link>
             <Link className="transition hover:text-chrome-950" rel="nofollow" to="https://platform.4wall.io">{t.nav.login}</Link>
           </div>
         </div>

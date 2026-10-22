@@ -7,8 +7,10 @@ import { OfficialSitePage } from './OfficialSitePage'
 function renderOfficial(route: string, locale?: 'en') {
   renderWithProviders(
     <Routes>
-      <Route path="/official" element={<OfficialSitePage />} />
-      <Route path="/official/en" element={<OfficialSitePage locale={locale ?? 'en'} />} />
+      <Route path="/" element={<OfficialSitePage />} />
+      <Route path="/en" element={<OfficialSitePage locale={locale ?? 'en'} />} />
+      <Route path="/official" element={<OfficialSitePage basePath="/official" />} />
+      <Route path="/official/en" element={<OfficialSitePage locale={locale ?? 'en'} basePath="/official" />} />
     </Routes>,
     { route },
   )
@@ -16,7 +18,7 @@ function renderOfficial(route: string, locale?: 'en') {
 
 describe('OfficialSitePage', () => {
   it('renders the machine-data-first Chinese official website content', () => {
-    renderOfficial('/official')
+    renderOfficial('/')
 
     expect(screen.getByRole('heading', { level: 1, name: '讓機台資料真正用來改善生產。' })).toBeInTheDocument()
 
@@ -64,7 +66,7 @@ describe('OfficialSitePage', () => {
     expect(document.querySelector('footer')).toBeInTheDocument()
     expect(screen.getByText('© 2026 4WALL AI（第四面牆）. All rights reserved.')).toBeInTheDocument()
     for (const link of screen.getAllByRole('link', { name: 'EN' })) {
-      expect(link).toHaveAttribute('href', '/official/en')
+      expect(link).toHaveAttribute('href', '/en')
     }
     for (const link of screen.getAllByRole('link', { name: '進入管理平台' })) {
       expect(link).toHaveAttribute('href', 'https://platform.4wall.io')
@@ -81,8 +83,8 @@ describe('OfficialSitePage', () => {
     expect(document.body).not.toHaveTextContent(['不是第七個 ', 'dashboard'].join(''))
   })
 
-  it('renders the English version at /official/en', () => {
-    renderOfficial('/official/en')
+  it('renders the English version at /en', () => {
+    renderOfficial('/en')
 
     expect(screen.getByRole('heading', { level: 1, name: 'A factory that answers.' })).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /3D mirror-factory war room/ })).toHaveAttribute(
@@ -93,18 +95,29 @@ describe('OfficialSitePage', () => {
     expect(screen.getByRole('img', { name: /Real LINE chat/ })).toHaveAttribute('src', '/official-assets/line-qa-live.webp')
     expect(screen.getByText('From NT$8,000 / month')).toBeInTheDocument()
     for (const link of screen.getAllByRole('link', { name: '中文' })) {
-      expect(link).toHaveAttribute('href', '/official')
+      expect(link).toHaveAttribute('href', '/')
     }
     expect(document.title).toBe('4WALL AI | A Factory That Answers — 3D Mirror Factory & AI Duty Agent')
   })
 
   it('sets route-level official site metadata', () => {
-    renderOfficial('/official')
+    renderOfficial('/')
 
     expect(document.title).toBe('4WALL AI｜工廠地端 AI、機台資料整合與生產最佳化')
     expect(document.head.querySelector('meta[name="description"]')).toHaveAttribute(
       'content',
       '4WALL AI 協助工廠匯出並整合機台資料，透過地端 AI 分析設備與生產狀態，提升稼動率、協助最佳化排程，並建立可追溯的產品履歷。',
     )
+  })
+
+  it.each([
+    { route: '/official', label: 'EN', target: '/official/en' },
+    { route: '/official/en', label: '中文', target: '/official' },
+  ])('preserves local language navigation at $route', ({ route, label, target }) => {
+    renderOfficial(route)
+
+    for (const link of screen.getAllByRole('link', { name: label })) {
+      expect(link).toHaveAttribute('href', target)
+    }
   })
 })

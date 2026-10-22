@@ -4,8 +4,12 @@ User-agent: ChatGPT-User
 User-agent: Googlebot
 User-agent: Bingbot
 User-agent: *
-Allow: /official
-Allow: /official/
+Allow: /$
+Allow: /?
+Allow: /en$
+Allow: /en?
+Allow: /official$
+Allow: /official/en$
 Allow: /official.md
 Allow: /llms.txt
 Allow: /sitemap.xml
@@ -14,4 +18,4 @@ Allow: /assets/
 Allow: /favicon.svg
 Disallow: /
 
-Sitemap: https://4wall.io/sitemap.xml
+Sitemap: https://www.4wall.io/sitemap.xml

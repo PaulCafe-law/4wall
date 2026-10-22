@@ -8,17 +8,23 @@ describe('official crawler files', () => {
     expect(robots).toContain('User-agent: GPTBot')
     expect(robots).toContain('User-agent: OAI-SearchBot')
     expect(robots).toContain('User-agent: ChatGPT-User')
-    expect(robots).toContain('Allow: /official')
+    expect(robots).toContain('Allow: /$')
+    expect(robots).toContain('Allow: /en$')
+    expect(robots.split(/\r?\n/)).not.toContain('Allow: /')
     expect(robots).toContain('Allow: /llms.txt')
     expect(robots).toContain('Allow: /official.md')
     expect(robots).toContain('Disallow: /')
-    expect(robots).toContain('Sitemap: https://4wall.io/sitemap.xml')
+    expect(robots).toContain('Sitemap: https://www.4wall.io/sitemap.xml')
   })
 
   it('does not list management routes in the public sitemap', () => {
-    expect(sitemap).toContain('https://4wall.io/official')
-    expect(sitemap).toContain('https://4wall.io/official.md')
-    expect(sitemap).toContain('https://4wall.io/llms.txt')
+    const locations = Array.from(sitemap.matchAll(/<loc>(.*?)<\/loc>/g), (match) => match[1])
+    expect(locations).toEqual([
+      'https://www.4wall.io/',
+      'https://www.4wall.io/en',
+      'https://www.4wall.io/official.md',
+      'https://www.4wall.io/llms.txt',
+    ])
     expect(sitemap).not.toContain('/login')
     expect(sitemap).not.toContain('/missions')
     expect(sitemap).not.toContain('/incidents')
@@ -34,6 +40,12 @@ describe('official crawler files', () => {
     expect(combined).toContain('機台資料匯出與整合')
     expect(combined).toContain('產品履歷')
     expect(combined).toContain('4wallaitech@gmail.com')
+    for (const content of [llms, markdown]) {
+      expect(content).toContain('https://www.4wall.io/')
+      expect(content).toContain('https://www.4wall.io/en')
+      expect(content).not.toContain('https://4wall.io')
+      expect(content).not.toMatch(/https:\/\/www\.4wall\.io\/official(?:\s|$)/)
+    }
     expect(combined).not.toContain('platform@')
     expect(combined).not.toContain('internal.test')
     expect(combined).not.toContain('password')

@@ -33,6 +33,7 @@ const queryClient = new QueryClient()
 
 export function AppRoutes({ hostname = window.location.hostname }: { hostname?: string } = {}) {
   const isPlatformHost = hostname === 'platform.4wall.io'
+  const isOfficialHost = hostname === 'www.4wall.io' || hostname === '4wall.io'
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -40,15 +41,17 @@ export function AppRoutes({ hostname = window.location.hostname }: { hostname?: 
         <BrowserRouter>
           <Routes>
             {isPlatformHost && <Route path="/" element={<PlatformHome />} />}
+            {isOfficialHost && <Route path="/" element={<OfficialSitePage />} />}
+            {isOfficialHost && <Route path="/en" element={<OfficialSitePage locale="en" />} />}
             <Route path="/login" element={isPlatformHost ? <PlatformLoginAlias /> : <LoginPage />} />
             <Route path="/line/link" element={<LineAccountLinkPage />} />
             <Route path="/invite" element={<InvitePage />} />
-            <Route path="/official" element={<OfficialSitePage />} />
-            <Route path="/official/en" element={<OfficialSitePage locale="en" />} />
+            <Route path="/official" element={isOfficialHost ? <OfficialAlias pathname="/" /> : <OfficialSitePage basePath="/official" />} />
+            <Route path="/official/en" element={isOfficialHost ? <OfficialAlias pathname="/en" /> : <OfficialSitePage locale="en" basePath="/official" />} />
             <Route path="/m/floorplan/:siteSlug" element={<LineFloorplanMobilePage />} />
             <Route element={<RequireAuthenticated />}>
               <Route element={<AppShell />}>
-                {!isPlatformHost && <Route index element={<AuthenticatedHome />} />}
+                {!isPlatformHost && !isOfficialHost && <Route index element={<AuthenticatedHome />} />}
                 <Route
                   path="/overview"
                   element={
@@ -227,6 +230,11 @@ export function AppRoutes({ hostname = window.location.hostname }: { hostname?: 
 function PlatformLoginAlias() {
   const location = useLocation()
   return <Navigate to={{ pathname: '/', search: location.search, hash: location.hash }} replace />
+}
+
+function OfficialAlias({ pathname }: { pathname: '/' | '/en' }) {
+  const location = useLocation()
+  return <Navigate to={{ pathname, search: location.search, hash: location.hash }} replace />
 }
 
 function PlatformHome() {
