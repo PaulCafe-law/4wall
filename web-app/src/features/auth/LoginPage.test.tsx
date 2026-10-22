@@ -22,6 +22,22 @@ describe('LoginPage', () => {
     expect(await screen.findByText('密碼至少需要 8 個字元')).toBeInTheDocument()
   })
 
+  it('驗證錯誤會標示在對應欄位上', async () => {
+    const user = userEvent.setup()
+
+    renderWithProviders(<LoginPage />, {
+      route: '/login',
+      auth: createAuthValue({ status: 'anonymous', session: null, user: null }),
+    })
+
+    await user.click(screen.getByRole('button', { name: '進入主控台' }))
+
+    const email = screen.getByLabelText('帳號或電子郵件')
+    expect(await screen.findByText('請輸入帳號或電子郵件')).toBeInTheDocument()
+    expect(email).toHaveAttribute('aria-invalid', 'true')
+    expect(email).toHaveAccessibleDescription('請輸入帳號或電子郵件')
+  })
+
   it('LINE 連結登入成功後只回到固定連結頁', async () => {
     const user = userEvent.setup()
     const auth = createAuthValue({ status: 'anonymous', session: null, user: null })

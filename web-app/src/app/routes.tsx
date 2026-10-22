@@ -7,7 +7,7 @@ import { AttributionWorkbenchPage } from '../features/attribution/AttributionWor
 import { AuditPage } from '../features/audit/AuditPage'
 import { InvitePage } from '../features/auth/InvitePage'
 import { LineAccountLinkPage } from '../features/auth/LineAccountLinkPage'
-import { LoginPage } from '../features/auth/LoginPage'
+import { LoginPage, LoginRestoring } from '../features/auth/LoginPage'
 import { BillingPage } from '../features/billing/BillingPage'
 import { CamerasPage } from '../features/cameras/CamerasPage'
 import { ControlPlanePage } from '../features/controlplane/ControlPlanePage'
@@ -242,7 +242,7 @@ function PlatformHome() {
   const [searchParams] = useSearchParams()
 
   if (auth.status === 'restoring') {
-    return <SessionRestoring />
+    return <LoginRestoring />
   }
 
   if (auth.status === 'authenticated' && searchParams.get('lineLink') !== '1') {
