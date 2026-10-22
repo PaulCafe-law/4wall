@@ -5,7 +5,7 @@ import { sprayReveal } from '../motion/bayer'
 import { clamp01 } from '../motion/ease'
 import { addTask, prefersReducedMotion } from '../motion/scheduler'
 import { ScrambleText } from '../motion/textEffects'
-import { useInViewOnce } from './hooks'
+import { canAnimate, useDisposer, useInViewOnce } from './hooks'
 import { CopyEmail, CtaPair, RetroTicket } from './shared'
 
 /** Scroll-driven Bayer band (C2); CSS dot gradient is the no-JS fallback. */
@@ -55,6 +55,7 @@ export function Dock({ t, locale }: { t: OfficialCopy; locale: OfficialLocale })
   const sectionRef = useRef<HTMLElement>(null)
   const stencilRef = useRef<HTMLSpanElement>(null)
   const [scramble, setScramble] = useState(false)
+  const dispose = useDisposer()
 
   useInViewOnce(
     sectionRef,
@@ -62,11 +63,13 @@ export function Dock({ t, locale }: { t: OfficialCopy; locale: OfficialLocale })
       const section = sectionRef.current
       if (!section) return
       section.classList.add('is-in')
-      if (prefersReducedMotion() || !stencilRef.current) return
-      window.setTimeout(() => {
-        if (stencilRef.current) sprayReveal(stencilRef.current)
+      if (!canAnimate() || !stencilRef.current) return
+      const spray = window.setTimeout(() => {
+        if (stencilRef.current) dispose(sprayReveal(stencilRef.current))
       }, 300)
-      window.setTimeout(() => setScramble(true), 980)
+      const scrambleLater = window.setTimeout(() => setScramble(true), 980)
+      dispose(() => window.clearTimeout(spray))
+      dispose(() => window.clearTimeout(scrambleLater))
     },
     0.3,
   )

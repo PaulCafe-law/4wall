@@ -39,6 +39,12 @@ afterEach(() => {
 })
 
 describe('official website root routes', () => {
+  // The platform router lazy-loads the official page. Warm the module first so a
+  // cold transform on a slow CI runner cannot outlast findByRole's 1s timeout.
+  beforeAll(async () => {
+    await import('../features/official/OfficialSitePage')
+  })
+
   it.each(['www.4wall.io', '4wall.io'])('renders the Chinese website directly at %s/', async (hostname) => {
     renderApp(hostname, '/?campaign=launch#contact')
 

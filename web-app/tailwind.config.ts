@@ -31,6 +31,22 @@ export default {
           amber: 'var(--signal-amber)',
           green: 'var(--signal-green)',
         },
+        // Warehouse-system palette, used only by the platform login surface
+        // (docs/platform-login-warehouse-restyle.md).
+        warehouse: {
+          ink: '#111111',
+          muted: '#6b7280',
+          line: '#e5e7eb',
+          'line-strong': '#d6dadf',
+          grid: '#f1f3f5',
+          teal: '#08766c',
+          'teal-strong': '#065f57',
+          'teal-soft': '#e6f2f0',
+          warn: '#b45309',
+          'warn-soft': '#fff7ed',
+          danger: '#a63d2c',
+          'danger-soft': '#fff5f2',
+        },
       },
       boxShadow: {
         panel: '0 24px 80px rgba(7, 10, 15, 0.14)',
@@ -39,6 +55,7 @@ export default {
         sans: ['"IBM Plex Sans"', '"Segoe UI Variable"', 'sans-serif'],
         display: ['"Space Grotesk"', '"IBM Plex Sans"', 'sans-serif'],
         mono: ['"IBM Plex Mono"', '"Cascadia Code"', 'monospace'],
+        warehouse: ['Inter', '"Noto Sans TC"', '"Microsoft JhengHei"', 'sans-serif'],
       },
       backgroundImage: {
         grain:
