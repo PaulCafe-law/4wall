@@ -1,7 +1,7 @@
 # Platform domain migration
 
 Date: 2026-10-22
-Status: Domain cutover complete; root-login URL correction in progress.
+Status: Production cutover complete; root login page and legacy redirects verified.
 
 ## Scope and gap analysis
 
@@ -76,12 +76,14 @@ must not be cached. Report any unverified authenticated behavior explicitly.
   `https://four-wall-web.onrender.com`; `LINE_NAVIGATION_ALLOWED_HOSTS` was
   `four-wall-web.onrender.com`. New values are `https://platform.4wall.io` and
   `platform.4wall.io`, respectively. `LINE_PUBLIC_BASE_URL` stays the API URL.
-- Web lint passed; all 242 tests in 50 files passed; production build passed.
+- Web lint passed; all 253 tests in 50 files passed; production build and
+  type checking passed. The 13 focused route tests also passed after the root
+  login change, covering role routing, LINE continuation, and session states.
 - Backend session/auth/artifact checks: 14 passed. API and cross-organization
   artifact access checks: 6 passed.
 - Independent diff/security review found no actionable findings. An additional
   15 focused origin, LINE URL, and cookie-attribute checks passed.
-- Real nginx acceptance: 147 checks passed using
+- Real nginx acceptance: 155 checks passed using
   `node web-app/scripts/verify-platform-routing.mjs http://127.0.0.1:18080`
   against the built image. This verifies legacy and canonical hosts, encoded
   query strings, public assets, and local/staging behavior.
@@ -89,27 +91,32 @@ must not be cached. Report any unverified authenticated behavior explicitly.
   digest `sha256:70d57959f68b723501e9fff9589e1649f3e8be0adb50bc5a1bae6c45a462e646`.
   Only the web build and routing template are replaced; the API image remains
   `paul953206/4wall-api:6ddaedd`.
-- Both GitHub Web App CI runs passed, including lint, unit tests, end-to-end
-  tests, and the production build: runs `39715562721` and `39715567030`.
-- Published web image: `paul953206/4wall-web:fab079a-prod`, source revision
-  `fab079afa446e90d0228f44a5a7f47181218f85a`, deployed by immutable digest
-  `sha256:57ec03e8a7bc0db0026226931fff31471deba47c34d38e0cd616939d17893fa1`.
-- Render web deployment `dep-dbco0i3rjlhs73e4p6tg` succeeded at approximately
-  11:17:50 Asia/Taipei. API deployment `dep-dbco0irrjlhs73e4p8kg` succeeded at
+- The initial GitHub Web App CI runs passed, including lint, unit tests,
+  end-to-end tests, and the production build: runs `39715562721` and
+  `39715567030`. Final revision CI is tracked on PR #120 before merge.
+- Final published web image: `paul953206/4wall-web:e97d183-prod`, source revision
+  `e97d183b4ff1d52cf9549640d2f802b09d5b5706`, deployed by immutable digest
+  `sha256:380cd43d292665f70a3daa7d073394012c4cd805dbaff7830f8df6390c904128`.
+- Final Render web deployment `dep-dbco3obncjis73d3fivg` was live at 11:24:42
+  Asia/Taipei. API deployment `dep-dbco0irrjlhs73e4p8kg` succeeded at
   approximately 11:18:28, retaining the existing API image digest beginning
   `2586684` and applying only the two documented environment changes.
-- Production HTTP checks at 11:18:33-34 Asia/Taipei: platform `/healthz`, `/`,
-  and `/login` returned 200; platform HTML has `no-store` and `noindex`.
-  `https://4wall.io/login?expired=1` returned 302 to the identical path/query
-  on `platform.4wall.io`. The official root still redirects to `/official`;
-  both `/official` and `/official/en` returned 200 with the new platform links.
+- Final production HTTP checks: platform `/healthz` and `/` returned 200;
+  `/login` returned 302 to `https://platform.4wall.io/`.
+  `https://4wall.io/login?expired=1` returned 302 to
+  `https://platform.4wall.io/?expired=1`. The old Render-host `/login` also
+  redirects to the canonical root. The official root still redirects to
+  `/official`; both language pages remain available with new platform links.
 - Production API CORS preflight permits exactly `https://platform.4wall.io`
   with credentials. The old `https://four-wall-web.onrender.com` origin returns
-  400 without `Access-Control-Allow-Origin`.
-- Browser checks passed: opening the old `/login` reaches the new login page;
-  clicking the hydrated official-site platform link reaches the new login page;
-  opening the old `/line/link#flow=domain-check` reaches the new-origin
-  `/login?lineLink=1` flow. This dummy check does not complete LINE account linking.
+  400 without `Access-Control-Allow-Origin`. An unapproved `https://evil.example`
+  origin is rejected in the same way.
+- Final anonymous browser check: the actual login form is displayed at
+  `https://platform.4wall.io/`, and the address stays at `/` after session
+  restoration. The old canonical `/login` reaches this root directly.
+  Before the root correction, a dummy old `/line/link#flow=domain-check` link
+  correctly entered the new-origin LINE login flow; final route tests cover
+  its root-login continuation. No real LINE account linking was performed.
 - The user explicitly requested the login-page URL change only and declined
   actual-account login testing. No passwords or session tokens are copied into
   this document.
