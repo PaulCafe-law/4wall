@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { PropsWithChildren } from 'react'
 import { Outlet, Route, Routes } from 'react-router-dom'
 
@@ -36,6 +36,72 @@ function renderApp(
 afterEach(() => {
   vi.restoreAllMocks()
   window.history.replaceState({}, '', '/')
+})
+
+describe('official website root routes', () => {
+  it.each(['www.4wall.io', '4wall.io'])('renders the Chinese website directly at %s/', async (hostname) => {
+    renderApp(hostname, '/?campaign=launch#contact')
+
+    expect(await screen.findByRole('heading', { level: 1, name: '讓機台資料真正用來改善生產。' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/')
+    expect(window.location.search).toBe('?campaign=launch')
+    expect(window.location.hash).toBe('#contact')
+    expect(screen.queryByRole('heading', { name: /^登入$/ })).not.toBeInTheDocument()
+  })
+
+  it.each(['www.4wall.io', '4wall.io'])('renders the English website directly at %s/en', async (hostname) => {
+    renderApp(hostname, '/en', createAuthValue())
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'A factory that answers.' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/en')
+    expect(screen.queryByText('已登入首頁')).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['www.4wall.io', '/official', '/'],
+    ['4wall.io', '/official', '/'],
+    ['www.4wall.io', '/official/en', '/en'],
+    ['4wall.io', '/official/en', '/en'],
+  ])('canonicalizes the client-side alias %s%s while retaining query and fragment', async (hostname, oldPath, newPath) => {
+    renderApp(hostname, `${oldPath}?campaign=a%2Fb#contact`)
+
+    await waitFor(() => expect(window.location.pathname).toBe(newPath))
+    expect(window.location.search).toBe('?campaign=a%2Fb')
+    expect(window.location.hash).toBe('#contact')
+    expect(screen.getByRole('heading', {
+      level: 1,
+      name: newPath === '/' ? '讓機台資料真正用來改善生產。' : 'A factory that answers.',
+    })).toBeInTheDocument()
+  })
+
+  it('switches public languages between / and /en without entering the platform', async () => {
+    renderApp('www.4wall.io')
+
+    fireEvent.click(screen.getAllByRole('link', { name: 'EN' })[0])
+    expect(await screen.findByRole('heading', { level: 1, name: 'A factory that answers.' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/en')
+
+    fireEvent.click(screen.getAllByRole('link', { name: '中文' })[0])
+    expect(await screen.findByRole('heading', { level: 1, name: '讓機台資料真正用來改善生產。' })).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/')
+    for (const link of screen.getAllByRole('link', { name: '進入管理平台' })) {
+      expect(link).toHaveAttribute('href', 'https://platform.4wall.io')
+    }
+  })
+
+  it.each(['localhost', 'four-wall-web-staging.onrender.com'])(
+    'preserves legacy official language navigation on %s',
+    async (hostname) => {
+      renderApp(hostname, '/official/en')
+
+      const chineseLink = screen.getAllByRole('link', { name: '中文' })[0]
+      expect(chineseLink).toHaveAttribute('href', '/official')
+      fireEvent.click(chineseLink)
+      expect(await screen.findByRole('heading', { level: 1, name: '讓機台資料真正用來改善生產。' })).toBeInTheDocument()
+      expect(window.location.pathname).toBe('/official')
+      expect(screen.getAllByRole('link', { name: 'EN' })[0]).toHaveAttribute('href', '/official/en')
+    },
+  )
 })
 
 describe('platform root login', () => {

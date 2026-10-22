@@ -10,8 +10,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
 const distDir = path.join(rootDir, 'dist')
 const officialDir = path.join(distDir, 'official')
-const siteOrigin = process.env.VITE_PUBLIC_SITE_ORIGIN || 'https://4wall.io'
-const officialUrl = `${siteOrigin}/official`
+const siteOrigin = new URL(process.env.VITE_PUBLIC_SITE_ORIGIN || 'https://www.4wall.io').origin
+const officialUrl = new URL('/', siteOrigin).href
+const englishUrl = new URL('/en', siteOrigin).href
 
 const zhStructuredData = {
   '@context': 'https://schema.org',
@@ -64,8 +65,8 @@ const enStructuredData = {
     {
       '@type': 'WebSite',
       name: '第四面牆 AI',
-      url: officialUrl,
-      inLanguage: 'zh-Hant-TW',
+      url: englishUrl,
+      inLanguage: 'en',
     },
     {
       '@type': 'Service',
@@ -81,8 +82,8 @@ function escapeScriptJson(value) {
   return JSON.stringify(value).replaceAll('<', '\\u003c')
 }
 
-function ensureCanonical(html) {
-  const canonical = `<link rel="canonical" href="${officialUrl}" />`
+function ensureCanonical(html, canonicalUrl) {
+  const canonical = `<link rel="canonical" href="${canonicalUrl}" />`
   if (html.includes('rel="canonical"')) {
     return html.replace(/<link rel="canonical" href="[^"]*" \/>/, canonical)
   }
@@ -139,17 +140,14 @@ async function renderOfficialPages() {
   }
 }
 
-function ensureHreflang(html, canonicalUrl) {
+function ensureHreflang(html) {
   const links = [
     `<link rel="alternate" hreflang="zh-Hant-TW" href="${officialUrl}" />`,
-    `<link rel="alternate" hreflang="en" href="${officialUrl}/en" />`,
+    `<link rel="alternate" hreflang="en" href="${englishUrl}" />`,
     `<link rel="alternate" hreflang="x-default" href="${officialUrl}" />`,
   ].join('\n    ')
-  let out = html.replace(/<link rel="canonical" href="[^"]*" \/>/, `<link rel="canonical" href="${canonicalUrl}" />`)
-  if (!out.includes('hreflang')) {
-    out = out.replace('</head>', `    ${links}\n  </head>`)
-  }
-  return out
+  const out = html.replace(/<link\b[^>]*\bhreflang="[^"]*"[^>]*>/g, '')
+  return out.replace('</head>', `    ${links}\n  </head>`)
 }
 
 function applyLocaleMeta(html, meta) {
@@ -164,29 +162,35 @@ function applySocialImage(html, imageUrl) {
   return html.replace(/(<meta property="og:image" content=")[^"]*(")/, `$1${imageUrl}$2`)
 }
 
+function applySocialUrl(html, canonicalUrl) {
+  return html.replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${canonicalUrl}$2`)
+}
+
 const template = await readFile(path.join(distDir, 'index.html'), 'utf8')
 const { zh, en, content } = await renderOfficialPages()
 
 let zhHtml = template.replace('<div id="root"></div>', `<div id="root">${zh}</div>`)
 zhHtml = zhHtml.replace('<html lang="en">', '<html lang="zh-Hant-TW">')
 zhHtml = applyLocaleMeta(zhHtml, content.zh.meta)
-zhHtml = ensureCanonical(zhHtml)
+zhHtml = ensureCanonical(zhHtml, officialUrl)
+zhHtml = applySocialUrl(zhHtml, officialUrl)
 zhHtml = applySocialImage(zhHtml, `${siteOrigin}/official-assets/factory-ai-operations-illustration-v2.webp`)
 zhHtml = ensureStructuredData(zhHtml, zhStructuredData)
 zhHtml = ensureHeroPreload(zhHtml, '/official-assets/factory-ai-operations-illustration-v2.webp')
-zhHtml = ensureHreflang(zhHtml, officialUrl)
+zhHtml = ensureHreflang(zhHtml)
 
 let enHtml = template.replace('<div id="root"></div>', `<div id="root">${en}</div>`)
 enHtml = enHtml.replace('<html lang="zh-Hant-TW">', '<html lang="en">')
 enHtml = applyLocaleMeta(enHtml, content.en.meta)
-enHtml = enHtml.replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${officialUrl}/en$2`)
+enHtml = ensureCanonical(enHtml, englishUrl)
+enHtml = applySocialUrl(enHtml, englishUrl)
 enHtml = applySocialImage(enHtml, `${siteOrigin}/official-assets/hero-field-ai.jpg`)
 enHtml = ensureStructuredData(enHtml, enStructuredData)
 enHtml = ensureHeroPreload(enHtml, '/official-assets/warroom-live.webp')
-enHtml = ensureHreflang(enHtml, `${officialUrl}/en`)
+enHtml = ensureHreflang(enHtml)
 
 await mkdir(path.join(officialDir, 'en'), { recursive: true })
 await writeFile(path.join(officialDir, 'index.html'), zhHtml, 'utf8')
 await writeFile(path.join(officialDir, 'en', 'index.html'), enHtml, 'utf8')
 
-console.log(`Prerendered ${officialUrl} and ${officialUrl}/en`)
+console.log(`Prerendered ${officialUrl} and ${englishUrl}`)

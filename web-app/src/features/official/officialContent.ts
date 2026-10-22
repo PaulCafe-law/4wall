@@ -15,7 +15,7 @@ const zh = {
     contact: '聯絡我們',
     login: '進入管理平台',
     langSwitch: 'EN',
-    langHref: '/official/en',
+    langHref: '/en',
   },
   hero: {
     title: '讓機台資料真正用來改善生產。',
@@ -278,7 +278,7 @@ const en: typeof zh = {
     contact: 'Contact',
     login: 'Platform login',
     langSwitch: '中文',
-    langHref: '/official',
+    langHref: '/',
   },
   hero: {
     title: 'A factory that answers.',

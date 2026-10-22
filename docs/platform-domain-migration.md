@@ -3,6 +3,10 @@
 Date: 2026-10-22
 Status: Production cutover complete; root login page and legacy redirects verified.
 
+Follow-up: the public site's root URL is being migrated to `https://www.4wall.io/`.
+See [Official website at the hostname root](official-root-migration.md) for the
+current public routing contract; the platform login behavior below is retained.
+
 ## Scope and gap analysis
 
 The user selected `https://platform.4wall.io` as the management platform entry.

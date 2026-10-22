@@ -4,8 +4,9 @@
 
 ## 官方網站
 
-- Website: https://4wall.io/official
-- Markdown overview: https://4wall.io/official.md
+- Website: https://www.4wall.io/
+- English website: https://www.4wall.io/en
+- Markdown overview: https://www.4wall.io/official.md
 - Contact: 4wallaitech@gmail.com
 
 ## 產品能力

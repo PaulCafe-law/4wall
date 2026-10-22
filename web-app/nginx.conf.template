@@ -6,6 +6,33 @@ map $host $legacy_platform_origin {
     four-wall-web.onrender.com https://platform.4wall.io;
 }
 
+map $host $official_site_origin {
+    default "";
+    4wall.io https://www.4wall.io;
+    www.4wall.io https://www.4wall.io;
+    four-wall-web.onrender.com https://www.4wall.io;
+    platform.4wall.io https://www.4wall.io;
+}
+
+map $host $root_document {
+    default "";
+    4wall.io /official/index.html;
+    www.4wall.io /official/index.html;
+    platform.4wall.io /index.html;
+}
+
+map $host $english_official_document {
+    default "";
+    4wall.io /official/en/index.html;
+    www.4wall.io /official/en/index.html;
+}
+
+map $host $root_robots {
+    default "noindex, nofollow, noarchive";
+    4wall.io "";
+    www.4wall.io "";
+}
+
 server {
     listen ${PORT};
     server_name _;
@@ -22,6 +49,9 @@ server {
     }
 
     location = /robots.txt {
+        if ($host = platform.4wall.io) {
+            return 200 "User-agent: *\nDisallow: /\n";
+        }
         try_files /robots.txt =404;
         default_type text/plain;
         add_header Cache-Control "public, max-age=3600";
@@ -46,21 +76,33 @@ server {
     }
 
     location = /official {
+        if ($official_site_origin) {
+            return 301 $official_site_origin/$is_args$args;
+        }
         try_files /official/index.html =404;
         add_header Cache-Control "no-store";
     }
 
     location = /official/ {
+        if ($official_site_origin) {
+            return 301 $official_site_origin/$is_args$args;
+        }
         try_files /official/index.html =404;
         add_header Cache-Control "no-store";
     }
 
     location = /official/en {
+        if ($official_site_origin) {
+            return 301 $official_site_origin/en$is_args$args;
+        }
         try_files /official/en/index.html =404;
         add_header Cache-Control "no-store";
     }
 
     location = /official/en/ {
+        if ($official_site_origin) {
+            return 301 $official_site_origin/en$is_args$args;
+        }
         try_files /official/en/index.html =404;
         add_header Cache-Control "no-store";
     }
@@ -75,15 +117,29 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
-    # The platform owns its app entry; the public website keeps its marketing root.
+    # Public hosts serve the prerendered website; the platform keeps its SPA root.
+    # Both public hosts work here while Render canonicalizes apex to www.
     location = / {
         absolute_redirect off;
-        if ($host != platform.4wall.io) {
+        if ($root_document = "") {
             return 301 /official;
         }
-        try_files /index.html =404;
+        try_files $root_document =404;
         add_header Cache-Control "no-store";
-        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+        add_header X-Robots-Tag $root_robots always;
+    }
+
+    location = /en {
+        try_files $english_official_document @platform;
+        add_header Cache-Control "no-store";
+    }
+
+    location = /en/ {
+        if ($english_official_document) {
+            return 301 https://www.4wall.io/en$is_args$args;
+        }
+        try_files $uri @platform;
+        add_header Cache-Control "no-store";
     }
 
     location = /index.html {
