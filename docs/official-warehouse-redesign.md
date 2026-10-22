@@ -1,7 +1,8 @@
 # Official website redesign: warehouse pivot
 
 Date: 2026-10-23
-Status: Live on www.4wall.io since 2026-10-23 (image `6af9b7a-prod`).
+Status: Live on www.4wall.io since 2026-10-23; current image `443981a-prod`
+(copy polish, below).
 
 ## Request and scope
 
@@ -151,3 +152,24 @@ multi-tenant claims, "data never leaves the machine", unimplemented inputs
 - The branch was pushed to `origin/claude/official-warehouse-redesign` with the
   `PaulCafe-law` GitHub CLI login (the default git credential on this machine
   belongs to an account without write access).
+
+## Copy polish (2026-10-23, #124)
+
+- Founder feedback on the live site: the Chinese copy read like a translation,
+  the toolkit was too detailed, casual phrasing (「沒差，就說沒差」) does not fit
+  a formal B2B company, and contact is now `admin@4wall.io`.
+- 212 copy edits (zh 173, en 39) in formal Taiwanese usage; the hero headline
+  is unchanged. Toolkit rows state only the user benefit. The email changed in
+  the site, crawler files, both JSON-LD blocks and the platform login help
+  link. `official.md`, `llms.txt` and the zh OG card were regenerated.
+- Verification: lint and type check clean; 299 tests in 55 files pass; build,
+  prerender and 185 real-nginx routing checks pass on the production image.
+- Deploy: `main` at `443981a`, image `paul953206/4wall-web:443981a-prod`
+  (`sha256:e125f8677264dd7d71e04d9b38207edf7c0d8806b3eb8facd266509d44d4dee3`),
+  Render deploy hook at 23:50 Asia/Taipei. This image also took the #123
+  platform login restyle live.
+- Production check: `/`, `/en`, OG cards, `llms.txt`, `official.md`, robots
+  and sitemap 200; apex and `/official` redirect as before; the page hydrates
+  with the canvas live, no console errors, no horizontal overflow; the only
+  mailto is `admin@4wall.io`; 「沒差」 no longer appears.
+- Rollback: redeploy `paul953206/4wall-web:6af9b7a-prod`.
