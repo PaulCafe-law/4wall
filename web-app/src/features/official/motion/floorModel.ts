@@ -127,14 +127,14 @@ export const STAGE_LABELS: Record<Locale, { scan: string; estimated: string; pro
     scan: 'AI 判讀中…',
     estimated: '推估',
     provenance: 'A07 · 料架 · 來源：設施清單.xlsx 第 12 列',
-    jam: '會卡在這 · 示意',
+    jam: '可能壅塞 · 示意',
     pallets: ['PPTX', 'XLSX', 'CSV', 'PDF', 'JPG', 'PNG'],
   },
   en: {
     scan: 'Reading…',
     estimated: 'EST.',
     provenance: 'A07 · rack · source: facility-list.xlsx, row 12',
-    jam: 'Jams here · illustrative',
+    jam: 'Likely congestion · illustrative',
     pallets: ['PPTX', 'XLSX', 'CSV', 'PDF', 'JPG', 'PNG'],
   },
 }

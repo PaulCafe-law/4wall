@@ -101,7 +101,7 @@ export function Dock({ t, locale }: { t: OfficialCopy; locale: OfficialLocale })
                   <dd>
                     {row.copy ? (
                       <>
-                        <a href="mailto:4wallaitech@gmail.com">{row.v}</a> <CopyEmail t={t} />
+                        <a href="mailto:admin@4wall.io">{row.v}</a> <CopyEmail t={t} />
                       </>
                     ) : (
                       row.v

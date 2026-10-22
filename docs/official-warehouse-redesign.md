@@ -49,7 +49,7 @@ excluded.
 - Crawler surface: robots/sitemap entries unchanged; `llms.txt` and
   `official.md` keep the canonical URLs and contain no credentials.
 - Links to the platform use `https://platform.4wall.io` with `rel="nofollow"`.
-- Contact remains `4wallaitech@gmail.com`; no LINE CTA; no pricing; no
+- Contact remains `admin@4wall.io`; no LINE CTA; no pricing; no
   customer names without written consent.
 
 ## Public-claim policy

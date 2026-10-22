@@ -70,7 +70,7 @@ Checkpoint: `checkpoint/platform-login-restyle-20261023` at `b8b9520`
 - Copy (Traditional Chinese): a neutral warehouse-platform introduction
   ("倉庫模擬與規劃的工作區") with three facts that are true today: accounts are
   invite-only, a desktop browser is recommended, and login help goes to
-  `4wallaitech@gmail.com`. No feature, accuracy or KPI claims.
+  `admin@4wall.io`. No feature, accuracy or KPI claims.
 - Expired-session and error notices use the warehouse system's warn/error
   colours. The invite link text and `/invite` target are unchanged.
 - Platform root restoring state: a login-styled card (`LoginRestoring`) is

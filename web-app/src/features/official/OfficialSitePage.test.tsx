@@ -11,20 +11,20 @@ describe('OfficialSitePage', () => {
     render(<OfficialSitePage />)
 
     expect(screen.getByRole('heading', { level: 1, name: '倉庫的每個決定，先在電腦裡跑一遍。' })).toBeInTheDocument()
-    expect(screen.getByText(/把設施清單、平面圖或倉庫簡報交給 AI/)).toBeInTheDocument()
+    expect(screen.getByText(/上傳設施清單、平面圖或倉庫簡報，由 AI 生成 3D 倉庫/)).toBeInTheDocument()
 
     // The six product steps, in order.
     for (const step of officialContent.zh.steps) {
       expect(screen.getByRole('heading', { level: 3, name: step.h3 })).toBeInTheDocument()
     }
-    expect(screen.getByRole('heading', { name: '我們的數字守則。' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '主流程旁邊，還有這幾格。' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '答案，先封在信封裡。' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: '先回答你可能會問的。' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '我們的數字呈現原則。' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '主流程之外，另有六項工具。' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '先提交預測，再與現場結果比對。' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '您可能關心的問題。' })).toBeInTheDocument()
 
     // Honesty: the calibration line and illustrative stamps are visible text.
     expect(screen.getAllByText(/尚未用現場資料校準/).length).toBeGreaterThan(2)
-    expect(screen.getByText('這些是產品功能的數字，不是成效。')).toBeInTheDocument()
+    expect(screen.getByText('以下數字為產品功能規格，並非導入成效。')).toBeInTheDocument()
 
     // Contact and footer.
     expect(document.querySelector('footer')).toBeInTheDocument()
@@ -55,13 +55,13 @@ describe('OfficialSitePage', () => {
   it('books demos by email with a prefilled subject', () => {
     render(<OfficialSitePage />)
 
-    const demo = screen.getAllByRole('link', { name: '預約示範（寄信給 4wallaitech@gmail.com）' })
+    const demo = screen.getAllByRole('link', { name: '預約示範（寄信至 admin@4wall.io）' })
     expect(demo.length).toBeGreaterThan(1)
     const url = new URL(demo[0].getAttribute('href')!)
     expect(url.protocol).toBe('mailto:')
-    expect(url.pathname).toBe('4wallaitech@gmail.com')
+    expect(url.pathname).toBe('admin@4wall.io')
     expect(url.searchParams.get('subject')).toBe('預約示範｜4WALL AI 倉庫模擬')
-    expect(url.searchParams.get('body')).toContain('有沒有 AGV（貨到人）')
+    expect(url.searchParams.get('body')).toContain('是否使用 AGV（貨到人）')
   })
 
   it('contains no legacy factory content or customer names', () => {
@@ -90,19 +90,19 @@ describe('OfficialSitePage', () => {
     expect(within(chat).getByText('版本 3')).toBeInTheDocument()
     await act(async () => fireEvent.click(within(chat).getByRole('button', { name: '↺ 復原' })))
     expect(within(chat).getByText('版本 4')).toBeInTheDocument()
-    expect(within(chat).getByText('↺ 已還原至版本 2 的內容 · 版本 4')).toBeInTheDocument()
+    expect(within(chat).getByText('↺ 已還原為版本 2 的內容 · 另存為版本 4')).toBeInTheDocument()
   })
 
   it('asks for simulator verification from five queue slots up', () => {
     render(<OfficialSitePage />)
-    const slider = screen.getByRole('slider', { name: '站前可以排幾座' })
+    const slider = screen.getByRole('slider', { name: '站前排隊座數' })
 
     fireEvent.change(slider, { target: { value: '4' } })
-    expect(screen.queryByText('站前 5 座以上 · 請用模擬器驗算')).not.toBeInTheDocument()
+    expect(screen.queryByText('站前排隊 5 座以上 · 請以模擬器驗算')).not.toBeInTheDocument()
     fireEvent.change(slider, { target: { value: '6' } })
-    expect(screen.getByText('站前 5 座以上 · 請用模擬器驗算')).toBeInTheDocument()
+    expect(screen.getByText('站前排隊 5 座以上 · 請以模擬器驗算')).toBeInTheDocument()
     fireEvent.change(slider, { target: { value: '8' } })
-    expect(screen.getByText('超出 AI 學過的範圍 · 請用模擬器驗算')).toBeInTheDocument()
+    expect(screen.getByText('超出 AI 訓練範圍 · 請以模擬器驗算')).toBeInTheDocument()
   })
 
   it('renders the English version', () => {

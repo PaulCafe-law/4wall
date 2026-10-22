@@ -25,7 +25,7 @@ function buildStructuredData(meta, locale) {
         name: locale === 'en' ? '4WALL AI' : '4WALL AI（第四面牆）',
         alternateName: locale === 'en' ? ['第四面牆'] : ['4WALL AI', '第四面牆'],
         url: officialUrl,
-        email: '4wallaitech@gmail.com',
+        email: 'admin@4wall.io',
         description: meta.organizationDescription,
         address: {
           '@type': 'PostalAddress',

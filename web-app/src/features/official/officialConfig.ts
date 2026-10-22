@@ -10,5 +10,5 @@ export const OFFICIAL_CONFIG = {
    */
   PRIMARY_CTA: 'start' as PrimaryCta,
   PLATFORM_URL: 'https://platform.4wall.io',
-  CONTACT_EMAIL: '4wallaitech@gmail.com',
+  CONTACT_EMAIL: 'admin@4wall.io',
 }
