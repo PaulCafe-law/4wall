@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import type { ReactElement } from 'react'
+import { lazy, Suspense, type ReactElement } from 'react'
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useSearchParams } from 'react-router-dom'
 
 import { AppShell } from './shell'
@@ -21,7 +21,6 @@ import { MissionDetailPage } from '../features/missions/MissionDetailPage'
 import { MissionsPage } from '../features/missions/MissionsPage'
 import { PlannerPage } from '../features/missions/PlannerPage'
 import { OrganizationsPage } from '../features/orgs/OrganizationsPage'
-import { OfficialSitePage } from '../features/official/OfficialSitePage'
 import { OverviewPage } from '../features/overview/OverviewPage'
 import { SiteMapPage } from '../features/site-map/SiteMapPage'
 import { SitesPage } from '../features/sites/SitesPage'
@@ -30,6 +29,20 @@ import { SystemStatusPage } from '../features/system-status/SystemStatusPage'
 import { AuthProvider, isFactoryOpsCustomer, useAuth } from '../lib/auth'
 
 const queryClient = new QueryClient()
+
+// Loaded on demand so the official site's CSS and motion chunks stay out of the
+// platform shell. www.4wall.io itself is served by the prerendered official entry.
+const LazyOfficialSitePage = lazy(() =>
+  import('../features/official/OfficialSitePage').then((module) => ({ default: module.OfficialSitePage })),
+)
+
+function OfficialSitePage(props: { locale?: 'zh' | 'en'; basePath?: '' | '/official' }) {
+  return (
+    <Suspense fallback={null}>
+      <LazyOfficialSitePage {...props} />
+    </Suspense>
+  )
+}
 
 export function AppRoutes({ hostname = window.location.hostname }: { hostname?: string } = {}) {
   const isPlatformHost = hostname === 'platform.4wall.io'

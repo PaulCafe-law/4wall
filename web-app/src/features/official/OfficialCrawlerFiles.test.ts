@@ -2,6 +2,7 @@ import llms from '../../../public/llms.txt?raw'
 import markdown from '../../../public/official.md?raw'
 import robots from '../../../public/robots.txt?raw'
 import sitemap from '../../../public/sitemap.xml?raw'
+import { buildLlmsTxt, buildOfficialMarkdown } from './officialText'
 
 describe('official crawler files', () => {
   it('allows AI crawlers to read only public official surfaces', () => {
@@ -32,13 +33,19 @@ describe('official crawler files', () => {
     expect(sitemap).not.toContain('/control-plane')
   })
 
-  it('publishes AI-readable public context without credentials', () => {
+  it('keeps the committed crawler text identical to the generated text', () => {
+    // Regenerate with: node scripts/build-official-text.mjs
+    expect(markdown.replace(/\r\n/g, '\n')).toBe(buildOfficialMarkdown())
+    expect(llms.replace(/\r\n/g, '\n')).toBe(buildLlmsTxt())
+  })
+
+  it('publishes AI-readable warehouse context without credentials', () => {
     const combined = `${llms}\n${markdown}`
 
     expect(combined).toContain('4WALL AI（第四面牆）')
-    expect(combined).toContain('工廠地端 AI')
-    expect(combined).toContain('機台資料匯出與整合')
-    expect(combined).toContain('產品履歷')
+    expect(combined).toContain('3D 倉庫')
+    expect(combined).toContain('模擬比較')
+    expect(combined).toContain('尚未用現場資料校準')
     expect(combined).toContain('4wallaitech@gmail.com')
     for (const content of [llms, markdown]) {
       expect(content).toContain('https://www.4wall.io/')

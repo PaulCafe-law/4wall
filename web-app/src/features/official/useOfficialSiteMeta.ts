@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 
 import { officialContent, type OfficialLocale } from './officialContent'
+import { OFFICIAL_FONT_ORIGINS, officialFontStylesheets } from './officialFonts'
 
 export function useOfficialSiteMeta(locale: OfficialLocale = 'zh') {
   useEffect(() => {
@@ -37,12 +38,25 @@ export function useOfficialSiteMeta(locale: OfficialLocale = 'zh') {
     document.title = meta.title
     document.documentElement.lang = language
     updateHead('meta', 'meta[name="description"]', { name: 'description', content: meta.description })
-    updateHead('meta', 'meta[property="og:title"]', { property: 'og:title', content: meta.title })
-    updateHead('meta', 'meta[property="og:description"]', { property: 'og:description', content: meta.description })
+    updateHead('meta', 'meta[property="og:title"]', { property: 'og:title', content: meta.ogTitle })
+    updateHead('meta', 'meta[property="og:description"]', { property: 'og:description', content: meta.ogDescription })
     updateHead('meta', 'meta[property="og:url"]', { property: 'og:url', content: canonicalUrl })
+    updateHead('meta', 'meta[property="og:image"]', { property: 'og:image', content: new URL(meta.ogImage, siteOrigin).href })
+    updateHead('meta', 'meta[property="og:image:alt"]', { property: 'og:image:alt', content: meta.ogImageAlt })
+    updateHead('meta', 'meta[property="og:locale"]', { property: 'og:locale', content: meta.ogLocale })
     updateHead('link', 'link[rel="canonical"]', { rel: 'canonical', href: canonicalUrl })
     for (const [hreflang, href] of [['zh-Hant-TW', officialUrl], ['en', englishUrl], ['x-default', officialUrl]]) {
       updateHead('link', `link[rel="alternate"][hreflang="${hreflang}"]`, { rel: 'alternate', hreflang, href })
+    }
+    for (const origin of OFFICIAL_FONT_ORIGINS) {
+      const attributes: Record<string, string> = { rel: 'preconnect', href: origin }
+      // Font files are fetched with CORS; the stylesheet itself is not.
+      if (origin.includes('gstatic')) attributes.crossorigin = ''
+      updateHead('link', `link[rel="preconnect"][href="${origin}"]`, attributes)
+    }
+    for (const href of officialFontStylesheets(locale)) {
+      // Font URLs are percent-encoded and contain no quotes, so they are safe inside the selector.
+      updateHead('link', `link[rel="stylesheet"][href="${href}"]`, { rel: 'stylesheet', href })
     }
 
     for (const script of document.head.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')) {
