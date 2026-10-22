@@ -56,7 +56,7 @@ for (const host of legacyHosts) {
     assert.doesNotMatch(root.headers['x-robots-tag'] ?? '', /noindex/)
     assert.match(root.body, /<link rel="canonical" href="https:\/\/www\.4wall\.io\/"/)
     assert.match(root.body, /href="\/en"/, 'Language link uses the new English route')
-    assert.match(root.body, /讓機台資料真正用來改善生產/)
+    assert.match(root.body, /倉庫的每個決定，/)
   } else {
     assert.equal(root.status, 301, `${host}/ retains its public-site entry`)
     assert.equal(root.headers.location, '/official')
