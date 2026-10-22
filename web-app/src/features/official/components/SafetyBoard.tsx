@@ -4,7 +4,7 @@ import type { OfficialCopy } from '../officialContent'
 import { sprayReveal } from '../motion/bayer'
 import { easeOut, clamp01 } from '../motion/ease'
 import { addTask, markScrollDirty, prefersReducedMotion } from '../motion/scheduler'
-import { useInViewOnce } from './hooks'
+import { canAnimate, useDisposer, useInViewOnce } from './hooks'
 import { Eyebrow } from './shared'
 
 function ShapeIcon({ shape }: { shape: 'circle' | 'square' | 'triangle' }) {
@@ -105,15 +105,17 @@ function FinePrint({ t }: { t: OfficialCopy }) {
 
 export function SafetyBoard({ t }: { t: OfficialCopy }) {
   const gridRef = useRef<HTMLOListElement>(null)
+  const dispose = useDisposer()
   useInViewOnce(
     gridRef,
     () => {
       const grid = gridRef.current
       if (!grid) return
       grid.classList.add('is-in')
-      if (prefersReducedMotion()) return
+      if (!canAnimate()) return
       ;[...grid.children].forEach((tile, i) => {
-        window.setTimeout(() => sprayReveal(tile as HTMLElement), i * 90)
+        const id = window.setTimeout(() => dispose(sprayReveal(tile as HTMLElement)), i * 90)
+        dispose(() => window.clearTimeout(id))
       })
     },
     0.25,

@@ -2,8 +2,7 @@ import { useRef } from 'react'
 
 import type { OfficialCopy } from '../officialContent'
 import { sprayReveal } from '../motion/bayer'
-import { prefersReducedMotion } from '../motion/scheduler'
-import { useInViewOnce } from './hooks'
+import { canAnimate, useDisposer, useInViewOnce } from './hooks'
 import { Eyebrow } from './shared'
 
 /** Digits roll like an odometer; other characters (×, –) stay static. Final value is in the markup. */
@@ -42,11 +41,12 @@ function Odometer({ value }: { value: string }) {
 function SpecCell({ num, text, index }: { num: string; text: string; index: number }) {
   const ref = useRef<HTMLDivElement>(null)
   const numRef = useRef<HTMLSpanElement>(null)
+  const dispose = useDisposer()
   useInViewOnce(
     ref,
     () => {
       ref.current?.classList.add('is-in')
-      if (num === '0' && numRef.current && !prefersReducedMotion()) sprayReveal(numRef.current, { stepMs: 40 })
+      if (num === '0' && numRef.current && canAnimate()) dispose(sprayReveal(numRef.current, { stepMs: 40 }))
     },
     0.4,
   )

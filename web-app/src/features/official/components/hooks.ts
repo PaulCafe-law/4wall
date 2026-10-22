@@ -1,6 +1,6 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 
-import { prefersReducedMotion } from '../motion/scheduler'
+import { motionSupported, prefersReducedMotion } from '../motion/scheduler'
 
 const noopSubscribe = () => () => undefined
 
@@ -11,6 +11,28 @@ export function useHydrated() {
     () => true,
     () => false,
   )
+}
+
+/** True when time-based reveal effects should run (real browser, motion allowed). */
+export function canAnimate() {
+  return motionSupported() && !prefersReducedMotion()
+}
+
+/**
+ * Collects disposers (cleared timeouts, cancelled reveals) and runs them when the
+ * component unmounts, so no timer outlives the page or a test environment.
+ */
+export function useDisposer() {
+  const disposers = useRef<Array<() => void>>([])
+  useEffect(() => {
+    const list = disposers.current
+    return () => {
+      for (const dispose of list.splice(0)) dispose()
+    }
+  }, [])
+  return useCallback((dispose: () => void) => {
+    disposers.current.push(dispose)
+  }, [])
 }
 
 /** Plain text of a RichText string (`{text}` / `{text|email}` links unwrapped). */
