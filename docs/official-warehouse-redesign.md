@@ -148,5 +148,6 @@ multi-tenant claims, "data never leaves the machine", unimplemented inputs
   platform login renders without official CSS.
 - Rollback: redeploy `paul953206/4wall-web:fe39362-prod`
   (`sha256:f59de1c248da96a895ff529f554f24fbf66bccc6a474294b557d16d1efbb143d`).
-- The branch could not be pushed from this machine (GitHub credential lacks
-  write access to the repository); the commit exists locally.
+- The branch was pushed to `origin/claude/official-warehouse-redesign` with the
+  `PaulCafe-law` GitHub CLI login (the default git credential on this machine
+  belongs to an account without write access).
