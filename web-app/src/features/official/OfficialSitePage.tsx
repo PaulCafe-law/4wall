@@ -133,7 +133,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
             <Link className="text-xs font-medium text-chrome-700 transition hover:text-chrome-950" rel="nofollow" to={t.nav.langHref}>
               {t.nav.langSwitch}
             </Link>
-            <Link className="hidden text-xs text-chrome-700 transition hover:text-chrome-950 md:inline" rel="nofollow" to="/login">
+            <Link className="hidden text-xs text-chrome-700 transition hover:text-chrome-950 md:inline" rel="nofollow" to="https://platform.4wall.io">
               {t.nav.login}
             </Link>
             <a className="rounded-full bg-chrome-950 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-chrome-800" href="#contact">
@@ -348,7 +348,7 @@ export function OfficialSitePage({ locale = 'zh' }: { locale?: OfficialLocale })
           <div className="flex flex-col gap-2 text-xs text-chrome-600">
             <a className="transition hover:text-chrome-950" href="mailto:4wallaitech@gmail.com">4wallaitech@gmail.com</a>
             <Link className="transition hover:text-chrome-950" rel="nofollow" to={t.nav.langHref}>{t.nav.langSwitch}</Link>
-            <Link className="transition hover:text-chrome-950" rel="nofollow" to="/login">{t.nav.login}</Link>
+            <Link className="transition hover:text-chrome-950" rel="nofollow" to="https://platform.4wall.io">{t.nav.login}</Link>
           </div>
         </div>
         <p className="mx-auto mt-8 max-w-6xl text-[11px] text-chrome-400">{t.footer.rights}</p>

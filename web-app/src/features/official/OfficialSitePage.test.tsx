@@ -67,7 +67,7 @@ describe('OfficialSitePage', () => {
       expect(link).toHaveAttribute('href', '/official/en')
     }
     for (const link of screen.getAllByRole('link', { name: '進入管理平台' })) {
-      expect(link).toHaveAttribute('href', '/login')
+      expect(link).toHaveAttribute('href', 'https://platform.4wall.io')
     }
     expect(screen.getByRole('link', { name: '聯絡我們' })).toHaveAttribute('href', '#contact')
 

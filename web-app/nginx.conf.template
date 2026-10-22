@@ -1,3 +1,11 @@
+# Only known production aliases migrate; local and staging hosts keep their routes.
+map $host $legacy_platform_origin {
+    default "";
+    4wall.io https://platform.4wall.io;
+    www.4wall.io https://platform.4wall.io;
+    four-wall-web.onrender.com https://platform.4wall.io;
+}
+
 server {
     listen ${PORT};
     server_name _;
@@ -67,22 +75,39 @@ server {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
-    # Public custom domain root lands on the marketing site, not the app
-    # (which would bounce anonymous visitors to /login). Platform routes below
-    # are unaffected; management users reach the app via /login directly.
+    # The platform owns its app entry; the public website keeps its marketing root.
     location = / {
         absolute_redirect off;
-        return 301 /official;
+        if ($host != platform.4wall.io) {
+            return 301 /official;
+        }
+        try_files /index.html =404;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     }
 
-    location ~ ^/(login|invite|overview|sites|site-map|missions|incidents|industrial-data-engine|billing|control-plane|live-ops|organizations|support|audit)(/|$) {
+    location = /index.html {
+        if ($legacy_platform_origin) {
+            return 302 $legacy_platform_origin$request_uri;
+        }
         try_files /index.html =404;
         add_header Cache-Control "no-store";
         add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     }
 
     location / {
-        try_files $uri $uri/ /index.html;
+        try_files $uri $uri/ @platform;
         add_header Cache-Control "no-store";
+    }
+
+    # Preserve deep links and query strings, including invite and LINE flows.
+    # Keeping this at the SPA fallback also covers future application routes.
+    location @platform {
+        if ($legacy_platform_origin) {
+            return 302 $legacy_platform_origin$request_uri;
+        }
+        try_files /index.html =404;
+        add_header Cache-Control "no-store";
+        add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     }
 }
