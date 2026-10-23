@@ -11,13 +11,12 @@ import { clamp01, easeInOut, easeOut, easeOutBack, lerp, span } from './ease'
 import { ISO_REGION, PLAN_REGION, STAGE_LABELS, buildFloorModel, timesSignAt, type FloorModel, type FloorVariant, type Locale, type Rack, type Rect, type Vec2 } from './floorModel'
 import { addTask, isPaused, motionSupported } from './scheduler'
 
-export type EditState = { a01Tall: boolean; bShift: 0 | 1 }
+export type EditState = { a01Tall: boolean; bShift: 0 | 1; batch: boolean }
 
 export interface FloorStageHandle {
   setProgress(s: number): void
   setEdits(next: EditState): Promise<void>
   setSlots(n: number): void
-  flashBatchFail(): void
   setPaused(p: boolean): void
   resize(): void
   destroy(): void
@@ -146,7 +145,6 @@ const inertHandle = (): FloorStageHandle => ({
   setProgress() {},
   setEdits: () => Promise.resolve(),
   setSlots() {},
-  flashBatchFail() {},
   setPaused() {},
   resize() {},
   destroy() {},
@@ -185,7 +183,7 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
   let idlePath = toPath(model.idleLoop.points, true)
   let introOrder: number[] = []
   let introCount = 0
-  let rackIdx = { a01: 0, a07: 0, est: [] as number[] }
+  let rackIdx = { a01: 0, a07: 0, est: [] as number[], batch: new Set<number>() }
   let heat = new Float64Array(0)
   let heatLv = new Uint8Array(0)
   let agvs: Agv[] = []
@@ -210,6 +208,7 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
       a01: model.racks.findIndex((r) => r.id === model.ids.a01),
       a07: model.racks.findIndex((r) => r.id === model.ids.a07),
       est: model.racks.map((r, i) => (r.estimated ? i : -1)).filter((i) => i >= 0),
+      batch: new Set(model.ids.batch.map((id) => model.racks.findIndex((r) => r.id === id))),
     }
     heat = new Float64Array(model.grid.cols * model.grid.rows)
     heatLv = new Uint8Array(heat.length)
@@ -218,16 +217,16 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
   }
 
   // ---- edits, slots, flashes ----------------------------------------------
-  let edits: EditState = { a01Tall: false, bShift: 0 }
+  let edits: EditState = { a01Tall: false, bShift: 0, batch: false }
   let layoutKey: 'base' | 'bShifted' = 'base'
   let a01Tw = fixed(0)
+  let batchTw = fixed(0)
   let beaconTw = fixed(0)
   let bTw = fixed(0)
   let routeTw = fixed(1)
   let routeFlashT0 = -Infinity
   let slotTw = fixed(3)
   let slotN = 3
-  let flashT0 = -Infinity
   const timers = new Set<number>()
   const pendingResolves = new Set<() => void>()
 
@@ -821,13 +820,13 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
     const dim = 1 - 0.55 * focus
     const bv = twValue(bTw, now)
     const a01v = twValue(a01Tw, now)
+    const batchV = twValue(batchTw, now)
     const fleetA = twValue(fleetTw, now)
     const ghostA = twValue(ghostTw, now)
     const liveMul = lerp(1, 0.6, span(se, 6, 6.15)) * lerp(1, 0.25 / 0.6, span(se, 7, 7.15))
     const scanX = lerp(-0.5, model.width + 0.5, span(se, 2.4, 2.8))
     const estA = span(se, 2.6, 2.75)
     const palletA = 1 - span(se, 4, 4.15)
-    const flash = now - flashT0 < 300
     const mw = model.width
     const mh = model.height
 
@@ -1108,7 +1107,7 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
 
     // 7. Racks, stations and vehicles.
     const flat = se < 3.15
-    const rackStroke = (r: Rack) => (flash ? C.o600 : se >= 2.8 || (se >= 2.4 && r.x + 0.45 < scanX) ? C.t600 : C.ink)
+    const rackStroke = (r: Rack) => (se >= 2.8 || (se >= 2.4 && r.x + 0.45 < scanX) ? C.t600 : C.ink)
     // 7a. Flat footprints (plan, tilt, and racks that have not started rising).
     {
       const inkPath: number[] = []
@@ -1149,8 +1148,8 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
         ctx.stroke()
         ctx.setLineDash([])
       }
-      outline(inkPath, flash ? C.o600 : C.ink)
-      outline(tealPath, flash ? C.o600 : C.t600)
+      outline(inkPath, C.ink)
+      outline(tealPath, C.t600)
       if (estA > 0) {
         ctx.beginPath()
         for (const i of rackIdx.est) {
@@ -1159,7 +1158,7 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
           quad(r.x - r.w / 2, r.y - r.d / 2, r.x + r.w / 2, r.y + r.d / 2, 0)
         }
         ctx.setLineDash([4, 3])
-        ctx.strokeStyle = flash ? C.o600 : C.t600
+        ctx.strokeStyle = C.t600
         ctx.globalAlpha = estA * dim
         ctx.stroke()
         ctx.setLineDash([])
@@ -1229,12 +1228,13 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
         while (di < dyn.length && dyn[di].key < key) drawDyn(dyn[di++])
         let h = r.h * easeOutBack(rise)
         if (i === rackIdx.a01) h = lerp(model.a01.baseH, model.a01.tallH, a01v) * easeOutBack(rise)
+        else if (rackIdx.batch.has(i)) h = (r.h + batchV) * easeOutBack(rise)
         const isA01 = i === rackIdx.a01
         Object.assign(boxStyle, {
           left: C.t200,
           right: C.t300,
           top: C.t100,
-          stroke: flash ? C.o600 : C.t600,
+          stroke: C.t600,
           faceA: span(rise, 0.4, 1) * (r.estimated ? 0.55 : 1),
           edgeP: span(rise, 0, 0.4),
           dashed: r.estimated,
@@ -1456,13 +1456,13 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
     return (
       introBusy(now) ||
       twBusy(a01Tw, now) ||
+      twBusy(batchTw, now) ||
       twBusy(beaconTw, now) ||
       twBusy(bTw, now) ||
       twBusy(routeTw, now) ||
       twBusy(slotTw, now) ||
       twBusy(fleetTw, now) ||
       twBusy(ghostTw, now) ||
-      now - flashT0 < 340 ||
       (now >= routeFlashT0 && now - routeFlashT0 < 2450)
     )
   }
@@ -1626,6 +1626,12 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
         beaconTw = instant ? fixed(to) : { from: twValue(beaconTw, now), to, t0: now, dur: 300, ease: easeOut }
         dur = Math.max(dur, 600)
       }
+      if (next.batch !== edits.batch) {
+        const to = next.batch ? 1 : 0
+        // The whole batch rises at once: the product applies a checked batch in one go.
+        batchTw = instant ? fixed(to) : { from: twValue(batchTw, now), to, t0: now, dur: 600, ease: to ? (t) => easeOutBack(t) : easeOut }
+        dur = Math.max(dur, 600)
+      }
       if (next.bShift !== edits.bShift) {
         bTw = instant ? fixed(next.bShift) : { from: twValue(bTw, now), to: next.bShift, t0: now, dur: 500, ease: easeOut }
         layoutKey = next.bShift ? 'bShifted' : 'base'
@@ -1636,7 +1642,7 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
         routeFlashT0 = instant || fleetOn ? -Infinity : now + 500
         dur = Math.max(dur, 1000)
       }
-      edits = { a01Tall: next.a01Tall, bShift: next.bShift }
+      edits = { a01Tall: next.a01Tall, bShift: next.bShift, batch: next.batch }
       if (!dur || instant) {
         requestDraw()
         return Promise.resolve()
@@ -1662,14 +1668,6 @@ export function createFloorStage(canvas: HTMLCanvasElement, opts: { model: Floor
       requestDraw()
     },
 
-    flashBatchFail() {
-      if (destroyed) return
-      flashT0 = performance.now()
-      if (still) {
-        requestDraw()
-        later(320, requestDraw)
-      } else ensureAnim()
-    },
 
     setPaused(p: boolean) {
       paused = p

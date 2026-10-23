@@ -106,7 +106,7 @@ function ReceivingTicket({ t }: { t: OfficialCopy }) {
       </ul>
       <p className="ow-ticket__found">{t.ticket.found}</p>
       <p className="ow-ticket__footer">
-        <Stamp>{t.stamp.illustrative}</Stamp> {t.ticket.footer}
+        {t.ticket.footer}
       </p>
     </RetroTicket>
   )
@@ -181,7 +181,7 @@ function Scoreboard({ t }: { t: OfficialCopy }) {
         ))}
       </ul>
       <figcaption className="ow-panel__foot">
-        <Stamp>{t.stamp.illustrative}</Stamp> {t.score.footer}
+        {t.score.footer}
       </figcaption>
     </figure>
   )
@@ -194,8 +194,8 @@ function Zebra({ t, locale }: { t: OfficialCopy; locale: OfficialLocale }) {
       <div className="ow-container">
         <div className="ow-zebra__sign">
           <svg className="ow-zebra__icon" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
-            <path d="M16 3 30 28H2Z" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
-            <path d="M16 12v8M16 23.5v1.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+            <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeWidth="2.2" />
+            <path d="M10 16h11M17 11l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <div>
             <p id="ow-zebra-title" className="ow-zebra__title">

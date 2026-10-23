@@ -17,7 +17,7 @@ function ShapeIcon({ shape }: { shape: 'circle' | 'square' | 'triangle' }) {
   )
 }
 
-/** The product's small print, rendered at full size; on desktop it grows out of a 12px line as you scroll. */
+/** The board's headline line; on desktop it grows out of a 12px line as you scroll. */
 function FinePrint({ t }: { t: OfficialCopy }) {
   const fineRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -144,7 +144,6 @@ export function SafetyBoard({ t }: { t: OfficialCopy }) {
             </li>
           ))}
         </ol>
-        <p className="ow-board__footer">{t.board.footer}</p>
       </div>
     </section>
   )

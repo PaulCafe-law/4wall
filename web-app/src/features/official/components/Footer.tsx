@@ -74,7 +74,6 @@ export function Footer({ t, locale, basePath }: { t: OfficialCopy; locale: Offic
         </nav>
       </div>
       <div className="ow-container ow-footer__bottom">
-        <p className="ow-footer__disclaimer">{t.footer.disclaimer}</p>
         <p className="ow-footer__copy">{t.footer.copyright}</p>
       </div>
     </footer>

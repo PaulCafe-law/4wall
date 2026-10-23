@@ -40,7 +40,6 @@ export function buildOfficialMarkdown() {
   lines.push(`## ${t.faq.eyebrow}`, '')
   for (const item of t.faq.items) lines.push(`### ${item.q}`, '', plain(item.a), '')
   lines.push('## 聯絡我們', '', `${t.dock.sub} 請來信 ${EMAIL}，我們將盡快回覆。`, '')
-  lines.push(`---`, '', t.footer.disclaimer, '')
   return lines.join('\n')
 }
 
@@ -59,18 +58,13 @@ export function buildLlmsTxt() {
   lines.push('## 產品流程 / Product flow', '')
   lines.push(zh.intro.fit, '')
   zh.steps.forEach((step, i) => {
-    // Keep each step's caveats next to it so the flow is never read as "upload → KPIs anywhere".
+    // Each step's notes stay next to it so the flow reads as one product tour.
     const extras = [step.body, 'note' in step ? step.note : '', 'caveat' in step ? step.caveat : ''].filter(Boolean).join(' ')
     lines.push(`${i + 1}. ${step.eyebrow.replace(/^\d+ \/ 06 · /, '')}：${step.h3} ${extras}`)
   })
   lines.push('', `${zh.zebra.title}：${plain(zh.zebra.body)}`, '')
-  lines.push('## 我們不宣稱 / What we do not claim', '')
-  for (const index of [0, 6, 7, 8]) {
-    const rule = zh.board.rules[index]
-    lines.push(`- ${rule.title} ${rule.body}`)
-  }
+  lines.push(`## ${zh.board.h2} / ${en.board.h2}`, '')
+  for (const rule of zh.board.rules) lines.push(`- ${rule.title} ${rule.body}`)
   lines.push('')
-  lines.push(zh.footer.disclaimer, '')
-  lines.push(en.footer.disclaimer, '')
   return lines.join('\n')
 }

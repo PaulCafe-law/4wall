@@ -152,7 +152,7 @@ export function RichText({ text, locale }: { text: string; locale: OfficialLocal
   return <>{parts}</>
 }
 
-export function Stamp({ children, tone = 'ochre', className = '' }: { children: ReactNode; tone?: 'ochre' | 'teal'; className?: string }) {
+export function Stamp({ children, tone = 'teal', className = '' }: { children: ReactNode; tone?: 'ochre' | 'teal'; className?: string }) {
   return <span className={`ow-stamp ow-stamp--${tone} ${className}`}>{children}</span>
 }
 

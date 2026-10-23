@@ -53,14 +53,25 @@ excluded.
 - Contact remains `admin@4wall.io`; no LINE CTA; no pricing; no
   customer names without written consent.
 
-## Public-claim policy
+## Public-copy policy
 
-All copy is checked against the warehouse system's own README and docs.
-Every KPI shown on the site is labelled as a simulated forecast or an
-illustration. Forbidden: calibrated accuracy, improvement percentages,
-"optimal" claims, customer names (和泰/安格), pricing, cloud SaaS or
-multi-tenant claims, "data never leaves the machine", unimplemented inputs
-(DWG/DXF/BIM/point clouds), and "QuickJudge works on any warehouse".
+Set by the founder on 2026-10-23, replacing the earlier "label every number as
+an estimate" policy (see "Capability-only rewrite" below). The page sells what the product does; it does not list what it cannot do.
+
+- Write capabilities and buyer outcomes, framed around the planning decisions a
+  goods-to-person AGV warehouse makes. A limitation is reframed as a true
+  capability or left out; no disclaimers, "not yet", "cannot", "does not"
+  lines, and no unpackaged "illustrative" stamps or footers.
+- 4WALL AI is a simulator: never frame results around field calibration, field
+  measurement or field results.
+- Never name the AI model or vendor. Data handling is described by what the
+  system does; full details are provided on request.
+- Truth floor (unchanged): every claim traces back to the warehouse system's
+  code and docs; no invented numbers, improvement percentages, customer names
+  (和泰/安格), pricing, "optimal", "accurate" or "guaranteed" claims, nothing
+  implying the product runs AGVs or the floor, and no unimplemented inputs.
+- `officialCopy.lint.test.ts` enforces all of the above on every string, the
+  crawler files and the page head.
 
 ## Intended behaviour
 
@@ -173,3 +184,29 @@ multi-tenant claims, "data never leaves the machine", unimplemented inputs
   with the canvas live, no console errors, no horizontal overflow; the only
   mailto is `admin@4wall.io`; 「沒差」 no longer appears.
 - Rollback: redeploy `paul953206/4wall-web:6af9b7a-prod`.
+
+## Capability-only rewrite (2026-10-23)
+
+- Founder feedback on the live site: the copy listed what the product cannot do
+  (no AGV control, not calibrated with site data, numbers are not results),
+  carried raw 「示意」 labels, and named the AI vendor in the FAQ. A buyer would
+  not order from that page. As a simulator, field calibration is not the
+  framing; negative lines should be rewritten as capabilities or removed.
+- Process: a founder critic, a 3PL-buyer critic and a capability miner (reading
+  `D:\第四面牆倉儲系統` code and docs) fed two independent rewrites
+  (decision-confidence and scenario-led); a judge merged them, and truth,
+  founder and language reviewers checked the result. Truth fixes applied:
+  simulation comparison does not vary the AGV count (only QuickJudge does), the
+  AI recommendation is a stable default plus candidates to verify, the data
+  answer lists everything stored, and file formats stay at the six verified.
+- Sections: #numbers is now 應用情境 / Use cases (nine decisions a
+  goods-to-person warehouse can rehearse, big line 「數秒預測 · 完整驗算。」);
+  how-we-work is an engagement path ending in delivered results; the zebra
+  tape is a hand-off into simulation; the FAQ leads with buyer questions and
+  drops the AGV-control, field-results and vendor answers.
+- UI: every 「示意」 stamp, the board footer and the footer disclaimer are gone;
+  stamps are teal product labels; the chat demo's attachment chip is now a
+  real batch edit (12 racks rise by 1 m, version bump, undoable) instead of a
+  rejected batch.
+- Policy enforcement: the copy lint bans negative narrative, disclaimers and
+  vendor names in every string, the crawler files and `official.html`.

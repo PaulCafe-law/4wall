@@ -10,7 +10,7 @@ function Envelope({ t, scrollRef }: { t: OfficialCopy; scrollRef: RefObject<HTML
   const svgRef = useRef<SVGSVGElement>(null)
   useInViewOnce(svgRef, () => svgRef.current?.classList.add('is-in'), 0.4)
 
-  // Flap opens and the forecast card slides out as the section scrolls from 60% to 30% of the viewport.
+  // Flap opens and the results card slides out as the section scrolls from 60% to 30% of the viewport.
   useEffect(() => {
     const svg = svgRef.current
     const section = scrollRef.current

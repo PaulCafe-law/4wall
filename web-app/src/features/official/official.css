@@ -2131,7 +2131,7 @@ html.js:not(.ow-failsafe) .ow-spec__cell:not(.is-in) .ow-odo__col {
   stroke: #f3f4f4;
 }
 .ow-rule__icon--triangle {
-  stroke: #e8a15a;
+  stroke: var(--ow-teal-300);
   stroke-linejoin: round;
 }
 html.js:not(.ow-failsafe) .ow-board__grid:not(.is-in) .ow-rule__icon {
@@ -2154,11 +2154,6 @@ html.js:not(.ow-failsafe) .ow-board__grid:not(.is-in) .ow-rule__icon {
 .ow-rule__body {
   font-size: 15px;
   line-height: 1.7;
-  color: var(--ow-muted-on-dark);
-}
-.ow-board__footer {
-  margin-top: 32px;
-  font-size: 13px;
   color: var(--ow-muted-on-dark);
 }
 @media (min-width: 768px) {
