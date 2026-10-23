@@ -130,5 +130,30 @@ Rollback is image tag based:
 3. Trigger Render deploy latest image.
 4. Verify API `/healthz` and web smoke checks.
 
+## Automated Production API Deploy
+
+Render native Auto-Deploy does not watch Docker Hub tags for image-backed
+services. For `four-wall-api`, production auto deploy is therefore implemented
+by GitHub Actions:
+
+1. On `main` pushes that touch `planner-server/`, the workflow builds
+   `docker.io/paul953206/4wall-api:<short-sha>` and
+   `docker.io/paul953206/4wall-api:prod`.
+2. The workflow pushes both tags to Docker Hub.
+3. The workflow calls the Render Deploy API for
+   `srv-d7chueu7r5hc73esq5pg`, which is the production `four-wall-api`
+   image-backed service.
+4. The workflow polls `https://four-wall-api.onrender.com/healthz`.
+
+Required GitHub secrets:
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+- `RENDER_API_KEY`
+
+If any of these secrets are missing, the workflow fails before building or
+deploying and prints the missing secret names only. It must never print secret
+values.
+
 Do not change Android or flight-critical runtime behavior as part of this
 deploy-source recovery.
