@@ -1,8 +1,8 @@
 # Official website redesign: warehouse pivot
 
 Date: 2026-10-23
-Status: Live on www.4wall.io since 2026-10-23; current image `443981a-prod`
-(copy polish, below).
+Status: Live on www.4wall.io since 2026-10-23; current image `a556489-prod`
+(capability-only rewrite, below).
 
 ## Request and scope
 
@@ -210,3 +210,13 @@ an estimate" policy (see "Capability-only rewrite" below). The page sells what t
   rejected batch.
 - Policy enforcement: the copy lint bans negative narrative, disclaimers and
   vendor names in every string, the crawler files and `official.html`.
+- Deploy: `main` at `a556489` (#126), image `paul953206/4wall-web:a556489-prod`
+  (`sha256:355358b684c1719252b1c590afd23934cf8de2fe8ba3a8cf074e55349f8f93bc`),
+  Render deploy hook at 01:31 Asia/Taipei (2026-10-24). 185 real-nginx routing
+  checks passed on the image first.
+- Production check: `/`, `/en`, OG cards, `llms.txt`, `official.md` 200; apex,
+  `/official` and `/login` redirect as before; none of 示意/校準/尚未/OpenAI
+  (or the English equivalents) in the pages or crawler files. Chromium at 1440
+  (zh, en) and 390 (zh): hydrated, canvas live, no console errors, no
+  horizontal overflow, the only mailto is `admin@4wall.io`.
+- Rollback: redeploy `paul953206/4wall-web:443981a-prod` (previous copy).
