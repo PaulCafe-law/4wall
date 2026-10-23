@@ -54,7 +54,7 @@ function card(locale) {
   h1 span{white-space:${locale === 'zh' ? 'nowrap' : 'normal'}}
   em{font-style:normal;color:#08766c;${locale === 'zh' ? "font-family:'Noto Serif TC',serif;" : ''}box-shadow:inset 0 -0.12em #08766c}
   .plan{position:absolute;right:8px;top:56px;width:520px;height:500px}
-  .stamp{position:absolute;right:48px;bottom:40px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:#b45309;background:#fff7ed;border:1px solid #ecd3bd;border-radius:4px;padding:4px 10px}
+  .stamp{position:absolute;right:48px;bottom:40px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:18px;color:#08766c;background:#ecf6f4;border:1px solid #b9ddd7;border-radius:4px;padding:4px 10px}
   .url{position:absolute;left:64px;bottom:48px;font-family:'JetBrains Mono',monospace;font-size:20px;color:#5b616b}
 </style></head><body>
 <div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>4WALL AI</div>

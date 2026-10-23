@@ -4,7 +4,7 @@ import { fill, type OfficialCopy, type OfficialLocale } from '../officialContent
 import type { EditState } from '../motion/floorStage'
 import { prefersReducedMotion } from '../motion/scheduler'
 import { useHydrated } from './hooks'
-import { RichText, Stamp } from './shared'
+import { RichText } from './shared'
 import { useStage } from './stageController'
 
 type Line = { id: number; who: 'user' | 'sys'; text: string; tone?: 'ok' | 'warn'; rich?: boolean }
@@ -14,8 +14,8 @@ type Entry = { edit: EditState; version: number }
 
 type ChatState = { version: number; history: Entry[]; log: Line[]; busy: boolean }
 
-const BASE: EditState = { a01Tall: false, bShift: 0 }
-const A01: EditState = { a01Tall: true, bShift: 0 }
+const BASE: EditState = { a01Tall: false, bShift: 0, batch: false }
+const A01: EditState = { a01Tall: true, bShift: 0, batch: false }
 
 /** The SSR / reduced-motion transcript: A01 already edited, version 2. */
 function finalState(t: OfficialCopy): ChatState {
@@ -187,8 +187,11 @@ export function ChatEditDemo({ t, locale }: { t: OfficialCopy; locale: OfficialL
       }
       await apply({ ...top, bShift: 1 }, t.chat.replyBMove)
     } else {
-      stage?.flashBatchFail()
-      setState((prev) => ({ ...prev, log: [...prev.log, line('sys', t.chat.replyBatchFail, { tone: 'warn' })] }))
+      if (top.batch) {
+        setState((prev) => ({ ...prev, log: [...prev.log, line('sys', fill(t.chat.replyBatch, { n: prev.version }), { tone: 'ok' })] }))
+        return
+      }
+      await apply({ ...top, batch: true }, t.chat.replyBatch)
     }
   }
 
@@ -283,7 +286,7 @@ export function ChatEditDemo({ t, locale }: { t: OfficialCopy; locale: OfficialL
         </button>
       </form>
       <p className="ow-panel__foot">
-        <Stamp>{t.stamp.illustrative}</Stamp> {t.chat.footer}
+        {t.chat.footer}
       </p>
     </div>
   )

@@ -20,21 +20,20 @@ function meters(n: number) {
 
 type SlotTag = { text: string; tone: 'teal' | 'ochre'; pop?: boolean }
 
-/** Product rule: 5+ queue slots must be verified with the simulator; 8 is outside the learned range. */
+/** Product behaviour: from 5 queue slots QuickJudge offers simulator verification; 8 is an extended setting. */
 function slotTags(n: number, t: OfficialCopy): SlotTag[] {
-  if (n >= 8) return [{ text: t.stamp.outOfRange, tone: 'ochre', pop: true }]
+  if (n >= 8) return [{ text: t.stamp.outOfRange, tone: 'teal', pop: true }]
   const tags: SlotTag[] = []
   if (!LEARNED.has(n)) tags.push({ text: t.stamp.interp, tone: 'teal' })
-  if (n >= 5) tags.push({ text: t.stamp.verify, tone: 'ochre' })
+  if (n >= 5) tags.push({ text: t.stamp.verify, tone: 'teal' })
   return tags
 }
 
-function KpiCard({ label, ends, aria, stamp, value, outOfRange }: { label: string; ends: string[]; aria: string; stamp: string; value: number; outOfRange: boolean }) {
+function KpiCard({ label, ends, aria, value, outOfRange }: { label: string; ends: string[]; aria: string; value: number; outOfRange: boolean }) {
   return (
     <div className="ow-kpi" role="img" aria-label={aria}>
       <div className="ow-kpi__top" aria-hidden="true">
         <span className="ow-kpi__label">{label}</span>
-        <Stamp className="ow-kpi__stamp">{stamp}</Stamp>
       </div>
       <div className={`ow-meter${outOfRange ? ' is-out' : ''}`} aria-hidden="true">
         <span className="ow-meter__fill" style={{ ['--w' as string]: value }} />
@@ -92,7 +91,6 @@ export function KpiPanel({ t }: { t: OfficialCopy }) {
             label={card.label}
             ends={card.ends}
             aria={fill(t.kpi.cardAria, { label: card.label })}
-            stamp={t.stamp.illustrative}
             value={values[i]}
             outOfRange={outOfRange && i < 2}
           />

@@ -14,7 +14,6 @@ export type StageController = {
   attach: (handle: FloorStageHandle | null) => void
   setEdits: (next: EditState) => Promise<void>
   setSlots: (n: number) => void
-  flashBatchFail: () => void
   setProgress: (s: number) => void
   onProgress: (listener: (s: number) => void) => () => void
 }
@@ -23,7 +22,7 @@ export function createStageController(): StageController {
   const listeners = new Set<(s: number) => void>()
   const controller: StageController = {
     handle: null,
-    edits: { a01Tall: false, bShift: 0 },
+    edits: { a01Tall: false, bShift: 0, batch: false },
     slots: 3,
     progress: 0,
     attach(handle) {
@@ -41,9 +40,6 @@ export function createStageController(): StageController {
     setSlots(n) {
       controller.slots = n
       controller.handle?.setSlots(n)
-    },
-    flashBatchFail() {
-      controller.handle?.flashBatchFail()
     },
     setProgress(s) {
       controller.progress = s

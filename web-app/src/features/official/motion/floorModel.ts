@@ -108,7 +108,8 @@ export type FloorModel = {
   layouts: { base: FloorLayout; bShifted: FloorLayout }
   /** Reduced-motion heat for the base layout (same as layouts.base.heat). */
   heatReduced: number[]
-  ids: { a01: string; a07: string; estimated: string[] }
+  /** `batch`: the 12 racks the chat demo's attachment raises by 1 m. */
+  ids: { a01: string; a07: string; estimated: string[]; batch: string[] }
   bPair: { pair: string; rackIds: string[]; dx: number }
   a01: { baseH: number; tallH: number }
   fleetSize: number
@@ -127,14 +128,14 @@ export const STAGE_LABELS: Record<Locale, { scan: string; estimated: string; pro
     scan: 'AI 判讀中…',
     estimated: '推估',
     provenance: 'A07 · 料架 · 來源：設施清單.xlsx 第 12 列',
-    jam: '可能壅塞 · 示意',
+    jam: '壅塞熱點',
     pallets: ['PPTX', 'XLSX', 'CSV', 'PDF', 'JPG', 'PNG'],
   },
   en: {
     scan: 'Reading…',
     estimated: 'EST.',
     provenance: 'A07 · rack · source: facility-list.xlsx, row 12',
-    jam: 'Likely congestion · illustrative',
+    jam: 'Congestion hotspot',
     pallets: ['PPTX', 'XLSX', 'CSV', 'PDF', 'JPG', 'PNG'],
   },
 }
@@ -697,7 +698,7 @@ export function createFloorModel(variant: FloorVariant): FloorModel {
     zebraX: spec.zebraX,
     cellYOffset,
     idleLoop,
-    ids: { a01: 'A01', a07: 'A07', estimated: spec.estimated },
+    ids: { a01: 'A01', a07: 'A07', estimated: spec.estimated, batch: racks.filter((r) => r.pair === 'C' && !r.estimated).slice(0, 12).map((r) => r.id) },
     bPair: { pair: 'B', rackIds: bRacks.map((r) => r.id), dx: 1 },
     a01: { baseH: 3, tallH: 4 },
     fleetSize: spec.fleet.length,

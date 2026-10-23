@@ -3,9 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import type { OfficialCopy } from '../officialContent'
 import { prefersReducedMotion } from '../motion/scheduler'
 import { useHydrated } from './hooks'
-import { Stamp } from './shared'
 
-// Fixed illustrative curve (12 points); no data, no scale.
+// Fixed decorative curve (12 points); no data, no scale.
 const XS = Array.from({ length: 12 }, (_, i) => 24 + i * 32)
 const BASE = [120, 104, 112, 86, 92, 70, 78, 60, 72, 54, 62, 48]
 const RULER_OFFSETS = [8, -6, 12, -4, 10, -14, 6, 9, -7, 11, -5, 4]
@@ -131,7 +130,7 @@ export function SketchRuler({ t }: { t: OfficialCopy }) {
       </svg>
       <figcaption className="ow-ruler__caption">
         <span className="ow-ruler__key ow-ruler__key--a">
-          {t.ruler.aiLabel} <Stamp>{t.stamp.illustrative}</Stamp>
+          {t.ruler.aiLabel}
         </span>
         <span className="ow-ruler__key ow-ruler__key--b">{t.ruler.simLabel}</span>
         <span className="ow-ruler__tag ow-mono">{t.ruler.rulerTag}</span>
